@@ -16,6 +16,46 @@ def flush_events():
         pass
 
 
+def pause_settings_only(screen, background_surf):
+    """
+    Show the Pause menu but only let the player go into Settings and then come back.
+    Returns only when the user chooses CONTINUE (or closes the menu).
+    """
+    while True:
+        choice = show_pause_menu(screen, background_surf)
+        if choice == 'settings':
+            show_settings_popup(screen, background_surf)
+            # when settings closes, show pause again
+            continue
+        # treat anything else as 'continue'
+        break
+    flush_events()
+
+def pause_from_overlay(screen, bg_surface):
+    # Show pause; loop when settings closes so we land back on pause.
+    while True:
+        choice = show_pause_menu(screen, bg_surface)
+        if choice in (None, "continue"):
+            return "continue"
+        if choice == "settings":
+            show_settings_popup(screen, bg_surface)
+            flush_events()
+            continue  # back to pause
+        return choice  # "home" | "exit" | "restart"
+
+# --- Font helper ---
+def mono_font(size: int) -> "pygame.font.Font":
+    # Try common monospaced fonts; fall back safely
+    candidates = ["Consolas", "Menlo", "DejaVu Sans Mono", "Courier New", "monospace"]
+    try:
+        name = pygame.font.match_font(candidates)
+        if name:
+            return pygame.font.Font(name, size)
+    except Exception:
+        pass
+    return pygame.font.SysFont("monospace", size)
+
+
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
 # - Card system UI polish (later pass)
@@ -47,7 +87,7 @@ FIRE_RATE = None  # shots per second; if None, derive from BULLET_SPACING_PX
 BULLET_SPEED = 1000.0  # pixels per second (controls travel speed)
 BULLET_SPACING_PX = 260.0  # desired spacing between bullets along their path
 BULLET_RADIUS = 4
-BULLET_DAMAGE_ZOMBIE = 12
+BULLET_DAMAGE_ZOMBIE = 0.1
 BULLET_DAMAGE_BLOCK = 10
 MAX_FIRE_RANGE = 800.0  # pixels
 # --- survival mode & player health ---
@@ -335,11 +375,11 @@ def show_help(screen):
         screen.fill((18, 18, 18))
         screen.blit(big.render("How to Play", True, (240, 240, 240)), (40, 40))
         lines = [
-              "WASD to move. Survive until the timer hits 00:00 to win.",
-              "Breakable yellow blocks block the final fragment (secondary).",
-              "Zombies deal contact damage. Avoid or kite them.",
-              "Auto-fire targets the closest enemy/block in range.",
-              "Transitions use the classic 'two doors' animation."
+            "WASD to move. Survive until the timer hits 00:00 to win.",
+            "Breakable yellow blocks block the final fragment (secondary).",
+            "Zombies deal contact damage. Avoid or kite them.",
+            "Auto-fire targets the closest enemy/block in range.",
+            "Transitions use the classic 'two doors' animation."
         ]
         y = 100
         for s in lines:
@@ -387,9 +427,26 @@ def show_fail_screen(screen, background_surf):
                     show_settings_popup(screen, bg)
                     flush_events()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                door_transition(screen);
-                flush_events();
-                return
+                bg = pygame.display.get_surface().copy()
+                pick = pause_from_overlay(screen, bg)
+                if pick == "continue":
+                    # Repaint this Fail screen and keep waiting for input
+                    return_to_fail = True
+                    # Re-draw the same Fail UI:
+                    dim = pygame.Surface((VIEW_W, VIEW_H));
+                    dim.set_alpha(180);
+                    dim.fill((0, 0, 0))
+                    screen.blit(pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H)), (0, 0))
+                    screen.blit(dim, (0, 0))
+                    title = pygame.font.SysFont(None, 80).render("YOU WERE CORRUPTED!", True, (255, 60, 60))
+                    screen.blit(title, title.get_rect(center=(VIEW_W // 2, 140)))
+                    retry = draw_button(screen, "RETRY", (VIEW_W // 2 - 200, 300))
+                    home = draw_button(screen, "HOME", (VIEW_W // 2 + 20, 300))
+                    pygame.display.flip()
+                    continue
+                if pick == "home":  door_transition(screen); flush_events(); return "home"
+                if pick == "restart": door_transition(screen); flush_events(); return "retry"
+                if pick == "exit": pygame.quit(); sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if retry.collidepoint(event.pos): door_transition(screen); flush_events(); return "retry"
                 if home.collidepoint(event.pos): door_transition(screen); flush_events(); return "home"
@@ -426,9 +483,27 @@ def show_success_screen(screen, background_surf, reward_choices):
                     show_settings_popup(screen, bg)
                     flush_events()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                door_transition(screen);
-                flush_events();
-                return
+                bg = pygame.display.get_surface().copy()
+                pick = pause_from_overlay(screen, bg)
+                if pick == "continue":
+                    # Repaint this Fail screen and keep waiting for input
+                    return_to_fail = True
+                    # Re-draw the same Fail UI:
+                    dim = pygame.Surface((VIEW_W, VIEW_H));
+                    dim.set_alpha(180);
+                    dim.fill((0, 0, 0))
+                    screen.blit(pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H)), (0, 0))
+                    screen.blit(dim, (0, 0))
+                    title = pygame.font.SysFont(None, 80).render("YOU WERE CORRUPTED!", True, (255, 60, 60))
+                    screen.blit(title, title.get_rect(center=(VIEW_W // 2, 140)))
+                    retry = draw_button(screen, "RETRY", (VIEW_W // 2 - 200, 300))
+                    home = draw_button(screen, "HOME", (VIEW_W // 2 + 20, 300))
+                    pygame.display.flip()
+                    continue
+                if pick == "home":  door_transition(screen); flush_events(); return "home"
+                if pick == "restart": door_transition(screen); flush_events(); return "retry"
+                if pick == "exit": pygame.quit(); sys.exit()
+
             if event.type == pygame.MOUSEBUTTONDOWN:
                 for rect, card in card_rects:
                     if rect.collidepoint(event.pos): chosen = card
@@ -996,33 +1071,10 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     cam_y = max(0, min(cam_y, max(0, world_h - VIEW_H)))
 
     screen.fill((20, 20, 20))
-    pygame.draw.rect(screen, (0, 0, 0), (0, 0, VIEW_W, INFO_BAR_HEIGHT))
     font = pygame.font.SysFont(None, 28)
     font_small = pygame.font.SysFont(None, 22)
 
-    # -- TIMER --
-    tleft = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
-    tleft = max(0.0, tleft)
-    mins = int(tleft // 60)
-    secs = int(tleft % 60)
-    timer_txt = font.render(f"{mins:02d}:{secs:02d}", True, (255, 255, 255))
-    screen.blit(timer_txt, (VIEW_W // 2 - timer_txt.get_width() // 2, 10))
-
-    # Player HP bar (left) — with digits inside the bar
-    bar_w, bar_h = 220, 12
-    bx, by = 16, 14
-    ratio = max(0.0, min(1.0, float(player.hp) / float(max(1, player.max_hp))))
-    # border + background
-    pygame.draw.rect(screen, (60, 60, 60), (bx - 2, by - 2, bar_w + 4, bar_h + 4), border_radius=4)
-    pygame.draw.rect(screen, (40, 40, 40), (bx, by, bar_w, bar_h), border_radius=3)
-    # fill
-    pygame.draw.rect(screen, (0, 200, 80), (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
-    # digits on the bar
-    hp_text = f"{int(player.hp)}/{int(player.max_hp)}"
-    hp_img = font_small.render(hp_text, True, (20, 20, 20))
-    screen.blit(hp_img, hp_img.get_rect(center=(bx + bar_w // 2, by + bar_h // 2 + 1)))
-
-    gear_rect = draw_settings_gear(screen, VIEW_W - 44, 8)
+    # gear_rect = draw_settings_gear(screen, VIEW_W - 44, 8)
 
     # grid in view
     start_x = max(0, cam_x // CELL_SIZE)
@@ -1039,17 +1091,15 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         cx = gx * CELL_SIZE + CELL_SIZE // 2 - cam_x
         cy = gy * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT - cam_y
         pygame.draw.circle(screen, (70, 80, 70), (cx, cy), max(2, CELL_SIZE // 8))
-    # TODO
-    # # items
-    # for item in game_state.items:
-    #     draw_pos = (item.center[0] - cam_x, item.center[1] - cam_y)
-    #     color = (255, 255, 100) if item.is_main else (255, 255, 0)
-    #     pygame.draw.circle(screen, color, draw_pos, item.radius)
 
     # player
     player_draw = player.rect.copy();
     player_draw.x -= cam_x;
     player_draw.y -= cam_y
+    if player.hit_cd > 0 and ((pygame.time.get_ticks() // 80) % 2 == 0):
+        pygame.draw.rect(screen, (240, 80, 80), player_draw)  # flicker color
+    else:
+        pygame.draw.rect(screen, (0, 255, 0), player_draw)
     pygame.draw.rect(screen, (0, 255, 0), player_draw)
 
     # zombies
@@ -1095,6 +1145,29 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         if is_main:
             star = pygame.font.SysFont(None, 32).render("★", True, (255, 255, 120))
             screen.blit(star, (draw_rect.x + 8, draw_rect.y + 8))
+
+    pygame.draw.rect(screen, (0, 0, 0), (0, 0, VIEW_W, INFO_BAR_HEIGHT))
+    font_timer = pygame.font.SysFont(None, 28)
+    font_hp = mono_font(22)
+    # -- TIMER --
+    tleft = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
+    tleft = max(0.0, tleft)
+    mins = int(tleft // 60)
+    secs = int(tleft % 60)
+    timer_txt = font_timer.render(f"{mins:02d}:{secs:02d}", True, (255, 255, 255))
+    screen.blit(timer_txt, (VIEW_W // 2 - timer_txt.get_width() // 2, 10))
+
+    # Player HP bar (left) with digits inside
+    bar_w, bar_h = 220, 12
+    bx, by = 16, 14
+    ratio = max(0.0, min(1.0, float(player.hp) / float(max(1, player.max_hp))))
+    pygame.draw.rect(screen, (60, 60, 60), (bx - 2, by - 2, bar_w + 4, bar_h + 4), border_radius=4)
+    pygame.draw.rect(screen, (40, 40, 40), (bx, by, bar_w, bar_h), border_radius=3)
+    pygame.draw.rect(screen, (0, 200, 80), (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
+
+    hp_text = f"{int(player.hp)}/{int(player.max_hp)}"
+    hp_img = font_hp.render(hp_text, True, (20, 20, 20))  # digits ON the bar
+    screen.blit(hp_img, hp_img.get_rect(center=(bx + bar_w // 2, by + bar_h // 2 + 1)))
 
     pygame.display.flip()
     return screen.copy()
@@ -1172,53 +1245,59 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             running = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                hud_gear = pygame.Rect(VIEW_W - 44, 8, 32, 24)
-                if hud_gear.collidepoint(event.pos):
-                    bg = pygame.display.get_surface().copy()
-                    show_settings_popup(screen, bg)
+            # if event.type == pygame.MOUSEBUTTONDOWN:
+            #     hud_gear = pygame.Rect(VIEW_W - 44, 8, 32, 24)
+            #     if hud_gear.collidepoint(event.pos):
+            #         bg = pygame.display.get_surface().copy()
+            #         show_settings_popup(screen, bg)
+            #         pause_choice = show_pause_menu(screen, bg)
+            #         if pause_choice == 'continue':
+            #             pass
+            #         elif pause_choice == 'restart':
+            #             flush_events();
+            #             return 'restart', config.get('reward', None), bg
+            #         elif pause_choice == 'settings':
+            #             show_settings_popup(screen, bg)
+            #             # reopen pause to keep the player paused
+            #             pause_choice = show_pause_menu(screen, bg)
+            #         elif pause_choice == 'home':
+            #             snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
+            #                                     bullets)
+            #             save_snapshot(snap);
+            #             flush_events()
+            #             return 'home', config.get('reward', None), bg
+            #         elif pause_choice == 'exit':
+            #             snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
+            #                                     bullets)
+            #             save_snapshot(snap);
+            #             flush_events()
+            #             return 'exit', config.get('reward', None), bg
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                while True:
+                    bg = last_frame or render_game(screen, game_state, player, zombies, bullets)
                     pause_choice = show_pause_menu(screen, bg)
+
                     if pause_choice == 'continue':
-                        pass
+                        break  # back to gameplay
                     elif pause_choice == 'restart':
-                        flush_events();
+                        flush_events()
                         return 'restart', config.get('reward', None), bg
                     elif pause_choice == 'settings':
+                        # open settings, then loop back to PAUSE again
                         show_settings_popup(screen, bg)
+                        continue
                     elif pause_choice == 'home':
                         snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
                                                 bullets)
-                        save_snapshot(snap);
+                        save_snapshot(snap)
                         flush_events()
                         return 'home', config.get('reward', None), bg
                     elif pause_choice == 'exit':
                         snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
                                                 bullets)
-                        save_snapshot(snap);
+                        save_snapshot(snap)
                         flush_events()
                         return 'exit', config.get('reward', None), bg
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                pause_choice = show_pause_menu(screen,
-                                               last_frame or render_game(screen, game_state, player, zombies, bullets))
-                if pause_choice == 'continue':
-                    pass
-                elif pause_choice == 'restart':
-                    flush_events();
-                    return 'restart', config.get('reward', None), last_frame or screen.copy()
-                elif pause_choice == 'settings':
-                    show_settings_popup(screen, last_frame or render_game(screen, game_state, player, zombies, bullets))
-                elif pause_choice == 'home':
-                    snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
-                                            bullets)
-                    save_snapshot(snap);
-                    flush_events()
-                    return 'home', config.get('reward', None), last_frame or screen.copy()
-                elif pause_choice == 'exit':
-                    snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
-                                            bullets)
-                    save_snapshot(snap);
-                    flush_events()
-                    return 'exit', config.get('reward', None), last_frame or screen.copy()
         keys = pygame.key.get_pressed()
         player.move(keys, game_state.obstacles)
         game_state.collect_item(player.rect)
