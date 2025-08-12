@@ -1037,6 +1037,7 @@ class GameState:
         self.items = items
         self.destructible_count = self.count_destructible_obstacles()
         self.main_item_pos = main_item_pos
+        self.items_total = len(items)  # track total at start
         # non-colliding visual fillers
         self.decorations = decorations  # list[Tuple[int,int]] grid coords
 
@@ -1085,6 +1086,27 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         for x in range(start_x, end_x):
             rect = pygame.Rect(x * CELL_SIZE - cam_x, y * CELL_SIZE + INFO_BAR_HEIGHT - cam_y, CELL_SIZE, CELL_SIZE)
             pygame.draw.rect(screen, (50, 50, 50), rect, 1)
+
+    # --- Item/Fragment HUD (top-right) ---
+    total_items = getattr(game_state, 'items_total', len(game_state.items))
+    collected = max(0, total_items - len(game_state.items))
+
+    # small yellow fragment icon
+    icon_x = VIEW_W - 120
+    icon_y = 10
+    pygame.draw.circle(screen, (255, 255, 0), (icon_x, icon_y + 8), 8)
+
+    # "collected/total" text
+    items_text = font.render(f"{collected}/{total_items}", True, (255, 255, 255))
+    screen.blit(items_text, (icon_x + 18, icon_y))
+
+    # --- draw items ---
+    for item in game_state.items:
+        # convert world -> screen using camera offset
+        sx = int(item.center[0] - cam_x)
+        sy = int(item.center[1] - cam_y)
+        color = (255, 255, 100) if item.is_main else (255, 255, 0)
+        pygame.draw.circle(screen, color, (sx, sy), item.radius)
 
     # decorations (non-colliding visual fillers)
     for gx, gy in getattr(game_state, 'decorations', []):
@@ -1361,9 +1383,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             ob = Obstacle(x, y, typ, health=o.get("health", None))
         obstacles[(x, y)] = ob
     # Items
-    items = set()
+    items = []
     for it in snap.get("items", []):
-        items.add(Item(int(it.get("x", 0)), int(it.get("y", 0)), bool(it.get("is_main", False))))
+        items.append(Item(int(it.get("x", 0)), int(it.get("y", 0)), bool(it.get("is_main", False))))
     decorations = [tuple(d) for d in snap.get("decorations", [])]
     game_state = GameState(obstacles, items, [(i.x, i.y) for i in items if getattr(i, 'is_main', False)], decorations)
     # Player
@@ -1438,31 +1460,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         dt = clock.tick(60) / 1000.0
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                hud_gear = pygame.Rect(VIEW_W - 44, 8, 32, 24)
-                if hud_gear.collidepoint(event.pos):
-                    bg = pygame.display.get_surface().copy()
-                    show_settings_popup(screen, bg)
-                    pause_choice = show_pause_menu(screen, bg)
-                    if pause_choice == 'continue':
-                        pass
-                    elif pause_choice == 'restart':
-                        flush_events();
-                        return 'restart', None, bg
-                    elif pause_choice == 'settings':
-                        show_settings_popup(screen, bg)
-                    elif pause_choice == 'home':
-                        snap2 = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected,
-                                                 chosen_zombie_type, bullets)
-                        save_snapshot(snap2);
-                        flush_events()
-                        return 'home', None, bg
-                    elif pause_choice == 'exit':
-                        snap2 = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected,
-                                                 chosen_zombie_type, bullets)
-                        save_snapshot(snap2);
-                        flush_events()
-                        return 'exit', None, bg
+
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 pause_choice = show_pause_menu(screen,
                                                last_frame or render_game(screen, game_state, player, zombies, bullets))
