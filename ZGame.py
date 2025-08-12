@@ -15,7 +15,7 @@ def flush_events():
     except Exception:
         pass
 
-
+# --- UI helper ---
 def pause_settings_only(screen, background_surf):
     """
     Show the Pause menu but only let the player go into Settings and then come back.
@@ -54,6 +54,31 @@ def mono_font(size: int) -> "pygame.font.Font":
     except Exception:
         pass
     return pygame.font.SysFont("monospace", size)
+
+def pause_game_modal(screen, bg_surface, clock, time_left):
+    """
+    Show Pause (and Settings) while freezing the survival timer.
+    Returns (choice, updated_time_left) where choice is:
+    'continue' | 'restart' | 'home' | 'exit'
+    """
+    # 1) start wall-clock for how long we stay paused
+    pause_start_ms = pygame.time.get_ticks()
+
+    # 2) loop Pause → (optional Settings) → back to Pause
+    while True:
+        choice = show_pause_menu(screen, bg_surface)
+        if choice == 'settings':
+            show_settings_popup(screen, bg_surface)
+            flush_events()
+            continue
+        break
+
+    globals()["_time_left_runtime"] = time_left  # keep HUD in sync
+
+    # 4) reset the clock baseline so the next tick doesn't produce a huge dt
+    clock.tick(60)
+    flush_events()
+    return choice, time_left
 
 
 # ==================== 游戏常量配置 ====================
@@ -1267,59 +1292,51 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             running = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            # if event.type == pygame.MOUSEBUTTONDOWN:
-            #     hud_gear = pygame.Rect(VIEW_W - 44, 8, 32, 24)
-            #     if hud_gear.collidepoint(event.pos):
-            #         bg = pygame.display.get_surface().copy()
-            #         show_settings_popup(screen, bg)
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                bg = last_frame or render_game(screen, game_state, player, zombies, bullets)
+                choice, time_left = pause_game_modal(screen, bg, clock, time_left)
+
+                if choice == 'continue':
+                    pass  # just resume
+                elif choice == 'restart':
+                    return 'restart', config.get('reward', None), bg
+                elif choice == 'home':
+                    snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
+                                            bullets)
+                    save_snapshot(snap)
+                    return 'home', config.get('reward', None), bg
+                elif choice == 'exit':
+                    snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
+                                            bullets)
+                    save_snapshot(snap)
+                    return 'exit', config.get('reward', None), bg
+
+            # if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            #     while True:
+            #         bg = last_frame or render_game(screen, game_state, player, zombies, bullets)
             #         pause_choice = show_pause_menu(screen, bg)
+            #
             #         if pause_choice == 'continue':
-            #             pass
+            #             break  # back to gameplay
             #         elif pause_choice == 'restart':
-            #             flush_events();
+            #             flush_events()
             #             return 'restart', config.get('reward', None), bg
             #         elif pause_choice == 'settings':
+            #             # open settings, then loop back to PAUSE again
             #             show_settings_popup(screen, bg)
-            #             # reopen pause to keep the player paused
-            #             pause_choice = show_pause_menu(screen, bg)
+            #             continue
             #         elif pause_choice == 'home':
             #             snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
             #                                     bullets)
-            #             save_snapshot(snap);
+            #             save_snapshot(snap)
             #             flush_events()
             #             return 'home', config.get('reward', None), bg
             #         elif pause_choice == 'exit':
             #             snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
             #                                     bullets)
-            #             save_snapshot(snap);
+            #             save_snapshot(snap)
             #             flush_events()
             #             return 'exit', config.get('reward', None), bg
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                while True:
-                    bg = last_frame or render_game(screen, game_state, player, zombies, bullets)
-                    pause_choice = show_pause_menu(screen, bg)
-
-                    if pause_choice == 'continue':
-                        break  # back to gameplay
-                    elif pause_choice == 'restart':
-                        flush_events()
-                        return 'restart', config.get('reward', None), bg
-                    elif pause_choice == 'settings':
-                        # open settings, then loop back to PAUSE again
-                        show_settings_popup(screen, bg)
-                        continue
-                    elif pause_choice == 'home':
-                        snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
-                                                bullets)
-                        save_snapshot(snap)
-                        flush_events()
-                        return 'home', config.get('reward', None), bg
-                    elif pause_choice == 'exit':
-                        snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
-                                                bullets)
-                        save_snapshot(snap)
-                        flush_events()
-                        return 'exit', config.get('reward', None), bg
         keys = pygame.key.get_pressed()
         player.move(keys, game_state.obstacles)
         game_state.collect_item(player.rect)
@@ -1460,29 +1477,47 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         dt = clock.tick(60) / 1000.0
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                pause_choice = show_pause_menu(screen,
-                                               last_frame or render_game(screen, game_state, player, zombies, bullets))
-                if pause_choice == 'continue':
+                bg = last_frame or render_game(screen, game_state, player, zombies, bullets)
+                choice, time_left = pause_game_modal(screen, bg, clock, time_left)
+
+                if choice == 'continue':
                     pass
-                elif pause_choice == 'restart':
-                    flush_events();
-                    return 'restart', None, last_frame or screen.copy()
-                elif pause_choice == 'settings':
-                    show_settings_popup(screen, last_frame or render_game(screen, game_state, player, zombies, bullets))
-                elif pause_choice == 'home':
+                elif choice == 'restart':
+                    return 'restart', None, bg
+                elif choice == 'home':
                     snap2 = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected,
                                              chosen_zombie_type, bullets)
-                    save_snapshot(snap2);
-                    flush_events()
-                    return 'home', None, last_frame or screen.copy()
-                elif pause_choice == 'exit':
+                    save_snapshot(snap2)
+                    return 'home', None, bg
+                elif choice == 'exit':
                     snap2 = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected,
                                              chosen_zombie_type, bullets)
-                    save_snapshot(snap2);
-                    flush_events()
-                    return 'exit', None, last_frame or screen.copy()
+                    save_snapshot(snap2)
+                    return 'exit', None, bg
+
+            # if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            #     pause_choice = show_pause_menu(screen,
+            #                                    last_frame or render_game(screen, game_state, player, zombies, bullets))
+            #     if pause_choice == 'continue':
+            #         pass
+            #     elif pause_choice == 'restart':
+            #         flush_events();
+            #         return 'restart', None, last_frame or screen.copy()
+            #     elif pause_choice == 'settings':
+            #         show_settings_popup(screen, last_frame or render_game(screen, game_state, player, zombies, bullets))
+            #     elif pause_choice == 'home':
+            #         snap2 = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected,
+            #                                  chosen_zombie_type, bullets)
+            #         save_snapshot(snap2);
+            #         flush_events()
+            #         return 'home', None, last_frame or screen.copy()
+            #     elif pause_choice == 'exit':
+            #         snap2 = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected,
+            #                                  chosen_zombie_type, bullets)
+            #         save_snapshot(snap2);
+            #         flush_events()
+            #         return 'exit', None, last_frame or screen.copy()
 
         keys = pygame.key.get_pressed()
         player.move(keys, game_state.obstacles)
