@@ -354,7 +354,7 @@ def show_help(screen):
                 if hud_gear.collidepoint(event.pos):
                     bg = pygame.display.get_surface().copy()
                     show_settings_popup(screen, bg)
-                    show_settings_popup(screen, bg)
+                    flush_events()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 door_transition(screen);
                 flush_events();
@@ -385,7 +385,7 @@ def show_fail_screen(screen, background_surf):
                 if hud_gear.collidepoint(event.pos):
                     bg = pygame.display.get_surface().copy()
                     show_settings_popup(screen, bg)
-                    show_settings_popup(screen, bg)
+                    flush_events()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 door_transition(screen);
                 flush_events();
@@ -424,7 +424,7 @@ def show_success_screen(screen, background_surf, reward_choices):
                 if hud_gear.collidepoint(event.pos):
                     bg = pygame.display.get_surface().copy()
                     show_settings_popup(screen, bg)
-                    show_settings_popup(screen, bg)
+                    flush_events()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 door_transition(screen);
                 flush_events();
@@ -805,7 +805,7 @@ def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
                 cost_so_far[neighbor] = new_cost
                 priority = new_cost + heuristic(goal, neighbor)
                 frontier.put((priority, neighbor))
-                came_from[current] = current if current not in came_from else came_from[current]
+                # came_from[current] = current if current not in came_from else came_from[current]
                 came_from[neighbor] = current
     return came_from, cost_so_far
 
@@ -998,6 +998,7 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     screen.fill((20, 20, 20))
     pygame.draw.rect(screen, (0, 0, 0), (0, 0, VIEW_W, INFO_BAR_HEIGHT))
     font = pygame.font.SysFont(None, 28)
+    font_small = pygame.font.SysFont(None, 22)
 
     # -- TIMER --
     tleft = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
@@ -1007,23 +1008,20 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     timer_txt = font.render(f"{mins:02d}:{secs:02d}", True, (255, 255, 255))
     screen.blit(timer_txt, (VIEW_W // 2 - timer_txt.get_width() // 2, 10))
 
-    # -- PLAYER HP BAR --
+    # Player HP bar (left) — with digits inside the bar
     bar_w, bar_h = 220, 12
-    bx, by = 12 + 90, 12  # shift right a little so it doesn't overlap ITEMS
+    bx, by = 16, 14
+    ratio = max(0.0, min(1.0, float(player.hp) / float(max(1, player.max_hp))))
+    # border + background
     pygame.draw.rect(screen, (60, 60, 60), (bx - 2, by - 2, bar_w + 4, bar_h + 4), border_radius=4)
-    ratio = 0.0
-    try:
-        ratio = max(0.0, min(1.0, float(player.hp) / float(player.max_hp)))
-    except Exception:
-        pass
     pygame.draw.rect(screen, (40, 40, 40), (bx, by, bar_w, bar_h), border_radius=3)
+    # fill
     pygame.draw.rect(screen, (0, 200, 80), (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
-    hp_txt = font.render(f"HP {int(player.hp)}/{int(player.max_hp)}", True, (230, 230, 230))
-    screen.blit(hp_txt, (bx + bar_w + 8, by - 2))
+    # digits on the bar
+    hp_text = f"{int(player.hp)}/{int(player.max_hp)}"
+    hp_img = font_small.render(hp_text, True, (20, 20, 20))
+    screen.blit(hp_img, hp_img.get_rect(center=(bx + bar_w // 2, by + bar_h // 2 + 1)))
 
-    item_txt = font.render(f"ITEMS: {len(game_state.items)}", True, (255, 255, 80))
-    screen.blit(item_txt, (12, 12))
-    # settings icon (HUD)
     gear_rect = draw_settings_gear(screen, VIEW_W - 44, 8)
 
     # grid in view
