@@ -33,8 +33,29 @@ WAVE_OBSTACLES = (8, 14)         # range of obstacles per wave
 ENEMY_BASE_COUNT = (10, 16)      # range of enemies per normal wave
 BOSS_WAVE_EVERY = 5
 SPECIAL_XP_REDISTRIB_RATIO = 0.7 # 70% of special's XP redistributed to survivors
+GENERIC_ENEMY_XP_REDISTRIB_RATIO = 0.6 # generic death XP redistribution
+NON_BOSS_RADIUS_CAP = 8.0
+ENEMY_BASE_XP = {
+    "melee": 12.0,
+    "ranged": 10.0,
+    "suicide": 8.0,
+    "buffer": 10.0,
+    "boss": 30.0,
+}
 PLAYER_START_LOOT = 0
 RUN_SAVE_FILE = "savegame.json"
+# Spawning and timing
+MIN_ENEMY_SPAWN_DIST = 50
+CENTER_SAFE_RADIUS = 12
+FIRST_WAVE_SILENCE = 0.6
+NORMAL_WAVE_TIME = 30
+BOSS_WAVE_TIME_BASE = 45
+BOSS_WAVE_TIME_STEP = 5  # each subsequent boss wave +5s
+
+# Elite rewards
+ELITE_XP_THRESHOLD = 40.0
+ELITE_KILL_BONUS_NORMAL = 4
+ELITE_KILL_BONUS_SPECIAL = 6
 
 # Colors
 WHITE=(255,255,255); BLACK=(0,0,0); GRAY=(80,80,80); DARKGRAY=(30,30,30);
@@ -118,11 +139,13 @@ class Entity:
         self.color = color
         self.alive = True
         self.xp: float = 0.0
+        self.xp_total: float = 0.0
         self.level: int = 1
         self.xp_next: float = 25.0
 
     def gain_xp(self, amount: float):
         if amount <= 0: return
+        self.xp_total += amount
         self.xp += amount
         while self.xp >= self.xp_next:
             self.xp -= self.xp_next
@@ -318,6 +341,54 @@ class Enemy(Entity):
             self.speed *= 1.05
         self._atk_timer = 0.0
         self._fire_timer = 0.0
+        self.spawn_silence = 0.0
+        # baseline XP per kind -> immediate minor scaling so even不打障碍也会成长
+        try:
+            base_xp = ENEMY_BASE_XP.get(self.kind, 10.0)
+            self.gain_xp(base_xp)
+        except Exception:
+            pass
+
+    def apply_xp_scaling(self, amount: float):
+        """Continuous, kind-dependent scaling per XP gained. Also heals and grows size (visual)."""
+        u = amount / 10.0  # normalize unit
+        # default multipliers
+        mhp = dmg = spd = proj = aura = 0.0
+        if self.kind == Enemy.KIND_MELEE:
+            mhp, dmg, spd = 0.015, 0.012, 0.006
+        elif self.kind == Enemy.KIND_RANGED:
+            mhp, dmg, spd, proj = 0.010, 0.010, 0.006, 0.008
+        elif self.kind == Enemy.KIND_SUICIDE:
+            mhp, dmg, spd = 0.008, 0.018, 0.010
+        elif self.kind == Enemy.KIND_BUFFER:
+            mhp, dmg, spd, aura = 0.012, 0.008, 0.005, 0.010
+        elif self.kind == Enemy.KIND_BOSS:
+            mhp, dmg, spd, proj = 0.010, 0.010, 0.004, 0.006
+        # apply
+        self.max_hp *= (1.0 + mhp * u)
+        # heal on gain
+        self.hp = min(self.max_hp, self.hp + self.max_hp * (0.05 * u))
+        self.damage *= (1.0 + dmg * u)
+        self.speed *= (1.0 + spd * u)
+        if self.kind in (Enemy.KIND_RANGED, Enemy.KIND_BOSS) and proj:
+            self.projectile_speed *= (1.0 + proj * u)
+        if self.kind == Enemy.KIND_BUFFER and aura:
+            self.buff_mult *= (1.0 + aura * u * 0.5)
+            self.buff_mult = clamp(self.buff_mult, 1.0, 1.6)
+        # visual growth with caps
+        if self.kind != Enemy.KIND_BOSS:
+            self.radius = min(self.radius + 0.3 * u, NON_BOSS_RADIUS_CAP)
+        else:
+            self.radius = min(self.radius + 0.2 * u, 14)
+        # keep sane speed cap
+        self.speed = min(self.speed, 1.5)
+
+    def gain_xp(self, amount: float):
+        if amount <= 0: return
+        # continuous scaling and heal
+        self.apply_xp_scaling(amount)
+        # update counters and trigger level-ups (discrete bonuses)
+        super().gain_xp(amount)
 
     def on_level_up(self):
         # modest scaling per enemy level
@@ -348,6 +419,12 @@ class Enemy(Entity):
         return shots
 
     def update(self, dt: float, player: Player, enemies: List['Enemy']):
+        # spawn silence: freeze actions & movement briefly
+        if getattr(self, 'spawn_silence', 0.0) > 0:
+            self.spawn_silence = max(0.0, self.spawn_silence - dt)
+            self._atk_timer -= dt
+            self._fire_timer -= dt
+            return
         # buff aura for buffer type
         if self.kind == Enemy.KIND_BUFFER:
             for e in enemies:
@@ -429,11 +506,19 @@ SHOP_DB = {
     "range": ("+Range", 8, lambda pl: setattr(pl.stats, "range", pl.stats.range + 6)),
     "regen": ("+Regen", 8, lambda pl: setattr(pl.stats, "regen", pl.stats.regen + 0.05)),
 }
+# Dynamic pricing: low base cost + linear growth per wave
+SHOP_BASE_COSTS = {"dmg_up": 8, "atkspd": 9, "hp_up": 8, "move": 7, "crit": 7, "range": 6, "regen": 6}
+SHOP_COST_GROWTH_PER_WAVE = 1.5   # each wave adds ~1.5 to price
+
 
 class Shop:
     def __init__(self, rng: random.Random):
         self.rng = rng
         self.slots: List[str] = []
+
+    def get_cost(self, iid: str, wave: int) -> int:
+        base = SHOP_BASE_COSTS.get(iid, 8)
+        return int(math.ceil(base + SHOP_COST_GROWTH_PER_WAVE * max(0, wave - 1)))
 
     def roll(self, wave: int):
         bag = PseudoRandomBag(self.rng, [
@@ -447,10 +532,11 @@ class Shop:
         ])
         self.slots = bag.draw_n(4)
 
-    def purchase(self, idx: int, player: Player) -> bool:
+    def purchase(self, idx: int, player: Player, wave: int) -> bool:
         if idx < 0 or idx >= len(self.slots): return False
         iid = self.slots[idx]
-        name, cost, apply = SHOP_DB[iid]
+        name, _, apply = SHOP_DB[iid]
+        cost = self.get_cost(iid, wave)
         if player.loot >= cost:
             player.loot -= cost
             # apply may return tuple; just ensure it's executed
@@ -474,12 +560,18 @@ class LevelManager:
         self.obstacles.clear()
         # obstacles
         nobs = self.rng.randint(*WAVE_OBSTACLES)
+        center = Vec2(VW//2, VH//2)
         for _ in range(nobs):
-            w = self.rng.randint(8, 18)
-            h = self.rng.randint(8, 18)
-            x = self.rng.randint(8, VW-8-w)
-            y = self.rng.randint(16, VH-16-h)
-            self.obstacles.append(Obstacle(pygame.Rect(x,y,w,h), hp=self.rng.randint(30,60), loot_value=self.rng.randint(1,4), xp_value=self.rng.uniform(4,10)))
+            for _try in range(20):
+                w = self.rng.randint(8, 18)
+                h = self.rng.randint(8, 18)
+                x = self.rng.randint(8, VW-8-w)
+                y = self.rng.randint(16, VH-16-h)
+                rect = pygame.Rect(x,y,w,h)
+                if circle_rect_intersect(center, CENTER_SAFE_RADIUS, rect):
+                    continue
+                self.obstacles.append(Obstacle(rect, hp=self.rng.randint(30,60), loot_value=self.rng.randint(1,4), xp_value=self.rng.uniform(4,10)))
+                break
         # enemies
         is_boss = (self.wave % BOSS_WAVE_EVERY == 0)
         count = self.rng.randint(*ENEMY_BASE_COUNT)
@@ -489,9 +581,16 @@ class LevelManager:
             count = max(8, count-4)
         for _ in range(count):
             kind = self.rng.choice(kinds)
-            x = self.rng.randint(10, VW-10)
-            y = self.rng.randint(20, VH-20)
-            self.enemies.append(Enemy((x,y), kind, special=False))
+            for _try in range(50):
+                x = self.rng.randint(10, VW-10)
+                y = self.rng.randint(20, VH-20)
+                pos = Vec2(x,y)
+                if pos.distance_to(Vec2(VW//2, VH//2)) >= MIN_ENEMY_SPAWN_DIST:
+                    e = Enemy((x,y), kind, special=False)
+                    if self.wave == 1:
+                        e.spawn_silence = FIRST_WAVE_SILENCE
+                    self.enemies.append(e)
+                    break
         # champion (special strong)
         champ = self.rng.choice(self.enemies) if self.enemies else None
         if champ:
@@ -501,9 +600,12 @@ class LevelManager:
             champ.color = ORANGE
         # boss
         if is_boss:
-            bx = self.rng.randint(20, VW-20)
-            by = self.rng.randint(20, VH-20)
-            self.enemies.append(Enemy((bx,by), Enemy.KIND_BOSS, special=True))
+            for _try in range(50):
+                bx = self.rng.randint(20, VW-20)
+                by = self.rng.randint(20, VH-20)
+                if Vec2(bx,by).distance_to(Vec2(VW//2,VH//2)) >= MIN_ENEMY_SPAWN_DIST:
+                    self.enemies.append(Enemy((bx,by), Enemy.KIND_BOSS, special=True))
+                    break
 
     def next_wave(self):
         self.wave += 1
@@ -520,7 +622,18 @@ class Game:
     def __init__(self):
         pygame.init()
         pygame.display.set_caption("Neuroscape Survivors - Prototype")
-        self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.SCALED | pygame.DOUBLEBUF)
+                # create fullscreen scaled with desktop size (avoid 0-sized SCALED error)
+        try:
+            info = pygame.display.Info()
+            dw, dh = (info.current_w or WIDTH, info.current_h or HEIGHT)
+        except Exception:
+            dw, dh = (WIDTH, HEIGHT)
+        flags = pygame.FULLSCREEN | pygame.SCALED | pygame.DOUBLEBUF
+        try:
+            self.screen = pygame.display.set_mode((dw, dh), flags)
+        except pygame.error:
+            # fallback to windowed if SCALED fails on this platform
+            self.screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE | pygame.DOUBLEBUF)
         self.windowed_size = (WIDTH, HEIGHT)
         self.fullscreen = True
         self.surface = pygame.Surface((VW, VH))
@@ -544,6 +657,7 @@ class Game:
         self.home_selected = 0
         self.wave_checkpoint: Optional[dict] = None
         self.prev_state_for_pause: Optional[str] = None
+        self.wave_time_remaining: float = 0.0
 
         # BGM hook
         self.init_music()
@@ -570,8 +684,10 @@ class Game:
         self.level.wave = data.get("wave", 1)
         # reset world to start of that wave
         self.level.spawn_wave()
+        self.reset_wave_timer()
         self.projectiles.clear(); self.enemy_projectiles.clear()
         self.player = Player((VW//2, VH//2))
+        self.reset_wave_timer()
         st = data.get("player",{})
         # apply stats
         s = self.player.stats
@@ -612,6 +728,14 @@ class Game:
         except Exception:
             pass
 
+    def reset_wave_timer(self):
+        # decide wave duration
+        if self.level.wave % BOSS_WAVE_EVERY == 0:
+            boss_index = max(1, self.level.wave // BOSS_WAVE_EVERY)
+            self.wave_time_remaining = float(BOSS_WAVE_TIME_BASE + (boss_index-1)*BOSS_WAVE_TIME_STEP)
+        else:
+            self.wave_time_remaining = float(NORMAL_WAVE_TIME)
+
     # ----------------- Run control -----------------
     def new_run(self):
         self.run_seed = random.randrange(1<<30)
@@ -644,13 +768,18 @@ class Game:
         # loot & xp to player
         if killer_is_player:
             loot = self.rng.randint(1,3) + (2 if e.special else 0)
+            # elite bonus if special or high accumulated XP
+            is_elite = e.special or getattr(e, 'xp_total', 0.0) >= ELITE_XP_THRESHOLD or getattr(e,'kind',None)==Enemy.KIND_BOSS
+            if is_elite:
+                loot += (ELITE_KILL_BONUS_SPECIAL if (e.special or getattr(e,'kind',None)==Enemy.KIND_BOSS) else ELITE_KILL_BONUS_NORMAL)
             self.player.loot += loot
             self.player.gain_xp(8 + (4 if e.special else 0))
-        # special inheritance
-        if e.special:
-            survivors = [x for x in self.level.enemies if x.alive and x is not e]
-            if survivors:
-                inherit = e.xp * SPECIAL_XP_REDISTRIB_RATIO
+        # redistribute XP on ANY enemy death; elites/bosses use higher ratio
+        survivors = [x for x in self.level.enemies if x.alive and x is not e]
+        if survivors:
+            ratio = SPECIAL_XP_REDISTRIB_RATIO if (e.special or getattr(e, 'kind', None) == Enemy.KIND_BOSS) else GENERIC_ENEMY_XP_REDISTRIB_RATIO
+            inherit = getattr(e, 'xp_total', 0.0) * ratio
+            if inherit > 0:
                 share = inherit / len(survivors)
                 for s in survivors:
                     s.gain_xp(share)
@@ -791,6 +920,10 @@ class Game:
         # Loot
         self.draw_text(self.surface, f"Loot: {self.player.loot}", (6, 22), YELLOW)
         self.draw_text(self.surface, f"Wave {self.level.wave}", (VW-70, 6), WHITE)
+        # Timer (mm:ss)
+        t = max(0, int(self.wave_time_remaining + 0.999))
+        mm, ss = divmod(t, 60)
+        self.draw_text(self.surface, f"{mm:02d}:{ss:02d}", (VW//2, 6), WHITE, center=True)
 
     def draw_pause(self):
         # overlay
@@ -811,10 +944,11 @@ class Game:
         self.draw_text(self.surface, f"Loot: {self.player.loot}", (8, 8), WHITE)
         # list items
         for i, iid in enumerate(self.level.shop.slots):
-            name, cost, _ = SHOP_DB[iid]
+            name, _, _ = SHOP_DB[iid]
             c = WHITE if i != self.shop_selected else CYAN
+            cost = self.level.shop.get_cost(iid, self.level.wave)
             self.draw_text(self.surface, f"[{i+1}] {name} (${cost})", (VW//2, 60 + 16*i), c, center=True)
-        self.draw_text(self.surface, "Enter/Buy  |  R: Reroll  |  Space: Next Wave", (VW//2, VH-22), GRAY, center=True)
+        self.draw_text(self.surface, "Enter/Buy  |  R: Reroll (-4)  |  Space: Next Wave", (VW//2, VH-22), GRAY, center=True)
 
     def draw_gameover(self):
         self.surface.fill((0,0,0))
@@ -862,14 +996,18 @@ class Game:
         if not self.player.alive:
             self.state = Game.STATE_GAMEOVER
             return
-        # wave clear -> shop
-        if not self.level.enemies:
-            # roll the shop with deterministic-ish seed per wave
+        # timer & wave clear -> shop
+        self.wave_time_remaining = max(0.0, self.wave_time_remaining - dt)
+        if self.wave_time_remaining <= 0.0 or not self.level.enemies:
             self.level.shop.roll(self.level.wave)
+            if self.wave_time_remaining <= 0.0:
+                # clear remaining bullets/enemies when timer ends
+                self.level.enemies.clear()
+                self.projectiles.clear(); self.enemy_projectiles.clear()
             self.state = Game.STATE_SHOP
 
     def draw_play(self):
-        self.surface.fill((20,18,22))
+        self.surface.fill((20, 18, 22))
         # obstacles
         for o in self.level.obstacles:
             o.draw(self.surface)
@@ -877,9 +1015,12 @@ class Game:
         for it in self.pickups:
             it.draw(self.surface)
         # entities
-        for p in self.projectiles: p.draw(self.surface)
-        for p in self.enemy_projectiles: p.draw(self.surface)
-        for e in self.level.enemies: e.draw(self.surface)
+        for p in self.projectiles:
+            p.draw(self.surface)
+        for p in self.enemy_projectiles:
+            p.draw(self.surface)
+        for e in self.level.enemies:
+            e.draw(self.surface)
         if self.player.alive:
             self.player.draw(self.surface)
         self.draw_hud()
@@ -887,8 +1028,41 @@ class Game:
     # ----------------- Event Handling -----------------
     def handle_event(self, e: pygame.event.Event):
         if e.type == pygame.QUIT:
-            pygame.quit(); raise SystemExit
+            pygame.quit()
+            raise SystemExit
+
         if e.type == pygame.KEYDOWN:
+            # Toggle fullscreen
+            if e.key == pygame.K_F11:
+                if self.fullscreen:
+                    self.screen = pygame.display.set_mode(
+                        self.windowed_size,
+                        pygame.RESIZABLE | pygame.SCALED | pygame.DOUBLEBUF
+                    )
+                    self.fullscreen = False
+                else:
+                    # toggle to fullscreen using current desktop size (robust on SDL2)
+                    try:
+                        info = pygame.display.Info()
+                        dw, dh = (info.current_w or WIDTH, info.current_h or HEIGHT)
+                    except Exception:
+                        dw, dh = (WIDTH, HEIGHT)
+                    try:
+                        self.screen = pygame.display.set_mode(
+                            (dw, dh),
+                            pygame.FULLSCREEN | pygame.SCALED | pygame.DOUBLEBUF
+                        )
+                        self.fullscreen = True
+                    except pygame.error:
+                        # fallback: windowed if scaled/fullscreen fails
+                        self.screen = pygame.display.set_mode(
+                            self.windowed_size,
+                            pygame.RESIZABLE | pygame.DOUBLEBUF
+                        )
+                        self.fullscreen = False
+                return
+
+            # Global pause (except on home/gameover)
             if e.key == pygame.K_ESCAPE:
                 if self.state not in (Game.STATE_HOME, Game.STATE_GAMEOVER):
                     if self.state != Game.STATE_PAUSE:
@@ -897,30 +1071,32 @@ class Game:
                     else:
                         # resume to the state before pausing (play or shop)
                         self.state = self.prev_state_for_pause or Game.STATE_PLAY
-            if e.key == pygame.K_F11:
-                if self.fullscreen:
-                    self.screen = pygame.display.set_mode(self.windowed_size, pygame.RESIZABLE | pygame.SCALED | pygame.DOUBLEBUF)
-                    self.fullscreen = False
-                else:
-                    self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN | pygame.SCALED | pygame.DOUBLEBUF)
-                    self.fullscreen = True
+                return
+
+            # ---------- State-specific ----------
             if self.state == Game.STATE_HOME:
                 if e.key in (pygame.K_UP, pygame.K_w):
-                    self.home_selected = (self.home_selected-1)%3
+                    self.home_selected = (self.home_selected - 1) % 3
                 elif e.key in (pygame.K_DOWN, pygame.K_s):
-                    self.home_selected = (self.home_selected+1)%3
+                    self.home_selected = (self.home_selected + 1) % 3
                 elif e.key in (pygame.K_RETURN, pygame.K_SPACE):
-                    if self.home_selected == 0: self.new_run()
-                    elif self.home_selected == 1: self.continue_run()
-                    elif self.home_selected == 2: pygame.quit(); raise SystemExit
+                    if self.home_selected == 0:  # Start Run
+                        self.new_run()
+                        self.reset_wave_timer()  # ensure timer set at run start
+                    elif self.home_selected == 1:  # Continue
+                        self.continue_run()
+                    elif self.home_selected == 2:  # Quit
+                        pygame.quit()
+                        raise SystemExit
+
             elif self.state == Game.STATE_PAUSE:
                 if e.key in (pygame.K_UP, pygame.K_w):
-                    self.pause_selected = (self.pause_selected-1)%4
+                    self.pause_selected = (self.pause_selected - 1) % 4
                 elif e.key in (pygame.K_DOWN, pygame.K_s):
-                    self.pause_selected = (self.pause_selected+1)%4
+                    self.pause_selected = (self.pause_selected + 1) % 4
                 elif e.key in (pygame.K_RETURN, pygame.K_SPACE):
                     if self.pause_selected == 0:
-                        # Resume to previous state
+                        # Resume
                         self.state = self.prev_state_for_pause or Game.STATE_PLAY
                     elif self.pause_selected == 1:
                         # Restart Wave
@@ -928,29 +1104,39 @@ class Game:
                     elif self.pause_selected == 2:
                         # Restart Run
                         self.new_run()
+                        self.reset_wave_timer()
                     elif self.pause_selected == 3:
                         # Home
                         self.state = Game.STATE_HOME
+
             elif self.state == Game.STATE_SHOP:
                 if e.key in (pygame.K_UP, pygame.K_w):
-                    self.shop_selected = (self.shop_selected-1)%max(1,len(self.level.shop.slots))
+                    self.shop_selected = (self.shop_selected - 1) % max(1, len(self.level.shop.slots))
                 elif e.key in (pygame.K_DOWN, pygame.K_s):
-                    self.shop_selected = (self.shop_selected+1)%max(1,len(self.level.shop.slots))
+                    self.shop_selected = (self.shop_selected + 1) % max(1, len(self.level.shop.slots))
                 elif e.key == pygame.K_r:
-                    # reroll costs small loot
+                    # Reroll costs 4 loot
                     if self.player.loot >= 4:
                         self.player.loot -= 4
                         self.level.shop.roll(self.level.wave)
                         self.shop_selected = 0
                 elif e.key in (pygame.K_RETURN,):
-                    self.level.shop.purchase(self.shop_selected, self.player)
+                    # Buy selected
+                    self.level.shop.purchase(self.shop_selected, self.player, self.level.wave)
+                    if self.shop_selected >= len(self.level.shop.slots):
+                        self.shop_selected = max(0, len(self.level.shop.slots) - 1)
                 elif e.key == pygame.K_SPACE:
                     # proceed next wave
                     self.level.next_wave()
+                    # center player at start of each wave
+                    self.player.pos = Vec2(VW // 2, VH // 2)
+                    # reset wave timer
+                    self.reset_wave_timer()
                     # checkpoint at new wave start
                     self.wave_checkpoint = self.make_checkpoint()
                     self.save_checkpoint_to_disk(self.wave_checkpoint)
                     self.state = Game.STATE_PLAY
+
             elif self.state == Game.STATE_GAMEOVER:
                 if e.key in (pygame.K_RETURN, pygame.K_SPACE):
                     self.state = Game.STATE_HOME
@@ -965,22 +1151,26 @@ class Game:
             # Update
             if self.state == Game.STATE_PLAY:
                 self.update_play(dt)
+
             # Draw
             if self.state == Game.STATE_HOME:
                 self.draw_home()
             elif self.state == Game.STATE_PLAY:
                 self.draw_play()
             elif self.state == Game.STATE_PAUSE:
-                self.draw_play(); self.draw_pause()
+                self.draw_play()
+                self.draw_pause()
             elif self.state == Game.STATE_SHOP:
                 self.draw_shop()
             elif self.state == Game.STATE_GAMEOVER:
                 self.draw_gameover()
 
-            # Scale to screen
             # Present
             self.present()
 
 
+
 if __name__ == "__main__":
     Game().run()
+
+
