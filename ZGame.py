@@ -445,12 +445,6 @@ def show_fail_screen(screen, background_surf):
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                hud_gear = pygame.Rect(VIEW_W - 44, 8, 32, 24)
-                if hud_gear.collidepoint(event.pos):
-                    bg = pygame.display.get_surface().copy()
-                    show_settings_popup(screen, bg)
-                    flush_events()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 bg = pygame.display.get_surface().copy()
                 pick = pause_from_overlay(screen, bg)
@@ -501,33 +495,44 @@ def show_success_screen(screen, background_surf, reward_choices):
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                hud_gear = pygame.Rect(VIEW_W - 44, 8, 32, 24)
-                if hud_gear.collidepoint(event.pos):
-                    bg = pygame.display.get_surface().copy()
-                    show_settings_popup(screen, bg)
-                    flush_events()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 bg = pygame.display.get_surface().copy()
-                pick = pause_from_overlay(screen, bg)
+                pick = pause_from_overlay(screen, bg)  # 只在暂停菜单里设置→返回暂停→继续
                 if pick == "continue":
-                    # Repaint this Fail screen and keep waiting for input
-                    return_to_fail = True
-                    # Re-draw the same Fail UI:
+                    # —— 重新绘制“成功界面”，而不是失败界面 ——
                     dim = pygame.Surface((VIEW_W, VIEW_H));
-                    dim.set_alpha(180);
+                    dim.set_alpha(150);
                     dim.fill((0, 0, 0))
                     screen.blit(pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H)), (0, 0))
                     screen.blit(dim, (0, 0))
-                    title = pygame.font.SysFont(None, 80).render("YOU WERE CORRUPTED!", True, (255, 60, 60))
-                    screen.blit(title, title.get_rect(center=(VIEW_W // 2, 140)))
-                    retry = draw_button(screen, "RETRY", (VIEW_W // 2 - 200, 300))
-                    home = draw_button(screen, "HOME", (VIEW_W // 2 + 20, 300))
+                    title = pygame.font.SysFont(None, 80).render("MEMORY RESTORED!", True, (0, 255, 120))
+                    screen.blit(title, title.get_rect(center=(VIEW_W // 2, 100)))
+
+                    card_rects = []
+                    for i, card in enumerate(reward_choices):
+                        x = VIEW_W // 2 - (len(reward_choices) * 140) // 2 + i * 140
+                        rect = pygame.Rect(x, 180, 120, 160)
+                        pygame.draw.rect(screen, (220, 220, 220), rect)
+                        name = pygame.font.SysFont(None, 24).render(card.replace("_", " ").upper(), True, (20, 20, 20))
+                        screen.blit(name, name.get_rect(center=(rect.centerx, rect.bottom - 18)))
+                        pygame.draw.rect(screen, (40, 40, 40), rect, 3)
+                        pygame.draw.rect(screen, (70, 90, 90), rect.inflate(-30, -50))
+                        card_rects.append((rect, card))
+
+                    next_btn = draw_button(screen, "CONFIRM", (VIEW_W // 2 - 90, 370))
                     pygame.display.flip()
-                    continue
-                if pick == "home":  door_transition(screen); flush_events(); return "home"
-                if pick == "restart": door_transition(screen); flush_events(); return "retry"
-                if pick == "exit": pygame.quit(); sys.exit()
+                    continue  # 回到本界面等待点击
+                if pick == "home":
+                    door_transition(screen);
+                    flush_events();
+                    return "home"  # 让上层逻辑去处理“回主页”
+                if pick == "restart":
+                    door_transition(screen);
+                    flush_events();
+                    return "restart"  # 让上层逻辑去处理“重开本关”
+                if pick == "exit":
+                    pygame.quit();
+                    sys.exit()
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 for rect, card in card_rects:
@@ -1311,32 +1316,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     save_snapshot(snap)
                     return 'exit', config.get('reward', None), bg
 
-            # if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            #     while True:
-            #         bg = last_frame or render_game(screen, game_state, player, zombies, bullets)
-            #         pause_choice = show_pause_menu(screen, bg)
-            #
-            #         if pause_choice == 'continue':
-            #             break  # back to gameplay
-            #         elif pause_choice == 'restart':
-            #             flush_events()
-            #             return 'restart', config.get('reward', None), bg
-            #         elif pause_choice == 'settings':
-            #             # open settings, then loop back to PAUSE again
-            #             show_settings_popup(screen, bg)
-            #             continue
-            #         elif pause_choice == 'home':
-            #             snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
-            #                                     bullets)
-            #             save_snapshot(snap)
-            #             flush_events()
-            #             return 'home', config.get('reward', None), bg
-            #         elif pause_choice == 'exit':
-            #             snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
-            #                                     bullets)
-            #             save_snapshot(snap)
-            #             flush_events()
-            #             return 'exit', config.get('reward', None), bg
         keys = pygame.key.get_pressed()
         player.move(keys, game_state.obstacles)
         game_state.collect_item(player.rect)
@@ -1701,11 +1680,43 @@ if __name__ == "__main__":
             pool = [c for c in CARD_POOL if c not in zombie_cards_collected]
             reward_choices = random.sample(pool, k=min(3, len(pool))) if pool else []
             chosen = show_success_screen(screen, bg, reward_choices)
-            if chosen:
+
+            # 成功界面可能返回三类：1) 选中的卡牌名；2) "home"；3) "restart"；还有可能 None（无卡牌时点确认）
+            if chosen == "home":
+                # 回到主页
+                flush_events()
+                selection = show_start_menu(screen)
+                if not selection: sys.exit()
+                mode, save_data = selection
+                # 保持当前关卡/卡池或按你的设计重置，这里沿用你现有主页逻辑
+                if mode == "continue" and save_data:
+                    if save_data.get("mode") == "snapshot":
+                        meta = save_data.get("meta", {})
+                        current_level = int(meta.get("current_level", 0))
+                        zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
+                    else:
+                        current_level = int(save_data.get("current_level", 0))
+                        zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+                else:
+                    clear_save();
+                    current_level = 0;
+                    zombie_cards_collected = []
+                continue  # 回到 while 重新开始流程
+
+            elif chosen == "restart":
+                # 不加关卡，不保存，直接重来这一关
+                continue
+
+            elif chosen in CARD_POOL:
                 zombie_cards_collected.append(chosen)
-            current_level += 1
-            # Save after a successful level too
-            save_progress(current_level, zombie_cards_collected)
+                current_level += 1
+                save_progress(current_level, zombie_cards_collected)
+
+            else:
+                # 没选到卡（比如卡池空），也推进到下一关
+                current_level += 1
+                save_progress(current_level, zombie_cards_collected)
+
         else:
             # Unknown state -> go home
             selection = show_start_menu(screen)
