@@ -156,6 +156,7 @@ BULLET_SPACING_PX = 260.0  # desired spacing between bullets along their path
 BULLET_RADIUS = 4
 BULLET_DAMAGE_ZOMBIE = 12
 BULLET_DAMAGE_BLOCK = 10
+ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
 MAX_FIRE_RANGE = 800.0  # pixelsif 'enemy_shots' in locals():
 # --- survival mode & player health ---
 LEVEL_TIME_LIMIT = 45.0  # seconds per run
@@ -1057,21 +1058,62 @@ class EnemyShot:
         self.max_dist = max_dist
         self.alive = True
 
-    def update(self, dt: float, player: 'Player'):
-        if not self.alive: return
+    def update(self, dt: float, player: 'Player', game_state: 'GameState'):
+        if not self.alive:
+            return
+
+        # 运动
         nx = self.x + self.vx * dt
         ny = self.y + self.vy * dt
         self.traveled += ((nx - self.x) ** 2 + (ny - self.y) ** 2) ** 0.5
         self.x, self.y = nx, ny
         if self.traveled >= self.max_dist:
-            self.alive = False;
+            self.alive = False
             return
+
+        # 本帧碰撞 AABB
         r = pygame.Rect(int(self.x - BULLET_RADIUS), int(self.y - BULLET_RADIUS),
                         BULLET_RADIUS * 2, BULLET_RADIUS * 2)
+
+        # 1) 先撞障碍（会阻挡子弹）
+        for gp, ob in list(game_state.obstacles.items()):
+            if r.colliderect(ob.rect):
+                # 伤害数值（主方块与可破坏块统一，若需要可单独给主方块一个常量）
+                dmg_block = int(globals().get("ENEMY_SHOT_DAMAGE_BLOCK", BULLET_DAMAGE_BLOCK))
+
+                # 主方块：现在可受伤
+                if getattr(ob, 'is_main_block', False):
+                    # 主方块有 health
+                    ob.health = (ob.health or 0) - dmg_block
+                    if ob.health <= 0:
+                        # 移除主方块（下方主碎片若有，将自然暴露）
+                        del game_state.obstacles[gp]
+                    self.alive = False
+                    return
+
+                # 不可破坏：只阻挡不掉血
+                if getattr(ob, "type", None) == "Indestructible":
+                    self.alive = False
+                    return
+
+                # 可破坏：扣血→可能打碎
+                if getattr(ob, "type", None) == "Destructible":
+                    ob.health = (ob.health or 0) - dmg_block
+                    if ob.health <= 0:
+                        del game_state.obstacles[gp]
+                    self.alive = False
+                    return
+
+                # 其他未知类型：默认阻挡
+                self.alive = False
+                return
+
+        # 2) 再判玩家
         if r.colliderect(player.rect):
-            # 触碰玩家：造成伤害并触发无敌帧
             if getattr(player, "hit_cd", 0.0) <= 0.0:
                 player.hp -= self.dmg
+                if player.hp < 0:
+                    player.hp = 0
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
             self.alive = False
 
@@ -1645,7 +1687,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
 
         # enemy shots update
         for es in list(enemy_shots):
-            es.update(dt, player)
+            es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
 
@@ -1823,7 +1865,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
 
         # 敌方弹幕更新
         for es in list(enemy_shots):
-            es.update(dt, player)
+            es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
         #FAIL CONDITION
