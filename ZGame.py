@@ -15,6 +15,7 @@ def flush_events():
     except Exception:
         pass
 
+
 # --- UI helper ---
 def pause_settings_only(screen, background_surf):
     """
@@ -31,6 +32,7 @@ def pause_settings_only(screen, background_surf):
         break
     flush_events()
 
+
 def pause_from_overlay(screen, bg_surface):
     # Show pause; loop when settings closes so we land back on pause.
     while True:
@@ -43,6 +45,7 @@ def pause_from_overlay(screen, bg_surface):
             continue  # back to pause
         return choice  # "home" | "exit" | "restart"
 
+
 # --- Font helper ---
 def mono_font(size: int) -> "pygame.font.Font":
     # Try common monospaced fonts; fall back safely
@@ -54,6 +57,7 @@ def mono_font(size: int) -> "pygame.font.Font":
     except Exception:
         pass
     return pygame.font.SysFont("monospace", size)
+
 
 def pause_game_modal(screen, bg_surface, clock, time_left):
     """
@@ -107,14 +111,39 @@ DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 5
 ZOMBIE_SPEED = 2
 ZOMBIE_ATTACK = 10
+# --- wave spawning ---
+SPAWN_INTERVAL = 8.0
+SPAWN_BASE = 3
+SPAWN_GROWTH = 1
+ZOMBIE_CAP = 30
+# --- new zombie types tuning ---
+RANGED_COOLDOWN = 1.2  # 远程怪开火间隔
+RANGED_PROJ_SPEED = 520.0
+RANGED_PROJ_DAMAGE = 12
+
+SUICIDE_FUSE = 4.0  # 自爆怪引信时长（生成后计时）
+SUICIDE_FLICKER = 0.8  # 引信末端闪烁时长
+SUICIDE_RADIUS = 90  # 自爆半径（像素）
+SUICIDE_DAMAGE = 35  # 对玩家伤害
+
+BUFF_RADIUS = 220  # 增益怪范围
+BUFF_DURATION = 4.0
+BUFF_COOLDOWN = 7.0
+BUFF_ATK_MULT = 1.3  # 攻击乘区
+BUFF_SPD_ADD = 1  # 额外速度（像素/帧）
+
+SHIELD_RADIUS = 220  # 护盾怪范围
+SHIELD_AMOUNT = 25  # 护盾值
+SHIELD_DURATION = 5.0
+SHIELD_COOLDOWN = 9.0
 # --- combat tuning (Brotato-like) ---
 FIRE_RATE = None  # shots per second; if None, derive from BULLET_SPACING_PX
 BULLET_SPEED = 1000.0  # pixels per second (controls travel speed)
 BULLET_SPACING_PX = 260.0  # desired spacing between bullets along their path
 BULLET_RADIUS = 4
-BULLET_DAMAGE_ZOMBIE = 0.1
+BULLET_DAMAGE_ZOMBIE = 12
 BULLET_DAMAGE_BLOCK = 10
-MAX_FIRE_RANGE = 800.0  # pixels
+MAX_FIRE_RANGE = 800.0  # pixelsif 'enemy_shots' in locals():
 # --- survival mode & player health ---
 LEVEL_TIME_LIMIT = 45.0  # seconds per run
 PLAYER_MAX_HP = 40  # player total health
@@ -131,7 +160,7 @@ else:
 FX_VOLUME = 70  # 0-100
 BGM_VOLUME = 60  # 0-100
 
-CARD_POOL = ["zombie_fast", "zombie_strong", "zombie_tank", "zombie_spitter", "zombie_leech"]
+CARD_POOL = ["zombie_fast", "zombie_strong", "zombie_tank"]
 
 LEVELS = [
     {"obstacle_count": 15, "item_count": 3, "zombie_count": 1, "block_hp": 10, "zombie_types": ["basic"],
@@ -766,6 +795,17 @@ class Zombie:
         self.attack = attack;
         self.speed = speed;
         self.type = ztype
+        # === special type state ===
+        self.fuse = SUICIDE_FUSE if ztype in ("suicide", "bomber") else None
+        self.buff_cd = 0.0 if ztype == "buffer" else None
+        self.shield_cd = 0.0 if ztype == "shielder" else None
+        self.shield_hp = 0  # 当前护盾值
+        self.shield_t = 0.0  # 护盾剩余时间
+        self.ranged_cd = 0.0 if ztype in ("ranged", "spitter") else None
+        self.buff_t = 0.0  # 自身被增益剩余时间
+        self.buff_atk_mult = 1.0
+        self.buff_spd_add = 0
+
         base_hp = 30 if hp is None else hp
         # type tweaks
         if ztype == "fast":
@@ -786,6 +826,16 @@ class Zombie:
         return int((self.x + self.size // 2) // CELL_SIZE), int((self.y + self.size // 2) // CELL_SIZE)
 
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
+        base_attack = self.attack
+        base_speed = self.speed
+        # 应用来自 buffer 的临时增益
+        if getattr(self, "buff_t", 0.0) > 0.0:
+            base_attack = int(base_attack * getattr(self, "buff_atk_mult", 1.0))
+            base_speed = base_speed + int(getattr(self, "buff_spd_add", 0))
+            self.buff_t = max(0.0, self.buff_t - dt)
+
+        speed = base_speed
+
         if not hasattr(self, 'attack_timer'): self.attack_timer = 0
         self.attack_timer += dt
         # initial spawn delay
@@ -825,6 +875,68 @@ class Zombie:
                 self.rect.y = int(self.y) + INFO_BAR_HEIGHT
                 break
 
+    def update_special(self, dt: float, player: 'Player', zombies: List['Zombie'],
+                       enemy_shots: List['EnemyShot']):
+        # 远程怪：发射投射物
+        if self.type in ("ranged", "spitter"):
+            self.ranged_cd = max(0.0, (self.ranged_cd or 0.0) - dt)
+            if self.ranged_cd <= 0.0:
+                # 朝玩家中心发射
+                cx, cy = self.rect.centerx, self.rect.centery
+                px, py = player.rect.centerx, player.rect.centery
+                dx, dy = px - cx, py - cy
+                L = (dx * dx + dy * dy) ** 0.5 or 1.0
+                vx, vy = dx / L * RANGED_PROJ_SPEED, dy / L * RANGED_PROJ_SPEED
+                enemy_shots.append(EnemyShot(cx, cy, vx, vy, RANGED_PROJ_DAMAGE))
+                self.ranged_cd = RANGED_COOLDOWN
+
+        # 自爆怪：引信倒计时，到时爆炸
+        if self.type in ("suicide", "bomber"):
+            if self.fuse is None: self.fuse = SUICIDE_FUSE
+            self.fuse -= dt
+            if self.fuse <= 0.0:
+                # 结算爆炸
+                cx, cy = self.rect.centerx, self.rect.centery
+                pr = player.rect
+                dx = pr.centerx - cx;
+                dy = pr.centery - cy
+                if (dx * dx + dy * dy) ** 0.5 <= SUICIDE_RADIUS:
+                    if player.hit_cd <= 0.0:
+                        player.hp -= SUICIDE_DAMAGE
+                        player.hit_cd = float(PLAYER_HIT_COOLDOWN)
+                # （可选）对其它僵尸/可破坏障碍造成伤害，这里省略
+                self.hp = 0  # 自身消失
+
+        # 增益怪：周期性为周围友军加 BUFF
+        if self.type == "buffer":
+            self.buff_cd = max(0.0, (self.buff_cd or 0.0) - dt)
+            if self.buff_cd <= 0.0:
+                cx, cy = self.rect.centerx, self.rect.centery
+                for z in zombies:
+                    zx, zy = z.rect.centerx, z.rect.centery
+                    if (zx - cx) ** 2 + (zy - cy) ** 2 <= BUFF_RADIUS ** 2:
+                        z.buff_t = BUFF_DURATION
+                        z.buff_atk_mult = BUFF_ATK_MULT
+                        z.buff_spd_add = BUFF_SPD_ADD
+                self.buff_cd = BUFF_COOLDOWN
+
+        # 护盾怪：周期性给周围友军加护盾
+        if self.type == "shielder":
+            self.shield_cd = max(0.0, (self.shield_cd or 0.0) - dt)
+            # 同时衰减自身护盾
+            if self.shield_hp > 0:
+                self.shield_t -= dt
+                if self.shield_t <= 0:
+                    self.shield_hp = 0
+            if self.shield_cd <= 0.0:
+                cx, cy = self.rect.centerx, self.rect.centery
+                for z in zombies:
+                    zx, zy = z.rect.centerx, z.rect.centery
+                    if (zx - cx) ** 2 + (zy - cy) ** 2 <= SHIELD_RADIUS ** 2:
+                        z.shield_hp = SHIELD_AMOUNT
+                        z.shield_t = SHIELD_DURATION
+                self.shield_cd = SHIELD_COOLDOWN
+
     def draw(self, screen):
         pygame.draw.rect(screen, (255, 60, 60), self.rect)
 
@@ -855,7 +967,16 @@ class Bullet:
         # 1) zombie collision
         for z in list(zombies):
             if r.colliderect(z.rect):
-                z.hp -= BULLET_DAMAGE_ZOMBIE
+                # 先扣护盾
+                if getattr(z, "shield_hp", 0) > 0:
+                    z.shield_hp -= BULLET_DAMAGE_ZOMBIE
+                    if z.shield_hp < 0:
+                        # 溢出伤害进入生命
+                        z.hp += z.shield_hp
+                        z.shield_hp = 0
+                else:
+                    z.hp -= BULLET_DAMAGE_ZOMBIE
+
                 if z.hp <= 0:
                     zombies.remove(z)
                 self.alive = False
@@ -878,6 +999,37 @@ class Bullet:
 
     def draw(self, screen, cam_x, cam_y):
         pygame.draw.circle(screen, (255, 255, 255), (int(self.x - cam_x), int(self.y - cam_y)), BULLET_RADIUS)
+
+
+class EnemyShot:
+    def __init__(self, x: float, y: float, vx: float, vy: float, dmg: int, max_dist: float = MAX_FIRE_RANGE):
+        self.x, self.y = x, y
+        self.vx, self.vy = vx, vy
+        self.dmg = int(dmg)
+        self.traveled = 0.0
+        self.max_dist = max_dist
+        self.alive = True
+
+    def update(self, dt: float, player: 'Player'):
+        if not self.alive: return
+        nx = self.x + self.vx * dt
+        ny = self.y + self.vy * dt
+        self.traveled += ((nx - self.x) ** 2 + (ny - self.y) ** 2) ** 0.5
+        self.x, self.y = nx, ny
+        if self.traveled >= self.max_dist:
+            self.alive = False;
+            return
+        r = pygame.Rect(int(self.x - BULLET_RADIUS), int(self.y - BULLET_RADIUS),
+                        BULLET_RADIUS * 2, BULLET_RADIUS * 2)
+        if r.colliderect(player.rect):
+            # 触碰玩家：造成伤害并触发无敌帧
+            if getattr(player, "hit_cd", 0.0) <= 0.0:
+                player.hp -= self.dmg
+                player.hit_cd = float(PLAYER_HIT_COOLDOWN)
+            self.alive = False
+
+    def draw(self, screen, cam_x, cam_y):
+        pygame.draw.circle(screen, (255, 120, 50), (int(self.x - cam_x), int(self.y - cam_y)), BULLET_RADIUS)
 
 
 # ==================== 算法函数 ====================
@@ -1092,7 +1244,8 @@ class GameState:
 # ==================== 游戏渲染函数 ====================
 
 def render_game(screen: pygame.Surface, game_state, player: Player, zombies: List[Zombie],
-                bullets: Optional[List['Bullet']] = None) -> pygame.Surface:
+                bullets: Optional[List['Bullet']] = None,
+                enemy_shots: Optional[List[EnemyShot]] = None) -> pygame.Surface:
     # Camera centers on player
     world_w = GRID_SIZE * CELL_SIZE
     world_h = GRID_SIZE * CELL_SIZE + INFO_BAR_HEIGHT
@@ -1156,14 +1309,22 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
 
     # zombies
     for zombie in zombies:
-        zr = zombie.rect.copy();
+        zr = zombie.rect.copy()
         zr.x -= cam_x;
         zr.y -= cam_y
-        pygame.draw.rect(screen, (255, 60, 60), zr)
-        # tiny HP bar above zombie
+
+        # 自爆怪引信末端闪烁
+        color = (255, 60, 60)
+        if zombie.type in ("suicide", "bomber") and getattr(zombie, "fuse", None) is not None:
+            if zombie.fuse <= SUICIDE_FLICKER and (pygame.time.get_ticks() // 100) % 2 == 0:
+                color = (255, 200, 60)
+
+        pygame.draw.rect(screen, color, zr)
+
+        # HP 条
         try:
             mhp = getattr(zombie, 'max_hp', None) or getattr(zombie, 'hp', 1)
-            ratio = max(0.0, min(1.0, float(zombie.hp) / float(mhp)))
+            ratio = max(0.0, min(1.0, float(max(0, zombie.hp)) / float(mhp)))
             bar_w = zr.width;
             bar_h = 4
             bx, by = zr.x, zr.y - (bar_h + 3)
@@ -1172,10 +1333,22 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         except Exception:
             pass
 
+        # 护盾条（画在 HP 条上面）
+        if getattr(zombie, "shield_hp", 0) > 0 and getattr(zombie, "shield_t", 0.0) > 0:
+            sh_ratio = max(0.0, min(1.0, zombie.shield_hp / float(SHIELD_AMOUNT)))
+            sby = by - (bar_h + 2)
+            pygame.draw.rect(screen, (30, 30, 50), (bx, sby, bar_w, bar_h))
+            pygame.draw.rect(screen, (60, 180, 255), (bx, sby, int(bar_w * sh_ratio), bar_h))
+
     # bullets
     if bullets:
         for b in bullets:
             b.draw(screen, cam_x, cam_y)
+
+    # enemy shots
+    if 'enemy_shots' in locals():
+        for es in enemy_shots:
+            es.draw(screen, cam_x, cam_y)
 
     # obstacles
     for obstacle in game_state.obstacles.values():
@@ -1251,17 +1424,54 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         "zombie_fast": "fast",
         "zombie_tank": "tank",
         "zombie_strong": "strong",
-        "zombie_spitter": "spitter",
-        "zombie_leech": "leech",
         "basic": "basic"
     }
     zt = ztype_map.get(chosen_zombie_type, "basic")
     zombies = [Zombie(pos, speed=ZOMBIE_SPEED, ztype=zt) for pos in zombie_starts]
 
     bullets: List[Bullet] = []
+    enemy_shots: List[EnemyShot] = []
+    # wave spawn state
+    spawn_timer = 0.0
+    wave_index = 0
 
     def player_center():
         return player.x + player.size / 2, player.y + player.size / 2 + INFO_BAR_HEIGHT
+
+    def pick_zombie_type_weighted():
+        # 可按关卡/波次调整，这里给一个基础权重
+        table = [
+            ("basic", 50),
+            ("fast", 15),
+            ("tank", 10),
+            ("ranged", 12),
+            ("suicide", 8),
+            ("buffer", 3),
+            ("shielder", 2),
+        ]
+        r = random.uniform(0, sum(w for _, w in table))
+        acc = 0
+        for t, w in table:
+            acc += w
+            if r <= acc:
+                return t
+        return "basic"
+
+    def find_spawn_positions(n: int) -> List[Tuple[int, int]]:
+        # 不在阻挡、玩家、主物品位置；尽量远离玩家
+        all_pos = [(x, y) for x in range(GRID_SIZE) for y in range(GRID_SIZE)]
+        blocked = set(game_state.obstacles.keys()) | set((i.x, i.y) for i in game_state.items)
+        px, py = player.pos
+        cand = [p for p in all_pos if p not in blocked and abs(p[0] - px) + abs(p[1] - py) >= 6]
+        random.shuffle(cand)
+        # 也避免直接与现有僵尸重叠
+        zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in zombies}
+        out = []
+        for p in cand:
+            if p in zcells: continue
+            out.append(p)
+            if len(out) >= n: break
+        return out
 
     def find_target():
         px, py = player_center()
@@ -1295,10 +1505,25 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         if time_left <= 0:
             game_result = "success" if 'game_result' in locals() else "success"
             running = False
+
+        # === wave spawning ===
+        spawn_timer += dt
+        if spawn_timer >= SPAWN_INTERVAL:
+            spawn_timer = 0.0
+            if len(zombies) < ZOMBIE_CAP:
+                want = min(SPAWN_BASE + wave_index * SPAWN_GROWTH, ZOMBIE_CAP - len(zombies))
+                spots = find_spawn_positions(want)
+                for gx, gy in spots:
+                    t = pick_zombie_type_weighted()
+                    z = Zombie((gx, gy), speed=ZOMBIE_SPEED, ztype=t)
+                    zombies.append(z)
+                if spots:
+                    wave_index += 1
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                bg = last_frame or render_game(screen, game_state, player, zombies, bullets)
+                bg = last_frame or render_game(screen, game_state, player, zombies, bullets, enemy_shots)
                 choice, time_left = pause_game_modal(screen, bg, clock, time_left)
 
                 if choice == 'continue':
@@ -1338,13 +1563,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if not b.alive:
                 bullets.remove(b)
 
-        # Update zombies & contact damage
-        # for zombie in list(zombies):
-        #     zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
-        #     player_rect = pygame.Rect(int(player.x), int(player.y) + INFO_BAR_HEIGHT, player.size, player.size)
-        #     if zombie.rect.colliderect(player_rect):
-        #         game_result = "fail";
-
         player.hit_cd = max(0.0, player.hit_cd - dt)
         for zombie in list(zombies):
             zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
@@ -1355,11 +1573,19 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     game_result = "fail";
                     running = False;
                     break
+        # special behaviors & enemy shots
+        for z in list(zombies):
+            z.update_special(dt, player, zombies, enemy_shots)
+            if z.hp <= 0:
+                zombies.remove(z)
 
-        # if not game_state.items:
-        #     game_result = "success";
-        #     running = False
-        last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets)
+        # enemy shots update
+        for es in list(enemy_shots):
+            es.update(dt, player)
+            if not es.alive:
+                enemy_shots.remove(es)
+
+        last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
     return game_result, config.get("reward", None), last_frame
 
 
@@ -1457,7 +1683,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                bg = last_frame or render_game(screen, game_state, player, zombies, bullets)
+                bg = last_frame or render_game(screen, game_state, player, zombies, bullets, enemy_shots)
                 choice, time_left = pause_game_modal(screen, bg, clock, time_left)
 
                 if choice == 'continue':
@@ -1474,29 +1700,6 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                                              chosen_zombie_type, bullets)
                     save_snapshot(snap2)
                     return 'exit', None, bg
-
-            # if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            #     pause_choice = show_pause_menu(screen,
-            #                                    last_frame or render_game(screen, game_state, player, zombies, bullets))
-            #     if pause_choice == 'continue':
-            #         pass
-            #     elif pause_choice == 'restart':
-            #         flush_events();
-            #         return 'restart', None, last_frame or screen.copy()
-            #     elif pause_choice == 'settings':
-            #         show_settings_popup(screen, last_frame or render_game(screen, game_state, player, zombies, bullets))
-            #     elif pause_choice == 'home':
-            #         snap2 = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected,
-            #                                  chosen_zombie_type, bullets)
-            #         save_snapshot(snap2);
-            #         flush_events()
-            #         return 'home', None, last_frame or screen.copy()
-            #     elif pause_choice == 'exit':
-            #         snap2 = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected,
-            #                                  chosen_zombie_type, bullets)
-            #         save_snapshot(snap2);
-            #         flush_events()
-            #         return 'exit', None, last_frame or screen.copy()
 
         keys = pygame.key.get_pressed()
         player.move(keys, game_state.obstacles)
@@ -1530,7 +1733,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 if player.hp <= 0:
                     clear_save()
                     action = show_fail_screen(screen,
-                                              last_frame or render_game(screen, game_state, player, zombies, bullets))
+                                              last_frame or render_game(screen, game_state, player, zombies, bullets,
+                                                                        enemy_shots))
                     if action == "home":
                         clear_save();
                         flush_events();
@@ -1540,10 +1744,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         flush_events();
                         return "restart", None, last_frame or screen.copy()
 
-        # if not game_state.items:
-        #     return "success", None, last_frame or render_game(screen, game_state, player, zombies, bullets)
-
-        last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets)
+        last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
     return "home", None, last_frame or screen.copy()
 
 
