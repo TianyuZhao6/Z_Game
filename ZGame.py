@@ -111,6 +111,19 @@ DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 5
 ZOMBIE_SPEED = 2
 ZOMBIE_ATTACK = 10
+# --- zombie type colors (for rendering) ---
+ZOMBIE_COLORS = {
+    "basic":   (200, 70, 70),
+    "fast":    (255, 160, 60),
+    "tank":    (120, 180, 255),
+    "strong":  (220, 60, 140),
+    "ranged":  (255, 120, 50),
+    "suicide": (255, 90, 90),
+    "bomber":  (255, 90, 90),
+    "buffer":  (80, 200, 140),
+    "shielder":(60, 160, 255),
+}
+
 # --- wave spawning ---
 SPAWN_INTERVAL = 8.0
 SPAWN_BASE = 3
@@ -184,19 +197,52 @@ os.makedirs(SAVE_DIR, exist_ok=True)
 SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
 
 
-def save_progress(current_level: int, zombie_cards_collected: List[str]) -> None:
-    """Save lightweight meta progress (resume from level start)."""
-    data = {
-        "mode": "meta",
-        "version": 2,
-        "current_level": int(current_level),
-        "zombie_cards_collected": list(zombie_cards_collected),
-    }
+# def save_progress(current_level: int, zombie_cards_collected: List[str]) -> None:
+#     """Save lightweight meta progress (resume from level start)."""
+#     data = {
+#         "mode": "meta",
+#         "version": 2,
+#         "current_level": int(current_level),
+#         "zombie_cards_collected": list(zombie_cards_collected),
+#     }
+#     try:
+#         with open(SAVE_FILE, 'w', encoding='utf-8') as f:
+#             json.dump(data, f)
+#     except Exception as e:
+#         print(f"[Save] Failed to write save file: {e}", file=sys.stderr)
+def save_progress(current_level: int = 0,
+                  zombie_cards_collected: Optional[List[str]] = None,
+                  *,
+                  max_wave_reached: Optional[int] = None) -> None:
+    """
+    极简存档：保留当前关卡号 + 本次达到的最大波次。
+    不再写入卡池/快照等冗余数据；用于 Exit 后下次进入时“在同一关重新开局”。
+
+    写入格式：
+        {"mode":"wave","version":1,"current_level":<int>,"max_wave_reached":<int>}
+    """
     try:
+        # 优先使用参数；否则尝试从全局兜底；最后为 0
+        if max_wave_reached is None:
+            gw = globals().get("_max_wave_reached", None)
+            if gw is None:
+                gw = globals().get("_wave_index", None)
+            max_wave_reached = int(gw) if gw is not None else 0
+        else:
+            max_wave_reached = int(max_wave_reached)
+
+        data = {
+            "mode": "wave",
+            "version": 1,
+            "current_level": int(current_level),
+            "max_wave_reached": max(0, int(max_wave_reached)),
+        }
         with open(SAVE_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f)
     except Exception as e:
-        print(f"[Save] Failed to write save file: {e}", file=sys.stderr)
+        print(f"[Save] Failed to write wave save: {e}", file=sys.stderr)
+
+
 
 
 def capture_snapshot(game_state, player, zombies, current_level: int, zombie_cards_collected: List[str],
@@ -938,7 +984,8 @@ class Zombie:
                 self.shield_cd = SHIELD_COOLDOWN
 
     def draw(self, screen):
-        pygame.draw.rect(screen, (255, 60, 60), self.rect)
+        color = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
+        pygame.draw.rect(screen, color, self.rect)
 
 
 class Bullet:
@@ -1313,11 +1360,14 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         zr.x -= cam_x;
         zr.y -= cam_y
 
-        # 自爆怪引信末端闪烁
-        color = (255, 60, 60)
+        # 基于类型的底色
+        base_color = ZOMBIE_COLORS.get(getattr(zombie, "type", "basic"), (255, 60, 60))
+        color = base_color
+
+        # 自爆怪：临爆前闪烁（覆盖底色）
         if zombie.type in ("suicide", "bomber") and getattr(zombie, "fuse", None) is not None:
             if zombie.fuse <= SUICIDE_FLICKER and (pygame.time.get_ticks() // 100) % 2 == 0:
-                color = (255, 200, 60)
+                color = (255, 220, 100)
 
         pygame.draw.rect(screen, color, zr)
 
@@ -1346,7 +1396,7 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
             b.draw(screen, cam_x, cam_y)
 
     # enemy shots
-    if 'enemy_shots' in locals():
+    if enemy_shots:
         for es in enemy_shots:
             es.draw(screen, cam_x, cam_y)
 
@@ -1373,6 +1423,7 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
 
     pygame.draw.rect(screen, (0, 0, 0), (0, 0, VIEW_W, INFO_BAR_HEIGHT))
     font_timer = pygame.font.SysFont(None, 28)
+    mono_small = mono_font(22)
     font_hp = mono_font(22)
     # -- TIMER --
     tleft = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
@@ -1381,6 +1432,16 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     secs = int(tleft % 60)
     timer_txt = font_timer.render(f"{mins:02d}:{secs:02d}", True, (255, 255, 255))
     screen.blit(timer_txt, (VIEW_W // 2 - timer_txt.get_width() // 2, 10))
+
+    # Level tag (left of timer) —— 显示当前关卡（人类从 1 开始）
+    level_idx = int(getattr(game_state, "current_level", 0))
+    level_txt_img = mono_small.render(f"LV {level_idx + 1:02d}", True, (255, 255, 255))
+
+    # 放在计时器左侧 12px 处，不遮挡 HP 条
+    level_x = (VIEW_W // 2 - timer_txt.get_width() // 2) - level_txt_img.get_width() - 12
+    level_y = 10
+    # 如果担心跟 HP 条重叠，也可以把它放在最左上角：level_x, level_y = 12, 10
+    screen.blit(level_txt_img, (level_x, level_y))
 
     # Player HP bar (left) with digits inside
     bar_w, bar_h = 220, 12
@@ -1417,6 +1478,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     )
 
     game_state = GameState(obstacles, items, main_item_list, decorations)
+    game_state.current_level = current_level
     player = Player(player_start, speed=PLAYER_SPEED)
     player.fire_cd = 0.0
 
@@ -1497,6 +1559,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     running = True;
     game_result = None;
     last_frame = None
+    time_left = float(LEVEL_TIME_LIMIT)
+    globals()["_time_left_runtime"] = time_left
+    clock.tick(60)
+
     while running:
         dt = clock.tick(60) / 1000.0
         # countdown timer
@@ -1536,9 +1602,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     save_snapshot(snap)
                     return 'home', config.get('reward', None), bg
                 elif choice == 'exit':
-                    snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
-                                            bullets)
-                    save_snapshot(snap)
+                    save_progress(current_level=current_level, max_wave_reached=wave_index)
                     return 'exit', config.get('reward', None), bg
 
         keys = pygame.key.get_pressed()
@@ -1585,6 +1649,12 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if not es.alive:
                 enemy_shots.remove(es)
 
+        # >>> FAIL CONDITION <<<
+        if player.hp <= 0:
+            game_result = "fail"
+            running = False
+            continue
+
         last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
     return game_result, config.get("reward", None), last_frame
 
@@ -1610,6 +1680,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         items.append(Item(int(it.get("x", 0)), int(it.get("y", 0)), bool(it.get("is_main", False))))
     decorations = [tuple(d) for d in snap.get("decorations", [])]
     game_state = GameState(obstacles, items, [(i.x, i.y) for i in items if getattr(i, 'is_main', False)], decorations)
+    game_state.current_level = current_level
     # Player
     p = snap.get("player", {})
     player = Player((0, 0), speed=int(p.get("speed", PLAYER_SPEED)))
@@ -1636,6 +1707,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         zombies.append(zobj)
     # Bullets
     bullets: List[Bullet] = []
+    enemy_shots: List[EnemyShot] = []
+    spawn_timer = 0.0
+    wave_index = 0
     for b in snap.get("bullets", []):
         bobj = Bullet(float(b.get("x", 0.0)), float(b.get("y", 0.0)), float(b.get("vx", 0.0)), float(b.get("vy", 0.0)),
                       MAX_FIRE_RANGE)
@@ -1696,9 +1770,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                     save_snapshot(snap2)
                     return 'home', None, bg
                 elif choice == 'exit':
-                    snap2 = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected,
-                                             chosen_zombie_type, bullets)
-                    save_snapshot(snap2)
+                    save_progress(current_level=current_level, max_wave_reached=wave_index)
                     return 'exit', None, bg
 
         keys = pygame.key.get_pressed()
@@ -1743,6 +1815,31 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         clear_save();
                         flush_events();
                         return "restart", None, last_frame or screen.copy()
+        # 僵尸特殊行为（远程/自爆/增益/护盾）
+        for z in list(zombies):
+            z.update_special(dt, player, zombies, enemy_shots)
+            if z.hp <= 0:
+                zombies.remove(z)
+
+        # 敌方弹幕更新
+        for es in list(enemy_shots):
+            es.update(dt, player)
+            if not es.alive:
+                enemy_shots.remove(es)
+        #FAIL CONDITION
+        if player.hp <= 0:
+            clear_save()  # 与你当前失败流程一致
+            action = show_fail_screen(screen,
+                                      last_frame or render_game(screen, game_state, player, zombies, bullets,
+                                                                enemy_shots))
+            if action == "home":
+                clear_save();
+                flush_events();
+                return "home", None, last_frame or screen.copy()
+            elif action == "retry":
+                clear_save();
+                flush_events();
+                return "restart", None, last_frame or screen.copy()
 
         last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
     return "home", None, last_frame or screen.copy()
