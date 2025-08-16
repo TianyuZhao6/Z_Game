@@ -113,15 +113,15 @@ ZOMBIE_SPEED = 2
 ZOMBIE_ATTACK = 10
 # --- zombie type colors (for rendering) ---
 ZOMBIE_COLORS = {
-    "basic":   (200, 70, 70),
-    "fast":    (255, 160, 60),
-    "tank":    (120, 180, 255),
-    "strong":  (220, 60, 140),
-    "ranged":  (255, 120, 50),
+    "basic": (200, 70, 70),
+    "fast": (255, 160, 60),
+    "tank": (120, 180, 255),
+    "strong": (220, 60, 140),
+    "ranged": (255, 120, 50),
     "suicide": (255, 90, 90),
-    "bomber":  (255, 90, 90),
-    "buffer":  (80, 200, 140),
-    "shielder":(60, 160, 255),
+    "bomber": (255, 90, 90),
+    "buffer": (80, 200, 140),
+    "shielder": (60, 160, 255),
 }
 
 # --- wave spawning ---
@@ -242,8 +242,6 @@ def save_progress(current_level: int = 0,
             json.dump(data, f)
     except Exception as e:
         print(f"[Save] Failed to write wave save: {e}", file=sys.stderr)
-
-
 
 
 def capture_snapshot(game_state, player, zombies, current_level: int, zombie_cards_collected: List[str],
@@ -729,9 +727,12 @@ def show_settings_popup(screen, background_surf):
                     fx_val = max(0, min(100, int(((mx - fx_bar.x) / fx_bar.width) * 100)))
                 elif bgm_bar.collidepoint((mx, my)):
                     bgm_val = max(0, min(100, int(((mx - bgm_bar.x) / bgm_bar.width) * 100)))
-                elif close.collidepoint((mx, my)):
+                elif close.collidepoint(event.pos):
                     FX_VOLUME = fx_val;
                     BGM_VOLUME = bgm_val
+                # apply BGM volume to mixer if available
+                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                        _bgm.set_volume(BGM_VOLUME / 100.0)
                     flush_events();
                     return "close"
 
@@ -1501,6 +1502,101 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     return screen.copy()
 
 
+# ==================== GAMESOUND ====================
+
+# ==================== GAMESOUND ====================
+
+class GameSound:
+    """
+    Background BGM loader/controller.
+    It probes several likely paths so ZGAME.wav is found regardless of where ZGame.py runs from.
+    """
+
+    def __init__(self, music_path: str = None, volume: float = 0.6):
+        self.volume = max(0.0, min(1.0, float(volume)))
+        self._ready = False
+
+        # --- pick a path ---
+        here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
+        candidates = [
+            # project-typical
+            os.path.join(here, "Z_Game", "assets", "ZGAME.wav"),
+            os.path.join(here, "assets", "ZGAME.wav"),
+            # run-from-working-dir
+            os.path.join(os.getcwd(), "Z_Game", "assets", "ZGAME.wav"),
+            os.path.join(os.getcwd(), "assets", "ZGAME.wav"),
+            # user-provided absolute-like hint (DON'T rely on drive root)
+            r"C:\Users\%USERNAME%\Z_Game\assets\ZGAME.wav".replace("%USERNAME%", os.environ.get("USERNAME", "")),
+        ]
+        if music_path:
+            candidates.insert(0, music_path)
+
+        self.music_path = None
+        for p in candidates:
+            if p and os.path.exists(p):
+                self.music_path = p
+                break
+
+        if not self.music_path:
+            print("[Audio] ZGAME.wav not found in expected locations.")
+            return
+
+        # --- init mixer (make sure it's initialized even if pygame.init() already ran) ---
+        try:
+            if not pygame.mixer.get_init():
+                # pre_init only helps if called before pygame.init(); guard anyway
+                pygame.mixer.pre_init(44100, -16, 2, 512)
+                pygame.mixer.init(44100, -16, 2, 512)
+        except Exception as e:
+            print(f"[Audio] mixer init failed: {e}")
+            return
+
+        # --- load file ---
+        try:
+            pygame.mixer.music.load(self.music_path)
+            pygame.mixer.music.set_volume(self.volume)
+            self._ready = True
+            print(f"[Audio] Loaded BGM: {self.music_path}")
+        except Exception as e:
+            print(f"[Audio] load music failed: {e} (path tried: {self.music_path})")
+
+    def playBackGroundMusic(self, loops: int = -1, fade_ms: int = 500):
+        """loops=-1 means infinite loop"""
+        if not self._ready:
+            return
+        try:
+            pygame.mixer.music.play(loops=loops, fade_ms=fade_ms)
+        except Exception as e:
+            print(f"[Audio] play failed: {e}")
+
+    def stop(self, fade_ms: int = 300):
+        if not self._ready: return
+        try:
+            if fade_ms > 0:
+                pygame.mixer.music.fadeout(fade_ms)
+            else:
+                pygame.mixer.music.stop()
+        except Exception as e:
+            print(f"[Audio] stop failed: {e}")
+
+    def pause(self):
+        if self._ready:
+            try: pygame.mixer.music.pause()
+            except Exception as e: print(f"[Audio] pause failed: {e}")
+
+    def resume(self):
+        if self._ready:
+            try: pygame.mixer.music.unpause()
+            except Exception as e: print(f"[Audio] resume failed: {e}")
+
+    def set_volume(self, volume: float):
+        self.volume = max(0.0, min(1.0, float(volume)))
+        if self._ready:
+            try: pygame.mixer.music.set_volume(self.volume)
+            except Exception as e: print(f"[Audio] set_volume failed: {e}")
+
+
+
 # ==================== 游戏主循环 ====================
 
 
@@ -1868,7 +1964,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
-        #FAIL CONDITION
+        # FAIL CONDITION
         if player.hp <= 0:
             clear_save()  # 与你当前失败流程一致
             action = show_fail_screen(screen,
@@ -1924,6 +2020,19 @@ if __name__ == "__main__":
     os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0'
     pygame.init()
     info = pygame.display.Info()
+
+    # Create the window first (safer on some systems)
+    screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
+    pygame.display.set_caption(GAME_TITLE)
+    VIEW_W, VIEW_H = info.current_w, info.current_h
+
+    # Now start BGM using Settings default (BGM_VOLUME 0-100)
+    try:
+        _bgm = GameSound(volume=BGM_VOLUME / 100.0)
+        _bgm.playBackGroundMusic()
+    except Exception as e:
+        print(f"[Audio] background music not started: {e}")
+
     # Borderless fullscreen to avoid display mode flicker
     screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
     pygame.display.set_caption(GAME_TITLE)
