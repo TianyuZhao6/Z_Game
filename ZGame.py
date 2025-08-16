@@ -674,68 +674,123 @@ def show_pause_menu(screen, background_surf):
 
 
 def show_settings_popup(screen, background_surf):
-    """Simple volume settings popup with two sliders."""
+    """Volume settings with LIVE BGM updates and proper slider dragging/visual refresh."""
     global FX_VOLUME, BGM_VOLUME
+
+    clock = pygame.time.Clock()
+
+    # background overlay
     dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
     dim.fill((0, 0, 0, 170))
     bg_scaled = pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H))
-    screen.blit(bg_scaled, (0, 0))
-    screen.blit(dim, (0, 0))
 
     panel_w, panel_h = min(520, VIEW_W - 80), min(360, VIEW_H - 160)
     panel = pygame.Rect(0, 0, panel_w, panel_h)
     panel.center = (VIEW_W // 2, VIEW_H // 2)
-    pygame.draw.rect(screen, (30, 30, 30), panel, border_radius=16)
-    pygame.draw.rect(screen, (60, 60, 60), panel, width=3, border_radius=16)
 
-    title = pygame.font.SysFont(None, 56).render("Settings", True, (230, 230, 230))
-    screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 48)))
+    title_font = pygame.font.SysFont(None, 56)
     font = pygame.font.SysFont(None, 30)
+    btn_font = pygame.font.SysFont(None, 32)
+
+    # local working values
+    fx_val = int(FX_VOLUME)
+    bgm_val = int(BGM_VOLUME)
+
+    dragging = None  # None | "fx" | "bgm"
 
     def draw_slider(label, value, top_y):
+        # label
         screen.blit(font.render(f"{label}: {value}", True, (230, 230, 230)), (panel.left + 40, top_y))
+        # bar
         bar = pygame.Rect(panel.left + 40, top_y + 26, panel_w - 80, 10)
         knob_x = bar.x + int((value / 100) * bar.width)
         pygame.draw.rect(screen, (80, 80, 80), bar, border_radius=6)
         pygame.draw.circle(screen, (220, 220, 220), (knob_x, bar.y + 5), 8)
         return bar
 
-    fx_val = FX_VOLUME
-    bgm_val = BGM_VOLUME
-    fx_bar = draw_slider("Effects Volume", fx_val, panel.top + 110)
-    bgm_bar = draw_slider("BGM Volume", bgm_val, panel.top + 160)
+    def val_from_bar(bar, mx):
+        return max(0, min(100, int(((mx - bar.x) / max(1, bar.width)) * 100)))
 
-    btn_w, btn_h = 200, 56
-    close = pygame.Rect(0, 0, btn_w, btn_h)
-    close.center = (panel.centerx, panel.bottom - 50)
-    pygame.draw.rect(screen, (15, 15, 15), close.inflate(6, 6), border_radius=10)
-    pygame.draw.rect(screen, (50, 50, 50), close, border_radius=10)
-    ctxt = pygame.font.SysFont(None, 32).render("CLOSE", True, (235, 235, 235))
-    screen.blit(ctxt, ctxt.get_rect(center=close.center))
+    def draw_ui():
+        # background & panel
+        screen.blit(bg_scaled, (0, 0))
+        screen.blit(dim, (0, 0))
+        pygame.draw.rect(screen, (30, 30, 30), panel, border_radius=16)
+        pygame.draw.rect(screen, (60, 60, 60), panel, width=3, border_radius=16)
 
-    pygame.display.flip()
+        # title
+        screen.blit(title_font.render("Settings", True, (230, 230, 230)),
+                    (panel.centerx - 110, panel.top + 40))
+
+        # sliders
+        nonlocal fx_bar, bgm_bar, close_btn
+        fx_bar = draw_slider("Effects Volume", fx_val, panel.top + 110)
+        bgm_bar = draw_slider("BGM Volume", bgm_val, panel.top + 160)
+
+        # close button
+        btn_w, btn_h = 200, 56
+        close_btn = pygame.Rect(0, 0, btn_w, btn_h)
+        close_btn.center = (panel.centerx, panel.bottom - 50)
+        pygame.draw.rect(screen, (15, 15, 15), close_btn.inflate(6, 6), border_radius=10)
+        pygame.draw.rect(screen, (50, 50, 50), close_btn, border_radius=10)
+        ctxt = btn_font.render("CLOSE", True, (235, 235, 235))
+        screen.blit(ctxt, ctxt.get_rect(center=close_btn.center))
+
+        pygame.display.flip()
+
+    # initial draw
+    fx_bar = bgm_bar = close_btn = None
+    draw_ui()
 
     while True:
         for event in pygame.event.get():
-            if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                flush_events();
+                # keep current values and exit
+                FX_VOLUME = fx_val; BGM_VOLUME = bgm_val
+                if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                    _bgm.set_volume(BGM_VOLUME / 100.0)
+                flush_events()
                 return "close"
+
             if event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = event.pos
-                if fx_bar.collidepoint((mx, my)):
-                    fx_val = max(0, min(100, int(((mx - fx_bar.x) / fx_bar.width) * 100)))
-                elif bgm_bar.collidepoint((mx, my)):
-                    bgm_val = max(0, min(100, int(((mx - bgm_bar.x) / bgm_bar.width) * 100)))
-                elif close.collidepoint(event.pos):
-                    FX_VOLUME = fx_val;
+                if fx_bar and fx_bar.collidepoint((mx, my)):
+                    fx_val = val_from_bar(fx_bar, mx)
+                    FX_VOLUME = fx_val  # live apply for future SFX
+                    dragging = "fx"
+                elif bgm_bar and bgm_bar.collidepoint((mx, my)):
+                    bgm_val = val_from_bar(bgm_bar, mx)
                     BGM_VOLUME = bgm_val
-                # apply BGM volume to mixer if available
+                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                        _bgm.set_volume(BGM_VOLUME / 100.0)  # LIVE apply
+                    dragging = "bgm"
+                elif close_btn and close_btn.collidepoint((mx, my)):
+                    FX_VOLUME = fx_val; BGM_VOLUME = bgm_val
                     if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
                         _bgm.set_volume(BGM_VOLUME / 100.0)
-                    flush_events();
+                    flush_events()
                     return "close"
 
+            if event.type == pygame.MOUSEBUTTONUP:
+                dragging = None
+
+            if event.type == pygame.MOUSEMOTION and dragging:
+                mx, my = event.pos
+                if dragging == "fx" and fx_bar:
+                    fx_val = val_from_bar(fx_bar, mx)
+                    FX_VOLUME = fx_val
+                elif dragging == "bgm" and bgm_bar:
+                    bgm_val = val_from_bar(bgm_bar, mx)
+                    BGM_VOLUME = bgm_val
+                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                        _bgm.set_volume(BGM_VOLUME / 100.0)  # LIVE apply
+
+        # redraw each frame for smooth knob follow
+        draw_ui()
+        clock.tick(60)
 
 # ==================== 数据结构 ====================
 class Graph:
