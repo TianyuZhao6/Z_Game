@@ -157,7 +157,7 @@ BULLET_RADIUS = 4
 BULLET_DAMAGE_ZOMBIE = 12
 BULLET_DAMAGE_BLOCK = 10
 ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
-MAX_FIRE_RANGE = 800.0  # pixelsif 'enemy_shots' in locals():
+MAX_FIRE_RANGE = 800.0  # pixels
 # --- survival mode & player health ---
 LEVEL_TIME_LIMIT = 45.0  # seconds per run
 PLAYER_MAX_HP = 40  # player total health
@@ -488,12 +488,6 @@ def show_help(screen):
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                hud_gear = pygame.Rect(VIEW_W - 44, 8, 32, 24)
-                if hud_gear.collidepoint(event.pos):
-                    bg = pygame.display.get_surface().copy()
-                    show_settings_popup(screen, bg)
-                    flush_events()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 door_transition(screen);
                 flush_events();
@@ -1450,7 +1444,6 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         pygame.draw.rect(screen, (240, 80, 80), player_draw)  # flicker color
     else:
         pygame.draw.rect(screen, (0, 255, 0), player_draw)
-    pygame.draw.rect(screen, (0, 255, 0), player_draw)
 
     # zombies
     for zombie in zombies:
@@ -1956,6 +1949,18 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
 
     while running:
         dt = clock.tick(60) / 1000.0
+        time_left -= dt
+        globals()["_time_left_runtime"] = time_left
+        if time_left <= 0:
+            # treat as success on survival
+            chosen = show_success_screen(
+                screen,
+                last_frame or render_game(screen, game_state, player, zombies, bullets, enemy_shots),
+                reward_choices=[]  # or real choices if you want
+            )
+            # push control back to caller like your success path
+            return "success", None, last_frame or screen.copy()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -1996,6 +2001,39 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             b.update(dt, game_state, zombies)
             if not b.alive:
                 bullets.remove(b)
+        # Wave spawning
+        spawn_timer += dt
+        if spawn_timer >= SPAWN_INTERVAL:
+            spawn_timer = 0.0
+            if len(zombies) < ZOMBIE_CAP:
+                want = min(SPAWN_BASE + wave_index * SPAWN_GROWTH, ZOMBIE_CAP - len(zombies))
+                # use same helper logic as main_run_level :
+                all_pos = [(x, y) for x in range(GRID_SIZE) for y in range(GRID_SIZE)]
+                blocked = set(game_state.obstacles.keys()) | set((i.x, i.y) for i in game_state.items)
+                px, py = player.pos
+                cand = [p for p in all_pos if p not in blocked and abs(p[0] - px) + abs(p[1] - py) >= 6]
+                random.shuffle(cand)
+                zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in
+                          zombies}
+                spots = []
+                for p in cand:
+                    if p in zcells: continue
+                    spots.append(p)
+                    if len(spots) >= want: break
+                for gx, gy in spots:
+                    # simple weighted pick to match main_run_level
+                    table = [("basic", 50), ("fast", 15), ("tank", 10), ("ranged", 12), ("suicide", 8), ("buffer", 3),
+                             ("shielder", 2)]
+                    r = random.uniform(0, sum(w for _, w in table))
+                    acc = 0
+                    for t, w in table:
+                        acc += w
+                        if r <= acc:
+                            ztype = t;
+                            break
+                    zombies.append(Zombie((gx, gy), speed=ZOMBIE_SPEED, ztype=ztype))
+                if spots:
+                    wave_index += 1
 
         # zombies update & player collision
         player.hit_cd = max(0.0, player.hit_cd - dt)
