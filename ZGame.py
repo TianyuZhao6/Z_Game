@@ -1749,6 +1749,15 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     best = ('block', gp, ob, cx, cy)
         return best, (best_d2 ** 0.5) if best else None
 
+    first_want = min(SPAWN_BASE + wave_index * SPAWN_GROWTH, ZOMBIE_CAP - len(zombies))  # wave_index is 0 here
+    if len(zombies) < first_want:
+        add_n = first_want - len(zombies)
+        spots = find_spawn_positions(add_n)
+        for gx, gy in spots:
+            t = pick_zombie_type_weighted()
+            z = Zombie((gx, gy), speed=ZOMBIE_SPEED, ztype=t)
+            zombies.append(z)
+
     running = True;
     game_result = None;
     last_frame = None
