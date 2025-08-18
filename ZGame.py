@@ -390,9 +390,9 @@ def draw_settings_gear(screen, x, y):
     pygame.draw.circle(screen, (200, 200, 200), (cx, cy), 3)
     for ang in (0, 60, 120, 180, 240, 300):
         rad = math.radians(ang)
-        x1 = int(cx + 10 * math.cos(rad));
+        x1 = int(cx + 10 * math.cos(rad))
         y1 = int(cy + 10 * math.sin(rad))
-        x2 = int(cx + 14 * math.cos(rad));
+        x2 = int(cx + 14 * math.cos(rad))
         y2 = int(cy + 14 * math.sin(rad))
         pygame.draw.line(screen, (200, 200, 200), (x1, y1), (x2, y2), 2)
     return rect
@@ -440,28 +440,28 @@ def show_start_menu(screen):
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit();
+                pygame.quit()
                 sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if gear_rect.collidepoint(event.pos):
-                    show_settings_popup(screen, screen.copy());
+                    show_settings_popup(screen, screen.copy())
                     flush_events()
                 elif start_rect.collidepoint(event.pos):
-                    door_transition(screen);
+                    door_transition(screen)
                     flush_events()
                     # Starting new game clears any existing save
                     return ("new", None)
                 elif cont_rect and cont_rect.collidepoint(event.pos):
                     data = load_save()
                     if data:
-                        door_transition(screen);
+                        door_transition(screen)
                         flush_events()
                         return ("continue", data)
                 elif exit_rect.collidepoint(event.pos):
-                    pygame.quit();
+                    pygame.quit()
                     sys.exit()
                 elif how_rect.collidepoint(event.pos):
-                    show_help(screen);
+                    show_help(screen)
                     flush_events()
         clock.tick(60)
 
@@ -482,26 +482,26 @@ def show_help(screen):
         ]
         y = 100
         for s in lines:
-            screen.blit(font.render(s, True, (200, 200, 200)), (40, y));
+            screen.blit(font.render(s, True, (200, 200, 200)), (40, y))
             y += 36
         back = draw_button(screen, "BACK", (VIEW_W // 2 - 90, VIEW_H - 120))
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                door_transition(screen);
-                flush_events();
+                door_transition(screen)
+                flush_events()
                 return
             if event.type == pygame.MOUSEBUTTONDOWN and back.collidepoint(event.pos):
-                door_transition(screen);
-                flush_events();
+                door_transition(screen)
+                flush_events()
                 return
         clock.tick(60)
 
 
 def show_fail_screen(screen, background_surf):
-    dim = pygame.Surface((VIEW_W, VIEW_H));
-    dim.set_alpha(180);
+    dim = pygame.Surface((VIEW_W, VIEW_H))
+    dim.set_alpha(180)
     dim.fill((0, 0, 0))
     screen.blit(pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H)), (0, 0))
     screen.blit(dim, (0, 0))
@@ -520,8 +520,8 @@ def show_fail_screen(screen, background_surf):
                     # Repaint this Fail screen and keep waiting for input
                     return_to_fail = True
                     # Re-draw the same Fail UI:
-                    dim = pygame.Surface((VIEW_W, VIEW_H));
-                    dim.set_alpha(180);
+                    dim = pygame.Surface((VIEW_W, VIEW_H))
+                    dim.set_alpha(180)
                     dim.fill((0, 0, 0))
                     screen.blit(pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H)), (0, 0))
                     screen.blit(dim, (0, 0))
@@ -540,8 +540,8 @@ def show_fail_screen(screen, background_surf):
 
 
 def show_success_screen(screen, background_surf, reward_choices):
-    dim = pygame.Surface((VIEW_W, VIEW_H));
-    dim.set_alpha(150);
+    dim = pygame.Surface((VIEW_W, VIEW_H))
+    dim.set_alpha(150)
     dim.fill((0, 0, 0))
     screen.blit(pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H)), (0, 0))
     screen.blit(dim, (0, 0))
@@ -568,8 +568,8 @@ def show_success_screen(screen, background_surf, reward_choices):
                 pick = pause_from_overlay(screen, bg)  # 只在暂停菜单里设置→返回暂停→继续
                 if pick == "continue":
                     # —— 重新绘制“成功界面”，而不是失败界面 ——
-                    dim = pygame.Surface((VIEW_W, VIEW_H));
-                    dim.set_alpha(150);
+                    dim = pygame.Surface((VIEW_W, VIEW_H))
+                    dim.set_alpha(150)
                     dim.fill((0, 0, 0))
                     screen.blit(pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H)), (0, 0))
                     screen.blit(dim, (0, 0))
@@ -591,23 +591,23 @@ def show_success_screen(screen, background_surf, reward_choices):
                     pygame.display.flip()
                     continue  # 回到本界面等待点击
                 if pick == "home":
-                    door_transition(screen);
-                    flush_events();
+                    door_transition(screen)
+                    flush_events()
                     return "home"  # 让上层逻辑去处理“回主页”
                 if pick == "restart":
-                    door_transition(screen);
-                    flush_events();
+                    door_transition(screen)
+                    flush_events()
                     return "restart"  # 让上层逻辑去处理“重开本关”
                 if pick == "exit":
-                    pygame.quit();
+                    pygame.quit()
                     sys.exit()
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 for rect, card in card_rects:
                     if rect.collidepoint(event.pos): chosen = card
                 if next_btn.collidepoint(event.pos) and (chosen or len(reward_choices) == 0):
-                    door_transition(screen);
-                    flush_events();
+                    door_transition(screen)
+                    flush_events()
                     return chosen
 
 
@@ -655,15 +655,15 @@ def show_pause_menu(screen, background_surf):
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit();
+                pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                flush_events();
+                flush_events()
                 return "continue"
             if event.type == pygame.MOUSEBUTTONDOWN:
                 for rect, tag in btns:
                     if rect.collidepoint(event.pos):
-                        flush_events();
+                        flush_events()
                         return tag
 
 
@@ -739,11 +739,13 @@ def show_settings_popup(screen, background_surf):
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
+                pygame.quit();
+                sys.exit()
 
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 # keep current values and exit
-                FX_VOLUME = fx_val; BGM_VOLUME = bgm_val
+                FX_VOLUME = fx_val;
+                BGM_VOLUME = bgm_val
                 if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
                     _bgm.set_volume(BGM_VOLUME / 100.0)
                 flush_events()
@@ -762,7 +764,8 @@ def show_settings_popup(screen, background_surf):
                         _bgm.set_volume(BGM_VOLUME / 100.0)  # LIVE apply
                     dragging = "bgm"
                 elif close_btn and close_btn.collidepoint((mx, my)):
-                    FX_VOLUME = fx_val; BGM_VOLUME = bgm_val
+                    FX_VOLUME = fx_val;
+                    BGM_VOLUME = bgm_val
                     if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
                         _bgm.set_volume(BGM_VOLUME / 100.0)
                     flush_events()
@@ -785,6 +788,7 @@ def show_settings_popup(screen, background_surf):
         # redraw each frame for smooth knob follow
         draw_ui()
         clock.tick(60)
+
 
 # ==================== 数据结构 ====================
 class Graph:
@@ -825,8 +829,8 @@ class MainBlock(Obstacle):
 
 class Item:
     def __init__(self, x: int, y: int, is_main=False):
-        self.x = x;
-        self.y = y;
+        self.x = x
+        self.y = y
         self.is_main = is_main
         self.radius = CELL_SIZE // 3
         self.center = (self.x * CELL_SIZE + CELL_SIZE // 2, self.y * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT)
@@ -836,9 +840,9 @@ class Item:
 
 class Player:
     def __init__(self, pos: Tuple[int, int], speed: int = PLAYER_SPEED):
-        self.x = pos[0] * CELL_SIZE;
+        self.x = pos[0] * CELL_SIZE
         self.y = pos[1] * CELL_SIZE
-        self.speed = speed;
+        self.speed = speed
         self.size = CELL_SIZE - 6
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.max_hp = int(PLAYER_MAX_HP)
@@ -877,7 +881,7 @@ class Player:
                     ny = ob.rect.bottom - INFO_BAR_HEIGHT
                 break
         self.y = max(0, min(ny, GRID_SIZE * CELL_SIZE - self.size))
-        self.rect.x = int(self.x);
+        self.rect.x = int(self.x)
         self.rect.y = int(self.y) + INFO_BAR_HEIGHT
 
     def draw(self, screen):
@@ -887,10 +891,10 @@ class Player:
 class Zombie:
     def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED,
                  ztype: str = "basic", hp: Optional[int] = None):
-        self.x = pos[0] * CELL_SIZE;
+        self.x = pos[0] * CELL_SIZE
         self.y = pos[1] * CELL_SIZE
-        self.attack = attack;
-        self.speed = speed;
+        self.attack = attack
+        self.speed = speed
         self.type = ztype
         # === special type state ===
         self.fuse = SUICIDE_FUSE if ztype in ("suicide", "bomber") else None
@@ -906,10 +910,10 @@ class Zombie:
         base_hp = 30 if hp is None else hp
         # type tweaks
         if ztype == "fast":
-            self.speed = max(int(self.speed + 1), int(self.speed * 1.5));
+            self.speed = max(int(self.speed + 1), int(self.speed * 1.5))
             base_hp = int(base_hp * 0.7)
         if ztype == "tank":
-            self.attack = int(self.attack * 0.6);
+            self.attack = int(self.attack * 0.6)
             base_hp = int(base_hp * 1.8)
         self.hp = max(1, base_hp)
         self.max_hp = self.hp
@@ -939,7 +943,7 @@ class Zombie:
         if self._spawn_elapsed < self.spawn_delay:
             self._spawn_elapsed += dt
             return
-        dx = player.x - self.x;
+        dx = player.x - self.x
         dy = player.y - self.y
         speed = self.speed
         dirs = []
@@ -955,20 +959,20 @@ class Zombie:
                 if next_rect.colliderect(ob.rect):
                     if ob.type == "Destructible":
                         if self.attack_timer >= attack_interval:
-                            ob.health -= self.attack;
+                            ob.health -= self.attack
                             self.attack_timer = 0
                             if ob.health <= 0:
                                 gp = ob.grid_pos
                                 if gp in game_state.obstacles: del game_state.obstacles[gp]
-                        blocked = True;
+                        blocked = True
                         break
                     elif ob.type == "Indestructible":
-                        blocked = True;
+                        blocked = True
                         break
             if not blocked:
-                self.x += ddx * speed;
+                self.x += ddx * speed
                 self.y += ddy * speed
-                self.rect.x = int(self.x);
+                self.rect.x = int(self.x)
                 self.rect.y = int(self.y) + INFO_BAR_HEIGHT
                 break
 
@@ -995,7 +999,7 @@ class Zombie:
                 # 结算爆炸
                 cx, cy = self.rect.centerx, self.rect.centery
                 pr = player.rect
-                dx = pr.centerx - cx;
+                dx = pr.centerx - cx
                 dy = pr.centery - cy
                 if (dx * dx + dy * dy) ** 0.5 <= SUICIDE_RADIUS:
                     if player.hit_cd <= 0.0:
@@ -1041,9 +1045,9 @@ class Zombie:
 
 class Bullet:
     def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE):
-        self.x = x;
+        self.x = x
         self.y = y
-        self.vx = vx;
+        self.vx = vx
         self.vy = vy
         self.alive = True
         self.traveled = 0.0
@@ -1057,7 +1061,7 @@ class Bullet:
         self.traveled += ((nx - self.x) ** 2 + (ny - self.y) ** 2) ** 0.5
         self.x, self.y = nx, ny
         if self.traveled >= self.max_dist:
-            self.alive = False;
+            self.alive = False
             return
         # rect for collision
         r = pygame.Rect(int(self.x - BULLET_RADIUS), int(self.y - BULLET_RADIUS), BULLET_RADIUS * 2, BULLET_RADIUS * 2)
@@ -1085,7 +1089,7 @@ class Bullet:
             if r.colliderect(ob.rect):
                 # main block & indestructible: fizzle without effect
                 if getattr(ob, 'is_main_block', False) or ob.type == "Indestructible":
-                    self.alive = False;
+                    self.alive = False
                     return
                 # destructible: damage
                 if ob.type == "Destructible":
@@ -1181,9 +1185,9 @@ def heuristic(a, b): return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
                   obstacles: Dict[Tuple[int, int], Obstacle]):
-    frontier = PriorityQueue();
+    frontier = PriorityQueue()
     frontier.put((0, start))
-    came_from = {start: None};
+    came_from = {start: None}
     cost_so_far = {start: 0}
     while not frontier.empty():
         _, current = frontier.get()
@@ -1207,7 +1211,7 @@ def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
 
 
 def is_not_edge(pos, grid_size):
-    x, y = pos;
+    x, y = pos
     return 1 <= x < grid_size - 1 and 1 <= y < grid_size - 1
 
 
@@ -1226,13 +1230,13 @@ def get_level_config(level: int) -> dict:
 
 def reconstruct_path(came_from: Dict, start: Tuple[int, int], goal: Tuple[int, int]) -> List[Tuple[int, int]]:
     if goal not in came_from: return [start]
-    path = [];
+    path = []
     current = goal
     while current != start:
-        path.append(current);
+        path.append(current)
         current = came_from[current]
-    path.append(start);
-    path.reverse();
+    path.append(start)
+    path.reverse()
     return path
 
 
@@ -1264,12 +1268,12 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
         zombie_pos_list = random.sample(far_candidates, zombie_count)
     else:
         player_pos, zombie_pos_list = pick_valid_positions(min_distance=5, count=zombie_count)
-    forbidden |= {player_pos};
+    forbidden |= {player_pos}
     forbidden |= set(zombie_pos_list)
 
     # main item + main block
     main_item_candidates = [p for p in all_positions if p not in forbidden and is_not_edge(p, grid_size)]
-    main_item_pos = random.choice(main_item_candidates);
+    main_item_pos = random.choice(main_item_candidates)
     forbidden.add(main_item_pos)
     obstacles = {main_item_pos: MainBlock(main_item_pos[0], main_item_pos[1], health=main_block_hp)}
 
@@ -1370,7 +1374,7 @@ class GameState:
             if player_rect.colliderect(item.rect):
                 if item.is_main and any(getattr(ob, "is_main_block", False) for ob in self.obstacles.values()):
                     return False
-                self.items.remove(item);
+                self.items.remove(item)
                 return True
         return False
 
@@ -1437,8 +1441,8 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         pygame.draw.circle(screen, (70, 80, 70), (cx, cy), max(2, CELL_SIZE // 8))
 
     # player
-    player_draw = player.rect.copy();
-    player_draw.x -= cam_x;
+    player_draw = player.rect.copy()
+    player_draw.x -= cam_x
     player_draw.y -= cam_y
     if player.hit_cd > 0 and ((pygame.time.get_ticks() // 80) % 2 == 0):
         pygame.draw.rect(screen, (240, 80, 80), player_draw)  # flicker color
@@ -1448,7 +1452,7 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     # zombies
     for zombie in zombies:
         zr = zombie.rect.copy()
-        zr.x -= cam_x;
+        zr.x -= cam_x
         zr.y -= cam_y
 
         # 基于类型的底色
@@ -1466,7 +1470,7 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         try:
             mhp = getattr(zombie, 'max_hp', None) or getattr(zombie, 'hp', 1)
             ratio = max(0.0, min(1.0, float(max(0, zombie.hp)) / float(mhp)))
-            bar_w = zr.width;
+            bar_w = zr.width
             bar_h = 4
             bx, by = zr.x, zr.y - (bar_h + 3)
             pygame.draw.rect(screen, (40, 40, 40), (bx, by, bar_w, bar_h))
@@ -1500,8 +1504,8 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
             color = (120, 120, 120)
         else:
             color = (200, 80, 80)
-        draw_rect = obstacle.rect.copy();
-        draw_rect.x -= cam_x;
+        draw_rect = obstacle.rect.copy()
+        draw_rect.x -= cam_x
         draw_rect.y -= cam_y
         pygame.draw.rect(screen, color, draw_rect)
         if obstacle.type == "Destructible":
@@ -1629,20 +1633,25 @@ class GameSound:
 
     def pause(self):
         if self._ready:
-            try: pygame.mixer.music.pause()
-            except Exception as e: print(f"[Audio] pause failed: {e}")
+            try:
+                pygame.mixer.music.pause()
+            except Exception as e:
+                print(f"[Audio] pause failed: {e}")
 
     def resume(self):
         if self._ready:
-            try: pygame.mixer.music.unpause()
-            except Exception as e: print(f"[Audio] resume failed: {e}")
+            try:
+                pygame.mixer.music.unpause()
+            except Exception as e:
+                print(f"[Audio] resume failed: {e}")
 
     def set_volume(self, volume: float):
         self.volume = max(0.0, min(1.0, float(volume)))
         if self._ready:
-            try: pygame.mixer.music.set_volume(self.volume)
-            except Exception as e: print(f"[Audio] set_volume failed: {e}")
-
+            try:
+                pygame.mixer.music.set_volume(self.volume)
+            except Exception as e:
+                print(f"[Audio] set_volume failed: {e}")
 
 
 # ==================== 游戏主循环 ====================
@@ -1723,14 +1732,14 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
 
     def find_target():
         px, py = player_center()
-        best = None;
+        best = None
         best_d2 = float('inf')
         # Prefer zombies first
         for z in zombies:
             cx, cy = z.rect.centerx, z.rect.centery
             d2 = (cx - px) ** 2 + (cy - py) ** 2
             if d2 < best_d2:
-                best_d2 = d2;
+                best_d2 = d2
                 best = ('zombie', None, z, cx, cy)
         # Then destructible blocks (non-main)
         for gp, ob in game_state.obstacles.items():
@@ -1751,8 +1760,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             z = Zombie((gx, gy), speed=ZOMBIE_SPEED, ztype=t)
             zombies.append(z)
 
-    running = True;
-    game_result = None;
+    running = True
+    game_result = None
     last_frame = None
     time_left = float(LEVEL_TIME_LIMIT)
     globals()["_time_left_runtime"] = time_left
@@ -1829,8 +1838,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 player.hp -= int(ZOMBIE_CONTACT_DAMAGE)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
                 if player.hp <= 0:
-                    game_result = "fail";
-                    running = False;
+                    game_result = "fail"
+                    running = False
                     break
         # special behaviors & enemy shots
         for z in list(zombies):
@@ -1879,9 +1888,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     # Player
     p = snap.get("player", {})
     player = Player((0, 0), speed=int(p.get("speed", PLAYER_SPEED)))
-    player.x = float(p.get("x", 0.0));
+    player.x = float(p.get("x", 0.0))
     player.y = float(p.get("y", 0.0))
-    player.rect.x = int(player.x);
+    player.rect.x = int(player.x)
     player.rect.y = int(player.y) + INFO_BAR_HEIGHT
     player.fire_cd = float(p.get("fire_cd", 0.0))
     player.max_hp = int(p.get("max_hp", PLAYER_MAX_HP))
@@ -1893,9 +1902,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         zobj = Zombie((0, 0), attack=int(z.get("attack", ZOMBIE_ATTACK)), speed=int(z.get("speed", ZOMBIE_SPEED)),
                       ztype=z.get("type", "basic"), hp=int(z.get("hp", 30)))
         zobj.max_hp = int(z.get("max_hp", int(z.get("hp", 30))))
-        zobj.x = float(z.get("x", 0.0));
+        zobj.x = float(z.get("x", 0.0))
         zobj.y = float(z.get("y", 0.0))
-        zobj.rect.x = int(zobj.x);
+        zobj.rect.x = int(zobj.x)
         zobj.rect.y = int(zobj.y) + INFO_BAR_HEIGHT
         zobj._spawn_elapsed = float(z.get("spawn_elapsed", 0.0))
         zobj.attack_timer = float(z.get("attack_timer", 0.0))
@@ -1916,7 +1925,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
 
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
-    running = True;
+    running = True
     last_frame = None
     chosen_zombie_type = meta.get("chosen_zombie_type", "basic")
 
@@ -1925,14 +1934,14 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
 
     def find_target():
         px, py = player_center()
-        best = None;
+        best = None
         best_d2 = float('inf')
         # 1) zombies first
         for z in zombies:
             cx, cy = z.rect.centerx, z.rect.centery
             d2 = (cx - px) ** 2 + (cy - py) ** 2
             if d2 < best_d2:
-                best_d2 = d2;
+                best_d2 = d2
                 best = ('zombie', None, z, cx, cy)
         # 2) then destructible non-main blocks
         for gp, ob in game_state.obstacles.items():
@@ -1940,7 +1949,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 cx, cy = ob.rect.centerx, ob.rect.centery
                 d2 = (cx - px) ** 2 + (cy - py) ** 2
                 if d2 < best_d2:
-                    best_d2 = d2;
+                    best_d2 = d2
                     best = ('block', gp, ob, cx, cy)
         return best, (best_d2 ** 0.5) if best else None
 
@@ -2029,7 +2038,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                     for t, w in table:
                         acc += w
                         if r <= acc:
-                            ztype = t;
+                            ztype = t
                             break
                     zombies.append(Zombie((gx, gy), speed=ZOMBIE_SPEED, ztype=ztype))
                 if spots:
@@ -2048,12 +2057,12 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                                               last_frame or render_game(screen, game_state, player, zombies, bullets,
                                                                         enemy_shots))
                     if action == "home":
-                        clear_save();
-                        flush_events();
+                        clear_save()
+                        flush_events()
                         return "home", None, last_frame or screen.copy()
                     elif action == "retry":
-                        clear_save();
-                        flush_events();
+                        clear_save()
+                        flush_events()
                         return "restart", None, last_frame or screen.copy()
         # 僵尸特殊行为（远程/自爆/增益/护盾）
         for z in list(zombies):
@@ -2073,12 +2082,12 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                                       last_frame or render_game(screen, game_state, player, zombies, bullets,
                                                                 enemy_shots))
             if action == "home":
-                clear_save();
-                flush_events();
+                clear_save()
+                flush_events()
                 return "home", None, last_frame or screen.copy()
             elif action == "retry":
-                clear_save();
-                flush_events();
+                clear_save()
+                flush_events()
                 return "restart", None, last_frame or screen.copy()
 
         last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
@@ -2110,7 +2119,7 @@ def select_zombie_screen(screen, owned_cards: List[str]) -> str:
                 for rect, card in rects:
                     if rect.collidepoint(event.pos): chosen = card
                 if confirm.collidepoint(event.pos) and (chosen or owned_cards):
-                    door_transition(screen);
+                    door_transition(screen)
                     return chosen or owned_cards[0]
         clock.tick(60)
 
@@ -2177,7 +2186,7 @@ if __name__ == "__main__":
             result, reward, bg = main_run_level(config, chosen_zombie)
 
         if result == "restart":
-            flush_events();
+            flush_events()
             continue
 
         if result == "home":
@@ -2204,7 +2213,7 @@ if __name__ == "__main__":
 
         if result == "exit":
             # quit to OS; snapshot saving already done inside the loop
-            pygame.quit();
+            pygame.quit()
             sys.exit()
 
         if result == "fail":
@@ -2249,8 +2258,8 @@ if __name__ == "__main__":
                         current_level = int(save_data.get("current_level", 0))
                         zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
                 else:
-                    clear_save();
-                    current_level = 0;
+                    clear_save()
+                    current_level = 0
                     zombie_cards_collected = []
                 continue  # 回到 while 重新开始流程
 
