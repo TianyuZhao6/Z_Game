@@ -1245,7 +1245,7 @@ def reconstruct_path(came_from: Dict, start: Tuple[int, int], goal: Tuple[int, i
 def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int, zombie_count: int, main_block_hp: int):
     """
     Generate entities with map-fill: obstacle clusters, ample items, and non-blocking decorations.
-    NOTE: keeps logic readable for future tweaks.
+    Main block removed — all items are collectible when touched.
     """
     all_positions = [(x, y) for x in range(grid_size) for y in range(grid_size)]
     corners = [(0, 0), (0, grid_size - 1), (grid_size - 1, 0), (grid_size - 1, grid_size - 1)]
@@ -1271,71 +1271,64 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
     forbidden |= {player_pos}
     forbidden |= set(zombie_pos_list)
 
-    # main item + main block
-    main_item_candidates = [p for p in all_positions if p not in forbidden and is_not_edge(p, grid_size)]
-    main_item_pos = random.choice(main_item_candidates)
-    forbidden.add(main_item_pos)
-    obstacles = {main_item_pos: MainBlock(main_item_pos[0], main_item_pos[1], health=main_block_hp)}
-
-    # --- obstacle fill with clusters ---
+    # --- obstacle fill with clusters (NO pre-placed main block now) ---
+    obstacles: Dict[Tuple[int, int], Obstacle] = {}
     area = grid_size * grid_size
     target_obstacles = max(obstacle_count, int(area * OBSTACLE_DENSITY))
-    rest_needed = max(0, target_obstacles - 1)  # minus main block
-    # seed positions away from forbidden
-    base_candidates = [p for p in all_positions if p not in forbidden and p not in obstacles]
-    cluster_seeds = random.sample(base_candidates, k=max(1, rest_needed // 6))
+    rest_needed = target_obstacles
+
+    base_candidates = [p for p in all_positions if p not in forbidden]
+    random.shuffle(base_candidates)
     placed = 0
-    # fill clusters around seeds to avoid empty feel
+
+    # cluster seeds
+    cluster_seeds = base_candidates[:max(1, rest_needed // 6)]
     for seed in cluster_seeds:
         if placed >= rest_needed: break
-        # small cluster size 3-6
         cluster_size = random.randint(3, 6)
         wave = [seed]
         visited = set()
         while wave and placed < rest_needed and len(visited) < cluster_size:
             cur = wave.pop()
-            if cur in visited or cur in forbidden or cur in obstacles:
-                continue
+            if cur in visited or cur in obstacles or cur in forbidden: continue
             visited.add(cur)
-            # type assignment
-            if random.random() < 0.65:
-                obstacles[cur] = Obstacle(cur[0], cur[1], "Indestructible")
-            else:
-                obstacles[cur] = Obstacle(cur[0], cur[1], "Destructible", health=OBSTACLE_HEALTH)
+            typ = "Indestructible" if random.random() < 0.65 else "Destructible"
+            hp = OBSTACLE_HEALTH if typ == "Destructible" else None
+            obstacles[cur] = Obstacle(cur[0], cur[1], typ, health=hp)
             placed += 1
-            # neighbors (4-dir)
-            nx, ny = cur
-            neigh = [(nx + 1, ny), (nx - 1, ny), (nx, ny + 1), (nx, ny - 1)]
+
+            x, y = cur
+            neigh = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
             random.shuffle(neigh)
             for nb in neigh:
                 if 0 <= nb[0] < grid_size and 0 <= nb[1] < grid_size and nb not in visited:
                     wave.append(nb)
 
-    # if still short, place random scattered obstacles
+    # if still short, scatter
     if placed < rest_needed:
-        rest_candidates = [p for p in base_candidates if p not in obstacles]
-        random.shuffle(rest_candidates)
-        for pos in rest_candidates[:(rest_needed - placed)]:
+        more = [p for p in base_candidates if p not in obstacles]
+        random.shuffle(more)
+        for pos in more[:(rest_needed - placed)]:
             typ = "Indestructible" if random.random() < 0.5 else "Destructible"
             hp = OBSTACLE_HEALTH if typ == "Destructible" else None
             obstacles[pos] = Obstacle(pos[0], pos[1], typ, health=hp)
 
     forbidden |= set(obstacles.keys())
 
-    # --- items: ensure minimum count on large maps ---
+    # --- items (all are normal) ---
     item_target = max(item_count, MIN_ITEMS, grid_size // 2)
     item_candidates = [p for p in all_positions if p not in forbidden]
-    other_items = random.sample(item_candidates, max(0, item_target - 1))
-    items = [Item(pos[0], pos[1]) for pos in other_items]
-    items.append(Item(main_item_pos[0], main_item_pos[1], is_main=True))
+    items = [Item(x, y, is_main=False) for (x, y) in random.sample(item_candidates, min(len(item_candidates), item_target))]
 
-    # --- decorations (non-colliding) ---
+    # --- decorations ---
     decor_target = int(area * DECOR_DENSITY)
-    decor_candidates = [p for p in all_positions if p not in forbidden and p not in set((i.x, i.y) for i in items)]
+    decor_candidates = [p for p in all_positions if p not in forbidden]
     random.shuffle(decor_candidates)
     decorations = decor_candidates[:decor_target]
 
-    return obstacles, items, player_pos, zombie_pos_list, [main_item_pos], decorations
+    # keep return shape the same: last “main_item_list” is now empty list
+    return obstacles, items, player_pos, zombie_pos_list, [], decorations
+
 
 
 def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> Graph:
@@ -1372,8 +1365,6 @@ class GameState:
     def collect_item(self, player_rect):
         for item in list(self.items):
             if player_rect.colliderect(item.rect):
-                if item.is_main and any(getattr(ob, "is_main_block", False) for ob in self.obstacles.values()):
-                    return False
                 self.items.remove(item)
                 return True
         return False
@@ -1497,10 +1488,10 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
 
     # obstacles
     for obstacle in game_state.obstacles.values():
-        is_main = hasattr(obstacle, 'is_main_block') and obstacle.is_main_block
-        if is_main:
-            color = (255, 220, 80)
-        elif obstacle.type == "Indestructible":
+        # is_main = hasattr(obstacle, 'is_main_block') and obstacle.is_main_block
+        # # if is_main:
+        # #     color = (255, 220, 80)
+        if obstacle.type == "Indestructible":
             color = (120, 120, 120)
         else:
             color = (200, 80, 80)
@@ -1512,9 +1503,9 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
             font2 = pygame.font.SysFont(None, 30)
             health_text = font2.render(str(obstacle.health), True, (255, 255, 255))
             screen.blit(health_text, (draw_rect.x + 6, draw_rect.y + 8))
-        if is_main:
-            star = pygame.font.SysFont(None, 32).render("★", True, (255, 255, 120))
-            screen.blit(star, (draw_rect.x + 8, draw_rect.y + 8))
+        # if is_main:
+        #     star = pygame.font.SysFont(None, 32).render("★", True, (255, 255, 120))
+        #     screen.blit(star, (draw_rect.x + 8, draw_rect.y + 8))
 
     pygame.draw.rect(screen, (0, 0, 0), (0, 0, VIEW_W, INFO_BAR_HEIGHT))
     font_timer = pygame.font.SysFont(None, 28)
