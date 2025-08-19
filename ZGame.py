@@ -124,6 +124,30 @@ DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 5
 ZOMBIE_SPEED = 2
 ZOMBIE_ATTACK = 10
+# ----- meta progression -----
+SPOILS_PER_KILL = 3
+SPOILS_PER_BLOCK = 1
+
+XP_PLAYER_KILL = 6
+XP_PLAYER_BLOCK = 2
+XP_ZOMBIE_BLOCK = 3
+XP_TRANSFER_RATIO = 0.7       # special → survivors
+
+ZOMBIE_XP_TO_LEVEL = 15       # per level step for monsters
+PLAYER_XP_TO_LEVEL = 20       # base; scales by +20%
+
+ELITE_HP_MULT = 2.0
+ELITE_ATK_MULT = 1.5
+ELITE_SPD_ADD = 1
+
+BOSS_EVERY_N_LEVELS = 5
+BOSS_HP_MULT = 4.0
+BOSS_ATK_MULT = 2.0
+BOSS_SPD_ADD = 1
+
+# persistent (per run) upgrades bought in shop
+META = {"spoils": 0, "dmg": 0, "firerate_mult": 1.0, "speed": 0, "maxhp": 0}
+
 # --- zombie type colors (for rendering) ---
 ZOMBIE_COLORS = {
     "basic": (200, 70, 70),
@@ -802,6 +826,69 @@ def show_settings_popup(screen, background_surf):
         draw_ui()
         clock.tick(60)
 
+def show_shop_screen(screen) -> None:
+    """Spend META['spoils'] on small upgrades. Press CLOSE to continue."""
+    clock = pygame.time.Clock()
+    font = pygame.font.SysFont(None, 30)
+    title = pygame.font.SysFont(None, 56)
+
+    # pseudo-random offers
+    catalog = [
+        {"name": "+1 Damage",       "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
+        {"name": "+5% Fire Rate",  "cost": 7, "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
+        {"name": "+1 Speed",        "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
+        {"name": "+5 Max HP",       "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
+        {"name": "Reroll Offers",   "cost": 3, "apply": "reroll"},
+    ]
+    def roll_offers():
+        pool = [c for c in catalog if c["name"] != "Reroll Offers"]
+        offers = random.sample(pool, k=min(4, len(pool)))
+        offers.append(next(c for c in catalog if c["name"] == "Reroll Offers"))
+        return offers
+    offers = roll_offers()
+
+    while True:
+        screen.fill((16, 16, 18))
+        screen.blit(title.render("TRADER", True, (235, 235, 235)), (VIEW_W//2 - 90, 80))
+        money = font.render(f"Spoils: {META['spoils']}", True, (255, 230, 120))
+        screen.blit(money, (VIEW_W//2 - 70, 130))
+
+        rects = []
+        start_x = VIEW_W//2 - 2*160 + 20
+        y = 200
+        for i, it in enumerate(offers):
+            r = pygame.Rect(start_x + i*160, y, 150, 120)
+            pygame.draw.rect(screen, (40, 40, 42), r, border_radius=10)
+            pygame.draw.rect(screen, (80, 80, 84), r, 2, border_radius=10)
+            name = font.render(it["name"], True, (230, 230, 230))
+            cost = font.render(f"{it['cost']}¥", True, (255, 210, 130))
+            screen.blit(name, (r.x + 10, r.y + 18))
+            screen.blit(cost, (r.x + 10, r.y + 60))
+            rects.append((r, it))
+
+        close = pygame.Rect(VIEW_W//2 - 100, 360, 200, 56)
+        pygame.draw.rect(screen, (50, 50, 50), close, border_radius=10)
+        ctxt = pygame.font.SysFont(None, 32).render("CLOSE", True, (235, 235, 235))
+        screen.blit(ctxt, ctxt.get_rect(center=close.center))
+
+        pygame.display.flip()
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                return
+            if ev.type == pygame.MOUSEBUTTONDOWN:
+                if close.collidepoint(ev.pos):
+                    return
+                for r, it in rects:
+                    if r.collidepoint(ev.pos):
+                        if META["spoils"] >= it["cost"]:
+                            META["spoils"] -= it["cost"]
+                            if it["apply"] == "reroll":
+                                offers = roll_offers()
+                            else:
+                                it["apply"]()
+        clock.tick(60)
+
 
 # ==================== 数据结构 ====================
 class Graph:
@@ -861,6 +948,17 @@ class Player:
         self.max_hp = int(PLAYER_MAX_HP)
         self.hp = int(PLAYER_MAX_HP)
         self.hit_cd = 0.0  # contact invulnerability timer (seconds)
+        # progression
+        self.level = 1
+        self.xp = 0
+        self.xp_to_next = PLAYER_XP_TO_LEVEL
+
+        # per-run upgrades from shop (applied on spawn)
+        self.bullet_damage = BULLET_DAMAGE_ZOMBIE + META.get("dmg", 0)
+        self.fire_rate_mult = META.get("firerate_mult", 1.0)
+        self.speed += META.get("speed", 0)
+        self.max_hp += META.get("maxhp", 0)
+        self.hp = min(self.hp + META.get("maxhp", 0), self.max_hp)
 
     @property
     def pos(self):
@@ -897,6 +995,21 @@ class Player:
         self.rect.x = int(self.x)
         self.rect.y = int(self.y) + INFO_BAR_HEIGHT
 
+    def fire_cooldown(self) -> float:
+        # smaller is faster; clamp to avoid abuse
+        return FIRE_COOLDOWN / max(0.25, float(self.fire_rate_mult))
+
+    def add_xp(self, amount: int):
+        self.xp += int(max(0, amount))
+        while self.xp >= self.xp_to_next:
+            self.xp -= self.xp_to_next
+            self.level += 1
+            self.xp_to_next = int(self.xp_to_next * 1.2 + 0.5)
+            # simple level-up buffs
+            self.bullet_damage += 1
+            self.max_hp += 2
+            self.hp = min(self.hp + 2, self.max_hp)
+
     def draw(self, screen):
         pygame.draw.rect(screen, (0, 255, 0), self.rect)
 
@@ -919,6 +1032,12 @@ class Zombie:
         self.buff_t = 0.0  # 自身被增益剩余时间
         self.buff_atk_mult = 1.0
         self.buff_spd_add = 0
+        # XP & rank
+        self.z_level = 1
+        self.xp = 0
+        self.xp_to_next = ZOMBIE_XP_TO_LEVEL
+        self.is_elite = False
+        self.is_boss = False
 
         base_hp = 30 if hp is None else hp
         # type tweaks
@@ -938,6 +1057,18 @@ class Zombie:
     @property
     def pos(self):
         return int((self.x + self.size // 2) // CELL_SIZE), int((self.y + self.size // 2) // CELL_SIZE)
+
+    def gain_xp(self, amount: int):
+        self.xp += int(max(0, amount))
+        while self.xp >= self.xp_to_next:
+            self.xp -= self.xp_to_next
+            self.z_level += 1
+            self.xp_to_next = int(self.xp_to_next * 1.25 + 0.5)
+            # small stat bumps
+            self.attack = int(self.attack * 1.08 + 1)
+            self.max_hp = int(self.max_hp * 1.10 + 1)
+            self.hp = min(self.max_hp, self.hp + 2)
+            self.speed += 0  # keep speed mostly stable (change if you want)
 
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
         base_attack = self.attack
@@ -977,6 +1108,9 @@ class Zombie:
                             if ob.health <= 0:
                                 gp = ob.grid_pos
                                 if gp in game_state.obstacles: del game_state.obstacles[gp]
+                                game_state.spoils_gained += SPOILS_PER_BLOCK
+                                self.gain_xp(XP_ZOMBIE_BLOCK)
+
                         blocked = True
                         break
                     elif ob.type == "Indestructible":
@@ -1057,7 +1191,7 @@ class Zombie:
 
 
 class Bullet:
-    def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE):
+    def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE, damage: int = BULLET_DAMAGE_ZOMBIE):
         self.x = x
         self.y = y
         self.vx = vx
@@ -1065,52 +1199,65 @@ class Bullet:
         self.alive = True
         self.traveled = 0.0
         self.max_dist = max_dist
+        self.damage = int(damage)
 
-    def update(self, dt: float, game_state: 'GameState', zombies: List['Zombie']):
+    def update(self, dt: float, game_state: 'GameState', zombies: List['Zombie'], player: 'Player' = None):
         if not self.alive: return
-        # move
         nx = self.x + self.vx * dt
         ny = self.y + self.vy * dt
         self.traveled += ((nx - self.x) ** 2 + (ny - self.y) ** 2) ** 0.5
         self.x, self.y = nx, ny
         if self.traveled >= self.max_dist:
-            self.alive = False
+            self.alive = False;
             return
-        # rect for collision
+
         r = pygame.Rect(int(self.x - BULLET_RADIUS), int(self.y - BULLET_RADIUS), BULLET_RADIUS * 2, BULLET_RADIUS * 2)
 
-        # 1) zombie collision
+        # 1) zombies
         for z in list(zombies):
             if r.colliderect(z.rect):
-                # 先扣护盾
+                # shield first
                 if getattr(z, "shield_hp", 0) > 0:
-                    z.shield_hp -= BULLET_DAMAGE_ZOMBIE
+                    z.shield_hp -= self.damage
                     if z.shield_hp < 0:
-                        # 溢出伤害进入生命
                         z.hp += z.shield_hp
                         z.shield_hp = 0
                 else:
-                    z.hp -= BULLET_DAMAGE_ZOMBIE
+                    z.hp -= self.damage
 
                 if z.hp <= 0:
+                    # spoils & player XP
+                    game_state.spoils_gained += SPOILS_PER_KILL
+                    if player: player.add_xp(XP_PLAYER_KILL + max(0, z.z_level - 1) * 2)
+
+                    # XP inheritance: dead special gives a portion of XP to survivors
+                    if getattr(z, "is_elite", False) or getattr(z, "is_boss", False):
+                        if zombies:
+                            portion = int(z.xp * XP_TRANSFER_RATIO)
+                            if portion > 0:
+                                share = max(1, portion // len(zombies))
+                                for zz in zombies:
+                                    if zz is not z:
+                                        zz.gain_xp(share)
+
                     zombies.remove(z)
                 self.alive = False
                 return
 
-        # 2) obstacle collision
+        # 2) obstacles
         for gp, ob in list(game_state.obstacles.items()):
             if r.colliderect(ob.rect):
-                # main block & indestructible: fizzle without effect
-                if getattr(ob, 'is_main_block', False) or ob.type == "Indestructible":
-                    self.alive = False
+                if ob.type == "Indestructible":
+                    self.alive = False;
                     return
-                # destructible: damage
-                if ob.type == "Destructible":
+                elif ob.type == "Destructible":
                     ob.health = (ob.health or 0) - BULLET_DAMAGE_BLOCK
                     if ob.health <= 0:
                         del game_state.obstacles[gp]
-                self.alive = False
-                return
+                        game_state.spoils_gained += SPOILS_PER_BLOCK
+                        if player: player.add_xp(XP_PLAYER_BLOCK)
+                    self.alive = False;
+                    return
 
     def draw(self, screen, cam_x, cam_y):
         pygame.draw.circle(screen, (255, 255, 255), (int(self.x - cam_x), int(self.y - cam_y)), BULLET_RADIUS)
@@ -1371,6 +1518,7 @@ class GameState:
         self.items_total = len(items)  # track total at start
         # non-colliding visual fillers
         self.decorations = decorations  # list[Tuple[int,int]] grid coords
+        self.spoils_gained = 0
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -1844,12 +1992,12 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             dx, dy = cx - px, cy - py
             length = (dx * dx + dy * dy) ** 0.5 or 1.0
             vx, vy = (dx / length) * BULLET_SPEED, (dy / length) * BULLET_SPEED
-            bullets.append(Bullet(px, py, vx, vy, MAX_FIRE_RANGE))
-            player.fire_cd += FIRE_COOLDOWN
+            bullets.append(Bullet(px, py, vx, vy, MAX_FIRE_RANGE, damage=player.bullet_damage))
+            player.fire_cd += player.fire_cooldown()
 
         # Update bullets
         for b in list(bullets):
-            b.update(dt, game_state, zombies)
+            b.update(dt, game_state, zombies, player)
             if not b.alive:
                 bullets.remove(b)
 
@@ -1882,6 +2030,9 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             continue
 
         last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+        if game_result == "success":
+            globals()["_last_spoils"] = getattr(game_state, "spoils_gained", 0)
+
     return game_result, config.get("reward", None), last_frame
 
 
@@ -2024,12 +2175,12 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             dx, dy = cx - px, cy - py
             length = (dx * dx + dy * dy) ** 0.5 or 1.0
             vx, vy = (dx / length) * BULLET_SPEED, (dy / length) * BULLET_SPEED
-            bullets.append(Bullet(px, py, vx, vy, MAX_FIRE_RANGE))
-            player.fire_cd += FIRE_COOLDOWN
+            bullets.append(Bullet(px, py, vx, vy, MAX_FIRE_RANGE, damage=player.bullet_damage))
+            player.fire_cd += player.fire_cooldown()
 
         # Update bullets
         for b in list(bullets):
-            b.update(dt, game_state, zombies)
+            b.update(dt, game_state, zombies, player)
             if not b.alive:
                 bullets.remove(b)
         # Wave spawning
@@ -2293,13 +2444,21 @@ if __name__ == "__main__":
                 # 不加关卡，不保存，直接重来这一关
                 continue
 
+
             elif chosen in CARD_POOL:
                 zombie_cards_collected.append(chosen)
+                # add spoils from the finished level, then open shop
+                META["spoils"] += int(globals().get("_last_spoils", 0))
+                show_shop_screen(screen)
                 current_level += 1
                 save_progress(current_level, zombie_cards_collected)
 
+
             else:
                 # 没选到卡（比如卡池空），也推进到下一关
+                META["spoils"] += int(globals().get("_last_spoils", 0))
+                show_shop_screen(screen)
+
                 current_level += 1
                 save_progress(current_level, zombie_cards_collected)
 
