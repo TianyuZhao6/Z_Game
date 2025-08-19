@@ -1380,13 +1380,27 @@ class GameState:
 def render_game(screen: pygame.Surface, game_state, player: Player, zombies: List[Zombie],
                 bullets: Optional[List['Bullet']] = None,
                 enemy_shots: Optional[List[EnemyShot]] = None) -> pygame.Surface:
-    # Camera centers on player
+    # Camera centers on player; add pillarbox if the viewport is wider/taller than the world
     world_w = GRID_SIZE * CELL_SIZE
     world_h = GRID_SIZE * CELL_SIZE + INFO_BAR_HEIGHT
+
+    # initial (follow player)
     cam_x = int(player.x + player.size // 2 - VIEW_W // 2)
     cam_y = int(player.y + player.size // 2 - (VIEW_H - INFO_BAR_HEIGHT) // 2)
-    cam_x = max(0, min(cam_x, max(0, world_w - VIEW_W)))
-    cam_y = max(0, min(cam_y, max(0, world_h - VIEW_H)))
+
+    # Horizontal: if the screen is wider than the world, center the world (pillarbox both sides)
+    if VIEW_W > world_w:
+        pad_x = (VIEW_W - world_w) // 2
+        cam_x = -pad_x  # negative camera means "draw world centered"
+    else:
+        cam_x = max(0, min(cam_x, world_w - VIEW_W))
+
+    # Vertical (rare): if the screen is taller than the world+HUD, center vertically too
+    if VIEW_H > world_h:
+        pad_y = (VIEW_H - world_h) // 2
+        cam_y = -pad_y
+    else:
+        cam_y = max(0, min(cam_y, world_h - VIEW_H))
 
     screen.fill((20, 20, 20))
     font = pygame.font.SysFont(None, 28)
