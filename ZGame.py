@@ -84,6 +84,19 @@ def pause_game_modal(screen, bg_surface, clock, time_left):
     flush_events()
     return choice, time_left
 
+def resize_world_to_view():
+    """Expand GRID_SIZE so the simulated world covers the whole visible area."""
+    global GRID_SIZE, WINDOW_SIZE, TOTAL_HEIGHT
+    # how many cells are visible horizontally/vertically
+    cols_needed = math.ceil(VIEW_W / CELL_SIZE)
+    rows_needed = math.ceil((VIEW_H - INFO_BAR_HEIGHT) / CELL_SIZE)
+    # keep using a square grid; pick the max so both axes are covered
+    new_size = max(GRID_SIZE, cols_needed, rows_needed)
+    if new_size != GRID_SIZE:
+        GRID_SIZE = new_size
+        WINDOW_SIZE = GRID_SIZE * CELL_SIZE
+        TOTAL_HEIGHT = WINDOW_SIZE + INFO_BAR_HEIGHT
+
 
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
@@ -1408,15 +1421,19 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
 
     # gear_rect = draw_settings_gear(screen, VIEW_W - 44, 8)
 
-    # grid in view
-    start_x = max(0, cam_x // CELL_SIZE)
-    end_x = min(GRID_SIZE, (cam_x + VIEW_W) // CELL_SIZE + 2)
-    start_y = max(0, (cam_y - INFO_BAR_HEIGHT) // CELL_SIZE)
-    end_y = min(GRID_SIZE, ((cam_y - INFO_BAR_HEIGHT) + (VIEW_H - INFO_BAR_HEIGHT)) // CELL_SIZE + 2)
-    for y in range(start_y, end_y):
-        for x in range(start_x, end_x):
-            rect = pygame.Rect(x * CELL_SIZE - cam_x, y * CELL_SIZE + INFO_BAR_HEIGHT - cam_y, CELL_SIZE, CELL_SIZE)
-            pygame.draw.rect(screen, (50, 50, 50), rect, 1)
+    # full-view grid aligned to world; covers pillar areas too
+    grid_col = (50, 50, 50)
+
+    # vertical lines
+    x0 = (-cam_x) % CELL_SIZE  # align to world columns
+    for x in range(x0, VIEW_W, CELL_SIZE):
+        pygame.draw.line(screen, grid_col, (x, INFO_BAR_HEIGHT), (x, VIEW_H), 1)
+
+    # horizontal lines (start just below HUD bar)
+    y0 = (INFO_BAR_HEIGHT - cam_y) % CELL_SIZE
+    y0 += INFO_BAR_HEIGHT
+    for y in range(y0, VIEW_H, CELL_SIZE):
+        pygame.draw.line(screen, grid_col, (0, y), (VIEW_W, y), 1)
 
     # --- Item/Fragment HUD (top-right) ---
     total_items = getattr(game_state, 'items_total', len(game_state.items))
@@ -2141,6 +2158,8 @@ if __name__ == "__main__":
     screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
     pygame.display.set_caption(GAME_TITLE)
     VIEW_W, VIEW_H = info.current_w, info.current_h
+    # Make the world at least as big as what we can see (removes “non-playable band”)
+    resize_world_to_view()
 
     # Now start BGM using Settings default (BGM_VOLUME 0-100)
     try:
@@ -2153,6 +2172,8 @@ if __name__ == "__main__":
     screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
     pygame.display.set_caption(GAME_TITLE)
     VIEW_W, VIEW_H = info.current_w, info.current_h
+    # Make the world at least as big as what we can see (removes “non-playable band”)
+    resize_world_to_view()
 
     # Enter start menu
     flush_events()
