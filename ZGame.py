@@ -97,6 +97,14 @@ def resize_world_to_view():
         WINDOW_SIZE = GRID_SIZE * CELL_SIZE
         TOTAL_HEIGHT = WINDOW_SIZE + INFO_BAR_HEIGHT
 
+def roll_spoils_for_zombie(z: "Zombie") -> int:
+    """Return number of coins to drop for a killed zombie, applying drop chance."""
+    if random.random() > SPOILS_DROP_CHANCE:
+        return 0
+    t = getattr(z, "type", "basic")
+    lo, hi = SPOILS_PER_TYPE.get(t, (1, 1))
+    return random.randint(int(lo), int(hi))
+
 
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
@@ -127,6 +135,24 @@ ZOMBIE_ATTACK = 10
 # ----- meta progression -----
 SPOILS_PER_KILL = 3
 SPOILS_PER_BLOCK = 1
+# ----- spoils UI & drop tuning -----
+SPOILS_DROP_CHANCE = 0.50      # 50% drop chance on zombie deaths
+SPOILS_PER_TYPE = {            # average coins per zombie type (rounded when spawning)
+    "basic":   (1, 1),         # min, max
+    "fast":    (1, 2),
+    "strong":  (2, 3),
+    "tank":    (2, 4),
+    "ranged":  (1, 3),
+    "suicide": (1, 2),
+    "buffer":  (2, 3),
+    "shielder":(2, 3),
+    "bomber":  (1, 2),         # alias for suicide, if used
+}
+# coin bounce feel
+COIN_POP_VY = -120.0           # initial vertical (screen-space) pop
+COIN_GRAVITY = 400.0           # gravity pulling coin back to ground
+COIN_RESTITUTION = 0.45        # energy kept on bounce
+COIN_MIN_BOUNCE = 30.0         # stop bouncing when below this upward speed
 
 XP_PLAYER_KILL = 6
 XP_PLAYER_BLOCK = 2
@@ -831,8 +857,8 @@ def show_settings_popup(screen, background_surf):
         draw_ui()
         clock.tick(60)
 
-def show_shop_screen(screen) -> None:
-    """Spend META['spoils'] on small upgrades. Press CLOSE to continue."""
+def show_shop_screen(screen) -> Optional[str]:
+    """Spend META['spoils'] on small upgrades. ESC opens Pause; return action or None when closed."""
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 30)
     title = pygame.font.SysFont(None, 56)
@@ -840,7 +866,7 @@ def show_shop_screen(screen) -> None:
     # pseudo-random offers
     catalog = [
         {"name": "+1 Damage",       "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
-        {"name": "+5% Fire Rate",  "cost": 7, "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
+        {"name": "+5% Fire Rate",   "cost": 7, "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
         {"name": "+1 Speed",        "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
         {"name": "+5 Max HP",       "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
         {"name": "Reroll Offers",   "cost": 3, "apply": "reroll"},
@@ -850,9 +876,11 @@ def show_shop_screen(screen) -> None:
         offers = random.sample(pool, k=min(4, len(pool)))
         offers.append(next(c for c in catalog if c["name"] == "Reroll Offers"))
         return offers
+
     offers = roll_offers()
 
     while True:
+        # draw
         screen.fill((16, 16, 18))
         screen.blit(title.render("TRADER", True, (235, 235, 235)), (VIEW_W//2 - 90, 80))
         money = font.render(f"Spoils: {META['spoils']}", True, (255, 230, 120))
@@ -877,22 +905,38 @@ def show_shop_screen(screen) -> None:
         screen.blit(ctxt, ctxt.get_rect(center=close.center))
 
         pygame.display.flip()
+
+        # input
         for ev in pygame.event.get():
-            if ev.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if ev.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
-                return
+                # pause menu over the shop; continue returns to shop, others bubble up
+                bg = screen.copy()
+                choice = pause_from_overlay(screen, bg)
+                if choice in (None, "continue", "settings"):
+                    # settings returns to pause which returns 'continue' here; keep shopping
+                    flush_events()
+                    break
+                # home / restart / exit → leave shop & propagate
+                flush_events()
+                return choice
+
             if ev.type == pygame.MOUSEBUTTONDOWN:
                 if close.collidepoint(ev.pos):
-                    return
+                    flush_events()
+                    return None  # shop finished normally
                 for r, it in rects:
-                    if r.collidepoint(ev.pos):
-                        if META["spoils"] >= it["cost"]:
-                            META["spoils"] -= it["cost"]
-                            if it["apply"] == "reroll":
-                                offers = roll_offers()
-                            else:
-                                it["apply"]()
+                    if r.collidepoint(ev.pos) and META["spoils"] >= it["cost"]:
+                        META["spoils"] -= it["cost"]
+                        if it["apply"] == "reroll":
+                            offers = roll_offers()
+                        else:
+                            it["apply"]()
+
         clock.tick(60)
+
 
 
 # ==================== 数据结构 ====================
@@ -1241,15 +1285,17 @@ class Bullet:
                     z.hp -= self.damage
 
                 if z.hp <= 0:
-                    # drop spoils where it died
+                    # coin drop (with chance) at death
                     cx, cy = z.rect.centerx, z.rect.centery
-                    game_state.spawn_spoils(cx, cy, SPOILS_PER_KILL)
-                    # player rewards
+                    drop_n = roll_spoils_for_zombie(z)
+                    if drop_n > 0:
+                        game_state.spawn_spoils(cx, cy, drop_n)
+                    # player XP + inheritance if you were already doing that here earlier
                     if player:
                         player.add_xp(XP_PLAYER_KILL + max(0, z.z_level - 1) * 2)
-                    # XP inheritance → nearby monsters only
                     transfer_xp_to_neighbors(z, zombies)
                     zombies.remove(z)
+
                 self.alive = False
                 return
 
@@ -1274,23 +1320,38 @@ class Bullet:
         pygame.draw.circle(screen, (255, 255, 255), (int(self.x - cam_x), int(self.y - cam_y)), BULLET_RADIUS)
 
 class Spoil:
-    """A coin-like pickup worth 1 spoil by default."""
+    """A coin-like pickup that pops up and bounces in place."""
     def __init__(self, x_px: float, y_px: float, value: int = 1):
-        self.x = float(x_px)
-        self.y = float(y_px)
+        # ground/world position where the coin lives
+        self.base_x = float(x_px)
+        self.base_y = float(y_px)
+        # vertical offset (screen-space "height")
+        self.h = 0.0
+        self.vh = float(COIN_POP_VY)  # vertical speed for bounce
         self.value = int(value)
         self.r = 6
-        self.rect = pygame.Rect(int(self.x - self.r), int(self.y - self.r), self.r * 2, self.r * 2)
-        # small pop-up motion for feel
-        self.vy = float(SPOIL_POP_VY)
-        self.life = 0.25  # seconds of pop time
+        self.rect = pygame.Rect(0, 0, self.r * 2, self.r * 2)
+        self._update_rect()
+
+    def _update_rect(self):
+        # draw/world position is base minus height
+        cx = int(self.base_x)
+        cy = int(self.base_y - self.h)
+        self.rect.center = (cx, cy)
 
     def update(self, dt: float):
-        if self.life > 0:
-            self.y += self.vy * dt
-            self.vy += SPOIL_GRAVITY * dt
-            self.life -= dt
-        self.rect.center = (int(self.x), int(self.y))
+        # simple vertical bounce around base_y
+        self.vh += COIN_GRAVITY * dt
+        self.h += self.vh * dt
+        if self.h >= 0.0:
+            # hit "ground" -> bounce
+            self.h = 0.0
+            if abs(self.vh) > COIN_MIN_BOUNCE:
+                self.vh = -self.vh * COIN_RESTITUTION
+            else:
+                self.vh = 0.0
+        self._update_rect()
+
 
 
 class EnemyShot:
@@ -1573,23 +1634,33 @@ class GameState:
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
 
-    def collect_item(self, player_rect):
-        for item in list(self.items):
-            if player_rect.colliderect(item.rect):
-                self.items.remove(item)
+    def spawn_spoils(self, x_px: float, y_px: float, count: int = 1):
+        for _ in range(int(max(0, count))):
+            # tiny jitter so multiple coins don't overlap perfectly
+            jx = random.uniform(-6, 6)
+            jy = random.uniform(-6, 6)
+            self.spoils.append(Spoil(x_px + jx, y_px + jy, 1))
+
+    def update_spoils(self, dt: float):
+        for s in self.spoils:
+            s.update(dt)
+
+    def collect_item(self, player_rect: pygame.Rect) -> bool:
+        """Collect one item if the player overlaps it. Returns True if collected."""
+        for it in list(self.items):
+            if player_rect.colliderect(it.rect):
+                self.items.remove(it)
                 return True
         return False
 
-    def destroy_obstacle(self, pos: Tuple[int, int]):
-        if pos in self.obstacles:
-            if self.obstacles[pos].type == "Destructible": self.destructible_count -= 1
-            del self.obstacles[pos]
-
-    def spawn_spoils(self, x_px: float, y_px: float, count: int = 1):
-        for _ in range(int(max(0, count))):
-            jx = random.uniform(-10, 10)
-            jy = random.uniform(-10, 10)
-            self.spoils.append(Spoil(x_px + jx, y_px + jy, 1))
+    def collect_spoils(self, player_rect: pygame.Rect) -> int:
+        gained = 0
+        for s in list(self.spoils):
+            if player_rect.colliderect(s.rect):
+                self.spoils.remove(s)
+                self.spoils_gained += s.value
+                gained += s.value
+        return gained
 
     def update_spoils(self, dt: float):
         for s in self.spoils:
@@ -1673,6 +1744,15 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         color = (255, 255, 100) if item.is_main else (255, 255, 0)
         pygame.draw.circle(screen, color, (sx, sy), item.radius)
 
+    # --- Spoils HUD (top-right, next to items) ---
+    spoils_total = int(getattr(game_state, "spoils_gained", 0))
+    coin_x = VIEW_W - 220
+    coin_y = 10
+    pygame.draw.circle(screen, (255, 215, 80), (coin_x, coin_y + 8), 8)
+    pygame.draw.circle(screen, (255, 245, 200), (coin_x, coin_y + 8), 8, 1)
+    spoils_text = font.render(f"{spoils_total}", True, (255, 255, 255))
+    screen.blit(spoils_text, (coin_x + 14, coin_y))
+
     # decorations (non-colliding visual fillers)
     for gx, gy in getattr(game_state, 'decorations', []):
         cx = gx * CELL_SIZE + CELL_SIZE // 2 - cam_x
@@ -1681,10 +1761,13 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
 
     # spoils (coins) on the ground
     for s in getattr(game_state, "spoils", []):
-        sx = int(s.x - cam_x)
-        sy = int(s.y - cam_y)
+        sx = int(s.base_x - cam_x)
+        sy = int((s.base_y - s.h) - cam_y)
+        # shadow
+        pygame.draw.ellipse(screen, (0, 0, 0, 80), pygame.Rect(sx - s.r, sy + 6, s.r * 2, 6))
+        # coin
         pygame.draw.circle(screen, (255, 215, 80), (sx, sy), s.r)
-        pygame.draw.circle(screen, (255, 255, 200), (sx, sy), s.r, 1)
+        pygame.draw.circle(screen, (255, 245, 200), (sx, sy), s.r, 1)
 
     # player
     player_draw = player.rect.copy()
@@ -2097,6 +2180,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 game_state.spawn_spoils(z.rect.centerx, z.rect.centery, SPOILS_PER_KILL)
                 transfer_xp_to_neighbors(z, zombies)
                 zombies.remove(z)
+        # cnt = roll_spoils_for_zombie(z)
+        # if cnt > 0:
+        #     game_state.spawn_spoils(z.rect.centerx, z.rect.centery, cnt)
+        # transfer_xp_to_neighbors(z, zombies)
+        # zombies.remove(z)
 
         # enemy shots update
         for es in list(enemy_shots):
@@ -2530,23 +2618,74 @@ if __name__ == "__main__":
                 # 不加关卡，不保存，直接重来这一关
                 continue
 
-
             elif chosen in CARD_POOL:
                 zombie_cards_collected.append(chosen)
-                # add spoils from the finished level, then open shop
+                # bank spoils from this level, then open the shop
                 META["spoils"] += int(globals().get("_last_spoils", 0))
-                show_shop_screen(screen)
+                action = show_shop_screen(screen)
+                # React to pause-menu choices made from inside the shop
+                if action == "home":
+                    flush_events()
+                    selection = show_start_menu(screen)
+                    if not selection: sys.exit()
+                    mode, save_data = selection
+                    # keep your existing homepage handling logic
+                    if mode == "continue" and save_data:
+                        if save_data.get("mode") == "snapshot":
+                            meta = save_data.get("meta", {})
+                            current_level = int(meta.get("current_level", 0))
+                            zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
+                        else:
+                            current_level = int(save_data.get("current_level", 0))
+                            zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+                    else:
+                        clear_save()
+                        current_level = 0
+                        zombie_cards_collected = []
+                    continue  # back to the top-level loop
+                if action == "restart":
+                    # replay the current level (do not advance)
+                    continue
+                if action == "exit":
+                    pygame.quit();
+                    sys.exit()
+                # Normal shop close → advance level
                 current_level += 1
                 save_progress(current_level, zombie_cards_collected)
-
 
             else:
-                # 没选到卡（比如卡池空），也推进到下一关
                 META["spoils"] += int(globals().get("_last_spoils", 0))
-                show_shop_screen(screen)
+                action = show_shop_screen(screen)
+                if action == "home":
+                    flush_events()
+                    selection = show_start_menu(screen)
+                    if not selection: sys.exit()
+                    mode, save_data = selection
+                    if mode == "continue" and save_data:
+                        if save_data.get("mode") == "snapshot":
+                            meta = save_data.get("meta", {})
+                            current_level = int(meta.get("current_level", 0))
+                            zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
+                        else:
+                            current_level = int(save_data.get("current_level", 0))
+                            zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+
+                    else:
+                        clear_save()
+                        current_level = 0
+                        zombie_cards_collected = []
+                    continue
+
+                if action == "restart":
+                    continue
+
+                if action == "exit":
+                    pygame.quit();
+                    sys.exit()
 
                 current_level += 1
                 save_progress(current_level, zombie_cards_collected)
+
 
         else:
             # Unknown state -> go home
