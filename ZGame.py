@@ -139,6 +139,11 @@ PLAYER_XP_TO_LEVEL = 20       # base; scales by +20%
 ELITE_HP_MULT = 2.0
 ELITE_ATK_MULT = 1.5
 ELITE_SPD_ADD = 1
+# ----- spoils & XP inheritance tuning -----
+XP_INHERIT_RADIUS = 240          # px: who is "nearby" to inherit XP
+ZOMBIE_SIZE_MAX = int(CELL_SIZE * 1.8)   # cap size when buffed by XP
+SPOIL_POP_VY = -30               # initial pop-up velocity for coin
+SPOIL_GRAVITY = 80               # settle speed for coin pop
 
 BOSS_EVERY_N_LEVELS = 5
 BOSS_HP_MULT = 4.0
@@ -1064,11 +1069,20 @@ class Zombie:
             self.xp -= self.xp_to_next
             self.z_level += 1
             self.xp_to_next = int(self.xp_to_next * 1.25 + 0.5)
-            # small stat bumps
+            # stat bumps
             self.attack = int(self.attack * 1.08 + 1)
             self.max_hp = int(self.max_hp * 1.10 + 1)
             self.hp = min(self.max_hp, self.hp + 2)
-            self.speed += 0  # keep speed mostly stable (change if you want)
+            # SIZE growth (keep center & clamp)
+            base = CELL_SIZE - 6
+            new_size = min(ZOMBIE_SIZE_MAX, base + (self.z_level - 1) * 2)
+            if new_size != self.size:
+                cx, cy = self.rect.center
+                self.size = new_size
+                self.rect = pygame.Rect(0, 0, self.size, self.size)
+                self.rect.center = (cx, cy)
+                self.x = float(self.rect.x)
+                self.y = float(self.rect.y - INFO_BAR_HEIGHT)
 
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
         base_attack = self.attack
@@ -1108,9 +1122,10 @@ class Zombie:
                             if ob.health <= 0:
                                 gp = ob.grid_pos
                                 if gp in game_state.obstacles: del game_state.obstacles[gp]
-                                game_state.spoils_gained += SPOILS_PER_BLOCK
+                                # drop spoils on the ground
+                                cx, cy = ob.rect.centerx, ob.rect.centery
+                                game_state.spawn_spoils(cx, cy, SPOILS_PER_BLOCK)
                                 self.gain_xp(XP_ZOMBIE_BLOCK)
-
                         blocked = True
                         break
                     elif ob.type == "Indestructible":
@@ -1226,20 +1241,14 @@ class Bullet:
                     z.hp -= self.damage
 
                 if z.hp <= 0:
-                    # spoils & player XP
-                    game_state.spoils_gained += SPOILS_PER_KILL
-                    if player: player.add_xp(XP_PLAYER_KILL + max(0, z.z_level - 1) * 2)
-
-                    # XP inheritance: dead special gives a portion of XP to survivors
-                    if getattr(z, "is_elite", False) or getattr(z, "is_boss", False):
-                        if zombies:
-                            portion = int(z.xp * XP_TRANSFER_RATIO)
-                            if portion > 0:
-                                share = max(1, portion // len(zombies))
-                                for zz in zombies:
-                                    if zz is not z:
-                                        zz.gain_xp(share)
-
+                    # drop spoils where it died
+                    cx, cy = z.rect.centerx, z.rect.centery
+                    game_state.spawn_spoils(cx, cy, SPOILS_PER_KILL)
+                    # player rewards
+                    if player:
+                        player.add_xp(XP_PLAYER_KILL + max(0, z.z_level - 1) * 2)
+                    # XP inheritance → nearby monsters only
+                    transfer_xp_to_neighbors(z, zombies)
                     zombies.remove(z)
                 self.alive = False
                 return
@@ -1253,14 +1262,35 @@ class Bullet:
                 elif ob.type == "Destructible":
                     ob.health = (ob.health or 0) - BULLET_DAMAGE_BLOCK
                     if ob.health <= 0:
+                        cx, cy = ob.rect.centerx, ob.rect.centery
                         del game_state.obstacles[gp]
-                        game_state.spoils_gained += SPOILS_PER_BLOCK
+                        # drop spoils for block destruction
+                        game_state.spawn_spoils(cx, cy, SPOILS_PER_BLOCK)
                         if player: player.add_xp(XP_PLAYER_BLOCK)
                     self.alive = False;
                     return
 
     def draw(self, screen, cam_x, cam_y):
         pygame.draw.circle(screen, (255, 255, 255), (int(self.x - cam_x), int(self.y - cam_y)), BULLET_RADIUS)
+
+class Spoil:
+    """A coin-like pickup worth 1 spoil by default."""
+    def __init__(self, x_px: float, y_px: float, value: int = 1):
+        self.x = float(x_px)
+        self.y = float(y_px)
+        self.value = int(value)
+        self.r = 6
+        self.rect = pygame.Rect(int(self.x - self.r), int(self.y - self.r), self.r * 2, self.r * 2)
+        # small pop-up motion for feel
+        self.vy = float(SPOIL_POP_VY)
+        self.life = 0.25  # seconds of pop time
+
+    def update(self, dt: float):
+        if self.life > 0:
+            self.y += self.vy * dt
+            self.vy += SPOIL_GRAVITY * dt
+            self.life -= dt
+        self.rect.center = (int(self.x), int(self.y))
 
 
 class EnemyShot:
@@ -1341,6 +1371,25 @@ def sign(v): return 1 if v > 0 else (-1 if v < 0 else 0)
 
 
 def heuristic(a, b): return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
+                             ratio: float = XP_TRANSFER_RATIO,
+                             radius: int = XP_INHERIT_RADIUS):
+    """On death, share a portion of dead_z's XP to nearby survivors."""
+    if not zombies or ratio <= 0:
+        return
+    cx, cy = dead_z.rect.centerx, dead_z.rect.centery
+    r2 = radius * radius
+    near = [zz for zz in zombies
+            if zz is not dead_z and (zz.rect.centerx - cx) ** 2 + (zz.rect.centery - cy) ** 2 <= r2]
+    if not near:
+        return
+    portion = int(max(0, dead_z.xp) * ratio)
+    if portion <= 0:
+        return
+    share = max(1, portion // len(near))
+    for t in near:
+        t.gain_xp(share)
 
 
 def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
@@ -1518,6 +1567,7 @@ class GameState:
         self.items_total = len(items)  # track total at start
         # non-colliding visual fillers
         self.decorations = decorations  # list[Tuple[int,int]] grid coords
+        self.spoils = []  # List[Spoil]
         self.spoils_gained = 0
 
     def count_destructible_obstacles(self) -> int:
@@ -1534,6 +1584,25 @@ class GameState:
         if pos in self.obstacles:
             if self.obstacles[pos].type == "Destructible": self.destructible_count -= 1
             del self.obstacles[pos]
+
+    def spawn_spoils(self, x_px: float, y_px: float, count: int = 1):
+        for _ in range(int(max(0, count))):
+            jx = random.uniform(-10, 10)
+            jy = random.uniform(-10, 10)
+            self.spoils.append(Spoil(x_px + jx, y_px + jy, 1))
+
+    def update_spoils(self, dt: float):
+        for s in self.spoils:
+            s.update(dt)
+
+    def collect_spoils(self, player_rect: pygame.Rect) -> int:
+        gained = 0
+        for s in list(self.spoils):
+            if player_rect.colliderect(s.rect):
+                self.spoils.remove(s)
+                self.spoils_gained += s.value
+                gained += s.value
+        return gained
 
 
 # ==================== 游戏渲染函数 ====================
@@ -1609,6 +1678,13 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         cx = gx * CELL_SIZE + CELL_SIZE // 2 - cam_x
         cy = gy * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT - cam_y
         pygame.draw.circle(screen, (70, 80, 70), (cx, cy), max(2, CELL_SIZE // 8))
+
+    # spoils (coins) on the ground
+    for s in getattr(game_state, "spoils", []):
+        sx = int(s.x - cam_x)
+        sy = int(s.y - cam_y)
+        pygame.draw.circle(screen, (255, 215, 80), (sx, sy), s.r)
+        pygame.draw.circle(screen, (255, 255, 200), (sx, sy), s.r, 1)
 
     # player
     player_draw = player.rect.copy()
@@ -1982,6 +2058,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         keys = pygame.key.get_pressed()
         player.move(keys, game_state.obstacles)
         game_state.collect_item(player.rect)
+        game_state.update_spoils(dt)
+        game_state.collect_spoils(player.rect)
 
         # Autofire handling
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
@@ -2015,6 +2093,9 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         for z in list(zombies):
             z.update_special(dt, player, zombies, enemy_shots)
             if z.hp <= 0:
+                # drop spoils & share XP even if it died by fuse/other causes
+                game_state.spawn_spoils(z.rect.centerx, z.rect.centery, SPOILS_PER_KILL)
+                transfer_xp_to_neighbors(z, zombies)
                 zombies.remove(z)
 
         # enemy shots update
@@ -2165,6 +2246,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         keys = pygame.key.get_pressed()
         player.move(keys, game_state.obstacles)
         game_state.collect_item(player.rect)
+        game_state.update_spoils(dt)
+        game_state.collect_spoils(player.rect)
 
         # Autofire
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
@@ -2241,6 +2324,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         for z in list(zombies):
             z.update_special(dt, player, zombies, enemy_shots)
             if z.hp <= 0:
+                # drop spoils & share XP even if it died by fuse/other causes
+                game_state.spawn_spoils(z.rect.centerx, z.rect.centery, SPOILS_PER_KILL)
+                transfer_xp_to_neighbors(z, zombies)
                 zombies.remove(z)
 
         # 敌方弹幕更新
