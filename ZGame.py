@@ -158,6 +158,19 @@ XP_PLAYER_KILL = 6
 XP_PLAYER_BLOCK = 2
 XP_ZOMBIE_BLOCK = 3
 XP_TRANSFER_RATIO = 0.7       # special → survivors
+# ----- player XP rewards by zombie type -----
+XP_PER_ZOMBIE_TYPE = {
+    "basic":   6,
+    "fast":    7,
+    "ranged":  7,
+    "strong": 10,
+    "tank":   12,
+    "suicide": 9,    # if killed before it explodes
+    "buffer":  6,
+    "shielder":8,
+}
+XP_ZLEVEL_BONUS = 2   # bonus XP per zombie level above 1
+
 
 ZOMBIE_XP_TO_LEVEL = 15       # per level step for monsters
 PLAYER_XP_TO_LEVEL = 20       # base; scales by +20%
@@ -1053,11 +1066,12 @@ class Player:
         while self.xp >= self.xp_to_next:
             self.xp -= self.xp_to_next
             self.level += 1
-            self.xp_to_next = int(self.xp_to_next * 1.2 + 0.5)
-            # simple level-up buffs
-            self.bullet_damage += 1
-            self.max_hp += 2
-            self.hp = min(self.hp + 2, self.max_hp)
+            # dynamic curve: ramp a bit faster than before
+            self.xp_to_next = int(self.xp_to_next * 1.25 + 0.5)
+            # small, reasonable level-up benefits
+            self.bullet_damage += 1  # a touch more firepower
+            self.max_hp += 2  # tiny durability growth
+            self.hp = min(self.max_hp, self.hp + 3)  # low heal on level-up
 
     def draw(self, screen):
         pygame.draw.rect(screen, (0, 255, 0), self.rect)
@@ -1292,7 +1306,10 @@ class Bullet:
                         game_state.spawn_spoils(cx, cy, drop_n)
                     # player XP + inheritance if you were already doing that here earlier
                     if player:
-                        player.add_xp(XP_PLAYER_KILL + max(0, z.z_level - 1) * 2)
+                        base_xp = XP_PER_ZOMBIE_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
+                        bonus = max(0, z.z_level - 1) * XP_ZLEVEL_BONUS
+                        player.add_xp(base_xp + bonus)
+
                     transfer_xp_to_neighbors(z, zombies)
                     zombies.remove(z)
 
@@ -1778,7 +1795,7 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
 
         pygame.draw.rect(screen, color, zr)
 
-        # HP 条
+        # HP bar
         try:
             mhp = getattr(zombie, 'max_hp', None) or getattr(zombie, 'hp', 1)
             ratio = max(0.0, min(1.0, float(max(0, zombie.hp)) / float(mhp)))
