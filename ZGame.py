@@ -901,7 +901,7 @@ def show_shop_screen(screen) -> Optional[str]:
 
         close = pygame.Rect(VIEW_W//2 - 100, 360, 200, 56)
         pygame.draw.rect(screen, (50, 50, 50), close, border_radius=10)
-        ctxt = pygame.font.SysFont(None, 32).render("CLOSE", True, (235, 235, 235))
+        ctxt = pygame.font.SysFont(None, 32).render("NEXT", True, (235, 235, 235))
         screen.blit(ctxt, ctxt.get_rect(center=close.center))
 
         pygame.display.flip()
@@ -1723,18 +1723,10 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     for y in range(y0, VIEW_H, CELL_SIZE):
         pygame.draw.line(screen, grid_col, (0, y), (VIEW_W, y), 1)
 
-    # --- Item/Fragment HUD (top-right) ---
-    total_items = getattr(game_state, 'items_total', len(game_state.items))
-    collected = max(0, total_items - len(game_state.items))
-
     # small yellow fragment icon
     icon_x = VIEW_W - 120
     icon_y = 10
     pygame.draw.circle(screen, (255, 255, 0), (icon_x, icon_y + 8), 8)
-
-    # "collected/total" text
-    items_text = font.render(f"{collected}/{total_items}", True, (255, 255, 255))
-    screen.blit(items_text, (icon_x + 18, icon_y))
 
     # --- draw items ---
     for item in game_state.items:
@@ -1743,15 +1735,6 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         sy = int(item.center[1] - cam_y)
         color = (255, 255, 100) if item.is_main else (255, 255, 0)
         pygame.draw.circle(screen, color, (sx, sy), item.radius)
-
-    # --- Spoils HUD (top-right, next to items) ---
-    spoils_total = int(getattr(game_state, "spoils_gained", 0))
-    coin_x = VIEW_W - 220
-    coin_y = 10
-    pygame.draw.circle(screen, (255, 215, 80), (coin_x, coin_y + 8), 8)
-    pygame.draw.circle(screen, (255, 245, 200), (coin_x, coin_y + 8), 8, 1)
-    spoils_text = font.render(f"{spoils_total}", True, (255, 255, 255))
-    screen.blit(spoils_text, (coin_x + 14, coin_y))
 
     # decorations (non-colliding visual fillers)
     for gx, gy in getattr(game_state, 'decorations', []):
@@ -1878,6 +1861,27 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     hp_text = f"{int(player.hp)}/{int(player.max_hp)}"
     hp_img = font_hp.render(hp_text, True, (20, 20, 20))  # digits ON the bar
     screen.blit(hp_img, hp_img.get_rect(center=(bx + bar_w // 2, by + bar_h // 2 + 1)))
+
+    # ---- TOP BAR HUD: Items + Spoils (draw last so nothing covers them) ----
+    hud_font = font_timer  # reuse same size
+
+    # Items (top-right)
+    total_items = getattr(game_state, 'items_total', len(game_state.items))
+    collected = max(0, total_items - len(game_state.items))
+    icon_x = VIEW_W - 120
+    icon_y = 10
+    pygame.draw.circle(screen, (255, 255, 0), (icon_x, icon_y + 8), 8)
+    items_text = hud_font.render(f"{collected}/{total_items}", True, (255, 255, 255))
+    screen.blit(items_text, (icon_x + 18, icon_y))
+
+    # Spoils (coin) (to the left of items)
+    spoils_total = int(META.get("spoils", 0)) + int(getattr(game_state, "spoils_gained", 0))
+    coin_x = VIEW_W - 220
+    coin_y = 10
+    pygame.draw.circle(screen, (255, 215, 80), (coin_x, coin_y + 8), 8)
+    pygame.draw.circle(screen, (255, 245, 200), (coin_x, coin_y + 8), 8, 1)
+    spoils_text = hud_font.render(f"{spoils_total}", True, (255, 255, 255))
+    screen.blit(spoils_text, (coin_x + 14, coin_y))
 
     pygame.display.flip()
     return screen.copy()
