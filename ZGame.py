@@ -1879,6 +1879,22 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     hp_img = font_hp.render(hp_text, True, (20, 20, 20))  # digits ON the bar
     screen.blit(hp_img, hp_img.get_rect(center=(bx + bar_w // 2, by + bar_h // 2 + 1)))
 
+    # --- Player XP bar (under HP bar) ---
+    xp_bar_w, xp_bar_h = bar_w, 6
+    xp_bx, xp_by = bx, by + bar_h + 6  # sits just under the HP bar
+    xp_ratio = 0.0
+    if getattr(player, "xp_to_next", 0) > 0:
+        xp_ratio = max(0.0, min(1.0, float(getattr(player, "xp", 0)) / float(player.xp_to_next)))
+
+    # frame + fill
+    pygame.draw.rect(screen, (60, 60, 60), (xp_bx - 2, xp_by - 2, xp_bar_w + 4, xp_bar_h + 4), border_radius=4)
+    pygame.draw.rect(screen, (40, 40, 40), (xp_bx, xp_by, xp_bar_w, xp_bar_h), border_radius=3)
+    pygame.draw.rect(screen, (120, 110, 255), (xp_bx, xp_by, int(xp_bar_w * xp_ratio), xp_bar_h), border_radius=3)
+
+    # tiny label at left of the bar
+    xp_label = mono_small.render(f"Lv {getattr(player, 'level', 1)}", True, (210, 210, 230))
+    screen.blit(xp_label, (xp_bx + xp_bar_w + 8, xp_by - 6))
+
     # ---- TOP BAR HUD: Items + Spoils (draw last so nothing covers them) ----
     hud_font = font_timer  # reuse same size
 
