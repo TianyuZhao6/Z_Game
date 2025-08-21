@@ -165,6 +165,35 @@ XP_CURVE_SOFTCAP_POWER = 1.6     # how sharp the softcap rises (1.4–1.8 typica
 ELITE_HP_MULT = 2.0
 ELITE_ATK_MULT = 1.5
 ELITE_SPD_ADD = 1
+# ----- monster global scaling (by game level & wave) -----
+MON_HP_GROWTH_PER_LEVEL  = 0.10   # +10% HP per game level
+MON_ATK_GROWTH_PER_LEVEL = 0.08   # +8% ATK per game level
+MON_SPD_ADD_EVERY_LEVELS = 4      # +1 speed every N levels (soft cap below)
+MON_SOFTCAP_LEVEL        = 10     # reduce growth beyond this (diminishing)
+MON_SOFTCAP_FACTOR       = 0.6    # scale growth beyond softcap by this factor
+
+MON_HP_GROWTH_PER_WAVE   = 0.06   # +6% HP per wave
+MON_ATK_GROWTH_PER_WAVE  = 0.05   # +5% ATK per wave
+MON_SPD_ADD_EVERY_WAVES  = 6      # +1 speed every N waves
+
+# ----- elites & bosses -----
+ELITE_BASE_CHANCE        = 0.08   # 8% at level 1
+ELITE_CHANCE_PER_LEVEL   = 0.02   # +2% per game level (clamped)
+ELITE_MAX_CHANCE         = 0.35
+ELITE_HP_MULT_EXTRA      = 1.6    # multiplicative on top of normal scaling
+ELITE_ATK_MULT_EXTRA     = 1.4
+ELITE_SPD_ADD_EXTRA      = 1
+
+BOSS_EVERY_N_LEVELS      = 5
+BOSS_HP_MULT_EXTRA       = 3.0
+BOSS_ATK_MULT_EXTRA      = 2.0
+BOSS_SPD_ADD_EXTRA       = 1
+
+# ----- affixes (small random spice) -----
+AFFIX_CHANCE_BASE        = 0.10
+AFFIX_CHANCE_PER_LEVEL   = 0.02
+AFFIX_CHANCE_MAX         = 0.45
+
 # ----- spoils & XP inheritance tuning -----
 XP_INHERIT_RADIUS = 240          # px: who is "nearby" to inherit XP
 ZOMBIE_SIZE_MAX = int(CELL_SIZE * 1.8)   # cap size when buffed by XP
@@ -1286,6 +1315,8 @@ class Bullet:
                     if player:
                         base_xp = XP_PER_ZOMBIE_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
                         bonus = max(0, z.z_level - 1) * XP_ZLEVEL_BONUS
+                        if getattr(z, "is_elite", False):  base_xp = int(base_xp * 1.5)
+                        if getattr(z, "is_boss", False):  base_xp = int(base_xp * 3.0)
                         player.add_xp(base_xp + bonus)
 
                     transfer_xp_to_neighbors(z, zombies)
@@ -1463,6 +1494,94 @@ def player_xp_required(level: int) -> int:
         softcap_part = (L - XP_CURVE_SOFTCAP_START) ** XP_CURVE_SOFTCAP_POWER
     return int(exp_part + linear_part + softcap_part + 0.5)
 
+def _diminish_growth(level: int, per_level: float) -> float:
+    """Apply softcap to per-level growth after MON_SOFTCAP_LEVEL."""
+    if level <= MON_SOFTCAP_LEVEL:
+        return per_level * level
+    base = per_level * MON_SOFTCAP_LEVEL
+    extra = (level - MON_SOFTCAP_LEVEL) * per_level * MON_SOFTCAP_FACTOR
+    return base + extra
+
+def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | float]:
+    """
+    Return additive/multipliers for zombie stats based on the current game level & wave.
+    We return {'hp_mult', 'atk_mult', 'spd_add', 'elite?', 'boss?'}.
+    """
+    L = max(0, int(game_level))
+    W = max(0, int(wave_index))
+
+    # multiplicative curves
+    hp_mult  = (1.0 + _diminish_growth(L, MON_HP_GROWTH_PER_LEVEL)) * (1.0 + W * MON_HP_GROWTH_PER_WAVE)
+    atk_mult = (1.0 + _diminish_growth(L, MON_ATK_GROWTH_PER_LEVEL)) * (1.0 + W * MON_ATK_GROWTH_PER_WAVE)
+
+    # additive speed bumps
+    spd_add = (L // MON_SPD_ADD_EVERY_LEVELS) + (W // MON_SPD_ADD_EVERY_WAVES)
+
+    # elites (chance increases with game level)
+    elite_p = min(ELITE_MAX_CHANCE, ELITE_BASE_CHANCE + L * ELITE_CHANCE_PER_LEVEL)
+    is_elite = (random.random() < elite_p)
+
+    # boss only on boss levels (your global const already exists)
+    is_boss = ((L + 1) % BOSS_EVERY_N_LEVELS == 0) and (W == 0)  # first wave of boss level
+
+    # apply elite/boss extras to the multipliers
+    if is_elite:
+        hp_mult  *= ELITE_HP_MULT_EXTRA
+        atk_mult *= ELITE_ATK_MULT_EXTRA
+        spd_add  += ELITE_SPD_ADD_EXTRA
+    if is_boss:
+        hp_mult  *= BOSS_HP_MULT_EXTRA
+        atk_mult *= BOSS_ATK_MULT_EXTRA
+        spd_add  += BOSS_SPD_ADD_EXTRA
+
+    return {"hp_mult": hp_mult, "atk_mult": atk_mult, "spd_add": spd_add, "elite": is_elite, "boss": is_boss}
+
+def roll_affix(game_level: int) -> Optional[str]:
+    """Roll a lightweight affix occasionally; return name or None."""
+    p = min(AFFIX_CHANCE_MAX, AFFIX_CHANCE_BASE + game_level * AFFIX_CHANCE_PER_LEVEL)
+    if random.random() >= p:
+        return None
+    # three simple mature affixes
+    return random.choice(["frenzied", "armored", "veteran"])
+
+def apply_affix(z: "Zombie", affix: Optional[str]):
+    """Mutate a zombie with the chosen affix. Small, readable bonuses."""
+    if not affix:
+        return
+    if affix == "frenzied":
+        z.attack = int(z.attack * 1.15)
+        z.speed  = int(z.speed + 1)
+        z._affix_tag = "F"  # tag for draw
+    elif affix == "armored":
+        z.max_hp = int(z.max_hp * 1.35)
+        z.hp     = int(z.hp * 1.35)
+        z.speed  = max(1, z.speed - 1)
+        z._affix_tag = "A"
+    elif affix == "veteran":
+        z.z_level += 1
+        z.attack = int(z.attack * 1.08 + 1)
+        z.max_hp = int(z.max_hp * 1.10 + 1)
+        z.hp = min(z.max_hp, z.hp + 2)
+        z._affix_tag = "V"
+
+def make_scaled_zombie(pos: Tuple[int,int], ztype: str, game_level: int, wave_index: int) -> "Zombie":
+    """Factory: spawn a zombie already scaled, with elite/boss & affixes applied."""
+    z = Zombie(pos, speed=ZOMBIE_SPEED, ztype=ztype)
+    s = monster_scalars_for(game_level, wave_index)
+    # bake stats
+    z.attack = max(1, int(z.attack * s["atk_mult"]))
+    z.max_hp = max(1, int(z.max_hp * s["hp_mult"]))
+    z.hp     = z.max_hp
+    z.speed  = int(z.speed + s["spd_add"])
+    z.is_elite = bool(s["elite"])
+    z.is_boss  = bool(s["boss"])
+
+    # small affix roll
+    aff = roll_affix(game_level)
+    apply_affix(z, aff)
+    z._affix_name = aff
+
+    return z
 
 
 def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
@@ -1809,6 +1928,17 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
                 color = (255, 220, 100)
 
         pygame.draw.rect(screen, color, zr)
+        # Elite/Boss outline
+        if getattr(zombie, "is_boss", False):
+            pygame.draw.rect(screen, (255, 215, 0), zr, 3)  # gold outline
+        elif getattr(zombie, "is_elite", False):
+            pygame.draw.rect(screen, (180, 220, 255), zr, 2)  # blue outline
+
+        # Affix letter (tiny)
+        tag = getattr(zombie, "_affix_tag", None)
+        if tag:
+            aff_font = pygame.font.SysFont(None, 18)
+            screen.blit(aff_font.render(tag, True, (0, 0, 0)), (zr.x + 3, zr.y + 2))
 
         # HP bar
         try:
@@ -2138,7 +2268,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         spots = find_spawn_positions(add_n)
         for gx, gy in spots:
             t = pick_zombie_type_weighted()
-            z = Zombie((gx, gy), speed=ZOMBIE_SPEED, ztype=t)
+            z = make_scaled_zombie((gx, gy), t, current_level, wave_index)
             zombies.append(z)
 
     running = True
@@ -2166,7 +2296,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 spots = find_spawn_positions(want)
                 for gx, gy in spots:
                     t = pick_zombie_type_weighted()
-                    z = Zombie((gx, gy), speed=ZOMBIE_SPEED, ztype=t)
+                    z = make_scaled_zombie((gx, gy), t, current_level, wave_index)
                     zombies.append(z)
                 if spots:
                     wave_index += 1
@@ -2436,7 +2566,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         if r <= acc:
                             ztype = t
                             break
-                    zombies.append(Zombie((gx, gy), speed=ZOMBIE_SPEED, ztype=ztype))
+                    zombies.append(make_scaled_zombie((gx, gy), ztype, current_level, wave_index))
                 if spots:
                     wave_index += 1
 
