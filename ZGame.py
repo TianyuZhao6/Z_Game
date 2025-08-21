@@ -84,27 +84,6 @@ def pause_game_modal(screen, bg_surface, clock, time_left):
     flush_events()
     return choice, time_left
 
-def resize_world_to_view():
-    """Expand GRID_SIZE so the simulated world covers the whole visible area."""
-    global GRID_SIZE, WINDOW_SIZE, TOTAL_HEIGHT
-    # how many cells are visible horizontally/vertically
-    cols_needed = math.ceil(VIEW_W / CELL_SIZE)
-    rows_needed = math.ceil((VIEW_H - INFO_BAR_HEIGHT) / CELL_SIZE)
-    # keep using a square grid; pick the max so both axes are covered
-    new_size = max(GRID_SIZE, cols_needed, rows_needed)
-    if new_size != GRID_SIZE:
-        GRID_SIZE = new_size
-        WINDOW_SIZE = GRID_SIZE * CELL_SIZE
-        TOTAL_HEIGHT = WINDOW_SIZE + INFO_BAR_HEIGHT
-
-def roll_spoils_for_zombie(z: "Zombie") -> int:
-    """Return number of coins to drop for a killed zombie, applying drop chance."""
-    if random.random() > SPOILS_DROP_CHANCE:
-        return 0
-    t = getattr(z, "type", "basic")
-    lo, hi = SPOILS_PER_TYPE.get(t, (1, 1))
-    return random.randint(int(lo), int(hi))
-
 
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
@@ -174,6 +153,14 @@ XP_ZLEVEL_BONUS = 2   # bonus XP per zombie level above 1
 
 ZOMBIE_XP_TO_LEVEL = 15       # per level step for monsters
 PLAYER_XP_TO_LEVEL = 20       # base; scales by +20%
+# ----- player XP curve tuning -----
+# Requirement to go from level L -> L+1:
+#   base * (exp_growth ** (L-1)) + linear_growth * L + softcap_bump(L)
+XP_CURVE_EXP_GROWTH = 1.12       # 10–13% feels good for roguelites; we use 12%
+XP_CURVE_LINEAR = 3              # small linear term to smooth gaps
+XP_CURVE_SOFTCAP_START = 7       # start softly increasing after level 7
+XP_CURVE_SOFTCAP_POWER = 1.6     # how sharp the softcap rises (1.4–1.8 typical)
+
 
 ELITE_HP_MULT = 2.0
 ELITE_ATK_MULT = 1.5
@@ -279,19 +266,6 @@ os.makedirs(SAVE_DIR, exist_ok=True)
 SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
 
 
-# def save_progress(current_level: int, zombie_cards_collected: List[str]) -> None:
-#     """Save lightweight meta progress (resume from level start)."""
-#     data = {
-#         "mode": "meta",
-#         "version": 2,
-#         "current_level": int(current_level),
-#         "zombie_cards_collected": list(zombie_cards_collected),
-#     }
-#     try:
-#         with open(SAVE_FILE, 'w', encoding='utf-8') as f:
-#             json.dump(data, f)
-#     except Exception as e:
-#         print(f"[Save] Failed to write save file: {e}", file=sys.stderr)
 def save_progress(current_level: int = 0,
                   zombie_cards_collected: Optional[List[str]] = None,
                   *,
@@ -1013,7 +987,8 @@ class Player:
         # progression
         self.level = 1
         self.xp = 0
-        self.xp_to_next = PLAYER_XP_TO_LEVEL
+        self.xp_to_next = player_xp_required(self.level)
+
 
         # per-run upgrades from shop (applied on spawn)
         self.bullet_damage = BULLET_DAMAGE_ZOMBIE + META.get("dmg", 0)
@@ -1063,15 +1038,18 @@ class Player:
 
     def add_xp(self, amount: int):
         self.xp += int(max(0, amount))
+        # multiple level-ups if a big XP spike arrives
         while self.xp >= self.xp_to_next:
             self.xp -= self.xp_to_next
             self.level += 1
-            # dynamic curve: ramp a bit faster than before
-            self.xp_to_next = int(self.xp_to_next * 1.25 + 0.5)
+
             # small, reasonable level-up benefits
-            self.bullet_damage += 1  # a touch more firepower
+            self.bullet_damage += 1  # steady firepower growth
             self.max_hp += 2  # tiny durability growth
             self.hp = min(self.max_hp, self.hp + 3)  # low heal on level-up
+
+            # recompute requirement from the curve for the NEW level
+            self.xp_to_next = player_xp_required(self.level)
 
     def draw(self, screen):
         pygame.draw.rect(screen, (0, 255, 0), self.rect)
@@ -1449,6 +1427,43 @@ def sign(v): return 1 if v > 0 else (-1 if v < 0 else 0)
 
 
 def heuristic(a, b): return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+def resize_world_to_view():
+    """Expand GRID_SIZE so the simulated world covers the whole visible area."""
+    global GRID_SIZE, WINDOW_SIZE, TOTAL_HEIGHT
+    # how many cells are visible horizontally/vertically
+    cols_needed = math.ceil(VIEW_W / CELL_SIZE)
+    rows_needed = math.ceil((VIEW_H - INFO_BAR_HEIGHT) / CELL_SIZE)
+    # keep using a square grid; pick the max so both axes are covered
+    new_size = max(GRID_SIZE, cols_needed, rows_needed)
+    if new_size != GRID_SIZE:
+        GRID_SIZE = new_size
+        WINDOW_SIZE = GRID_SIZE * CELL_SIZE
+        TOTAL_HEIGHT = WINDOW_SIZE + INFO_BAR_HEIGHT
+
+def roll_spoils_for_zombie(z: "Zombie") -> int:
+    """Return number of coins to drop for a killed zombie, applying drop chance."""
+    if random.random() > SPOILS_DROP_CHANCE:
+        return 0
+    t = getattr(z, "type", "basic")
+    lo, hi = SPOILS_PER_TYPE.get(t, (1, 1))
+    return random.randint(int(lo), int(hi))
+
+def player_xp_required(level: int) -> int:
+    """
+    XP required to go from `level` -> `level+1`.
+    Early levels are quick; later levels ramp reasonably (like mature ARPG/roguelites).
+    """
+    L = max(1, int(level))
+    base = PLAYER_XP_TO_LEVEL
+    exp_part = base * (XP_CURVE_EXP_GROWTH ** (L - 1))
+    linear_part = XP_CURVE_LINEAR * L
+    softcap_part = 0.0
+    if L >= XP_CURVE_SOFTCAP_START:
+        softcap_part = (L - XP_CURVE_SOFTCAP_START) ** XP_CURVE_SOFTCAP_POWER
+    return int(exp_part + linear_part + softcap_part + 0.5)
+
+
 
 def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
                              ratio: float = XP_TRANSFER_RATIO,
