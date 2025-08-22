@@ -110,95 +110,94 @@ MIN_ITEMS = 8  # ensure enough items on larger maps
 DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 5
 ZOMBIE_SPEED = 2
+ZOMBIE_SPEED_MAX = 6
 ZOMBIE_ATTACK = 10
 # ----- meta progression -----
 SPOILS_PER_KILL = 3
 SPOILS_PER_BLOCK = 1
 # ----- spoils UI & drop tuning -----
-SPOILS_DROP_CHANCE = 0.50      # 50% drop chance on zombie deaths
-SPOILS_PER_TYPE = {            # average coins per zombie type (rounded when spawning)
-    "basic":   (1, 1),         # min, max
-    "fast":    (1, 2),
-    "strong":  (2, 3),
-    "tank":    (2, 4),
-    "ranged":  (1, 3),
+SPOILS_DROP_CHANCE = 0.50  # 50% drop chance on zombie deaths
+SPOILS_PER_TYPE = {  # average coins per zombie type (rounded when spawning)
+    "basic": (1, 1),  # min, max
+    "fast": (1, 2),
+    "strong": (2, 3),
+    "tank": (2, 4),
+    "ranged": (1, 3),
     "suicide": (1, 2),
-    "buffer":  (2, 3),
-    "shielder":(2, 3),
-    "bomber":  (1, 2),         # alias for suicide, if used
+    "buffer": (2, 3),
+    "shielder": (2, 3),
+    "bomber": (1, 2),  # alias for suicide, if used
 }
 # coin bounce feel
-COIN_POP_VY = -120.0           # initial vertical (screen-space) pop
-COIN_GRAVITY = 400.0           # gravity pulling coin back to ground
-COIN_RESTITUTION = 0.45        # energy kept on bounce
-COIN_MIN_BOUNCE = 30.0         # stop bouncing when below this upward speed
+COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
+COIN_GRAVITY = 400.0  # gravity pulling coin back to ground
+COIN_RESTITUTION = 0.45  # energy kept on bounce
+COIN_MIN_BOUNCE = 30.0  # stop bouncing when below this upward speed
 
 XP_PLAYER_KILL = 6
 XP_PLAYER_BLOCK = 2
 XP_ZOMBIE_BLOCK = 3
-XP_TRANSFER_RATIO = 0.7       # special → survivors
+XP_TRANSFER_RATIO = 0.7  # special → survivors
 # ----- player XP rewards by zombie type -----
 XP_PER_ZOMBIE_TYPE = {
-    "basic":   6,
-    "fast":    7,
-    "ranged":  7,
+    "basic": 6,
+    "fast": 7,
+    "ranged": 7,
     "strong": 10,
-    "tank":   12,
-    "suicide": 9,    # if killed before it explodes
-    "buffer":  6,
-    "shielder":8,
+    "tank": 12,
+    "suicide": 9,  # if killed before it explodes
+    "buffer": 6,
+    "shielder": 8,
 }
-XP_ZLEVEL_BONUS = 2   # bonus XP per zombie level above 1
+XP_ZLEVEL_BONUS = 2  # bonus XP per zombie level above 1
 
-
-ZOMBIE_XP_TO_LEVEL = 15       # per level step for monsters
-PLAYER_XP_TO_LEVEL = 20       # base; scales by +20%
+ZOMBIE_XP_TO_LEVEL = 15  # per level step for monsters
+PLAYER_XP_TO_LEVEL = 20  # base; scales by +20%
 # ----- player XP curve tuning -----
 # Requirement to go from level L -> L+1:
 #   base * (exp_growth ** (L-1)) + linear_growth * L + softcap_bump(L)
-XP_CURVE_EXP_GROWTH = 1.12       # 10–13% feels good for roguelites; we use 12%
-XP_CURVE_LINEAR = 3              # small linear term to smooth gaps
-XP_CURVE_SOFTCAP_START = 7       # start softly increasing after level 7
-XP_CURVE_SOFTCAP_POWER = 1.6     # how sharp the softcap rises (1.4–1.8 typical)
-
+XP_CURVE_EXP_GROWTH = 1.12  # 10–13% feels good for roguelites; we use 12%
+XP_CURVE_LINEAR = 3  # small linear term to smooth gaps
+XP_CURVE_SOFTCAP_START = 7  # start softly increasing after level 7
+XP_CURVE_SOFTCAP_POWER = 1.6  # how sharp the softcap rises (1.4–1.8 typical)
 
 ELITE_HP_MULT = 2.0
 ELITE_ATK_MULT = 1.5
 ELITE_SPD_ADD = 1
 # ----- monster global scaling (by game level & wave) -----
-MON_HP_GROWTH_PER_LEVEL  = 0.10   # +10% HP per game level
-MON_ATK_GROWTH_PER_LEVEL = 0.08   # +8% ATK per game level
-MON_SPD_ADD_EVERY_LEVELS = 4      # +1 speed every N levels (soft cap below)
-MON_SOFTCAP_LEVEL        = 10     # reduce growth beyond this (diminishing)
-MON_SOFTCAP_FACTOR       = 0.6    # scale growth beyond softcap by this factor
+MON_HP_GROWTH_PER_LEVEL = 0.10  # +10% HP per game level
+MON_ATK_GROWTH_PER_LEVEL = 0.08  # +8% ATK per game level
+MON_SPD_ADD_EVERY_LEVELS = 4  # +1 speed every N levels (soft cap below)
+MON_SOFTCAP_LEVEL = 10  # reduce growth beyond this (diminishing)
+MON_SOFTCAP_FACTOR = 0.6  # scale growth beyond softcap by this factor
 
-MON_HP_GROWTH_PER_WAVE   = 0.06   # +6% HP per wave
-MON_ATK_GROWTH_PER_WAVE  = 0.05   # +5% ATK per wave
-MON_SPD_ADD_EVERY_WAVES  = 6      # +1 speed every N waves
+MON_HP_GROWTH_PER_WAVE = 0.06  # +6% HP per wave
+MON_ATK_GROWTH_PER_WAVE = 0.05  # +5% ATK per wave
+MON_SPD_ADD_EVERY_WAVES = 6  # +1 speed every N waves
 
 # ----- elites & bosses -----
-ELITE_BASE_CHANCE        = 0.08   # 8% at level 1
-ELITE_CHANCE_PER_LEVEL   = 0.02   # +2% per game level (clamped)
-ELITE_MAX_CHANCE         = 0.35
-ELITE_HP_MULT_EXTRA      = 1.6    # multiplicative on top of normal scaling
-ELITE_ATK_MULT_EXTRA     = 1.4
-ELITE_SPD_ADD_EXTRA      = 1
+ELITE_BASE_CHANCE = 0.08  # 8% at level 1
+ELITE_CHANCE_PER_LEVEL = 0.02  # +2% per game level (clamped)
+ELITE_MAX_CHANCE = 0.35
+ELITE_HP_MULT_EXTRA = 1.6  # multiplicative on top of normal scaling
+ELITE_ATK_MULT_EXTRA = 1.4
+ELITE_SPD_ADD_EXTRA = 1
 
-BOSS_EVERY_N_LEVELS      = 5
-BOSS_HP_MULT_EXTRA       = 3.0
-BOSS_ATK_MULT_EXTRA      = 2.0
-BOSS_SPD_ADD_EXTRA       = 1
+BOSS_EVERY_N_LEVELS = 5
+BOSS_HP_MULT_EXTRA = 3.0
+BOSS_ATK_MULT_EXTRA = 2.0
+BOSS_SPD_ADD_EXTRA = 1
 
 # ----- affixes (small random spice) -----
-AFFIX_CHANCE_BASE        = 0.10
-AFFIX_CHANCE_PER_LEVEL   = 0.02
-AFFIX_CHANCE_MAX         = 0.45
+AFFIX_CHANCE_BASE = 0.10
+AFFIX_CHANCE_PER_LEVEL = 0.02
+AFFIX_CHANCE_MAX = 0.45
 
 # ----- spoils & XP inheritance tuning -----
-XP_INHERIT_RADIUS = 240          # px: who is "nearby" to inherit XP
-ZOMBIE_SIZE_MAX = int(CELL_SIZE * 1.8)   # cap size when buffed by XP
-SPOIL_POP_VY = -30               # initial pop-up velocity for coin
-SPOIL_GRAVITY = 80               # settle speed for coin pop
+XP_INHERIT_RADIUS = 240  # px: who is "nearby" to inherit XP
+ZOMBIE_SIZE_MAX = int(CELL_SIZE * 1.8)  # cap size when buffed by XP
+SPOIL_POP_VY = -30  # initial pop-up velocity for coin
+SPOIL_GRAVITY = 80  # settle speed for coin pop
 
 BOSS_EVERY_N_LEVELS = 5
 BOSS_HP_MULT = 4.0
@@ -246,6 +245,35 @@ SHIELD_RADIUS = 220  # 护盾怪范围
 SHIELD_AMOUNT = 25  # 护盾值
 SHIELD_DURATION = 5.0
 SHIELD_COOLDOWN = 9.0
+# ----- threat budget spawning -----
+THREAT_BUDGET_BASE = 6  # base points for level 0 (Lv1 in UI)
+THREAT_BUDGET_EXP = 1.18  # exponential growth per level (≈+18%/lvl feels roguelite)
+THREAT_BUDGET_MIN = 5  # never below this
+THREAT_BOSS_BONUS = 1.5  # first spawn on boss level gets +50% budget
+
+# cost per zombie type (integer points)
+THREAT_COSTS = {
+    "basic": 1,
+    "fast": 2,
+    "ranged": 3,
+    "suicide": 2,
+    "buffer": 3,
+    "shielder": 3,
+    "strong": 4,
+    "tank": 5,
+}
+# (Optional) relative preference if multiple types fit the remaining budget
+THREAT_WEIGHTS = {
+    "basic": 50,
+    "fast": 20,
+    "ranged": 16,
+    "suicide": 14,
+    "buffer": 10,
+    "shielder": 10,
+    "strong": 8,
+    "tank": 6,
+}
+
 # --- combat tuning (Brotato-like) ---
 FIRE_RATE = None  # shots per second; if None, derive from BULLET_SPACING_PX
 BULLET_SPEED = 1000.0  # pixels per second (controls travel speed)
@@ -873,6 +901,7 @@ def show_settings_popup(screen, background_surf):
         draw_ui()
         clock.tick(60)
 
+
 def show_shop_screen(screen) -> Optional[str]:
     """Spend META['spoils'] on small upgrades. ESC opens Pause; return action or None when closed."""
     clock = pygame.time.Clock()
@@ -881,12 +910,13 @@ def show_shop_screen(screen) -> Optional[str]:
 
     # pseudo-random offers
     catalog = [
-        {"name": "+1 Damage",       "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
-        {"name": "+5% Fire Rate",   "cost": 7, "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
-        {"name": "+1 Speed",        "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
-        {"name": "+5 Max HP",       "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
-        {"name": "Reroll Offers",   "cost": 3, "apply": "reroll"},
+        {"name": "+1 Damage", "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
+        {"name": "+5% Fire Rate", "cost": 7, "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
+        {"name": "+1 Speed", "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
+        {"name": "+5 Max HP", "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
+        {"name": "Reroll Offers", "cost": 3, "apply": "reroll"},
     ]
+
     def roll_offers():
         pool = [c for c in catalog if c["name"] != "Reroll Offers"]
         offers = random.sample(pool, k=min(4, len(pool)))
@@ -898,15 +928,15 @@ def show_shop_screen(screen) -> Optional[str]:
     while True:
         # draw
         screen.fill((16, 16, 18))
-        screen.blit(title.render("TRADER", True, (235, 235, 235)), (VIEW_W//2 - 90, 80))
+        screen.blit(title.render("TRADER", True, (235, 235, 235)), (VIEW_W // 2 - 90, 80))
         money = font.render(f"Spoils: {META['spoils']}", True, (255, 230, 120))
-        screen.blit(money, (VIEW_W//2 - 70, 130))
+        screen.blit(money, (VIEW_W // 2 - 70, 130))
 
         rects = []
-        start_x = VIEW_W//2 - 2*160 + 20
+        start_x = VIEW_W // 2 - 2 * 160 + 20
         y = 200
         for i, it in enumerate(offers):
-            r = pygame.Rect(start_x + i*160, y, 150, 120)
+            r = pygame.Rect(start_x + i * 160, y, 150, 120)
             pygame.draw.rect(screen, (40, 40, 42), r, border_radius=10)
             pygame.draw.rect(screen, (80, 80, 84), r, 2, border_radius=10)
             name = font.render(it["name"], True, (230, 230, 230))
@@ -915,7 +945,7 @@ def show_shop_screen(screen) -> Optional[str]:
             screen.blit(cost, (r.x + 10, r.y + 60))
             rects.append((r, it))
 
-        close = pygame.Rect(VIEW_W//2 - 100, 360, 200, 56)
+        close = pygame.Rect(VIEW_W // 2 - 100, 360, 200, 56)
         pygame.draw.rect(screen, (50, 50, 50), close, border_radius=10)
         ctxt = pygame.font.SysFont(None, 32).render("NEXT", True, (235, 235, 235))
         screen.blit(ctxt, ctxt.get_rect(center=close.center))
@@ -925,7 +955,8 @@ def show_shop_screen(screen) -> Optional[str]:
         # input
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
+                pygame.quit();
+                sys.exit()
 
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 # pause menu over the shop; continue returns to shop, others bubble up
@@ -953,6 +984,125 @@ def show_shop_screen(screen) -> Optional[str]:
 
         clock.tick(60)
 
+
+def is_boss_level(level_idx_zero_based: int) -> bool:
+    # UI shows Lv = level_idx_zero_based + 1
+    return ((level_idx_zero_based + 1) % BOSS_EVERY_N_LEVELS) == 0
+
+
+def budget_for_level(level_idx_zero_based: int) -> int:
+    # Identical within level; exponential per level (clamped to a sane minimum)
+    return max(THREAT_BUDGET_MIN,
+               int(round(THREAT_BUDGET_BASE * (THREAT_BUDGET_EXP ** level_idx_zero_based))))
+
+
+def _pick_type_by_budget(rem: int) -> Optional[str]:
+    # choose among types whose cost <= remaining budget, weighted by THREAT_WEIGHTS
+    choices = [(t, w) for t, w in THREAT_WEIGHTS.items() if THREAT_COSTS.get(t, 999) <= rem]
+    if not choices:
+        return None
+    total = sum(w for _, w in choices)
+    r = random.uniform(0, total)
+    acc = 0.0
+    for t, w in choices:
+        acc += w
+        if r <= acc:
+            return t
+    return choices[-1][0]
+
+
+def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Zombie"], want: int) -> List[
+    Tuple[int, int]]:
+    """Reuse your existing constraints: not blocked, not too close to player, not overlapping zombies."""
+    all_pos = [(x, y) for x in range(GRID_SIZE) for y in range(GRID_SIZE)]
+    blocked = set(game_state.obstacles.keys()) | set((i.x, i.y) for i in getattr(game_state, "items", []))
+    px, py = int(player.rect.centerx // CELL_SIZE), int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE)
+    # Manhattan ≥ 6 tiles from player like before
+    cand = [p for p in all_pos if p not in blocked and abs(p[0] - px) + abs(p[1] - py) >= 6]
+    random.shuffle(cand)
+    zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in zombies}
+    out = []
+    for p in cand:
+        if p in zcells:
+            continue
+        out.append(p)
+        if len(out) >= want:
+            break
+    return out
+
+
+def promote_to_boss(z: "Zombie"):
+    """Promote a single zombie instance to boss (stats on top of current scaling)."""
+    z.is_boss = True
+    z.max_hp = int(z.max_hp * BOSS_HP_MULT_EXTRA);
+    z.hp = z.max_hp
+    z.attack = int(z.attack * BOSS_ATK_MULT_EXTRA)
+    z.speed += BOSS_SPD_ADD_EXTRA
+
+
+def spawn_wave_with_budget(game_state: "GameState",
+                           player: "Player",
+                           current_level: int,
+                           wave_index: int,
+                           zombies: List["Zombie"],
+                           cap: int) -> int:
+    """
+    Spend the per-level budget on new zombies, respecting cap.
+    Returns the number spawned.
+    """
+    if len(zombies) >= cap:
+        return 0
+
+    # base budget for this level (identical every spawn this level)
+    budget = budget_for_level(current_level)
+
+    # boss level first spawn: extra budget & force exactly one boss
+    force_boss = is_boss_level(current_level) and (wave_index == 0)
+    if force_boss:
+        budget = int(budget * THREAT_BOSS_BONUS)
+
+    # optimistic position pool (ask for up to budget cells)
+    spots = _spawn_positions(game_state, player, zombies, want=budget)
+    spawned = 0
+    boss_done = False
+
+    # spend budget until no type fits or cap/positions exhausted
+    i = 0
+    while i < len(spots) and len(zombies) < cap:
+        gx, gy = spots[i]
+        i += 1
+
+        # if we must place a boss, do it once, then continue budget spending
+        if force_boss and not boss_done:
+            # create a durable type as base; pass wave_index=0 so make_scaled_zombie can apply "first-wave" scaling
+            z = make_scaled_zombie((gx, gy), "tank", current_level, 0)
+            # ensure only this one becomes a boss even if make_scaled_zombie marks others: explicitly promote
+            promote_to_boss(z)
+            zombies.append(z)
+            spawned += 1
+            boss_done = True
+            # no budget cost for the boss itself (or you can subtract THREAT_COSTS["tank"]*something if you prefer)
+            continue
+
+        # choose a type that fits remaining budget
+        remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in zombies if
+                                 getattr(z, "_spawn_wave_tag", -1) == wave_index)
+        t = _pick_type_by_budget(max(1, remaining))
+        if not t:
+            break  # can't afford any type
+
+        z = make_scaled_zombie((gx, gy), t,
+                               current_level,
+                               # IMPORTANT: if this is a boss level first wave,
+                               # pass wave_index=1 for non-boss spawns to avoid accidental boss flag in older code
+                               (1 if (is_boss_level(current_level) and wave_index == 0) else wave_index))
+        # mark which wave inserted this zombie (used above to compute remaining)
+        z._spawn_wave_tag = wave_index
+
+        zombies.append(z)
+        spawned += 1
+
+    return spawned
 
 
 # ==================== 数据结构 ====================
@@ -1017,7 +1167,6 @@ class Player:
         self.level = 1
         self.xp = 0
         self.xp_to_next = player_xp_required(self.level)
-
 
         # per-run upgrades from shop (applied on spawn)
         self.bullet_damage = BULLET_DAMAGE_ZOMBIE + META.get("dmg", 0)
@@ -1152,23 +1301,26 @@ class Zombie:
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
         base_attack = self.attack
         base_speed = self.speed
-        # 应用来自 buffer 的临时增益
+
+        # apply temporary BUFF (from buffers)
         if getattr(self, "buff_t", 0.0) > 0.0:
             base_attack = int(base_attack * getattr(self, "buff_atk_mult", 1.0))
             base_speed = base_speed + int(getattr(self, "buff_spd_add", 0))
             self.buff_t = max(0.0, self.buff_t - dt)
 
-        speed = base_speed
+        # FINAL per-frame movement speed (capped)
+        speed = min(ZOMBIE_SPEED_MAX, max(1, int(base_speed)))
 
         if not hasattr(self, 'attack_timer'): self.attack_timer = 0
         self.attack_timer += dt
-        # initial spawn delay
+
+        # spawn delay gate
         if self._spawn_elapsed < self.spawn_delay:
             self._spawn_elapsed += dt
             return
+
         dx = player.x - self.x
         dy = player.y - self.y
-        speed = self.speed
         dirs = []
         if abs(dx) > abs(dy):
             dirs = [(sign(dx), 0), (0, sign(dy)), (sign(dx), sign(dy)), (-sign(dx), 0), (0, -sign(dy))]
@@ -1271,7 +1423,8 @@ class Zombie:
 
 
 class Bullet:
-    def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE, damage: int = BULLET_DAMAGE_ZOMBIE):
+    def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE,
+                 damage: int = BULLET_DAMAGE_ZOMBIE):
         self.x = x
         self.y = y
         self.vx = vx
@@ -1345,8 +1498,10 @@ class Bullet:
     def draw(self, screen, cam_x, cam_y):
         pygame.draw.circle(screen, (255, 255, 255), (int(self.x - cam_x), int(self.y - cam_y)), BULLET_RADIUS)
 
+
 class Spoil:
     """A coin-like pickup that pops up and bounces in place."""
+
     def __init__(self, x_px: float, y_px: float, value: int = 1):
         # ground/world position where the coin lives
         self.base_x = float(x_px)
@@ -1377,7 +1532,6 @@ class Spoil:
             else:
                 self.vh = 0.0
         self._update_rect()
-
 
 
 class EnemyShot:
@@ -1459,6 +1613,7 @@ def sign(v): return 1 if v > 0 else (-1 if v < 0 else 0)
 
 def heuristic(a, b): return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
+
 def resize_world_to_view():
     """Expand GRID_SIZE so the simulated world covers the whole visible area."""
     global GRID_SIZE, WINDOW_SIZE, TOTAL_HEIGHT
@@ -1472,6 +1627,7 @@ def resize_world_to_view():
         WINDOW_SIZE = GRID_SIZE * CELL_SIZE
         TOTAL_HEIGHT = WINDOW_SIZE + INFO_BAR_HEIGHT
 
+
 def roll_spoils_for_zombie(z: "Zombie") -> int:
     """Return number of coins to drop for a killed zombie, applying drop chance."""
     if random.random() > SPOILS_DROP_CHANCE:
@@ -1479,6 +1635,7 @@ def roll_spoils_for_zombie(z: "Zombie") -> int:
     t = getattr(z, "type", "basic")
     lo, hi = SPOILS_PER_TYPE.get(t, (1, 1))
     return random.randint(int(lo), int(hi))
+
 
 def player_xp_required(level: int) -> int:
     """
@@ -1494,6 +1651,7 @@ def player_xp_required(level: int) -> int:
         softcap_part = (L - XP_CURVE_SOFTCAP_START) ** XP_CURVE_SOFTCAP_POWER
     return int(exp_part + linear_part + softcap_part + 0.5)
 
+
 def _diminish_growth(level: int, per_level: float) -> float:
     """Apply softcap to per-level growth after MON_SOFTCAP_LEVEL."""
     if level <= MON_SOFTCAP_LEVEL:
@@ -1501,6 +1659,7 @@ def _diminish_growth(level: int, per_level: float) -> float:
     base = per_level * MON_SOFTCAP_LEVEL
     extra = (level - MON_SOFTCAP_LEVEL) * per_level * MON_SOFTCAP_FACTOR
     return base + extra
+
 
 def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | float]:
     """
@@ -1511,7 +1670,7 @@ def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | flo
     W = max(0, int(wave_index))
 
     # multiplicative curves
-    hp_mult  = (1.0 + _diminish_growth(L, MON_HP_GROWTH_PER_LEVEL)) * (1.0 + W * MON_HP_GROWTH_PER_WAVE)
+    hp_mult = (1.0 + _diminish_growth(L, MON_HP_GROWTH_PER_LEVEL)) * (1.0 + W * MON_HP_GROWTH_PER_WAVE)
     atk_mult = (1.0 + _diminish_growth(L, MON_ATK_GROWTH_PER_LEVEL)) * (1.0 + W * MON_ATK_GROWTH_PER_WAVE)
 
     # additive speed bumps
@@ -1526,15 +1685,16 @@ def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | flo
 
     # apply elite/boss extras to the multipliers
     if is_elite:
-        hp_mult  *= ELITE_HP_MULT_EXTRA
+        hp_mult *= ELITE_HP_MULT_EXTRA
         atk_mult *= ELITE_ATK_MULT_EXTRA
-        spd_add  += ELITE_SPD_ADD_EXTRA
+        spd_add += ELITE_SPD_ADD_EXTRA
     if is_boss:
-        hp_mult  *= BOSS_HP_MULT_EXTRA
+        hp_mult *= BOSS_HP_MULT_EXTRA
         atk_mult *= BOSS_ATK_MULT_EXTRA
-        spd_add  += BOSS_SPD_ADD_EXTRA
+        spd_add += BOSS_SPD_ADD_EXTRA
 
     return {"hp_mult": hp_mult, "atk_mult": atk_mult, "spd_add": spd_add, "elite": is_elite, "boss": is_boss}
+
 
 def roll_affix(game_level: int) -> Optional[str]:
     """Roll a lightweight affix occasionally; return name or None."""
@@ -1544,18 +1704,19 @@ def roll_affix(game_level: int) -> Optional[str]:
     # three simple mature affixes
     return random.choice(["frenzied", "armored", "veteran"])
 
+
 def apply_affix(z: "Zombie", affix: Optional[str]):
     """Mutate a zombie with the chosen affix. Small, readable bonuses."""
     if not affix:
         return
     if affix == "frenzied":
         z.attack = int(z.attack * 1.15)
-        z.speed  = int(z.speed + 1)
+        z.speed = int(z.speed + 1)
         z._affix_tag = "F"  # tag for draw
     elif affix == "armored":
         z.max_hp = int(z.max_hp * 1.35)
-        z.hp     = int(z.hp * 1.35)
-        z.speed  = max(1, z.speed - 1)
+        z.hp = int(z.hp * 1.35)
+        z.speed = max(1, z.speed - 1)
         z._affix_tag = "A"
     elif affix == "veteran":
         z.z_level += 1
@@ -1564,23 +1725,26 @@ def apply_affix(z: "Zombie", affix: Optional[str]):
         z.hp = min(z.max_hp, z.hp + 2)
         z._affix_tag = "V"
 
-def make_scaled_zombie(pos: Tuple[int,int], ztype: str, game_level: int, wave_index: int) -> "Zombie":
+
+def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_index: int) -> "Zombie":
     """Factory: spawn a zombie already scaled, with elite/boss & affixes applied."""
     z = Zombie(pos, speed=ZOMBIE_SPEED, ztype=ztype)
     s = monster_scalars_for(game_level, wave_index)
     # bake stats
     z.attack = max(1, int(z.attack * s["atk_mult"]))
     z.max_hp = max(1, int(z.max_hp * s["hp_mult"]))
-    z.hp     = z.max_hp
-    z.speed  = int(z.speed + s["spd_add"])
+    z.hp = z.max_hp
+    z.speed = int(z.speed + s["spd_add"])
     z.is_elite = bool(s["elite"])
-    z.is_boss  = bool(s["boss"])
+    z.is_boss = bool(s["boss"])
 
     # small affix roll
     aff = roll_affix(game_level)
     apply_affix(z, aff)
     z._affix_name = aff
 
+    # ← cap final move speed
+    z.speed = min(ZOMBIE_SPEED_MAX, max(1, z.speed))
     return z
 
 
@@ -1739,7 +1903,8 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
     # --- items (all are normal) ---
     item_target = max(item_count, MIN_ITEMS, grid_size // 2)
     item_candidates = [p for p in all_positions if p not in forbidden]
-    items = [Item(x, y, is_main=False) for (x, y) in random.sample(item_candidates, min(len(item_candidates), item_target))]
+    items = [Item(x, y, is_main=False) for (x, y) in
+             random.sample(item_candidates, min(len(item_candidates), item_target))]
 
     # --- decorations ---
     decor_target = int(area * DECOR_DENSITY)
@@ -1749,7 +1914,6 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
 
     # keep return shape the same: last “main_item_list” is now empty list
     return obstacles, items, player_pos, zombie_pos_list, [], decorations
-
 
 
 def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> Graph:
@@ -2005,6 +2169,14 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     # Level tag (left of timer) —— 显示当前关卡（人类从 1 开始）
     level_idx = int(getattr(game_state, "current_level", 0))
     level_txt_img = mono_small.render(f"LV {level_idx + 1:02d}", True, (255, 255, 255))
+
+    # Threat budget display (per-level, identical for all spawns this level)
+    budget_val = budget_for_level(level_idx)  # level_idx is zero-based
+    bdg_img = mono_small.render(f"BDG {budget_val}", True, (200, 200, 220))
+    # place it to the right of the timer, symmetrically opposite the LV tag
+    bdg_x = (VIEW_W // 2 + timer_txt.get_width() // 2) + 12
+    bdg_y = 10
+    screen.blit(bdg_img, (bdg_x, bdg_y))
 
     # 放在计时器左侧 12px 处，不遮挡 HP 条
     level_x = (VIEW_W // 2 - timer_txt.get_width() // 2) - level_txt_img.get_width() - 12
@@ -2262,14 +2434,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     best = ('block', gp, ob, cx, cy)
         return best, (best_d2 ** 0.5) if best else None
 
-    first_want = min(SPAWN_BASE + wave_index * SPAWN_GROWTH, ZOMBIE_CAP - len(zombies))  # wave_index is 0 here
-    if len(zombies) < first_want:
-        add_n = first_want - len(zombies)
-        spots = find_spawn_positions(add_n)
-        for gx, gy in spots:
-            t = pick_zombie_type_weighted()
-            z = make_scaled_zombie((gx, gy), t, current_level, wave_index)
-            zombies.append(z)
+    # Initial spawn: use threat budget once
+    spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
 
     running = True
     game_result = None
@@ -2292,14 +2458,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         if spawn_timer >= SPAWN_INTERVAL:
             spawn_timer = 0.0
             if len(zombies) < ZOMBIE_CAP:
-                want = min(SPAWN_BASE + wave_index * SPAWN_GROWTH, ZOMBIE_CAP - len(zombies))
-                spots = find_spawn_positions(want)
-                for gx, gy in spots:
-                    t = pick_zombie_type_weighted()
-                    z = make_scaled_zombie((gx, gy), t, current_level, wave_index)
-                    zombies.append(z)
-                if spots:
+                spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
+                if spawned > 0:
                     wave_index += 1
+                    globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
@@ -2541,7 +2703,11 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         if spawn_timer >= SPAWN_INTERVAL:
             spawn_timer = 0.0
             if len(zombies) < ZOMBIE_CAP:
-                want = min(SPAWN_BASE + wave_index * SPAWN_GROWTH, ZOMBIE_CAP - len(zombies))
+                spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
+                if spawned > 0:
+                    wave_index += 1
+                    globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
+
                 # use same helper logic as main_run_level :
                 all_pos = [(x, y) for x in range(GRID_SIZE) for y in range(GRID_SIZE)]
                 blocked = set(game_state.obstacles.keys()) | set((i.x, i.y) for i in game_state.items)
