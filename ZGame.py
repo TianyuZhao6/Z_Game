@@ -138,6 +138,10 @@ XP_PLAYER_KILL = 6
 XP_PLAYER_BLOCK = 2
 XP_ZOMBIE_BLOCK = 3
 XP_TRANSFER_RATIO = 0.7  # special → survivors
+# ----- healing drop tuning -----
+HEAL_DROP_CHANCE_ZOMBIE = 0.12   # 12% when a zombie dies
+HEAL_DROP_CHANCE_BLOCK  = 0.08   # 8% when a destructible block is broken
+HEAL_POTION_AMOUNT      = 6      # HP restored on pickup (capped to player.max_hp)
 # ----- player XP rewards by zombie type -----
 XP_PER_ZOMBIE_TYPE = {
     "basic": 6,
@@ -1343,6 +1347,8 @@ class Zombie:
                                 cx, cy = ob.rect.centerx, ob.rect.centery
                                 game_state.spawn_spoils(cx, cy, SPOILS_PER_BLOCK)
                                 self.gain_xp(XP_ZOMBIE_BLOCK)
+                                if random.random() < HEAL_DROP_CHANCE_BLOCK:
+                                    game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
                         blocked = True
                         break
                     elif ob.type == "Indestructible":
@@ -1464,6 +1470,9 @@ class Bullet:
                     drop_n = roll_spoils_for_zombie(z)
                     if drop_n > 0:
                         game_state.spawn_spoils(cx, cy, drop_n)
+                    # Small chance to drop a heal potion
+                    if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                        game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
                     # player XP + inheritance if you were already doing that here earlier
                     if player:
                         base_xp = XP_PER_ZOMBIE_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
@@ -1533,6 +1542,29 @@ class Spoil:
                 self.vh = 0.0
         self._update_rect()
 
+class HealPickup:
+    """A small health potion pickup with the same bounce feel as coins."""
+    def __init__(self, x_px: float, y_px: float, heal: int = HEAL_POTION_AMOUNT):
+        self.base_x = float(x_px)
+        self.base_y = float(y_px)
+        self.h  = 0.0
+        self.vh = float(COIN_POP_VY)     # reuse coin bounce values
+        self.heal = int(heal)
+        self.r = 7
+        self.rect = pygame.Rect(0, 0, self.r * 2, self.r * 2)
+        self._update_rect()
+    def _update_rect(self):
+        self.rect.center = (int(self.base_x), int(self.base_y - self.h))
+    def update(self, dt: float):
+        self.vh += COIN_GRAVITY * dt
+        self.h  += self.vh * dt
+        if self.h >= 0.0:
+            self.h = 0.0
+            if abs(self.vh) > COIN_MIN_BOUNCE:
+                self.vh = -self.vh * COIN_RESTITUTION
+            else:
+                self.vh = 0.0
+        self._update_rect()
 
 class EnemyShot:
     def __init__(self, x: float, y: float, vx: float, vy: float, dmg: int, max_dist: float = MAX_FIRE_RANGE):
@@ -1945,6 +1977,7 @@ class GameState:
         self.decorations = decorations  # list[Tuple[int,int]] grid coords
         self.spoils = []  # List[Spoil]
         self.spoils_gained = 0
+        self.heals = []  # List[HealPickup]
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -1977,18 +2010,24 @@ class GameState:
                 gained += s.value
         return gained
 
-    def update_spoils(self, dt: float):
-        for s in self.spoils:
-            s.update(dt)
+    def spawn_heal(self, x_px: float, y_px: float, amount: int = HEAL_POTION_AMOUNT):
+        jx = random.uniform(-6, 6); jy = random.uniform(-6, 6)
+        self.heals.append(HealPickup(x_px + jx, y_px + jy, amount))
 
-    def collect_spoils(self, player_rect: pygame.Rect) -> int:
-        gained = 0
-        for s in list(self.spoils):
-            if player_rect.colliderect(s.rect):
-                self.spoils.remove(s)
-                self.spoils_gained += s.value
-                gained += s.value
-        return gained
+    def update_heals(self, dt: float):
+        for h in self.heals:
+            h.update(dt)
+
+    def collect_heals(self, player: "Player") -> int:
+        healed = 0
+        for h in list(self.heals):
+            if player.rect.colliderect(h.rect):
+                self.heals.remove(h)
+                before = player.hp
+                player.hp = min(player.max_hp, player.hp + h.heal)
+                healed += (player.hp - before)
+        return healed
+
 
 
 # ==================== 游戏渲染函数 ====================
@@ -2066,6 +2105,17 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         # coin
         pygame.draw.circle(screen, (255, 215, 80), (sx, sy), s.r)
         pygame.draw.circle(screen, (255, 245, 200), (sx, sy), s.r, 1)
+
+    # healing potions (heals) on the ground
+    for h in getattr(game_state, "heals", []):
+        sx = int(h.base_x - cam_x)
+        sy = int((h.base_y - h.h) - cam_y)
+        # shadow
+        pygame.draw.ellipse(screen, (0, 0, 0, 80), pygame.Rect(sx - h.r, sy + 6, h.r * 2, 6))
+        # potion: red circle with white cross
+        pygame.draw.circle(screen, (220, 60, 60), (sx, sy), h.r)
+        pygame.draw.rect(screen, (255, 255, 255), pygame.Rect(sx - 2, sy - h.r + 3, 4, h.r * 2 - 6))
+        pygame.draw.rect(screen, (255, 255, 255), pygame.Rect(sx - h.r + 3, sy - 2, h.r * 2 - 6, 4))
 
     # player
     player_draw = player.rect.copy()
@@ -2487,6 +2537,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt)
         game_state.collect_spoils(player.rect)
+        game_state.update_heals(dt)
+        game_state.collect_heals(player)
 
         # Autofire handling
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
@@ -2522,6 +2574,9 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if z.hp <= 0:
                 # drop spoils & share XP even if it died by fuse/other causes
                 game_state.spawn_spoils(z.rect.centerx, z.rect.centery, SPOILS_PER_KILL)
+                if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                    game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
+
                 transfer_xp_to_neighbors(z, zombies)
                 zombies.remove(z)
         # cnt = roll_spoils_for_zombie(z)
@@ -2554,6 +2609,10 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     assert save_data.get("mode") == "snapshot"
     meta = save_data.get("meta", {})
     snap = save_data.get("snapshot", {})
+
+    # Use the saved level index when scaling spawns
+    level_idx = int(meta.get("current_level", current_level))
+
     # Recreate entities
     obstacles: Dict[Tuple[int, int], Obstacle] = {}
     for o in snap.get("obstacles", []):
@@ -2564,56 +2623,73 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         else:
             ob = Obstacle(x, y, typ, health=o.get("health", None))
         obstacles[(x, y)] = ob
-    # Items
-    items = []
-    for it in snap.get("items", []):
-        items.append(Item(int(it.get("x", 0)), int(it.get("y", 0)), bool(it.get("is_main", False))))
+
+    # Items & decorations
+    items = [Item(int(it.get("x", 0)), int(it.get("y", 0)), bool(it.get("is_main", False)))
+             for it in snap.get("items", [])]
     decorations = [tuple(d) for d in snap.get("decorations", [])]
-    game_state = GameState(obstacles, items, [(i.x, i.y) for i in items if getattr(i, 'is_main', False)], decorations)
-    game_state.current_level = current_level
+
+    game_state = GameState(obstacles, items,
+                           [(i.x, i.y) for i in items if getattr(i, 'is_main', False)],
+                           decorations)
+    game_state.current_level = level_idx
+
     # Player
     p = snap.get("player", {})
     player = Player((0, 0), speed=int(p.get("speed", PLAYER_SPEED)))
-    player.x = float(p.get("x", 0.0))
+    player.x = float(p.get("x", 0.0));
     player.y = float(p.get("y", 0.0))
-    player.rect.x = int(player.x)
+    player.rect.x = int(player.x);
     player.rect.y = int(player.y) + INFO_BAR_HEIGHT
     player.fire_cd = float(p.get("fire_cd", 0.0))
     player.max_hp = int(p.get("max_hp", PLAYER_MAX_HP))
     player.hp = int(p.get("hp", PLAYER_MAX_HP))
     player.hit_cd = float(p.get("hit_cd", 0.0))
+    if not hasattr(player, 'fire_cd'): player.fire_cd = 0.0
+
     # Zombies
     zombies: List[Zombie] = []
     for z in snap.get("zombies", []):
-        zobj = Zombie((0, 0), attack=int(z.get("attack", ZOMBIE_ATTACK)), speed=int(z.get("speed", ZOMBIE_SPEED)),
-                      ztype=z.get("type", "basic"), hp=int(z.get("hp", 30)))
+        zobj = Zombie((0, 0),
+                      attack=int(z.get("attack", ZOMBIE_ATTACK)),
+                      speed=int(z.get("speed", ZOMBIE_SPEED)),
+                      ztype=z.get("type", "basic"),
+                      hp=int(z.get("hp", 30)))
         zobj.max_hp = int(z.get("max_hp", int(z.get("hp", 30))))
-        zobj.x = float(z.get("x", 0.0))
+        zobj.x = float(z.get("x", 0.0));
         zobj.y = float(z.get("y", 0.0))
-        zobj.rect.x = int(zobj.x)
+        zobj.rect.x = int(zobj.x);
         zobj.rect.y = int(zobj.y) + INFO_BAR_HEIGHT
         zobj._spawn_elapsed = float(z.get("spawn_elapsed", 0.0))
         zobj.attack_timer = float(z.get("attack_timer", 0.0))
+        # clamp restored speed so resumed runs don't create super-speed zombies
+        zobj.speed = min(ZOMBIE_SPEED_MAX, max(1, int(zobj.speed)))
         zombies.append(zobj)
+
     # Bullets
     bullets: List[Bullet] = []
-    enemy_shots: List[EnemyShot] = []
-    spawn_timer = 0.0
-    wave_index = 0
     for b in snap.get("bullets", []):
-        bobj = Bullet(float(b.get("x", 0.0)), float(b.get("y", 0.0)), float(b.get("vx", 0.0)), float(b.get("vy", 0.0)),
+        bobj = Bullet(float(b.get("x", 0.0)), float(b.get("y", 0.0)),
+                      float(b.get("vx", 0.0)), float(b.get("vy", 0.0)),
                       MAX_FIRE_RANGE)
         bobj.traveled = float(b.get("traveled", 0.0))
         bullets.append(bobj)
+
+    enemy_shots: List[EnemyShot] = []
+
     # Timer
     time_left = float(snap.get("time_left", LEVEL_TIME_LIMIT))
-    globals()["_time_left_runtime"] = time_left  # keep global for snapshot updates
+    globals()["_time_left_runtime"] = time_left  # keep global for HUD
 
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
     running = True
     last_frame = None
     chosen_zombie_type = meta.get("chosen_zombie_type", "basic")
+
+    # Spawner state
+    spawn_timer = 0.0
+    wave_index = 0
 
     def player_center():
         return player.x + player.size / 2, player.y + player.size / 2 + INFO_BAR_HEIGHT
@@ -2622,64 +2698,65 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         px, py = player_center()
         best = None
         best_d2 = float('inf')
-        # 1) zombies first
+        # prefer zombies
         for z in zombies:
             cx, cy = z.rect.centerx, z.rect.centery
             d2 = (cx - px) ** 2 + (cy - py) ** 2
             if d2 < best_d2:
-                best_d2 = d2
+                best_d2 = d2;
                 best = ('zombie', None, z, cx, cy)
-        # 2) then destructible non-main blocks
+        # then destructible blocks
         for gp, ob in game_state.obstacles.items():
             if ob.type == 'Destructible' and not getattr(ob, 'is_main_block', False):
                 cx, cy = ob.rect.centerx, ob.rect.centery
                 d2 = (cx - px) ** 2 + (cy - py) ** 2
                 if d2 < best_d2:
-                    best_d2 = d2
+                    best_d2 = d2;
                     best = ('block', gp, ob, cx, cy)
         return best, (best_d2 ** 0.5) if best else None
 
-    # ensure attribute
-    if not hasattr(player, 'fire_cd'): player.fire_cd = 0.0
-
     while running:
         dt = clock.tick(60) / 1000.0
+
+        # survival timer
         time_left -= dt
         globals()["_time_left_runtime"] = time_left
         if time_left <= 0:
-            # treat as success on survival
+            # win on survival
             chosen = show_success_screen(
                 screen,
                 last_frame or render_game(screen, game_state, player, zombies, bullets, enemy_shots),
-                reward_choices=[]  # or real choices if you want
+                reward_choices=[]
             )
-            # push control back to caller like your success path
             return "success", None, last_frame or screen.copy()
 
+        # input
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 bg = last_frame or render_game(screen, game_state, player, zombies, bullets, enemy_shots)
                 choice, time_left = pause_game_modal(screen, bg, clock, time_left)
-
                 if choice == 'continue':
                     pass
                 elif choice == 'restart':
                     return 'restart', None, bg
                 elif choice == 'home':
-                    snap2 = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected,
+                    snap2 = capture_snapshot(game_state, player, zombies, level_idx, zombie_cards_collected,
                                              chosen_zombie_type, bullets)
                     save_snapshot(snap2)
                     return 'home', None, bg
                 elif choice == 'exit':
-                    save_progress(current_level=current_level, max_wave_reached=wave_index)
+                    save_progress(current_level=level_idx, max_wave_reached=wave_index)
                     return 'exit', None, bg
 
+        # movement & pickups
         keys = pygame.key.get_pressed()
         player.move(keys, game_state.obstacles)
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt)
         game_state.collect_spoils(player.rect)
+        game_state.update_heals(dt)
+        game_state.collect_heals(player)
 
         # Autofire
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
@@ -2688,8 +2765,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             _, gp, ob_or_z, cx, cy = target
             px, py = player_center()
             dx, dy = cx - px, cy - py
-            length = (dx * dx + dy * dy) ** 0.5 or 1.0
-            vx, vy = (dx / length) * BULLET_SPEED, (dy / length) * BULLET_SPEED
+            L = (dx * dx + dy * dy) ** 2 ** 0.5 if False else ((dx * dx + dy * dy) ** 0.5)  # keep readable
+            L = L or 1.0
+            vx, vy = (dx / L) * BULLET_SPEED, (dy / L) * BULLET_SPEED
             bullets.append(Bullet(px, py, vx, vy, MAX_FIRE_RANGE, damage=player.bullet_damage))
             player.fire_cd += player.fire_cooldown()
 
@@ -2698,45 +2776,18 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             b.update(dt, game_state, zombies, player)
             if not b.alive:
                 bullets.remove(b)
-        # Wave spawning
+
+        # === wave spawning (budget-based ONLY) ===
         spawn_timer += dt
         if spawn_timer >= SPAWN_INTERVAL:
             spawn_timer = 0.0
             if len(zombies) < ZOMBIE_CAP:
-                spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
+                spawned = spawn_wave_with_budget(game_state, player, level_idx, wave_index, zombies, ZOMBIE_CAP)
                 if spawned > 0:
                     wave_index += 1
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
 
-                # use same helper logic as main_run_level :
-                all_pos = [(x, y) for x in range(GRID_SIZE) for y in range(GRID_SIZE)]
-                blocked = set(game_state.obstacles.keys()) | set((i.x, i.y) for i in game_state.items)
-                px, py = player.pos
-                cand = [p for p in all_pos if p not in blocked and abs(p[0] - px) + abs(p[1] - py) >= 6]
-                random.shuffle(cand)
-                zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in
-                          zombies}
-                spots = []
-                for p in cand:
-                    if p in zcells: continue
-                    spots.append(p)
-                    if len(spots) >= want: break
-                for gx, gy in spots:
-                    # simple weighted pick to match main_run_level
-                    table = [("basic", 50), ("fast", 15), ("tank", 10), ("ranged", 12), ("suicide", 8), ("buffer", 3),
-                             ("shielder", 2)]
-                    r = random.uniform(0, sum(w for _, w in table))
-                    acc = 0
-                    for t, w in table:
-                        acc += w
-                        if r <= acc:
-                            ztype = t
-                            break
-                    zombies.append(make_scaled_zombie((gx, gy), ztype, current_level, wave_index))
-                if spots:
-                    wave_index += 1
-
-        # zombies update & player collision
+        # Zombies update & contact damage
         player.hit_cd = max(0.0, player.hit_cd - dt)
         for zombie in list(zombies):
             zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
@@ -2749,43 +2800,46 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                                               last_frame or render_game(screen, game_state, player, zombies, bullets,
                                                                         enemy_shots))
                     if action == "home":
-                        clear_save()
+                        clear_save();
                         flush_events()
                         return "home", None, last_frame or screen.copy()
                     elif action == "retry":
-                        clear_save()
+                        clear_save();
                         flush_events()
                         return "restart", None, last_frame or screen.copy()
-        # 僵尸特殊行为（远程/自爆/增益/护盾）
+
+        # Special behaviors & enemy shots
         for z in list(zombies):
             z.update_special(dt, player, zombies, enemy_shots)
             if z.hp <= 0:
-                # drop spoils & share XP even if it died by fuse/other causes
                 game_state.spawn_spoils(z.rect.centerx, z.rect.centery, SPOILS_PER_KILL)
+                if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                    game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
                 transfer_xp_to_neighbors(z, zombies)
                 zombies.remove(z)
 
-        # 敌方弹幕更新
         for es in list(enemy_shots):
             es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
-        # FAIL CONDITION
+
+        # Fail check (redundant guard)
         if player.hp <= 0:
-            clear_save()  # 与你当前失败流程一致
+            clear_save()
             action = show_fail_screen(screen,
                                       last_frame or render_game(screen, game_state, player, zombies, bullets,
                                                                 enemy_shots))
             if action == "home":
-                clear_save()
+                clear_save();
                 flush_events()
                 return "home", None, last_frame or screen.copy()
             elif action == "retry":
-                clear_save()
+                clear_save();
                 flush_events()
                 return "restart", None, last_frame or screen.copy()
 
         last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+
     return "home", None, last_frame or screen.copy()
 
 
