@@ -110,7 +110,7 @@ MIN_ITEMS = 8  # ensure enough items on larger maps
 DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 5
 ZOMBIE_SPEED = 2
-ZOMBIE_SPEED_MAX = 6
+ZOMBIE_SPEED_MAX = 5
 ZOMBIE_ATTACK = 10
 # ----- meta progression -----
 SPOILS_PER_KILL = 3
@@ -910,15 +910,16 @@ def show_shop_screen(screen) -> Optional[str]:
     """Spend META['spoils'] on small upgrades. ESC opens Pause; return action or None when closed."""
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 30)
-    title = pygame.font.SysFont(None, 56)
+    title_font = pygame.font.SysFont(None, 56)
+    btn_font = pygame.font.SysFont(None, 32)
 
     # pseudo-random offers
     catalog = [
-        {"name": "+1 Damage", "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
-        {"name": "+5% Fire Rate", "cost": 7, "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
-        {"name": "+1 Speed", "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
-        {"name": "+5 Max HP", "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
-        {"name": "Reroll Offers", "cost": 3, "apply": "reroll"},
+        {"name": "+1 Damage",       "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
+        {"name": "+5% Fire Rate",   "cost": 7, "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
+        {"name": "+1 Speed",        "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
+        {"name": "+5 Max HP",       "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
+        {"name": "Reroll Offers",   "cost": 3, "apply": "reroll"},
     ]
 
     def roll_offers():
@@ -930,54 +931,68 @@ def show_shop_screen(screen) -> Optional[str]:
     offers = roll_offers()
 
     while True:
-        # draw
+        # --- draw ---
         screen.fill((16, 16, 18))
-        screen.blit(title.render("TRADER", True, (235, 235, 235)), (VIEW_W // 2 - 90, 80))
-        money = font.render(f"Spoils: {META['spoils']}", True, (255, 230, 120))
-        screen.blit(money, (VIEW_W // 2 - 70, 130))
+
+        # Title (center)
+        title_surf = title_font.render("TRADER", True, (235, 235, 235))
+        screen.blit(title_surf, title_surf.get_rect(center=(VIEW_W // 2, 80)))
+
+        # Spoils (center under title)
+        money_surf = font.render(f"Spoils: {META['spoils']}", True, (255, 230, 120))
+        screen.blit(money_surf, money_surf.get_rect(center=(VIEW_W // 2, 130)))
+
+        # Offers row — centered as a group
+        card_w, card_h = 170, 120
+        gap = 18
+        total_w = len(offers) * card_w + (len(offers) - 1) * gap
+        start_x = (VIEW_W - total_w) // 2
+        y = 200
 
         rects = []
-        start_x = VIEW_W // 2 - 2 * 160 + 20
-        y = 200
         for i, it in enumerate(offers):
-            r = pygame.Rect(start_x + i * 160, y, 150, 120)
+            x = start_x + i * (card_w + gap)
+            r = pygame.Rect(x, y, card_w, card_h)
+
             pygame.draw.rect(screen, (40, 40, 42), r, border_radius=10)
             pygame.draw.rect(screen, (80, 80, 84), r, 2, border_radius=10)
+
             name = font.render(it["name"], True, (230, 230, 230))
             cost = font.render(f"{it['cost']}¥", True, (255, 210, 130))
-            screen.blit(name, (r.x + 10, r.y + 18))
-            screen.blit(cost, (r.x + 10, r.y + 60))
+            # text with some padding inside the card
+            screen.blit(name, name.get_rect(midleft=(r.x + 12, r.y + 34)))
+            screen.blit(cost, cost.get_rect(midleft=(r.x + 12, r.y + 78)))
+
             rects.append((r, it))
 
-        close = pygame.Rect(VIEW_W // 2 - 100, 360, 200, 56)
+        # NEXT button — centered under cards
+        close = pygame.Rect(0, 0, 220, 56)
+        close.center = (VIEW_W // 2, y + card_h + 80)
         pygame.draw.rect(screen, (50, 50, 50), close, border_radius=10)
-        ctxt = pygame.font.SysFont(None, 32).render("NEXT", True, (235, 235, 235))
+        ctxt = btn_font.render("NEXT", True, (235, 235, 235))
         screen.blit(ctxt, ctxt.get_rect(center=close.center))
 
         pygame.display.flip()
 
-        # input
+        # --- input ---
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
-                pygame.quit();
-                sys.exit()
+                pygame.quit(); sys.exit()
 
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
-                # pause menu over the shop; continue returns to shop, others bubble up
+                # Pause menu over the shop; continue/settings return to shop
                 bg = screen.copy()
                 choice = pause_from_overlay(screen, bg)
                 if choice in (None, "continue", "settings"):
-                    # settings returns to pause which returns 'continue' here; keep shopping
                     flush_events()
                     break
-                # home / restart / exit → leave shop & propagate
                 flush_events()
-                return choice
+                return choice  # home / restart / exit
 
             if ev.type == pygame.MOUSEBUTTONDOWN:
                 if close.collidepoint(ev.pos):
                     flush_events()
-                    return None  # shop finished normally
+                    return None  # finish shop normally
                 for r, it in rects:
                     if r.collidepoint(ev.pos) and META["spoils"] >= it["cost"]:
                         META["spoils"] -= it["cost"]
@@ -987,6 +1002,7 @@ def show_shop_screen(screen) -> Optional[str]:
                             it["apply"]()
 
         clock.tick(60)
+
 
 
 def is_boss_level(level_idx_zero_based: int) -> bool:
