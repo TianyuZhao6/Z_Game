@@ -1,0 +1,20 @@
+{
+  "mode": "progress",
+  "current_level": 4,
+  "zombie_cards_collected": [
+    "zombie_fast",
+    "zombie_strong",
+    "zombie_tank"
+  ],
+  "meta": {
+    "spoils": 3,
+    "dmg": 0,
+    "firerate_mult": 11.91817653772723,
+    "speed": 0,
+    "maxhp": 0
+  },
+  "carry_player": {
+    "level": 16,
+    "xp": 134
+  }
+}

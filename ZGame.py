@@ -139,9 +139,9 @@ XP_PLAYER_BLOCK = 2
 XP_ZOMBIE_BLOCK = 3
 XP_TRANSFER_RATIO = 0.7  # special → survivors
 # ----- healing drop tuning -----
-HEAL_DROP_CHANCE_ZOMBIE = 0.12   # 12% when a zombie dies
-HEAL_DROP_CHANCE_BLOCK  = 0.08   # 8% when a destructible block is broken
-HEAL_POTION_AMOUNT      = 6      # HP restored on pickup (capped to player.max_hp)
+HEAL_DROP_CHANCE_ZOMBIE = 0.12  # 12% when a zombie dies
+HEAL_DROP_CHANCE_BLOCK = 0.08  # 8% when a destructible block is broken
+HEAL_POTION_AMOUNT = 6  # HP restored on pickup (capped to player.max_hp)
 # ----- player XP rewards by zombie type -----
 XP_PER_ZOMBIE_TYPE = {
     "basic": 6,
@@ -327,37 +327,24 @@ os.makedirs(SAVE_DIR, exist_ok=True)
 SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
 
 
-def save_progress(current_level: int = 0,
-                  zombie_cards_collected: Optional[List[str]] = None,
-                  *,
-                  max_wave_reached: Optional[int] = None) -> None:
-    """
-    极简存档：保留当前关卡号 + 本次达到的最大波次。
-    不再写入卡池/快照等冗余数据；用于 Exit 后下次进入时“在同一关重新开局”。
-
-    写入格式：
-        {"mode":"wave","version":1,"current_level":<int>,"max_wave_reached":<int>}
-    """
+def save_progress(current_level: int,
+                  zombie_cards_collected: list,
+                  max_wave_reached: int | None = None):
+    """Persist minimal progress plus META upgrades and player carry."""
+    data = {
+        "mode": "progress",
+        "current_level": int(current_level),
+        "zombie_cards_collected": list(zombie_cards_collected),
+        "meta": dict(META),  # dmg, firerate_mult, speed, maxhp, spoils
+        "carry_player": globals().get("_carry_player_state", None),
+    }
+    if max_wave_reached is not None:
+        data["max_wave_reached"] = int(max_wave_reached)
     try:
-        # 优先使用参数；否则尝试从全局兜底；最后为 0
-        if max_wave_reached is None:
-            gw = globals().get("_max_wave_reached", None)
-            if gw is None:
-                gw = globals().get("_wave_index", None)
-            max_wave_reached = int(gw) if gw is not None else 0
-        else:
-            max_wave_reached = int(max_wave_reached)
-
-        data = {
-            "mode": "wave",
-            "version": 1,
-            "current_level": int(current_level),
-            "max_wave_reached": max(0, int(max_wave_reached)),
-        }
-        with open(SAVE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f)
+        with open(SAVE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"[Save] Failed to write wave save: {e}", file=sys.stderr)
+        print("save_progress error:", e)
 
 
 def capture_snapshot(game_state, player, zombies, current_level: int, zombie_cards_collected: List[str],
@@ -377,7 +364,9 @@ def capture_snapshot(game_state, player, zombies, current_level: int, zombie_car
                        "fire_cd": float(getattr(player, "fire_cd", 0.0)),
                        "hp": int(getattr(player, "hp", PLAYER_MAX_HP)),
                        "max_hp": int(getattr(player, "max_hp", PLAYER_MAX_HP)),
-                       "hit_cd": float(getattr(player, "hit_cd", 0.0))},
+                       "hit_cd": float(getattr(player, "hit_cd", 0.0)),
+                       "level": int(getattr(player, "level", 1)),
+                    "xp": int(getattr(player, "xp", 0))},
             "zombies": [{
                 "x": float(z.x), "y": float(z.y),
                 "attack": int(getattr(z, "attack", 10)),
@@ -915,11 +904,11 @@ def show_shop_screen(screen) -> Optional[str]:
 
     # pseudo-random offers
     catalog = [
-        {"name": "+1 Damage",       "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
-        {"name": "+5% Fire Rate",   "cost": 7, "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
-        {"name": "+1 Speed",        "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
-        {"name": "+5 Max HP",       "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
-        {"name": "Reroll Offers",   "cost": 3, "apply": "reroll"},
+        {"name": "+1 Damage", "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
+        {"name": "+5% Fire Rate", "cost": 7, "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
+        {"name": "+1 Speed", "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
+        {"name": "+5 Max HP", "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
+        {"name": "Reroll Offers", "cost": 3, "apply": "reroll"},
     ]
 
     def roll_offers():
@@ -977,7 +966,8 @@ def show_shop_screen(screen) -> Optional[str]:
         # --- input ---
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
+                pygame.quit();
+                sys.exit()
 
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 # Pause menu over the shop; continue/settings return to shop
@@ -1002,7 +992,6 @@ def show_shop_screen(screen) -> Optional[str]:
                             it["apply"]()
 
         clock.tick(60)
-
 
 
 def is_boss_level(level_idx_zero_based: int) -> bool:
@@ -1558,22 +1547,26 @@ class Spoil:
                 self.vh = 0.0
         self._update_rect()
 
+
 class HealPickup:
     """A small health potion pickup with the same bounce feel as coins."""
+
     def __init__(self, x_px: float, y_px: float, heal: int = HEAL_POTION_AMOUNT):
         self.base_x = float(x_px)
         self.base_y = float(y_px)
-        self.h  = 0.0
-        self.vh = float(COIN_POP_VY)     # reuse coin bounce values
+        self.h = 0.0
+        self.vh = float(COIN_POP_VY)  # reuse coin bounce values
         self.heal = int(heal)
         self.r = 7
         self.rect = pygame.Rect(0, 0, self.r * 2, self.r * 2)
         self._update_rect()
+
     def _update_rect(self):
         self.rect.center = (int(self.base_x), int(self.base_y - self.h))
+
     def update(self, dt: float):
         self.vh += COIN_GRAVITY * dt
-        self.h  += self.vh * dt
+        self.h += self.vh * dt
         if self.h >= 0.0:
             self.h = 0.0
             if abs(self.vh) > COIN_MIN_BOUNCE:
@@ -1581,6 +1574,7 @@ class HealPickup:
             else:
                 self.vh = 0.0
         self._update_rect()
+
 
 class EnemyShot:
     def __init__(self, x: float, y: float, vx: float, vy: float, dmg: int, max_dist: float = MAX_FIRE_RANGE):
@@ -1707,6 +1701,42 @@ def _diminish_growth(level: int, per_level: float) -> float:
     base = per_level * MON_SOFTCAP_LEVEL
     extra = (level - MON_SOFTCAP_LEVEL) * per_level * MON_SOFTCAP_FACTOR
     return base + extra
+
+
+# ---- Per-run carry-over of player's growth between levels ----
+# ---- Per-run carry-over of player's growth between levels ----
+def capture_player_carry(player) -> dict:
+    """Carry only progression: level and leftover XP. HP is NOT carried across levels."""
+    return {
+        "level": int(getattr(player, "level", 1)),
+        "xp": int(getattr(player, "xp", 0)),  # leftover XP toward next level
+    }
+
+
+def apply_player_carry(player, carry: dict | None):
+    """Rebuild level-based growth, then start the level at FULL HP."""
+    if not carry:
+        # Still start full HP each level, even with no carry
+        player.hp = player.max_hp
+        return
+
+    target_level = max(1, int(carry.get("level", 1)))
+    leftover_xp = max(0, int(carry.get("xp", 0)))
+
+    # reset to level 1 baseline, then feed XP for target_level + leftover
+    player.level = 1
+    player.xp = 0
+    player.xp_to_next = player_xp_required(1)
+
+    total_xp = 0
+    for L in range(1, target_level):
+        total_xp += player_xp_required(L)
+    total_xp += leftover_xp
+    if total_xp > 0:
+        player.add_xp(total_xp)
+
+    # ALWAYS start a new level at full HP
+    player.hp = player.max_hp
 
 
 def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | float]:
@@ -2027,7 +2057,8 @@ class GameState:
         return gained
 
     def spawn_heal(self, x_px: float, y_px: float, amount: int = HEAL_POTION_AMOUNT):
-        jx = random.uniform(-6, 6); jy = random.uniform(-6, 6)
+        jx = random.uniform(-6, 6);
+        jy = random.uniform(-6, 6)
         self.heals.append(HealPickup(x_px + jx, y_px + jy, amount))
 
     def update_heals(self, dt: float):
@@ -2043,7 +2074,6 @@ class GameState:
                 player.hp = min(player.max_hp, player.hp + h.heal)
                 healed += (player.hp - before)
         return healed
-
 
 
 # ==================== 游戏渲染函数 ====================
@@ -2425,6 +2455,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     game_state.current_level = current_level
     player = Player(player_start, speed=PLAYER_SPEED)
     player.fire_cd = 0.0
+    apply_player_carry(player, globals().get("_carry_player_state"))
 
     ztype_map = {
         "zombie_fast": "fast",
@@ -2540,12 +2571,20 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 elif choice == 'restart':
                     return 'restart', config.get('reward', None), bg
                 elif choice == 'home':
-                    snap = capture_snapshot(game_state, player, zombies, current_level, zombie_cards_collected, zt,
-                                            bullets)
-                    save_snapshot(snap)
+                    # carry your current level/xp forward
+                    globals()["_carry_player_state"] = capture_player_carry(player)
+                    # write a progress save (this contains META + carry)
+                    save_progress(current_level=current_level,
+                                  zombie_cards_collected=zombie_cards_collected,
+                                  max_wave_reached=wave_index)
                     return 'home', config.get('reward', None), bg
+
+
                 elif choice == 'exit':
-                    save_progress(current_level=current_level, max_wave_reached=wave_index)
+                    # write a progress save so Homepage shows CONTINUE
+                    save_progress(current_level=current_level,
+                                  zombie_cards_collected=zombie_cards_collected,
+                                  max_wave_reached=wave_index)
                     return 'exit', config.get('reward', None), bg
 
         keys = pygame.key.get_pressed()
@@ -2595,11 +2634,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
 
                 transfer_xp_to_neighbors(z, zombies)
                 zombies.remove(z)
-        # cnt = roll_spoils_for_zombie(z)
-        # if cnt > 0:
-        #     game_state.spawn_spoils(z.rect.centerx, z.rect.centery, cnt)
-        # transfer_xp_to_neighbors(z, zombies)
-        # zombies.remove(z)
 
         # enemy shots update
         for es in list(enemy_shots):
@@ -2616,6 +2650,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
         if game_result == "success":
             globals()["_last_spoils"] = getattr(game_state, "spoils_gained", 0)
+            globals()["_carry_player_state"] = capture_player_carry(player)
+        elif game_result == "fail":
+            # NEW: save carry on death so 'Retry' keeps your levels/xp
+            globals()["_carry_player_state"] = capture_player_carry(player)
 
     return game_result, config.get("reward", None), last_frame
 
@@ -2661,6 +2699,10 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     player.max_hp = int(p.get("max_hp", PLAYER_MAX_HP))
     player.hp = int(p.get("hp", PLAYER_MAX_HP))
     player.hit_cd = float(p.get("hit_cd", 0.0))
+    player.level = int(p.get("level", 1))
+    player.xp = int(p.get("xp", 0))
+    player.xp_to_next = player_xp_required(player.level)
+
     if not hasattr(player, 'fire_cd'): player.fire_cd = 0.0
 
     # Zombies
@@ -2757,12 +2799,21 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 elif choice == 'restart':
                     return 'restart', None, bg
                 elif choice == 'home':
-                    snap2 = capture_snapshot(game_state, player, zombies, level_idx, zombie_cards_collected,
-                                             chosen_zombie_type, bullets)
+                    snap2 = capture_snapshot(
+                        game_state, player, zombies, level_idx,
+                        meta.get("zombie_cards_collected", []),
+                        chosen_zombie_type, bullets
+                    )
                     save_snapshot(snap2)
                     return 'home', None, bg
+
                 elif choice == 'exit':
-                    save_progress(current_level=level_idx, max_wave_reached=wave_index)
+                    # also save progress from a snapshot resume
+                    save_progress(
+                        current_level=level_idx,
+                        zombie_cards_collected=meta.get("zombie_cards_collected", []),
+                        max_wave_reached=wave_index
+                    )
                     return 'exit', None, bg
 
         # movement & pickups
@@ -2927,6 +2978,12 @@ if __name__ == "__main__":
 
     # Initialize progress holders (module-level for snapshot helpers)
     if mode == "continue" and save_data:
+        # restore shop upgrades and carry for a fresh run at the stored level
+        if save_data:
+            META.update(save_data.get("meta", META))
+            globals()["_carry_player_state"] = save_data.get("carry_player", None)
+        else:
+            globals()["_carry_player_state"] = None
         if save_data.get("mode") == "snapshot":
             # pull meta
             meta = save_data.get("meta", {})
@@ -2939,20 +2996,14 @@ if __name__ == "__main__":
         clear_save()
         current_level = 0
         zombie_cards_collected = []
+        globals()["_carry_player_state"] = None
 
     while True:
-        # If we came from CONTINUE(snapshot), resume immediately
-        if mode == "continue" and save_data and save_data.get("mode") == "snapshot":
-            door_transition(screen)
-            result, reward, bg = run_from_snapshot(save_data)
-            # after run, reset mode to normal flow
-            save_data = None
-            mode = "new"
-        else:
-            config = get_level_config(current_level)
-            chosen_zombie = select_zombie_screen(screen, zombie_cards_collected) if zombie_cards_collected else "basic"
-            door_transition(screen)
-            result, reward, bg = main_run_level(config, chosen_zombie)
+
+        config = get_level_config(current_level)
+        chosen_zombie = select_zombie_screen(screen, zombie_cards_collected) if zombie_cards_collected else "basic"
+        door_transition(screen)
+        result, reward, bg = main_run_level(config, chosen_zombie)
 
         if result == "restart":
             flush_events()
@@ -2965,6 +3016,12 @@ if __name__ == "__main__":
                 sys.exit()
             mode, save_data = selection
             if mode == "continue" and save_data:
+                # restore shop upgrades and carry for a fresh run at the stored level
+                if save_data:
+                    META.update(save_data.get("meta", META))
+                    globals()["_carry_player_state"] = save_data.get("carry_player", None)
+                else:
+                    globals()["_carry_player_state"] = None
                 # Update progress trackers
                 if save_data.get("mode") == "snapshot":
                     meta = save_data.get("meta", {})
@@ -2978,6 +3035,7 @@ if __name__ == "__main__":
                 clear_save()
                 current_level = 0
                 zombie_cards_collected = []
+                globals()["_carry_player_state"] = None
             continue
 
         if result == "exit":
@@ -2986,24 +3044,26 @@ if __name__ == "__main__":
             sys.exit()
 
         if result == "fail":
-            # On fail, wipe any save so there is NO CONTINUE on the homepage
             clear_save()
             action = show_fail_screen(screen, bg)
             flush_events()
             if action == "home":
-                # ensure save is gone before drawing the menu
-                clear_save()
+                # NEW: reset per-run carry
+                globals()["_carry_player_state"] = None
                 selection = show_start_menu(screen)
                 if not selection:
                     sys.exit()
                 mode, save_data = selection
-                # After a fail we always start fresh; ignore any 'continue'
+                # After a fail we always start fresh…
                 clear_save()
                 current_level = 0
                 zombie_cards_collected = []
                 continue
             else:
+                # action == "retry" → restart this level as a fresh run
+                # globals()["_carry_player_state"] = capture_player_carry(player)
                 continue
+
 
         elif result == "success":
             pool = [c for c in CARD_POOL if c not in zombie_cards_collected]
@@ -3019,6 +3079,12 @@ if __name__ == "__main__":
                 mode, save_data = selection
                 # 保持当前关卡/卡池或按你的设计重置，这里沿用你现有主页逻辑
                 if mode == "continue" and save_data:
+                    # restore shop upgrades and carry for a fresh run at the stored level
+                    if save_data:
+                        META.update(save_data.get("meta", META))
+                        globals()["_carry_player_state"] = save_data.get("carry_player", None)
+                    else:
+                        globals()["_carry_player_state"] = None
                     if save_data.get("mode") == "snapshot":
                         meta = save_data.get("meta", {})
                         current_level = int(meta.get("current_level", 0))
@@ -3030,6 +3096,7 @@ if __name__ == "__main__":
                     clear_save()
                     current_level = 0
                     zombie_cards_collected = []
+                    globals()["_carry_player_state"] = None
                 continue  # 回到 while 重新开始流程
 
             elif chosen == "restart":
@@ -3049,6 +3116,12 @@ if __name__ == "__main__":
                     mode, save_data = selection
                     # keep your existing homepage handling logic
                     if mode == "continue" and save_data:
+                        # restore shop upgrades and carry for a fresh run at the stored level
+                        if save_data:
+                            META.update(save_data.get("meta", META))
+                            globals()["_carry_player_state"] = save_data.get("carry_player", None)
+                        else:
+                            globals()["_carry_player_state"] = None
                         if save_data.get("mode") == "snapshot":
                             meta = save_data.get("meta", {})
                             current_level = int(meta.get("current_level", 0))
@@ -3060,6 +3133,7 @@ if __name__ == "__main__":
                         clear_save()
                         current_level = 0
                         zombie_cards_collected = []
+                        globals()["_carry_player_state"] = None
                     continue  # back to the top-level loop
                 if action == "restart":
                     # replay the current level (do not advance)
@@ -3080,6 +3154,12 @@ if __name__ == "__main__":
                     if not selection: sys.exit()
                     mode, save_data = selection
                     if mode == "continue" and save_data:
+                        # restore shop upgrades and carry for a fresh run at the stored level
+                        if save_data:
+                            META.update(save_data.get("meta", META))
+                            globals()["_carry_player_state"] = save_data.get("carry_player", None)
+                        else:
+                            globals()["_carry_player_state"] = None
                         if save_data.get("mode") == "snapshot":
                             meta = save_data.get("meta", {})
                             current_level = int(meta.get("current_level", 0))
@@ -3092,6 +3172,7 @@ if __name__ == "__main__":
                         clear_save()
                         current_level = 0
                         zombie_cards_collected = []
+                        globals()["_carry_player_state"] = None
                     continue
 
                 if action == "restart":
@@ -3112,10 +3193,17 @@ if __name__ == "__main__":
                 sys.exit()
             mode, save_data = selection
             if mode == "continue" and save_data:
+                # restore shop upgrades and carry for a fresh run at the stored level
+                if save_data:
+                    META.update(save_data.get("meta", META))
+                    globals()["_carry_player_state"] = save_data.get("carry_player", None)
+                else:
+                    globals()["_carry_player_state"] = None
                 if save_data.get("mode") == "snapshot":
                     meta = save_data.get("meta", {})
-                    current_level = int(meta.get("current_level", 0))
-                    zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
+                    if mode == "continue" and save_data and save_data.get("mode") == "snapshot":
+                        current_level = int(meta.get("current_level", 0))
+                        zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
                 else:
                     current_level = int(save_data.get("current_level", 0))
                     zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
@@ -3123,8 +3211,9 @@ if __name__ == "__main__":
                 clear_save()
                 current_level = 0
                 zombie_cards_collected = []
+                globals()["_carry_player_state"] = None
 
-# TODO
+            # TODO
 # Attack MODE need to figure out
 # The item collection system can be hugely impact this game to next level
 # Player and Zombie both can collect item to upgrade, after kill zombie, player can get the experience to upgrade, and
