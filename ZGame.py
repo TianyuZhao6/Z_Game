@@ -3220,3 +3220,8 @@ if __name__ == "__main__":
 # I set a timer each game for winning condition, as long as player still alive, after the time is running out
 # player won, vice versa. And after each combat, shop( roguelike feature) will apear for player to trade with item
 # using the item they collect in the combat
+
+# zombie's health, attack accumulate via level increases
+# Special weapon can be trade in shop using big items collected in game(GOLDCOLLECTOR, etc.)
+# Player ability panel
+# set limit for player fire rate
