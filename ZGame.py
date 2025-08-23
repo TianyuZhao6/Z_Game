@@ -210,6 +210,9 @@ BOSS_SPD_ADD = 1
 
 # persistent (per run) upgrades bought in shop
 META = {"spoils": 0, "dmg": 0, "firerate_mult": 1.0, "speed": 0, "maxhp": 0}
+# resume flags
+_pending_shop = False   # if True, CONTINUE should open the shop first
+
 
 # --- zombie type colors (for rendering) ---
 ZOMBIE_COLORS = {
@@ -329,14 +332,16 @@ SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
 
 def save_progress(current_level: int,
                   zombie_cards_collected: list,
-                  max_wave_reached: int | None = None):
+                  max_wave_reached: int | None = None,
+                  pending_shop: bool = False):
     """Persist minimal progress plus META upgrades and player carry."""
     data = {
         "mode": "progress",
         "current_level": int(current_level),
         "zombie_cards_collected": list(zombie_cards_collected),
-        "meta": dict(META),  # dmg, firerate_mult, speed, maxhp, spoils
+        "meta": dict(META),              # dmg, firerate_mult, speed, maxhp, spoils
         "carry_player": globals().get("_carry_player_state", None),
+        "pending_shop": bool(pending_shop)  # <<< NEW
     }
     if max_wave_reached is not None:
         data["max_wave_reached"] = int(max_wave_reached)
@@ -345,6 +350,7 @@ def save_progress(current_level: int,
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print("save_progress error:", e)
+
 
 
 def capture_snapshot(game_state, player, zombies, current_level: int, zombie_cards_collected: List[str],
@@ -2982,6 +2988,7 @@ if __name__ == "__main__":
         if save_data:
             META.update(save_data.get("meta", META))
             globals()["_carry_player_state"] = save_data.get("carry_player", None)
+            globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
         else:
             globals()["_carry_player_state"] = None
         if save_data.get("mode") == "snapshot":
@@ -2999,6 +3006,46 @@ if __name__ == "__main__":
         globals()["_carry_player_state"] = None
 
     while True:
+        # If we saved while in the shop last time, reopen the shop first
+        if globals().get("_pending_shop", False):
+            action = show_shop_screen(screen)
+
+            if action in (None,):  # user clicked NEXT (closed shop normally)
+                globals()["_pending_shop"] = False
+                current_level += 1
+                save_progress(current_level, zombie_cards_collected)
+                # fall through to start the next level immediately
+
+            elif action == "home":
+                # keep the shop pending so CONTINUE returns here again
+                save_progress(current_level, zombie_cards_collected, pending_shop=True)
+                flush_events()
+                selection = show_start_menu(screen)
+                if not selection: sys.exit()
+                mode, save_data = selection
+                if mode == "continue" and save_data:
+                    META.update(save_data.get("meta", META))
+                    globals()["_carry_player_state"] = save_data.get("carry_player", None)
+                    globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
+                    current_level = int(save_data.get("current_level", 0))
+                    zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+
+                else:
+                    clear_save();
+                    current_level = 0;
+                    zombie_cards_collected = []
+                    globals()["_carry_player_state"] = None
+                    globals()["_pending_shop"] = False
+                continue  # back to loop top
+
+            elif action == "restart":
+                # just re-show the shop again (still pending)
+                continue
+
+            elif action == "exit":
+                save_progress(current_level, zombie_cards_collected, pending_shop=True)
+                pygame.quit();
+                sys.exit()
 
         config = get_level_config(current_level)
         chosen_zombie = select_zombie_screen(screen, zombie_cards_collected) if zombie_cards_collected else "basic"
@@ -3027,9 +3074,13 @@ if __name__ == "__main__":
                     meta = save_data.get("meta", {})
                     current_level = int(meta.get("current_level", 0))
                     zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
+
                 else:
                     current_level = int(save_data.get("current_level", 0))
                     zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+
+                globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
+
             else:
                 # new game selected from menu
                 clear_save()
@@ -3110,6 +3161,7 @@ if __name__ == "__main__":
                 action = show_shop_screen(screen)
                 # React to pause-menu choices made from inside the shop
                 if action == "home":
+                    save_progress(current_level, zombie_cards_collected, pending_shop=True)
                     flush_events()
                     selection = show_start_menu(screen)
                     if not selection: sys.exit()
@@ -3129,6 +3181,8 @@ if __name__ == "__main__":
                         else:
                             current_level = int(save_data.get("current_level", 0))
                             zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+                        globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
+
                     else:
                         clear_save()
                         current_level = 0
@@ -3139,6 +3193,7 @@ if __name__ == "__main__":
                     # replay the current level (do not advance)
                     continue
                 if action == "exit":
+                    save_progress(current_level, zombie_cards_collected, pending_shop=True)
                     pygame.quit();
                     sys.exit()
                 # Normal shop close → advance level
@@ -3149,6 +3204,7 @@ if __name__ == "__main__":
                 META["spoils"] += int(globals().get("_last_spoils", 0))
                 action = show_shop_screen(screen)
                 if action == "home":
+                    save_progress(current_level, zombie_cards_collected, pending_shop=True)
                     flush_events()
                     selection = show_start_menu(screen)
                     if not selection: sys.exit()
@@ -3167,6 +3223,7 @@ if __name__ == "__main__":
                         else:
                             current_level = int(save_data.get("current_level", 0))
                             zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+                        globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
 
                     else:
                         clear_save()
@@ -3179,6 +3236,7 @@ if __name__ == "__main__":
                     continue
 
                 if action == "exit":
+                    save_progress(current_level, zombie_cards_collected, pending_shop=True)
                     pygame.quit();
                     sys.exit()
 
@@ -3225,3 +3283,4 @@ if __name__ == "__main__":
 # Special weapon can be trade in shop using big items collected in game(GOLDCOLLECTOR, etc.)
 # Player ability panel
 # set limit for player fire rate
+# Unsolved if exit at the shop menu, resume will be the beginning of next level
