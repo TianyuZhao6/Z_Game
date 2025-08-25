@@ -104,11 +104,11 @@ VIEW_H = TOTAL_HEIGHT
 OBSTACLE_HEALTH = 20
 MAIN_BLOCK_HEALTH = 40
 # --- view style ---
-USE_ISO = True          # True: 伪3D等距渲染；False: 保持现在的纯2D
-ISO_CELL_W = 64         # 等距砖块在画面上的“菱形”宽
-ISO_CELL_H = 32         # 等距砖块在画面上的“菱形”半高（顶点到中心）
-ISO_WALL_Z = 22         # 障碍“墙体”抬起的高度（屏幕像素）
-ISO_SHADOW_ALPHA = 90   # 椭圆阴影透明度
+USE_ISO = True  # True: 伪3D等距渲染；False: 保持现在的纯2D
+ISO_CELL_W = 64  # 等距砖块在画面上的“菱形”宽
+ISO_CELL_H = 32  # 等距砖块在画面上的“菱形”半高（顶点到中心）
+ISO_WALL_Z = 22  # 障碍“墙体”抬起的高度（屏幕像素）
+ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
 
 # --- map fill tuning ---
 OBSTACLE_DENSITY = 0.14  # proportion of tiles to become obstacles (including clusters)
@@ -217,9 +217,25 @@ BOSS_SPD_ADD = 1
 
 # persistent (per run) upgrades bought in shop
 META = {"spoils": 0, "dmg": 0, "firerate_mult": 1.0, "speed": 0, "maxhp": 0}
-# resume flags
-_pending_shop = False   # if True, CONTINUE should open the shop first
 
+
+def reset_run_state():
+    """开新局时把本轮相关的所有进度归零（不影响设置里的音量等）。"""
+    META.clear()
+    META.update({
+        "spoils": 0,  # 本轮金币
+        "dmg": 0,
+        "firerate_mult": 1.0,
+        "speed": 0,
+        "maxhp": 0,
+    })
+    globals()["_carry_player_state"] = None  # 不带上一次的等级/经验
+    globals()["_pending_shop"] = False  # 不从商店续开
+    globals().pop("_last_spoils", None)  # 清掉关末结算缓存
+
+
+# resume flags
+_pending_shop = False  # if True, CONTINUE should open the shop first
 
 # --- zombie type colors (for rendering) ---
 ZOMBIE_COLORS = {
@@ -346,7 +362,7 @@ def save_progress(current_level: int,
         "mode": "progress",
         "current_level": int(current_level),
         "zombie_cards_collected": list(zombie_cards_collected),
-        "meta": dict(META),              # dmg, firerate_mult, speed, maxhp, spoils
+        "meta": dict(META),  # dmg, firerate_mult, speed, maxhp, spoils
         "carry_player": globals().get("_carry_player_state", None),
         "pending_shop": bool(pending_shop)  # <<< NEW
     }
@@ -357,7 +373,6 @@ def save_progress(current_level: int,
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print("save_progress error:", e)
-
 
 
 def capture_snapshot(game_state, player, zombies, current_level: int, zombie_cards_collected: List[str],
@@ -379,7 +394,7 @@ def capture_snapshot(game_state, player, zombies, current_level: int, zombie_car
                        "max_hp": int(getattr(player, "max_hp", PLAYER_MAX_HP)),
                        "hit_cd": float(getattr(player, "hit_cd", 0.0)),
                        "level": int(getattr(player, "level", 1)),
-                    "xp": int(getattr(player, "xp", 0))},
+                       "xp": int(getattr(player, "xp", 0))},
             "zombies": [{
                 "x": float(z.x), "y": float(z.y),
                 "attack": int(getattr(z, "attack", 10)),
@@ -771,7 +786,6 @@ def show_pause_menu(screen, background_surf):
     hp_text = font_tiny.render(f"Max HP: +{META['maxhp']}", True, (230, 150, 100))
     screen.blit(hp_text, (left_margin, y_offset))
     y_offset += 30
-
 
     # 右上角显示收集的卡牌
     right_margin = VIEW_W - 30
@@ -1744,8 +1758,9 @@ def resize_world_to_view():
         WINDOW_SIZE = GRID_SIZE * CELL_SIZE
         TOTAL_HEIGHT = WINDOW_SIZE + INFO_BAR_HEIGHT
 
+
 def iso_world_to_screen(wx: float, wy: float, wz: float = 0.0,
-                        camx: float = 0.0, camy: float = 0.0) -> tuple[int,int]:
+                        camx: float = 0.0, camy: float = 0.0) -> tuple[int, int]:
     """
     把“以网格为单位”的世界坐标 (wx, wy, wz) 投到屏幕坐标。
     wx/wy 是以格为单位的坐标（不是像素）；wz 是“抬高”像素。
@@ -1754,7 +1769,8 @@ def iso_world_to_screen(wx: float, wy: float, wz: float = 0.0,
     sy = (wx + wy) * (ISO_CELL_H // 2) - wz - camy + INFO_BAR_HEIGHT
     return int(sx), int(sy)
 
-def iso_tile_points(gx: int, gy: int, camx: float, camy: float) -> list[tuple[int,int]]:
+
+def iso_tile_points(gx: int, gy: int, camx: float, camy: float) -> list[tuple[int, int]]:
     """返回等距地砖菱形四个顶点（上、右、下、左）。"""
     cx, cy = iso_world_to_screen(gx, gy, 0, camx, camy)
     return [
@@ -1764,9 +1780,11 @@ def iso_tile_points(gx: int, gy: int, camx: float, camy: float) -> list[tuple[in
         (cx - ISO_CELL_W // 2, cy + ISO_CELL_H // 2),
     ]
 
+
 def draw_iso_tile(surface, gx, gy, color, camx, camy, border=0):
     pts = iso_tile_points(gx, gy, camx, camy)
     pygame.draw.polygon(surface, color, pts, border)
+
 
 def draw_iso_prism(surface, gx, gy, top_color, camx, camy, wall_h=ISO_WALL_Z):
     """
@@ -1779,11 +1797,12 @@ def draw_iso_prism(surface, gx, gy, top_color, camx, camy, wall_h=ISO_WALL_Z):
     l = [top[3], top[2], (top[2][0], top[2][1] + wall_h), (top[3][0], top[3][1] + wall_h)]
     # 颜色：顶面亮，右侧中，左侧暗
     c_top = top_color
-    c_r = tuple(max(0, int(c*0.78)) for c in top_color)
-    c_l = tuple(max(0, int(c*0.58)) for c in top_color)
+    c_r = tuple(max(0, int(c * 0.78)) for c in top_color)
+    c_l = tuple(max(0, int(c * 0.58)) for c in top_color)
     pygame.draw.polygon(surface, c_l, l)
     pygame.draw.polygon(surface, c_r, r)
     pygame.draw.polygon(surface, c_top, top)
+
 
 def roll_spoils_for_zombie(z: "Zombie") -> int:
     """Return number of coins to drop for a killed zombie, applying drop chance."""
@@ -2195,12 +2214,12 @@ class GameState:
 def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
                     bullets=None, enemy_shots=None) -> pygame.Surface:
     # 1) 计算以“玩家所在格”为中心的相机
-    px_grid = (player.x + player.size/2) / CELL_SIZE
-    py_grid = (player.y + player.size/2) / CELL_SIZE
+    px_grid = (player.x + player.size / 2) / CELL_SIZE
+    py_grid = (player.y + player.size / 2) / CELL_SIZE
     # 将玩家的等距投影放到屏幕中心，得到 cam 偏移
     pxs, pys = iso_world_to_screen(px_grid, py_grid, 0, 0, 0)
-    camx = pxs - VIEW_W//2
-    camy = pys - (VIEW_H - INFO_BAR_HEIGHT)//2
+    camx = pxs - VIEW_W // 2
+    camy = pys - (VIEW_H - INFO_BAR_HEIGHT) // 2
 
     screen.fill((22, 22, 22))
 
@@ -2209,12 +2228,12 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
     margin = 3
     # 用一个大致的逆投影范围（足够覆盖屏幕）
     gx_min = max(0, int(px_grid - VIEW_W // ISO_CELL_W) - margin)
-    gx_max = min(GRID_SIZE-1, int(px_grid + VIEW_W // ISO_CELL_W) + margin)
+    gx_max = min(GRID_SIZE - 1, int(px_grid + VIEW_W // ISO_CELL_W) + margin)
     gy_min = max(0, int(py_grid - VIEW_H // ISO_CELL_H) - margin)
-    gy_max = min(GRID_SIZE-1, int(py_grid + VIEW_H // ISO_CELL_H) + margin)
+    gy_max = min(GRID_SIZE - 1, int(py_grid + VIEW_H // ISO_CELL_H) + margin)
     grid_col = (46, 48, 46)
-    for gx in range(gx_min, gx_max+1):
-        for gy in range(gy_min, gy_max+1):
+    for gx in range(gx_min, gx_max + 1):
+        for gy in range(gy_min, gy_max + 1):
             draw_iso_tile(screen, gx, gy, grid_col, camx, camy, border=1)
 
     # 3) 把需要“有遮挡顺序”的东西收集起来，按底部 Y 排序后绘制
@@ -2222,11 +2241,11 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
 
     # 3.1 障碍（画成立体砖）
     for (gx, gy), ob in game_state.obstacles.items():
-        color = (120,120,120) if ob.type == "Indestructible" else (200,80,80)
+        color = (120, 120, 120) if ob.type == "Indestructible" else (200, 80, 80)
         # 用健康值让顶色略变（可选）
         if ob.type == "Destructible" and ob.health is not None:
             t = max(0.4, min(1.0, ob.health / float(max(1, OBSTACLE_HEALTH))))
-            color = (int(200*t), int(80*t), int(80*t))
+            color = (int(200 * t), int(80 * t), int(80 * t))
         # 计算底部排序键（等距下以“下顶点 y + 墙高”为准）
         top = iso_tile_points(gx, gy, camx, camy)
         sort_y = top[2][1] + ISO_WALL_Z
@@ -2245,11 +2264,11 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
 
     # 3.3 僵尸 & 玩家：以“脚底格”排序，画椭圆阴影 + 彩色矩形（可替换成立绘）
     for z in zombies:
-        wx, wy = (z.x + z.size/2) / CELL_SIZE, (z.y + z.size/2) / CELL_SIZE
+        wx, wy = (z.x + z.size / 2) / CELL_SIZE, (z.y + z.size / 2) / CELL_SIZE
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
         drawables.append(("zombie", sy, sx, sy, z))
 
-    wx, wy = (player.x + player.size/2) / CELL_SIZE, (player.y + player.size/2) / CELL_SIZE
+    wx, wy = (player.x + player.size / 2) / CELL_SIZE, (player.y + player.size / 2) / CELL_SIZE
     psx, psy = iso_world_to_screen(wx, wy, 0, camx, camy)
     drawables.append(("player", psy, psx, psy, player))
 
@@ -2281,60 +2300,61 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
         elif kind == "coin":
             cx, cy, r = gx, gy, payload
             # 阴影
-            shadow = pygame.Surface((r*4, r*2), pygame.SRCALPHA)
-            pygame.draw.ellipse(shadow, (0,0,0,ISO_SHADOW_ALPHA), shadow.get_rect())
-            screen.blit(shadow, shadow.get_rect(center=(cx, cy+6)))
+            shadow = pygame.Surface((r * 4, r * 2), pygame.SRCALPHA)
+            pygame.draw.ellipse(shadow, (0, 0, 0, ISO_SHADOW_ALPHA), shadow.get_rect())
+            screen.blit(shadow, shadow.get_rect(center=(cx, cy + 6)))
             # 本体
-            pygame.draw.circle(screen, (255,215,80), (cx, cy), r)
-            pygame.draw.circle(screen, (255,245,200), (cx, cy), r, 1)
+            pygame.draw.circle(screen, (255, 215, 80), (cx, cy), r)
+            pygame.draw.circle(screen, (255, 245, 200), (cx, cy), r, 1)
         elif kind == "heal":
             cx, cy, r = gx, gy, payload
-            shadow = pygame.Surface((r*4, r*2), pygame.SRCALPHA)
-            pygame.draw.ellipse(shadow, (0,0,0,ISO_SHADOW_ALPHA), shadow.get_rect())
-            screen.blit(shadow, shadow.get_rect(center=(cx, cy+6)))
-            pygame.draw.circle(screen, (220,60,60), (cx, cy), r)
-            pygame.draw.rect(screen, (255,255,255), pygame.Rect(cx-2, cy-r+3, 4, r*2-6))
-            pygame.draw.rect(screen, (255,255,255), pygame.Rect(cx-r+3, cy-2, r*2-6, 4))
+            shadow = pygame.Surface((r * 4, r * 2), pygame.SRCALPHA)
+            pygame.draw.ellipse(shadow, (0, 0, 0, ISO_SHADOW_ALPHA), shadow.get_rect())
+            screen.blit(shadow, shadow.get_rect(center=(cx, cy + 6)))
+            pygame.draw.circle(screen, (220, 60, 60), (cx, cy), r)
+            pygame.draw.rect(screen, (255, 255, 255), pygame.Rect(cx - 2, cy - r + 3, 4, r * 2 - 6))
+            pygame.draw.rect(screen, (255, 255, 255), pygame.Rect(cx - r + 3, cy - 2, r * 2 - 6, 4))
         elif kind == "bullet":
             cx, cy = gx, gy
-            pygame.draw.circle(screen, (255,255,255), (cx, cy), BULLET_RADIUS)
+            pygame.draw.circle(screen, (255, 255, 255), (cx, cy), BULLET_RADIUS)
         elif kind == "eshot":
             cx, cy = gx, gy
-            pygame.draw.circle(screen, (255,120,50), (cx, cy), BULLET_RADIUS)
+            pygame.draw.circle(screen, (255, 120, 50), (cx, cy), BULLET_RADIUS)
         elif kind == "zombie":
             z = payload
             # 阴影
-            sh = pygame.Surface((ISO_CELL_W//2, ISO_CELL_H//2), pygame.SRCALPHA)
-            pygame.draw.ellipse(sh, (0,0,0,ISO_SHADOW_ALPHA), sh.get_rect())
-            screen.blit(sh, sh.get_rect(center=(gx, gy+6)))
+            sh = pygame.Surface((ISO_CELL_W // 2, ISO_CELL_H // 2), pygame.SRCALPHA)
+            pygame.draw.ellipse(sh, (0, 0, 0, ISO_SHADOW_ALPHA), sh.get_rect())
+            screen.blit(sh, sh.get_rect(center=(gx, gy + 6)))
             # 本体（矩形/色块）
-            col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255,60,60))
+            col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
             size = int(CELL_SIZE * 0.6)  # 立绘用宽高，可替换成 sprite
-            rect = pygame.Rect(0,0,size,size)
+            rect = pygame.Rect(0, 0, size, size)
             rect.midbottom = (gx, gy)
-            if z.is_boss: pygame.draw.rect(screen, (255,215,0), rect.inflate(4,4), 3)
+            if z.is_boss: pygame.draw.rect(screen, (255, 215, 0), rect.inflate(4, 4), 3)
             pygame.draw.rect(screen, col, rect)
         elif kind == "player":
             p = payload
             # 阴影
-            sh = pygame.Surface((ISO_CELL_W//2, ISO_CELL_H//2), pygame.SRCALPHA)
-            pygame.draw.ellipse(sh, (0,0,0,ISO_SHADOW_ALPHA), sh.get_rect())
-            screen.blit(sh, sh.get_rect(center=(gx, gy+6)))
+            sh = pygame.Surface((ISO_CELL_W // 2, ISO_CELL_H // 2), pygame.SRCALPHA)
+            pygame.draw.ellipse(sh, (0, 0, 0, ISO_SHADOW_ALPHA), sh.get_rect())
+            screen.blit(sh, sh.get_rect(center=(gx, gy + 6)))
             # 主角矩形（可替换为角色帧图）
-            col = (240,80,80) if (p.hit_cd > 0 and (pygame.time.get_ticks()//80)%2==0) else (0,255,0)
+            col = (240, 80, 80) if (p.hit_cd > 0 and (pygame.time.get_ticks() // 80) % 2 == 0) else (0, 255, 0)
             size = int(CELL_SIZE * 0.6)
-            rect = pygame.Rect(0,0,size,size)
+            rect = pygame.Rect(0, 0, size, size)
             rect.midbottom = (gx, gy)
             pygame.draw.rect(screen, col, rect)
 
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
     #    —— 为避免重复代码，可以把那段 HUD 抽成一个小函数，这里调用即可。
-    pygame.draw.rect(screen, (0,0,0), (0,0,VIEW_W,INFO_BAR_HEIGHT))
+    pygame.draw.rect(screen, (0, 0, 0), (0, 0, VIEW_W, INFO_BAR_HEIGHT))
     # ...（把你原来 render_game 末尾那段 HUD 绘制复制过来）...
 
     pygame.display.flip()
     return screen.copy()
+
 
 def render_game(screen: pygame.Surface, game_state, player: Player, zombies: List[Zombie],
                 bullets: Optional[List['Bullet']] = None,
@@ -2905,11 +2925,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             running = False
             continue
 
-        if USE_ISO:
-            last_frame = render_game_iso(pygame.display.get_surface(), game_state, player, zombies, bullets,
-                                         enemy_shots)
-        else:
-            last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+        # if USE_ISO:
+        #     last_frame = render_game_iso(pygame.display.get_surface(), game_state, player, zombies, bullets,
+        #                                  enemy_shots)
+        # else:
+        last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
 
         if game_result == "success":
             globals()["_last_spoils"] = getattr(game_state, "spoils_gained", 0)
@@ -3168,11 +3188,11 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 flush_events()
                 return "restart", None, last_frame or screen.copy()
 
-        if USE_ISO:
-            last_frame = render_game_iso(pygame.display.get_surface(), game_state, player, zombies, bullets,
-                                         enemy_shots)
-        else:
-            last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+        # if USE_ISO:
+        #     last_frame = render_game_iso(pygame.display.get_surface(), game_state, player, zombies, bullets,
+        #                                  enemy_shots)
+        # else:
+        last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
 
     return "home", None, last_frame or screen.copy()
 
@@ -3262,6 +3282,7 @@ if __name__ == "__main__":
             zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
     else:
         clear_save()
+        reset_run_state()
         current_level = 0
         zombie_cards_collected = []
         globals()["_carry_player_state"] = None
@@ -3345,6 +3366,7 @@ if __name__ == "__main__":
             else:
                 # new game selected from menu
                 clear_save()
+                reset_run_state()
                 current_level = 0
                 zombie_cards_collected = []
                 globals()["_carry_player_state"] = None
@@ -3368,6 +3390,7 @@ if __name__ == "__main__":
                 mode, save_data = selection
                 # After a fail we always start fresh…
                 clear_save()
+                reset_run_state()
                 current_level = 0
                 zombie_cards_collected = []
                 continue
@@ -3406,6 +3429,7 @@ if __name__ == "__main__":
                         zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
                 else:
                     clear_save()
+                    reset_run_state()
                     current_level = 0
                     zombie_cards_collected = []
                     globals()["_carry_player_state"] = None
