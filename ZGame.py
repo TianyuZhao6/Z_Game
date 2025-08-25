@@ -723,13 +723,77 @@ def show_success_screen(screen, background_surf, reward_choices):
 
 
 def show_pause_menu(screen, background_surf):
-    """Draw pause overlay and return an action tag."""
+    """Draw pause overlay with build info in the dimmed background, keeping buttons centered."""
+    # 创建半透明背景
     dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
     dim.fill((0, 0, 0, 170))
     bg_scaled = pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H))
     screen.blit(bg_scaled, (0, 0))
     screen.blit(dim, (0, 0))
 
+    # 在变暗的背景中显示玩家build信息（不在面板内）
+    font_small = pygame.font.SysFont(None, 28)
+    font_tiny = pygame.font.SysFont(None, 22)
+
+    # 左上角显示基本属性
+    left_margin = 30
+    top_margin = 30
+    y_offset = top_margin
+
+    # 标题
+    title = font_small.render("Player Stats", True, (230, 230, 230))
+    screen.blit(title, (left_margin, y_offset))
+    y_offset += 40
+
+    # 伤害加成
+    dmg_text = font_tiny.render(f"Damage: +{META['dmg']}", True, (230, 100, 100))
+    screen.blit(dmg_text, (left_margin, y_offset))
+    y_offset += 30
+
+    # 射速加成
+    fr_text = font_tiny.render(f"Fire Rate: {META['firerate_mult']:.2f}x", True, (100, 200, 100))
+    screen.blit(fr_text, (left_margin, y_offset))
+    y_offset += 30
+
+    # 速度加成
+    speed_text = font_tiny.render(f"Speed: +{META['speed']}", True, (100, 100, 230))
+    screen.blit(speed_text, (left_margin, y_offset))
+    y_offset += 30
+
+    # 生命值加成
+    hp_text = font_tiny.render(f"Max HP: +{META['maxhp']}", True, (230, 150, 100))
+    screen.blit(hp_text, (left_margin, y_offset))
+    y_offset += 30
+
+    # 金币数量
+    spoils_text = font_tiny.render(f"Spoils: {META['spoils']}", True, (255, 215, 80))
+    screen.blit(spoils_text, (left_margin, y_offset))
+    y_offset += 40
+
+    # 右上角显示收集的卡牌
+    right_margin = VIEW_W - 30
+    y_offset = top_margin
+
+    # 标题
+    title = font_small.render("Zombie Cards", True, (230, 230, 230))
+    title_rect = title.get_rect(right=right_margin, top=y_offset)
+    screen.blit(title, title_rect)
+    y_offset += 40
+
+    if zombie_cards_collected:
+        for i, card in enumerate(zombie_cards_collected):
+            if y_offset < VIEW_H - 100:  # 确保不会超出屏幕
+                card_text = font_tiny.render(f"• {card.replace('_', ' ').title()}", True, (200, 200, 200))
+                card_rect = card_text.get_rect(right=right_margin, top=y_offset)
+                screen.blit(card_text, card_rect)
+                y_offset += 30
+    else:
+        no_cards_text = font_tiny.render("None collected yet", True, (150, 150, 150))
+        no_cards_rect = no_cards_text.get_rect(right=right_margin, top=y_offset)
+        screen.blit(no_cards_text, no_cards_rect)
+        y_offset += 30
+
+    # 保持原有暂停菜单面板和按钮布局不变
     panel_w, panel_h = min(520, VIEW_W - 80), min(500, VIEW_H - 160)
     panel = pygame.Rect(0, 0, panel_w, panel_h)
     panel.center = (VIEW_W // 2, VIEW_H // 2)
@@ -739,6 +803,7 @@ def show_pause_menu(screen, background_surf):
     title = pygame.font.SysFont(None, 72).render("Paused", True, (230, 230, 230))
     screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 58)))
 
+    # 按钮保持原有位置和样式
     btn_w, btn_h = 300, 56
     spacing = 14
     start_y = panel.top + 110
@@ -748,6 +813,7 @@ def show_pause_menu(screen, background_surf):
               ("SETTINGS", "settings"),
               ("BACK TO HOMEPAGE", "home"),
               ("EXIT GAME (Save & Quit)", "exit")]
+
     for i, (label, tag) in enumerate(labels):
         x = panel.centerx - btn_w // 2
         y = start_y + i * (btn_h + spacing)
