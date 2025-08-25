@@ -731,7 +731,7 @@ def show_pause_menu(screen, background_surf):
     screen.blit(bg_scaled, (0, 0))
     screen.blit(dim, (0, 0))
 
-    # 在变暗的背景中显示玩家build信息（不在面板内）
+    # 在变暗的背景中显示玩家build信息
     font_small = pygame.font.SysFont(None, 28)
     font_tiny = pygame.font.SysFont(None, 22)
 
@@ -765,10 +765,6 @@ def show_pause_menu(screen, background_surf):
     screen.blit(hp_text, (left_margin, y_offset))
     y_offset += 30
 
-    # 金币数量
-    spoils_text = font_tiny.render(f"Spoils: {META['spoils']}", True, (255, 215, 80))
-    screen.blit(spoils_text, (left_margin, y_offset))
-    y_offset += 40
 
     # 右上角显示收集的卡牌
     right_margin = VIEW_W - 30
