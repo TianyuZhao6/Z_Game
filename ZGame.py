@@ -580,9 +580,11 @@ def show_start_menu(screen):
                     show_settings_popup(screen, screen.copy())
                     flush_events()
                 elif start_rect.collidepoint(event.pos):
+                    # hard reset the run state the instant START NEW is clicked
+                    clear_save()  # delete savegame.json if it exists
+                    reset_run_state()  # zero META, clear carry, cancel pending shop, drop _last_spoils
                     door_transition(screen)
                     flush_events()
-                    # Starting new game clears any existing save
                     return ("new", None)
                 elif cont_rect and cont_rect.collidepoint(event.pos):
                     data = load_save()
@@ -3286,6 +3288,8 @@ if __name__ == "__main__":
         current_level = 0
         zombie_cards_collected = []
         globals()["_carry_player_state"] = None
+        globals()["_pending_shop"] = False
+        globals().pop("_last_spoils", None)
 
     while True:
         # If we saved while in the shop last time, reopen the shop first
@@ -3313,11 +3317,13 @@ if __name__ == "__main__":
                     zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
 
                 else:
-                    clear_save();
-                    current_level = 0;
+                    clear_save()
+                    reset_run_state()
+                    current_level = 0
                     zombie_cards_collected = []
                     globals()["_carry_player_state"] = None
                     globals()["_pending_shop"] = False
+                    globals().pop("_last_spoils", None)
                 continue  # back to loop top
 
             elif action == "restart":
@@ -3364,12 +3370,13 @@ if __name__ == "__main__":
                 globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
 
             else:
-                # new game selected from menu
                 clear_save()
                 reset_run_state()
                 current_level = 0
                 zombie_cards_collected = []
                 globals()["_carry_player_state"] = None
+                globals()["_pending_shop"] = False
+                globals().pop("_last_spoils", None)
             continue
 
         if result == "exit":
