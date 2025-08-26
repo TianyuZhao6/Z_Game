@@ -3563,7 +3563,7 @@ if __name__ == "__main__":
                 zombie_cards_collected = []
                 globals()["_carry_player_state"] = None
 
-            # TODO
+# TODO
 # Attack MODE need to figure out
 # The item collection system can be hugely impact this game to next level
 # Player and Zombie both can collect item to upgrade, after kill zombie, player can get the experience to upgrade, and
@@ -3572,7 +3572,12 @@ if __name__ == "__main__":
 # using the item they collect in the combat
 
 # zombie's health, attack accumulate via level increases
-# Special weapon can be trade in shop using big items collected in game(GOLDCOLLECTOR, etc.)
-# Player ability panel
+# Special weapon can be trade in shop using big items collected in game(GOLDCOLLECTOR, etc.) OR
+# Just make it only unlock by defeating boss/elite
 # set limit for player fire rate
-# Unsolved if exit at the shop menu, resume will be the beginning of next level
+# Don't Starve view of game -> changing needed
+# monster type increased:
+# split in 3 sub(each with 20% hp) when hp <= 50%
+# influencer: when player approach, decrease player's speed, damage
+
+# Special weapon: GoldCollector, Razor, rage blade jinqiandao
