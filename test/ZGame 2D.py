@@ -2930,11 +2930,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             running = False
             continue
 
-        if USE_ISO:
-            last_frame = render_game_iso(pygame.display.get_surface(), game_state, player, zombies, bullets,
-                                         enemy_shots)
-        else:
-            last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+
+        last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
 
         if game_result == "success":
             globals()["_last_spoils"] = getattr(game_state, "spoils_gained", 0)
@@ -3193,11 +3190,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 flush_events()
                 return "restart", None, last_frame or screen.copy()
 
-        if USE_ISO:
-            last_frame = render_game_iso(pygame.display.get_surface(), game_state, player, zombies, bullets,
-                                         enemy_shots)
-        else:
-            last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+
+        last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
 
     return "home", None, last_frame or screen.copy()
 
