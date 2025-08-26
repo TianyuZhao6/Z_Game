@@ -3581,3 +3581,4 @@ if __name__ == "__main__":
 # influencer: when player approach, decrease player's speed, damage
 
 # Special weapon: GoldCollector, Razor, rage blade jinqiandao
+# Change the prize of the shop dynamic change with level increase
