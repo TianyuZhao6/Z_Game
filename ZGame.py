@@ -193,6 +193,9 @@ ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
 
 WALL_STYLE = "billboard"   # "billboard" 或 "prism"
 
+# 角色圆形碰撞半径
+PLAYER_RADIUS = int(CELL_SIZE * 0.28)
+ZOMBIE_RADIUS = int(CELL_SIZE * 0.28)
 
 # --- map fill tuning ---
 OBSTACLE_DENSITY = 0.14  # proportion of tiles to become obstacles (including clusters)
@@ -563,9 +566,48 @@ def clear_save() -> None:
 
 
 # ==================== UI Helpers ====================
+
+def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
+    r = getattr(entity, "radius", max(8, CELL_SIZE//3))  # 兜底
+    size = entity.size
+
+    # ---- X 轴 ----
+    nx = entity.x + dx
+    cx = nx + size * 0.5
+    cy = entity.y + size * 0.5 + INFO_BAR_HEIGHT
+    blocked_x = False
+    for ob in obstacles_iter:
+        exp = ob.rect.inflate(r*2, r*2)  # Minkowski：把矩形外扩半径
+        if exp.collidepoint(cx, cy):
+            blocked_x = True
+            if dx > 0:  cx = exp.left
+            elif dx < 0: cx = exp.right
+            nx = cx - size * 0.5
+            break
+    if not blocked_x:
+        entity.x = nx
+
+    # ---- Y 轴 ----
+    ny = entity.y + dy
+    cx = entity.x + size * 0.5
+    cy = ny + size * 0.5 + INFO_BAR_HEIGHT
+    blocked_y = False
+    for ob in obstacles_iter:
+        exp = ob.rect.inflate(r*2, r*2)
+        if exp.collidepoint(cx, cy):
+            blocked_y = True
+            if dy > 0:  cy = exp.top
+            elif dy < 0: cy = exp.bottom
+            ny = cy - size * 0.5 - INFO_BAR_HEIGHT
+            break
+    if not blocked_y:
+        entity.y = ny
+
+    # 同步 AABB（仅用于渲染/命中盒）
+    entity.rect.x = int(entity.x)
+    entity.rect.y = int(entity.y) + INFO_BAR_HEIGHT
+
 # === NEW: 等距相机偏移（基于玩家像素中心 → 网格中心 → 屏幕等距投影） ===
-
-
 def calculate_iso_camera(player_x_px: float, player_y_px: float) -> tuple[int, int]:
     px_grid = player_x_px / CELL_SIZE
     py_grid = player_y_px / CELL_SIZE
@@ -1329,10 +1371,6 @@ class Obstacle:
             foot = self.rect.inflate(-w_in, -h_in)
             foot.y += int(h_in * 0.15)
 
-            # 再“外扩”守门，堵住过窄缝隙（避免玩家/僵尸钻过去产生穿模观感）
-            GAP_GUARD_PX = 8  # 可按角色体型微调
-            foot.inflate_ip(GAP_GUARD_PX * 2, GAP_GUARD_PX * 2)
-
             self.rect = foot
 
         self.type: str = obstacle_type
@@ -1373,6 +1411,8 @@ class Player:
         self.max_hp = int(PLAYER_MAX_HP)
         self.hp = int(PLAYER_MAX_HP)
         self.hit_cd = 0.0  # contact invulnerability timer (seconds)
+        self.radius = PLAYER_RADIUS
+
         # progression
         self.level = 1
         self.xp = 0
@@ -1411,29 +1451,9 @@ class Player:
             dy = (my / length)
         else:
             dx = dy = 0.0
-        # axis separated for smooth sliding
-        nx = self.x + dx * self.speed
-        rect_x = pygame.Rect(int(nx), int(self.y) + INFO_BAR_HEIGHT, self.size, self.size)
-        for ob in obstacles.values():
-            if rect_x.colliderect(ob.rect):
-                if dx > 0:
-                    nx = ob.rect.left - self.size
-                elif dx < 0:
-                    nx = ob.rect.right
-                break
-        self.x = max(0, min(nx, GRID_SIZE * CELL_SIZE - self.size))
-        ny = self.y + dy * self.speed
-        rect_y = pygame.Rect(int(self.x), int(ny) + INFO_BAR_HEIGHT, self.size, self.size)
-        for ob in obstacles.values():
-            if rect_y.colliderect(ob.rect):
-                if dy > 0:
-                    ny = ob.rect.top - self.size - INFO_BAR_HEIGHT
-                elif dy < 0:
-                    ny = ob.rect.bottom - INFO_BAR_HEIGHT
-                break
-        self.y = max(0, min(ny, GRID_SIZE * CELL_SIZE - self.size))
-        self.rect.x = int(self.x)
-        self.rect.y = int(self.y) + INFO_BAR_HEIGHT
+
+        speed = self.speed
+        collide_and_slide_circle(self, obstacles.values(), dx * speed, dy * speed)
 
     def fire_cooldown(self) -> float:
         # smaller is faster; clamp to avoid abuse
@@ -1482,6 +1502,7 @@ class Zombie:
         self.xp_to_next = ZOMBIE_XP_TO_LEVEL
         self.is_elite = False
         self.is_boss = False
+        self.radius = ZOMBIE_RADIUS
 
         base_hp = 30 if hp is None else hp
         # type tweaks
@@ -1564,58 +1585,36 @@ class Zombie:
         # ---- 等距：按“脚底点对脚底点”求追击向量（屏幕坐标系）----
         zx, zy = Zombie.feet_xy(self)
         px, py = Zombie.feet_xy(player)
-        vx, vy = Zombie.iso_chase_step((zx, zy), (px, py), speed)
 
         # ---- 轴分离移动：先X后Y，分别做碰撞与“打块”停顿 ----
-        # X 轴尝试
-        nx = self.x + vx
-        rect_x = pygame.Rect(int(nx), int(self.y) + INFO_BAR_HEIGHT, self.size, self.size)
-        blocked_x = False
-        for ob in obstacles:
-            if rect_x.colliderect(ob.rect):
-                if ob.type == "Destructible":
-                    if self.attack_timer >= attack_interval:
-                        ob.health -= self.attack
-                        self.attack_timer = 0.0
-                        if ob.health <= 0:
-                            gp = ob.grid_pos
-                            if gp in game_state.obstacles: del game_state.obstacles[gp]
-                            cx, cy = ob.rect.centerx, ob.rect.centery
-                            game_state.spawn_spoils(cx, cy, SPOILS_PER_BLOCK)
-                            self.gain_xp(XP_ZOMBIE_BLOCK)
-                            if random.random() < HEAL_DROP_CHANCE_BLOCK:
-                                game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
-                blocked_x = True
-                break
-        if not blocked_x:
-            self.x = nx
+        vx, vy = Zombie.iso_chase_step((zx, zy), (px, py), speed)
 
-        # Y 轴尝试
-        ny = self.y + vy
-        rect_y = pygame.Rect(int(self.x), int(ny) + INFO_BAR_HEIGHT, self.size, self.size)
-        blocked_y = False
-        for ob in obstacles:
-            if rect_y.colliderect(ob.rect):
-                if ob.type == "Destructible":
-                    if self.attack_timer >= attack_interval:
-                        ob.health -= self.attack
-                        self.attack_timer = 0.0
-                        if ob.health <= 0:
-                            gp = ob.grid_pos
-                            if gp in game_state.obstacles: del game_state.obstacles[gp]
-                            cx, cy = ob.rect.centerx, ob.rect.centery
-                            game_state.spawn_spoils(cx, cy, SPOILS_PER_BLOCK)
-                            self.gain_xp(XP_ZOMBIE_BLOCK)
-                            if random.random() < HEAL_DROP_CHANCE_BLOCK:
-                                game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
-                blocked_y = True
-                break
-        if not blocked_y:
-            self.y = ny
+        oldx, oldy = self.x, self.y
+        collide_and_slide_circle(self, obstacles, vx, vy)
+        moved = (self.x != oldx) or (self.y != oldy)
+
+
 
         # ---- 同步矩形 ----
         self.rect.x = int(self.x)
         self.rect.y = int(self.y) + INFO_BAR_HEIGHT
+        # 圆心是否触到可破坏障碍 → 按CD扣血
+        if self.attack_timer >= attack_interval:
+            cx = self.x + self.size * 0.5
+            cy = self.y + self.size * 0.5 + INFO_BAR_HEIGHT
+            for ob in obstacles:
+                if ob.type == "Destructible" and ob.rect.inflate(self.radius * 2, self.radius * 2).collidepoint(cx, cy):
+                    ob.health -= self.attack
+                    self.attack_timer = 0.0
+                    if ob.health <= 0:
+                        gp = ob.grid_pos
+                        if gp in game_state.obstacles: del game_state.obstacles[gp]
+                        cx2, cy2 = ob.rect.centerx, ob.rect.centery
+                        game_state.spawn_spoils(cx2, cy2, SPOILS_PER_BLOCK)
+                        self.gain_xp(XP_ZOMBIE_BLOCK)
+                        if random.random() < HEAL_DROP_CHANCE_BLOCK:
+                            game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
+                    break
 
     def update_special(self, dt: float, player: 'Player', zombies: List['Zombie'],
                        enemy_shots: List['EnemyShot']):
@@ -3676,3 +3675,49 @@ if __name__ == "__main__":
 
 # Special weapon: GoldCollector, Razor, rage blade jinqiandao
 # Change the prize of the shop dynamic change with level increase
+
+# 3) 生成/关卡层面的“通行宽度预算”（避免不可解地形）
+#
+# 成熟项目会在关卡生成时做一次形态学腐蚀：把所有障碍脚印向外膨胀 r=角色半径，再检查关键区域的连通性（起点↔刷怪区↔奖励点）。你现在可以用一个简单版本替代：
+#
+# 生成障碍后，跑一遍栅格 BFS，只允许在“与障碍脚印曼哈顿距离 ≥ 半径”的格子里走；
+#
+# 如果玩家出生点到“外环/刷怪点”不可达，就随机“挖掉”一两个可破坏障碍重试。
+#
+# 这一步能保证“后期贴了大体素/立起来的柱子”也不会把关卡变成死局。
+#
+# 4) 视觉风格的“均衡方案”：Hybrid = 低矮棱台底座 + 直立贴图
+#
+# 你说“纯平面贴图有点奇怪”，但完全 3D 的墙体又和 2.5D 视角冲突。常见折中是：
+#
+# 底座：每个可阻挡物在地面画一个很矮的“棱台”（比如 10–12px 高），主要提供接地感与AO阴影；
+#
+# 竖向贴图（billboard）：在底座脚底中心向上“立”一张柱/树/雕像的贴图（锚点在脚底），仅用于视觉；
+#
+# 排序：仍按“脚底 y”排序，遮挡自然；
+#
+# 物理：只认底座的“脚印”，不会因为立起来的美术而改变通行。
+#
+# 你代码里已经有 WALL_STYLE = "billboard" | "prism"，再加一个 "hybrid" 很方便：
+#
+# "hybrid" 时：draw_iso_prism(..., wall_h=12) 画底座；再在其脚底 midbottom 位置画一条竖向长条（后续替换为真实贴图）。
+# 这样能马上得到图2那种“立起来”的感觉，同时不改变我们在第1/2点建立的稳定物理世界。
+#
+# （占位实现非常短：在 render_game_iso 的 kind == "wall" 分支里，如果 WALL_STYLE=="hybrid"，先画 draw_iso_prism(..., wall_h=12)，再 pygame.draw.rect(..., Rect(width≈ISO_CELL_W*0.35,height≈ISO_CELL_H*1.8), midbottom=顶面下点)；以后把这个矩形换成你的立柱/雕像贴图即可。）
+#
+# 5) 数值建议（给你一个“拿来即用”的标尺）
+#
+# PLAYER_RADIUS = ZOMBIE_RADIUS = int(CELL_SIZE * 0.28) 起步；
+# 如果你希望“单格斜向通道必可过”，确保：两障碍脚印的最窄间隙 ≥ 2*半径。
+#
+# Obstacle 的 w_in≈0.20*CELL_SIZE, h_in≈0.30*CELL_SIZE；不要再额外外扩。
+#
+# 若还想更“顺滑”，可以把角色碰撞从圆升级为胶囊（水平胶囊更贴近人物站姿），但在平面移动里圆已经够用了。
+#
+# 结论
+#
+# 物理用“圆形角色 + 脚印矩形障碍 + 轴分离滑动”是等距动作里最稳定的做法；
+#
+# 视觉用“Hybrid 底座 + 直立贴图”，排序仍按脚底 y，不影响通行；
+#
+# 关卡用“通行宽度预算”兜底，避免生成出无法通过的结构。
