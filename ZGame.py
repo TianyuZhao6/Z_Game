@@ -3887,3 +3887,4 @@ if __name__ == "__main__":
 # Change the prize of the shop dynamic change with level increase
 
 # Zombie do not break blocks
+# 模型穿模，调大障碍物脚底的圆形hitbox判定，玩家左右移动的速度会比上下移动速度快不是视错觉需要调整方向向量，heal的颜色可以修改一下容易和敌蛋弄混
