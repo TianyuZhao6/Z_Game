@@ -5,6 +5,7 @@ import random
 import json
 import os
 from queue import PriorityQueue
+from collections import deque
 from typing import Dict, List, Set, Tuple, Optional
 
 
@@ -166,6 +167,70 @@ def pause_game_modal(screen, bg_surface, clock, time_left):
     return choice, time_left
 
 
+def _expanded_block_mask(obstacles: dict, grid_size: int, radius_px: int) -> list:
+    """返回经过半径外扩后的阻挡掩码（True=不可走）"""
+    # 把像素半径近似成网格曼哈顿半径：半格≈CELL_SIZE*0.5
+    radius_cells = max(1, int(math.ceil(radius_px / (CELL_SIZE * 0.5))))
+    mask = [[False] * grid_size for _ in range(grid_size)]
+    # 原始脚印
+    for (gx, gy) in obstacles.keys():
+        mask[gy][gx] = True
+    # 曼哈顿外扩
+    if radius_cells > 0:
+        base = [row[:] for row in mask]
+        for y in range(grid_size):
+            for x in range(grid_size):
+                if not base[y][x]:
+                    continue
+                for dy in range(-radius_cells, radius_cells + 1):
+                    for dx in range(-radius_cells, radius_cells + 1):
+                        if abs(dx) + abs(dy) <= radius_cells:
+                            nx, ny = x + dx, y + dy
+                            if 0 <= nx < grid_size and 0 <= ny < grid_size:
+                                mask[ny][nx] = True
+    return mask
+
+
+def _reachable_to_edge(start: tuple, mask: list) -> bool:
+    """只在 mask 为 False 的格子上走，看能否走到外环"""
+    n = len(mask)
+    sx, sy = start
+    if not (0 <= sx < n and 0 <= sy < n) or mask[sy][sx]:
+        return False
+    q = deque([(sx, sy)])
+    seen = {(sx, sy)}
+    while q:
+        x, y = q.popleft()
+        if x == 0 or y == 0 or x == n - 1 or y == n - 1:
+            return True
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < n and 0 <= ny < n and not mask[ny][nx] and (nx, ny) not in seen:
+                seen.add((nx, ny));
+                q.append((nx, ny))
+    return False
+
+
+def ensure_passage_budget(obstacles: dict, grid_size: int, player_spawn: tuple, tries: int = 8):
+    """
+    若玩家出生点到外环不可达：随机移除 1-2 个可破坏障碍（最多 tries 次），保证可走。
+    注意：只改 obstacles 这个 dict，不改其它东西。
+    """
+    # 预先收集可破坏障碍坐标
+    destructibles = [pos for pos, ob in obstacles.items() if getattr(ob, "type", "") == "Destructible"]
+    for _ in range(tries):
+        mask = _expanded_block_mask(obstacles, grid_size, PLAYER_RADIUS)
+        if _reachable_to_edge(player_spawn, mask):
+            return  # OK
+        if not destructibles:
+            break
+        # 随机挖一个试试（你也可以在这里用更聪明的挑选策略）
+        pos = random.choice(destructibles)
+        destructibles.remove(pos)
+        obstacles.pop(pos, None)
+
+
+
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
 # - Card system UI polish (later pass)
@@ -191,7 +256,8 @@ ISO_CELL_H = 32  # 等距砖块在画面上的“菱形”半高（顶点到中�
 ISO_WALL_Z = 22  # 障碍“墙体”抬起的高度（屏幕像素）
 ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
 
-WALL_STYLE = "billboard"   # "billboard" 或 "prism"
+WALL_STYLE = "hybrid"      # "billboard" | "prism" | "hybrid"
+
 
 # 角色圆形碰撞半径
 PLAYER_RADIUS = int(CELL_SIZE * 0.28)
@@ -204,7 +270,7 @@ MIN_ITEMS = 8  # ensure enough items on larger maps
 DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 5
 ZOMBIE_SPEED = 2
-ZOMBIE_SPEED_MAX = 5
+ZOMBIE_SPEED_MAX = 4.5
 ZOMBIE_ATTACK = 10
 # ----- meta progression -----
 SPOILS_PER_KILL = 3
@@ -568,7 +634,8 @@ def clear_save() -> None:
 # ==================== UI Helpers ====================
 
 def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
-    r = getattr(entity, "radius", max(8, CELL_SIZE//3))  # 兜底
+    entity._hit_ob = None
+    r = getattr(entity, "radius", max(8, CELL_SIZE // 3))  # 兜底
     size = entity.size
 
     # ---- X 轴 ----
@@ -577,11 +644,14 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     cy = entity.y + size * 0.5 + INFO_BAR_HEIGHT
     blocked_x = False
     for ob in obstacles_iter:
-        exp = ob.rect.inflate(r*2, r*2)  # Minkowski：把矩形外扩半径
+        exp = ob.rect.inflate(r * 2, r * 2)  # Minkowski：把矩形外扩半径
         if exp.collidepoint(cx, cy):
+            entity._hit_ob = ob
             blocked_x = True
-            if dx > 0:  cx = exp.left
-            elif dx < 0: cx = exp.right
+            if dx > 0:
+                cx = exp.left
+            elif dx < 0:
+                cx = exp.right
             nx = cx - size * 0.5
             break
     if not blocked_x:
@@ -593,11 +663,14 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     cy = ny + size * 0.5 + INFO_BAR_HEIGHT
     blocked_y = False
     for ob in obstacles_iter:
-        exp = ob.rect.inflate(r*2, r*2)
+        exp = ob.rect.inflate(r * 2, r * 2)
         if exp.collidepoint(cx, cy):
+            entity._hit_ob = ob
             blocked_y = True
-            if dy > 0:  cy = exp.top
-            elif dy < 0: cy = exp.bottom
+            if dy > 0:
+                cy = exp.top
+            elif dy < 0:
+                cy = exp.bottom
             ny = cy - size * 0.5 - INFO_BAR_HEIGHT
             break
     if not blocked_y:
@@ -606,6 +679,7 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     # 同步 AABB（仅用于渲染/命中盒）
     entity.rect.x = int(entity.x)
     entity.rect.y = int(entity.y) + INFO_BAR_HEIGHT
+
 
 # === NEW: 等距相机偏移（基于玩家像素中心 → 网格中心 → 屏幕等距投影） ===
 def calculate_iso_camera(player_x_px: float, player_y_px: float) -> tuple[int, int]:
@@ -1503,6 +1577,15 @@ class Zombie:
         self.is_elite = False
         self.is_boss = False
         self.radius = ZOMBIE_RADIUS
+        # ABS
+        self._stuck_t = 0.0  # 被卡住累计时长
+        self._avoid_t = 0.0  # 侧移剩余时间
+        self._avoid_side = 1  # 侧移方向（1 或 -1）
+        self._focus_block = None  # 当前决定优先破坏的可破坏物
+        self._last_xy = (self.x, self.y)
+        # —— 路径跟随（懒 A*）所需的轻量状态 ——
+        self._path = []  # 路径里的网格路点列表（不含起点）
+        self._path_step = 0  # 当前要走向的路点索引
 
         base_hp = 30 if hp is None else hp
         # type tweaks
@@ -1544,6 +1627,7 @@ class Zombie:
                 self.x = float(self.rect.x)
                 self.y = float(self.rect.y - INFO_BAR_HEIGHT)
 
+
     # ==== 通用：把朝向向量分解到等距基向量（e1=(1,1), e2=(1,-1)）====
     @staticmethod
     def iso_chase_step(from_xy, to_xy, speed):
@@ -1567,6 +1651,24 @@ class Zombie:
         # “脚底”坐标：用底边中心点（避免因为sprite高度导致距离判断穿帮）
         return (entity.x + entity.size * 0.5, entity.y + entity.size)
 
+    @staticmethod
+    def first_obstacle_on_grid_line(a_cell, b_cell, obstacles_dict):
+        x0, y0 = a_cell;
+        x1, y1 = b_cell
+        dx = abs(x1 - x0);
+        sx = 1 if x0 < x1 else -1
+        dy = -abs(y1 - y0);
+        sy = 1 if y0 < y1 else -1
+        err = dx + dy
+        while True:
+            ob = obstacles_dict.get((x0, y0))
+            if ob: return ob
+            if x0 == x1 and y0 == y1: break
+            e2 = 2 * err
+            if e2 >= dy: err += dy; x0 += sx
+            if e2 <= dx: err += dx; y0 += sy
+        return None
+
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
         # ---- BUFF/生成延迟/速度上限：与原逻辑一致 ----
         base_attack = self.attack
@@ -1582,20 +1684,113 @@ class Zombie:
             self._spawn_elapsed += dt
             return
 
-        # ---- 等距：按“脚底点对脚底点”求追击向量（屏幕坐标系）----
+            # 目标（默认追玩家；若锁定了一块挡路的可破坏物，则追它的中心）
         zx, zy = Zombie.feet_xy(self)
         px, py = Zombie.feet_xy(player)
+        target_cx, target_cy = px, py
 
-        # ---- 轴分离移动：先X后Y，分别做碰撞与“打块”停顿 ----
-        vx, vy = Zombie.iso_chase_step((zx, zy), (px, py), speed)
+        # 若之前撞到了可破坏物，则临时聚焦（更积极地砍）
+        if getattr(self, "_hit_ob", None) and getattr(self._hit_ob, "type", "") == "Destructible":
+            self._focus_block = self._hit_ob
+
+        # 视线被“可破坏物”先挡住 → 把它当作“门”优先破坏
+        if not self._focus_block:
+            gz = (int((self.x + self.size * 0.5) // CELL_SIZE), int((self.y + self.size * 0.5) // CELL_SIZE))
+            gp = (int((player.x + player.size * 0.5) // CELL_SIZE), int((player.y + player.size * 0.5) // CELL_SIZE))
+            ob = self.first_obstacle_on_grid_line(gz, gp, game_state.obstacles)
+            if ob and getattr(ob, "type", "") == "Destructible":
+                self._focus_block = ob
+
+        if self._focus_block:
+            target_cx, target_cy = self._focus_block.rect.centerx, self._focus_block.rect.centery
+
+        # —— 若已有“临时路径”，把目标切换到下一个路点（脚底中心） ——
+        # 当前“脚底”所在格
+        gx = int((self.x + self.size * 0.5) // CELL_SIZE)
+        gy = int((self.y + self.size) // CELL_SIZE)
+
+        if self._path_step < len(self._path):
+            nx, ny = self._path[self._path_step]
+            # 到达该格就推进
+            if gx == nx and gy == ny:
+                self._path_step += 1
+                if self._path_step < len(self._path):
+                    nx, ny = self._path[self._path_step]
+            # 仍有路点：将追踪目标改成这个路点的“脚底”
+            if self._path_step < len(self._path):
+                target_cx = nx * CELL_SIZE + CELL_SIZE * 0.5
+                target_cy = ny * CELL_SIZE + CELL_SIZE
+
+        # —— 连续向量追踪（不再用 8 向离散步进）——
+        vx = target_cx - (self.x + self.size * 0.5)
+        vy = target_cy - (self.y + self.size * 0.5 + INFO_BAR_HEIGHT)
+        L = (vx * vx + vy * vy) ** 0.5 or 1.0
+        dx = (vx / L) * speed
+        dy = (vy / L) * speed
+
+        # —— 侧移（反卡住）：被卡住一小会儿就沿着法向 90° 滑行 ——
+        if self._avoid_t > 0.0:
+            # 左右各一条切线，选择预先决定的那一边
+            if self._avoid_side > 0:
+                ax, ay = -dy, dx  # 向左
+            else:
+                ax, ay = dy, -dx  # 向右
+            dx, dy = ax, ay
+            self._avoid_t = max(0.0, self._avoid_t - dt)
 
         oldx, oldy = self.x, self.y
-        collide_and_slide_circle(self, obstacles, vx, vy)
-        moved = (self.x != oldx) or (self.y != oldy)
+        collide_and_slide_circle(self, obstacles, dx, dy)
 
+        # —— 卡住检测 ——
+        moved2 = (self.x - oldx) ** 2 + (self.y - oldy) ** 2
+        if moved2 < 0.25:  # 本帧几乎没动
+            self._stuck_t += dt
+        else:
+            self._stuck_t = 0.0
 
+        # 卡住 0.25s 以上：触发一次侧移，引导绕开凸角/窄门
+        if self._stuck_t > 0.25 and self._avoid_t <= 0.0:
+            self._avoid_t = random.uniform(0.25, 0.45)
+            self._avoid_side = random.choice((-1, 1))
 
-        # ---- 同步矩形 ----
+        # —— 懒 A* 兜底：长时间卡住再寻一次短路径 ——
+        if self._stuck_t > 0.7 and self._avoid_t <= 0.0 and self._path_step >= len(self._path):
+            # 起点：当前脚底；终点：玩家或“被锁定的可破坏物”脚底网格
+            start = (gx, gy)
+            if self._focus_block:
+                gp = getattr(self._focus_block, "grid_pos", None)
+                if gp is None:
+                    cx2, cy2 = self._focus_block.rect.centerx, self._focus_block.rect.centery
+                    goal = (int(cx2 // CELL_SIZE), int((cy2 - INFO_BAR_HEIGHT) // CELL_SIZE))
+                else:
+                    goal = gp
+            else:
+                goal = (int(player.rect.centerx // CELL_SIZE),
+                        int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE))
+
+            # 构图 + A*
+            graph = build_graph(GRID_SIZE, game_state.obstacles)
+            came, _ = a_star_search(graph, start, goal, game_state.obstacles)
+            path = reconstruct_path(came, start, goal)
+
+            # 生成“短路径”：去掉起点，只取前 6 个路点
+            if len(path) > 1:
+                self._path = path[1:7]
+                self._path_step = 0
+
+            # 避免立刻再次触发
+            self._stuck_t = 0.0
+
+        # 焦点块被打掉/消失 → 解除聚焦
+        if self._focus_block and (self._focus_block.health is not None and self._focus_block.health <= 0):
+            self._focus_block = None
+
+        # 路径走完了就清空（下次卡住再算）
+        if self._path_step >= len(self._path):
+            self._path = []
+            self._path_step = 0
+
+        # 同步矩形
         self.rect.x = int(self.x)
         self.rect.y = int(self.y) + INFO_BAR_HEIGHT
         # 圆心是否触到可破坏障碍 → 按CD扣血
@@ -2412,7 +2607,7 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
             t = max(0.4, min(1.0, ob.health / float(max(1, OBSTACLE_HEALTH))))
             base_col = (int(200 * t), int(80 * t), int(80 * t))
         top_pts = iso_tile_points(gx, gy, camx, camy)
-        sort_y = top_pts[2][1] + (ISO_WALL_Z if WALL_STYLE == "prism" else 0)
+        sort_y = top_pts[2][1] + (ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
         drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": base_col}))
 
     # 3.2 地面上的小物：金币 / 治疗（存屏幕像素坐标）
@@ -2458,11 +2653,24 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
     drawables.sort(key=lambda x: x[1])
     for kind, _, data in drawables:
         if kind == "wall":
+            gx, gy, col = data["gx"], data["gy"], data["color"]
             if WALL_STYLE == "prism":
-                draw_iso_prism(screen, data["gx"], data["gy"], data["color"], camx, camy, wall_h=ISO_WALL_Z)
+                draw_iso_prism(screen, gx, gy, col, camx, camy, wall_h=ISO_WALL_Z)
+            elif WALL_STYLE == "hybrid":
+                # 1) 低矮“棱台”底座（12px 高）
+                draw_iso_prism(screen, gx, gy, col, camx, camy, wall_h=12)
+                # 2) 直立占位柱（将来替换为贴图），锚点=脚底 midbottom
+                wx, wy = gx + 0.5, gy + 0.5
+                sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+                rect_h = int(ISO_CELL_H * 1.8)
+                rect_w = int(ISO_CELL_W * 0.35)
+                pillar = pygame.Rect(0, 0, rect_w, rect_h)
+                pillar.midbottom = (sx, sy)
+                pygame.draw.rect(screen, col, pillar, border_radius=rect_w // 3)
             else:
-                # billboard：只画顶面，类似《饥荒》的2D贴图视角
-                draw_iso_tile(screen, data["gx"], data["gy"], data["color"], camx, camy, border=0)
+                # billboard：只画顶面，类似《饥荒》平面贴图风格
+                draw_iso_tile(screen, gx, gy, col, camx, camy, border=0)
+
         elif kind == "coin":
             cx, cy, r = data["cx"], data["cy"], data["r"]
             shadow = pygame.Surface((r * 4, r * 2), pygame.SRCALPHA)
@@ -2823,6 +3031,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         zombie_count=config["zombie_count"],
         main_block_hp=config["block_hp"]
     )
+    # 生成完 obstacles 后 —— 调用兜底
+    ensure_passage_budget(obstacles, GRID_SIZE, player_start)
 
     game_state = GameState(obstacles, items, main_item_list, decorations)
     game_state.current_level = current_level
