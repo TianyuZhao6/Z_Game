@@ -59,6 +59,18 @@ def mono_font(size: int) -> "pygame.font.Font":
         pass
     return pygame.font.SysFont("monospace", size)
 
+def feet_center(ent):
+    # 世界坐标（含 INFO_BAR_HEIGHT 的平移）
+    return (ent.x + ent.size * 0.5, ent.y + ent.size * 0.5 + INFO_BAR_HEIGHT)
+
+def circle_touch(a, b, extra=0.0) -> bool:
+    ax, ay = feet_center(a)
+    bx, by = feet_center(b)
+    ra = getattr(a, "radius", a.size * 0.5)
+    rb = getattr(b, "radius", b.size * 0.5)
+    r = ra + rb + float(extra)
+    dx = ax - bx; dy = ay - by
+    return (dx*dx + dy*dy) <= (r*r)
 
 def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -> None:
     """
@@ -257,7 +269,6 @@ ISO_WALL_Z = 22  # 障碍“墙体”抬起的高度（屏幕像素）
 ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
 
 WALL_STYLE = "hybrid"      # "billboard" | "prism" | "hybrid"
-
 
 # 角色圆形碰撞半径
 PLAYER_RADIUS = int(CELL_SIZE * 0.28)
@@ -3199,9 +3210,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         player.hit_cd = max(0.0, player.hit_cd - dt)
         for zombie in list(zombies):
             zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
-            if zombie.rect.colliderect(player.rect) and player.hit_cd <= 0.0:
+            if player.hit_cd <= 0.0 and circle_touch(zombie, player):
                 player.hp -= int(ZOMBIE_CONTACT_DAMAGE)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
+
                 if player.hp <= 0:
                     game_result = "fail"
                     running = False
@@ -3446,9 +3458,10 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         player.hit_cd = max(0.0, player.hit_cd - dt)
         for zombie in list(zombies):
             zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
-            if zombie.rect.colliderect(player.rect) and player.hit_cd <= 0.0:
+            if player.hit_cd <= 0.0 and circle_touch(zombie, player):
                 player.hp -= int(ZOMBIE_CONTACT_DAMAGE)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
+
                 if player.hp <= 0:
                     clear_save()
                     action = show_fail_screen(screen,
@@ -3871,7 +3884,7 @@ if __name__ == "__main__":
 # The item collection system can be hugely impact this game to next level
 # Player and Zombie both can collect item to upgrade, after kill zombie, player can get the experience to upgrade, and
 # I set a timer each game for winning condition, as long as player still alive, after the time is running out
-# player won, vice versa. And after each combat, shop( roguelike feature) will apear for player to trade with item
+# player won, vice versa. And after each combat, shop( roguelike feature) will appear for player to trade with item
 # using the item they collect in the combat
 
 # zombie's health, attack accumulate via level increases
