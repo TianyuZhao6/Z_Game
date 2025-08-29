@@ -270,6 +270,7 @@ ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
 
 WALL_STYLE = "hybrid"      # "billboard" | "prism" | "hybrid"
 
+ISO_EQ_GAIN = math.sqrt(2) * (ISO_CELL_W * 0.5)
 # 角色圆形碰撞半径
 PLAYER_RADIUS = int(CELL_SIZE * 0.28)
 ZOMBIE_RADIUS = int(CELL_SIZE * 0.28)
@@ -643,53 +644,105 @@ def clear_save() -> None:
 
 
 # ==================== UI Helpers ====================
+def iso_equalized_step(dx: float, dy: float, speed: float) -> tuple[float, float]:
+    """
+    在等距投影下，将单位方向(dx,dy)缩放到“屏幕上恒定速度= speed 像素/帧（或/步）”。
+    非等距则直接返回 dx*speed, dy*speed。
+    """
+    if not USE_ISO:
+        return dx * speed, dy * speed
+
+    half_w = ISO_CELL_W * 0.5
+    half_h = ISO_CELL_H * 0.5
+    # 这个方向对应的屏幕位移长度
+    sx = (dx - dy) * half_w
+    sy = (dx + dy) * half_h
+    screen_mag = math.hypot(sx, sy) or 1.0
+    scale = float(speed) * float(ISO_EQ_GAIN) / screen_mag
+    return dx * scale, dy * scale
 
 def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
+    """
+    以“圆心 + Minkowski 外扩”的方式，做【扫掠式】轴分离碰撞：
+    - X 轴先扫：用线段(cx0 → cx1)与每个扩张矩形的左右边做一次1D相交测试，命中则把终点夹到边界；
+    - Y 轴再扫：同理对上下边；
+    这样即便步长较大/从角上斜切也不会穿过去。
+    """
     entity._hit_ob = None
-    r = getattr(entity, "radius", max(8, CELL_SIZE // 3))  # 兜底
+    r = getattr(entity, "radius", max(8, CELL_SIZE // 3))
     size = entity.size
 
-    # ---- X 轴 ----
-    nx = entity.x + dx
-    cx = nx + size * 0.5
-    cy = entity.y + size * 0.5 + INFO_BAR_HEIGHT
-    blocked_x = False
-    for ob in obstacles_iter:
-        exp = ob.rect.inflate(r * 2, r * 2)  # Minkowski：把矩形外扩半径
-        if exp.collidepoint(cx, cy):
-            entity._hit_ob = ob
-            blocked_x = True
-            if dx > 0:
-                cx = exp.left
-            elif dx < 0:
-                cx = exp.right
-            nx = cx - size * 0.5
-            break
-    if not blocked_x:
-        entity.x = nx
+    # 起点（圆心，世界像素）
+    cx0 = entity.x + size * 0.5
+    cy0 = entity.y + size * 0.5 + INFO_BAR_HEIGHT
 
-    # ---- Y 轴 ----
-    ny = entity.y + dy
-    cx = entity.x + size * 0.5
-    cy = ny + size * 0.5 + INFO_BAR_HEIGHT
-    blocked_y = False
-    for ob in obstacles_iter:
-        exp = ob.rect.inflate(r * 2, r * 2)
-        if exp.collidepoint(cx, cy):
-            entity._hit_ob = ob
-            blocked_y = True
-            if dy > 0:
-                cy = exp.top
-            elif dy < 0:
-                cy = exp.bottom
-            ny = cy - size * 0.5 - INFO_BAR_HEIGHT
-            break
-    if not blocked_y:
-        entity.y = ny
+    # ---------- X 轴扫掠 ----------
+    cx1 = cx0 + dx
+    hit_x = None
+    # 向右：找所有满足 cy0 ∈ [top, bottom] 且 线段跨过 left 的矩形，取最靠近的边
+    if dx > 0:
+        min_left = None
+        for ob in obstacles_iter:
+            exp = ob.rect.inflate(r * 2, r * 2)
+            if exp.top <= cy0 <= exp.bottom and cx0 <= exp.left <= cx1:
+                if (min_left is None) or (exp.left < min_left[0]):
+                    min_left = (exp.left, ob)
+        if min_left:
+            cx1 = min_left[0]
+            hit_x = min_left[1]
+    # 向左：对 right 边做相同处理
+    elif dx < 0:
+        max_right = None
+        for ob in obstacles_iter:
+            exp = ob.rect.inflate(r * 2, r * 2)
+            if exp.top <= cy0 <= exp.bottom and cx1 <= exp.right <= cx0:
+                if (max_right is None) or (exp.right > max_right[0]):
+                    max_right = (exp.right, ob)
+        if max_right:
+            cx1 = max_right[0]
+            hit_x = max_right[1]
+
+    if hit_x is not None:
+        entity._hit_ob = hit_x
+    entity.x = cx1 - size * 0.5  # 应用X位移（已夹到边界）
+
+    # 更新圆心（X 已经改变）
+    cx0 = entity.x + size * 0.5
+    cy0 = entity.y + size * 0.5 + INFO_BAR_HEIGHT
+
+    # ---------- Y 轴扫掠 ----------
+    cy1 = cy0 + dy
+    hit_y = None
+    if dy > 0:
+        min_top = None
+        for ob in obstacles_iter:
+            exp = ob.rect.inflate(r * 2, r * 2)
+            if exp.left <= cx0 <= exp.right and cy0 <= exp.top <= cy1:
+                if (min_top is None) or (exp.top < min_top[0]):
+                    min_top = (exp.top, ob)
+        if min_top:
+            cy1 = min_top[0]
+            hit_y = min_top[1]
+    elif dy < 0:
+        max_bottom = None
+        for ob in obstacles_iter:
+            exp = ob.rect.inflate(r * 2, r * 2)
+            if exp.left <= cx0 <= exp.right and cy1 <= exp.bottom <= cy0:
+                if (max_bottom is None) or (exp.bottom > max_bottom[0]):
+                    max_bottom = (exp.bottom, ob)
+        if max_bottom:
+            cy1 = max_bottom[0]
+            hit_y = max_bottom[1]
+
+    if hit_y is not None:
+        entity._hit_ob = hit_y
+    # 应用Y位移（注意把 INFO_BAR_HEIGHT 减回去）
+    entity.y = cy1 - size * 0.5 - INFO_BAR_HEIGHT
 
     # 同步 AABB（仅用于渲染/命中盒）
     entity.rect.x = int(entity.x)
     entity.rect.y = int(entity.y) + INFO_BAR_HEIGHT
+
 
 
 # === NEW: 等距相机偏移（基于玩家像素中心 → 网格中心 → 屏幕等距投影） ===
@@ -1449,14 +1502,13 @@ class Obstacle:
         px = x * CELL_SIZE;
         py = y * CELL_SIZE + INFO_BAR_HEIGHT
         self.rect = pygame.Rect(px, py, CELL_SIZE, CELL_SIZE)
-        if USE_ISO:
-            # 先收一点，近似菱形脚印
-            w_in = int(CELL_SIZE * 0.20)
-            h_in = int(CELL_SIZE * 0.30)
-            foot = self.rect.inflate(-w_in, -h_in)
-            foot.y += int(h_in * 0.15)
-
-            self.rect = foot
+        # if USE_ISO:
+        #     # 先收一点，近似菱形脚印
+        #     w_in = int(CELL_SIZE * 0.20)
+        #     h_in = int(CELL_SIZE * 0.30)
+        #     foot = self.rect.inflate(-w_in, -h_in)
+        #
+        #     self.rect = foot
 
         self.type: str = obstacle_type
         self.health: Optional[int] = health
@@ -1538,7 +1590,10 @@ class Player:
             dx = dy = 0.0
 
         speed = self.speed
-        collide_and_slide_circle(self, obstacles.values(), dx * speed, dy * speed)
+        # collide_and_slide_circle(self, obstacles.values(), dx * speed, dy * speed)
+        step_x, step_y = iso_equalized_step(dx, dy, self.speed)
+        collide_and_slide_circle(self, obstacles.values(), step_x, step_y)
+
 
     def fire_cooldown(self) -> float:
         # smaller is faster; clamp to avoid abuse
