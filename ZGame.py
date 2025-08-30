@@ -310,6 +310,12 @@ XP_PLAYER_KILL = 6
 XP_PLAYER_BLOCK = 2
 XP_ZOMBIE_BLOCK = 3
 XP_TRANSFER_RATIO = 0.7  # special → survivors
+# --- shop pricing (level-scaled) ---
+SHOP_PRICE_EXP = 1.12      # 每关指数涨幅（与 roguelite 节奏接近，10 关≈3.1x）
+SHOP_PRICE_LINEAR = 0.02   # 每关线性微调（让早期也能感受到一点涨价）
+SHOP_PRICE_STACK = 1.15    # 同一条目多次购买的叠加涨幅
+SHOP_PRICE_REROLL_EXP = 1.06   # Reroll 的涨价更温和
+SHOP_PRICE_REROLL_STACK = 1.25 # 多次 Reroll 叠加更贵（防刷）
 # ----- healing drop tuning -----
 HEAL_DROP_CHANCE_ZOMBIE = 0.12  # 12% when a zombie dies
 HEAL_DROP_CHANCE_BLOCK = 0.08  # 8% when a destructible block is broken
@@ -398,6 +404,19 @@ def reset_run_state():
     globals()["_pending_shop"] = False  # 不从商店续开
     globals().pop("_last_spoils", None)  # 清掉关末结算缓存
 
+def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
+    """
+    同一关内价格固定；进入下一关时按曲线整体上调。
+    kind = "reroll" 时保持恒定，不随关卡变化。
+    """
+    if kind == "reroll":
+        return int(base_cost)  # 恒定不变
+
+    # 只按关卡指数+线性项调整；不再叠加“同一条目已购买次数”的涨幅
+    exp = (SHOP_PRICE_EXP ** level_idx)
+    lin = (1.0 + SHOP_PRICE_LINEAR * level_idx)
+    price = int(round(base_cost * exp * lin))
+    return max(1, price)
 
 # resume flags
 _pending_shop = False  # if True, CONTINUE should open the shop first
@@ -1272,11 +1291,12 @@ def show_shop_screen(screen) -> Optional[str]:
 
     # pseudo-random offers
     catalog = [
-        {"name": "+1 Damage", "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
-        {"name": "+5% Fire Rate", "cost": 7, "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
-        {"name": "+1 Speed", "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
-        {"name": "+5 Max HP", "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
-        {"name": "Reroll Offers", "cost": 3, "apply": "reroll"},
+        {"name": "+1 Damage", "key": "dmg", "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
+        {"name": "+5% Fire Rate", "key": "firerate", "cost": 7,
+         "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
+        {"name": "+1 Speed", "key": "speed", "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
+        {"name": "+5 Max HP", "key": "maxhp", "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
+        {"name": "Reroll Offers", "key": "reroll", "cost": 3, "apply": "reroll"},
     ]
 
     def roll_offers():
@@ -1314,13 +1334,18 @@ def show_shop_screen(screen) -> Optional[str]:
             pygame.draw.rect(screen, (40, 40, 42), r, border_radius=10)
             pygame.draw.rect(screen, (80, 80, 84), r, 2, border_radius=10)
 
+            # 关卡索引（0-based），如果没取到就当 0 关
+            level_idx = int(globals().get("current_level", 0))
+            kind = "reroll" if it["apply"] == "reroll" else "normal"
+            dyn_cost = shop_price(int(it["cost"]), level_idx, kind=kind)
+
             name = font.render(it["name"], True, (230, 230, 230))
-            cost = font.render(f"{it['cost']}¥", True, (255, 210, 130))
-            # text with some padding inside the card
+            cost = font.render(f"{dyn_cost}¥", True, (255, 210, 130))
             screen.blit(name, name.get_rect(midleft=(r.x + 12, r.y + 34)))
             screen.blit(cost, cost.get_rect(midleft=(r.x + 12, r.y + 78)))
 
-            rects.append((r, it))
+            # 保存“点击用的价格”
+            rects.append((r, it, dyn_cost))
 
         # NEXT button — centered under cards
         close = pygame.Rect(0, 0, 220, 56)
@@ -1351,11 +1376,11 @@ def show_shop_screen(screen) -> Optional[str]:
                 if close.collidepoint(ev.pos):
                     flush_events()
                     return None  # finish shop normally
-                for r, it in rects:
-                    if r.collidepoint(ev.pos) and META["spoils"] >= it["cost"]:
-                        META["spoils"] -= it["cost"]
+                for r, it, dyn_cost in rects:
+                    if r.collidepoint(ev.pos) and META["spoils"] >= dyn_cost:
+                        META["spoils"] -= dyn_cost
                         if it["apply"] == "reroll":
-                            offers = roll_offers()
+                            offers = roll_offers()  # 价格保持原样
                         else:
                             it["apply"]()
 
