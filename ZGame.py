@@ -289,7 +289,8 @@ ZOMBIE_ATTACK = 10
 SPOILS_PER_KILL = 3
 SPOILS_PER_BLOCK = 1
 # ----- spoils UI & drop tuning -----
-SPOILS_DROP_CHANCE = 0.50  # 50% drop chance on zombie deaths
+SPOILS_DROP_CHANCE = 0.35  # 35% drop chance on zombie deaths
+SPOILS_BLOCK_DROP_CHANCE = 0.50  # 50% 概率掉 1 枚（必要时再调）
 SPOILS_PER_TYPE = {  # average coins per zombie type (rounded when spawning)
     "basic": (1, 1),  # min, max
     "fast": (1, 2),
@@ -1932,7 +1933,9 @@ class Zombie:
                         gp = ob.grid_pos
                         if gp in game_state.obstacles: del game_state.obstacles[gp]
                         cx2, cy2 = ob.rect.centerx, ob.rect.centery
-                        game_state.spawn_spoils(cx2, cy2, SPOILS_PER_BLOCK)
+                        # 概率掉落
+                        if random.random() < SPOILS_BLOCK_DROP_CHANCE:
+                            game_state.spawn_spoils(cx2, cy2, 1)
                         self.gain_xp(XP_ZOMBIE_BLOCK)
                         if random.random() < HEAL_DROP_CHANCE_BLOCK:
                             game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
@@ -2078,7 +2081,8 @@ class Bullet:
                         cx, cy = ob.rect.centerx, ob.rect.centery
                         del game_state.obstacles[gp]
                         # drop spoils for block destruction
-                        game_state.spawn_spoils(cx, cy, SPOILS_PER_BLOCK)
+                        if random.random() < SPOILS_BLOCK_DROP_CHANCE:
+                            game_state.spawn_spoils(cx, cy, 1)
                         if player: player.add_xp(XP_PLAYER_BLOCK)
                     self.alive = False;
                     return
