@@ -134,6 +134,7 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     xp_label = mono_small.render(f"Lv {int(getattr(player, 'level', 1))}", True, (210, 210, 230))
     screen.blit(xp_label, (xp_bx + xp_bar_w + 8, xp_by - 6))
 
+
     # ===== 右上角：物品 & 金币 =====
     hud_font = font_timer  # 统一字号
     # 物品（最右）
@@ -335,6 +336,15 @@ XP_ZLEVEL_BONUS = 2  # bonus XP per zombie level above 1
 
 ZOMBIE_XP_TO_LEVEL = 15  # per level step for monsters
 PLAYER_XP_TO_LEVEL = 20  # base; scales by +20%
+# --- zombie spoils empowerment ---
+Z_SPOIL_HP_PER = 1          # 每 1 金币：+1 MaxHP & +1 当期HP
+Z_SPOIL_ATK_STEP = 5        # 每 5 金币：+1 攻击
+Z_SPOIL_SPD_STEP = 10       # 每 10 金币：+0.5 速度
+Z_SPOIL_SPD_ADD = 0.5
+Z_SPOIL_SPD_CAP = float(ZOMBIE_SPEED_MAX)  # 速度上限（保持与你总上限一致）
+Z_SPOIL_XP_BONUS_PER = 1    # 击杀时额外经验=每枚金币+1 XP
+Z_GLOW_TIME = 0.35          # 捡到金币时金色光晕持续时间（秒）
+
 # ----- player XP curve tuning -----
 # Requirement to go from level L -> L+1:
 #   base * (exp_growth ** (L-1)) + linear_growth * L + softcap_bump(L)
@@ -1677,6 +1687,11 @@ class Zombie:
         # —— 路径跟随（懒 A*）所需的轻量状态 ——
         self._path = []  # 路径里的网格路点列表（不含起点）
         self._path_step = 0  # 当前要走向的路点索引
+        # Spoil
+        self.spoils = 0              # 当前持有金币
+        self._gold_glow_t = 0.0      # 金色拾取光晕计时器
+        self.speed = float(self.speed)  # 改成 float，支持 +0.5 的增速
+
 
         base_hp = 30 if hp is None else hp
         # type tweaks
@@ -1717,6 +1732,26 @@ class Zombie:
                 self.rect.center = (cx, cy)
                 self.x = float(self.rect.x)
                 self.y = float(self.rect.y - INFO_BAR_HEIGHT)
+
+    def add_spoils(self, n: int):
+        """僵尸拾取金币后的即时强化。"""
+        n = int(max(0, n))
+        if n <= 0:
+            return
+        # 逐枚处理，确保跨阈值时触发攻击/速度加成
+        for _ in range(n):
+            self.spoils += 1
+            # +HP 与 +MaxHP
+            self.max_hp += Z_SPOIL_HP_PER
+            self.hp = min(self.max_hp, self.hp + Z_SPOIL_HP_PER)
+            # 攻击阈值
+            if self.spoils % Z_SPOIL_ATK_STEP == 0:
+                self.attack += 1
+            # 速度阈值
+            if self.spoils % Z_SPOIL_SPD_STEP == 0:
+                self.speed = min(Z_SPOIL_SPD_CAP, float(self.speed) + float(Z_SPOIL_SPD_ADD))
+        # 触发拾取光晕
+        self._gold_glow_t = float(Z_GLOW_TIME)
 
 
     # ==== 通用：把朝向向量分解到等距基向量（e1=(1,1), e2=(1,-1)）====
@@ -1763,12 +1798,13 @@ class Zombie:
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
         # ---- BUFF/生成延迟/速度上限：与原逻辑一致 ----
         base_attack = self.attack
-        base_speed = self.speed
+        base_speed = float(self.speed)
         if getattr(self, "buff_t", 0.0) > 0.0:
             base_attack = int(base_attack * getattr(self, "buff_atk_mult", 1.0))
-            base_speed = base_speed + int(getattr(self, "buff_spd_add", 0))
+            base_speed = float(base_speed) + float(getattr(self, "buff_spd_add", 0))
             self.buff_t = max(0.0, self.buff_t - dt)
-        speed = min(ZOMBIE_SPEED_MAX, max(1, int(base_speed)))
+        speed = float(min(Z_SPOIL_SPD_CAP, max(0.5, base_speed)))
+
         if not hasattr(self, "attack_timer"): self.attack_timer = 0.0
         self.attack_timer += dt
         if self._spawn_elapsed < self.spawn_delay:
@@ -2009,6 +2045,7 @@ class Bullet:
                     # coin drop (with chance) at death
                     cx, cy = z.rect.centerx, z.rect.centery
                     drop_n = roll_spoils_for_zombie(z)
+                    drop_n += int(getattr(z, "spoils", 0))
                     if drop_n > 0:
                         game_state.spawn_spoils(cx, cy, drop_n)
                     # Small chance to drop a heal potion
@@ -2018,9 +2055,10 @@ class Bullet:
                     if player:
                         base_xp = XP_PER_ZOMBIE_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
                         bonus = max(0, z.z_level - 1) * XP_ZLEVEL_BONUS
+                        extra_by_spoils = int(getattr(z, "spoils", 0)) * int(Z_SPOIL_XP_BONUS_PER)
                         if getattr(z, "is_elite", False):  base_xp = int(base_xp * 1.5)
                         if getattr(z, "is_boss", False):  base_xp = int(base_xp * 3.0)
-                        player.add_xp(base_xp + bonus)
+                        player.add_xp(base_xp + bonus + extra_by_spoils)
 
                     transfer_xp_to_neighbors(z, zombies)
                     zombies.remove(z)
@@ -2642,6 +2680,16 @@ class GameState:
                 gained += s.value
         return gained
 
+    def collect_spoils_for_zombie(self, zombie: "Zombie") -> int:
+        """让某个僵尸收集与其相交的金币，返回本次收集数量。"""
+        gained = 0
+        zr = zombie.rect
+        for s in list(self.spoils):
+            if zr.colliderect(s.rect):
+                self.spoils.remove(s)
+                gained += s.value
+        return gained
+
     def spawn_heal(self, x_px: float, y_px: float, amount: int = HEAL_POTION_AMOUNT):
         jx = random.uniform(-6, 6);
         jy = random.uniform(-6, 6)
@@ -2804,6 +2852,32 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
             size = int(CELL_SIZE * 0.6)
             body = pygame.Rect(0, 0, size, size);
             body.midbottom = (cx, cy)
+            # 拾取光晕（金色）
+            if getattr(z, "_gold_glow_t", 0.0) > 0.0:
+                glow = pygame.Surface((int(size*1.6), int(size*1.0)), pygame.SRCALPHA)
+                alpha = int(120 * (z._gold_glow_t / Z_GLOW_TIME))
+                pygame.draw.ellipse(glow, (255, 220, 90, max(30, alpha)), glow.get_rect())
+                screen.blit(glow, glow.get_rect(center=(cx, cy)))
+
+            # 本体
+            size = int(CELL_SIZE * 0.6)
+            body = pygame.Rect(0, 0, size, size); body.midbottom = (cx, cy)
+            col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
+            pygame.draw.rect(screen, col, body)
+
+            # 强化视觉：持币较多时加金色外轮廓
+            coins = int(getattr(z, "spoils", 0))
+            if coins >= Z_SPOIL_SPD_STEP:
+                pygame.draw.rect(screen, (255, 215, 0), body, 3)
+            elif coins >= Z_SPOIL_ATK_STEP:
+                pygame.draw.rect(screen, (220, 180, 80), body, 2)
+
+            # 头顶显示金币数量
+            if coins > 0:
+                f = pygame.font.SysFont(None, 18)
+                txt = f.render(f"{coins}", True, (255, 225, 120))
+                screen.blit(txt, txt.get_rect(midbottom=(cx, body.top - 4)))
+
             col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
             if z.is_boss: pygame.draw.rect(screen, (255, 215, 0), body.inflate(4, 4), 3)
             pygame.draw.rect(screen, col, body)
@@ -2948,6 +3022,27 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         if tag:
             aff_font = pygame.font.SysFont(None, 18)
             screen.blit(aff_font.render(tag, True, (0, 0, 0)), (zr.x + 3, zr.y + 2))
+        # 拾取光晕
+        if getattr(zombie, "_gold_glow_t", 0.0) > 0.0:
+            glow = pygame.Surface((int(zr.width*1.6), int(zr.height*1.0)), pygame.SRCALPHA)
+            alpha = int(120 * (zombie._gold_glow_t / Z_GLOW_TIME))
+            pygame.draw.ellipse(glow, (255, 220, 90, max(30, alpha)), glow.get_rect())
+            screen.blit(glow, glow.get_rect(center=zr.midbottom))
+
+        pygame.draw.rect(screen, color, zr)
+
+        # 强化外轮廓
+        coins = int(getattr(zombie, "spoils", 0))
+        if coins >= Z_SPOIL_SPD_STEP:
+            pygame.draw.rect(screen, (255, 215, 0), zr, 3)
+        elif coins >= Z_SPOIL_ATK_STEP:
+            pygame.draw.rect(screen, (220, 180, 80), zr, 2)
+
+        # 头顶金币计数
+        if coins > 0:
+            aff_font = pygame.font.SysFont(None, 18)
+            tip = aff_font.render(f"{coins}", True, (255, 225, 120))
+            screen.blit(tip, tip.get_rect(midbottom=(zr.centerx, zr.top - 4)))
 
         # HP bar
         try:
@@ -3265,6 +3360,12 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         player.move(keys, game_state.obstacles)
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt)
+        for z in zombies:
+            got = game_state.collect_spoils_for_zombie(z)
+            if got > 0:
+                z.add_spoils(got)
+            # 衰减拾取光晕
+            z._gold_glow_t = max(0.0, getattr(z, "_gold_glow_t", 0.0) - dt)
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
         game_state.collect_heals(player)
@@ -3302,10 +3403,17 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         for z in list(zombies):
             z.update_special(dt, player, zombies, enemy_shots)
             if z.hp <= 0:
-                # drop spoils & share XP even if it died by fuse/other causes
-                game_state.spawn_spoils(z.rect.centerx, z.rect.centery, SPOILS_PER_KILL)
+                total_drop = int(SPOILS_PER_KILL) + int(getattr(z, "spoils", 0))
+                if total_drop > 0:
+                    game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
                 if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
                     game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
+
+                # 额外经验（非子弹击杀时）
+                try:
+                    player.add_xp(int(getattr(z, "spoils", 0)) * int(Z_SPOIL_XP_BONUS_PER))
+                except Exception:
+                    pass
 
                 transfer_xp_to_neighbors(z, zombies)
                 zombies.remove(z)
@@ -3560,9 +3668,18 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         for z in list(zombies):
             z.update_special(dt, player, zombies, enemy_shots)
             if z.hp <= 0:
-                game_state.spawn_spoils(z.rect.centerx, z.rect.centery, SPOILS_PER_KILL)
+                total_drop = int(SPOILS_PER_KILL) + int(getattr(z, "spoils", 0))
+                if total_drop > 0:
+                    game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
                 if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
                     game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
+
+                # 额外经验（非子弹击杀时）
+                try:
+                    player.add_xp(int(getattr(z, "spoils", 0)) * int(Z_SPOIL_XP_BONUS_PER))
+                except Exception:
+                    pass
+
                 transfer_xp_to_neighbors(z, zombies)
                 zombies.remove(z)
 
