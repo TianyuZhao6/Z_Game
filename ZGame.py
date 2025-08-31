@@ -285,6 +285,12 @@ PLAYER_SPEED = 5
 ZOMBIE_SPEED = 2
 ZOMBIE_SPEED_MAX = 4.5
 ZOMBIE_ATTACK = 10
+# --- Splinter family tuning ---
+SPLINTER_CHILD_COUNT = 3
+SPLINTER_CHILD_HP_RATIO = 0.20   # each child = 20% of parent's MAX HP
+SPLINTERLING_ATK_RATIO = 0.60    # child attack ~60% of parent's attack
+SPLINTERLING_SPD_ADD = 1         # child runs a bit faster
+SPLINTER_UNLOCK_LEVEL = 2        # 0-based: unlock at Lv3 (after level 2)
 # ----- meta progression -----
 SPOILS_PER_KILL = 3
 SPOILS_PER_BLOCK = 1
@@ -301,6 +307,9 @@ SPOILS_PER_TYPE = {  # average coins per zombie type (rounded when spawning)
     "buffer": (2, 3),
     "shielder": (2, 3),
     "bomber": (1, 2),  # alias for suicide, if used
+    "splinter": (1, 2),
+    "splinterling": (0, 1),
+
 }
 # coin bounce feel
 COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
@@ -332,6 +341,9 @@ XP_PER_ZOMBIE_TYPE = {
     "suicide": 9,  # if killed before it explodes
     "buffer": 6,
     "shielder": 8,
+    "splinter": 8,
+    "splinterling": 4,
+
 }
 XP_ZLEVEL_BONUS = 2  # bonus XP per zombie level above 1
 
@@ -443,6 +455,9 @@ ZOMBIE_COLORS = {
     "bomber": (255, 90, 90),
     "buffer": (80, 200, 140),
     "shielder": (60, 160, 255),
+    "splinter": (180, 120, 250),
+    "splinterling": (210, 160, 255),
+
 }
 
 # --- wave spawning ---
@@ -486,6 +501,8 @@ THREAT_COSTS = {
     "shielder": 3,
     "strong": 4,
     "tank": 5,
+    "splinter": 4,
+
 }
 # (Optional) relative preference if multiple types fit the remaining budget
 THREAT_WEIGHTS = {
@@ -497,6 +514,8 @@ THREAT_WEIGHTS = {
     "shielder": 10,
     "strong": 8,
     "tank": 6,
+    "splinter": 10,
+
 }
 
 # --- combat tuning (Brotato-like) ---
@@ -1409,9 +1428,14 @@ def budget_for_level(level_idx_zero_based: int) -> int:
                int(round(THREAT_BUDGET_BASE * (THREAT_BUDGET_EXP ** level_idx_zero_based))))
 
 
-def _pick_type_by_budget(rem: int) -> Optional[str]:
-    # choose among types whose cost <= remaining budget, weighted by THREAT_WEIGHTS
-    choices = [(t, w) for t, w in THREAT_WEIGHTS.items() if THREAT_COSTS.get(t, 999) <= rem]
+def _pick_type_by_budget(rem: int, level_idx_zero_based: int) -> Optional[str]:
+    def _unlocked(t: str) -> bool:
+        if t == "splinter":
+            return level_idx_zero_based >= SPLINTER_UNLOCK_LEVEL
+        return True  # others always unlocked
+
+    choices = [(t, w) for t, w in THREAT_WEIGHTS.items()
+               if THREAT_COSTS.get(t, 999) <= rem and _unlocked(t)]
     if not choices:
         return None
     total = sum(w for _, w in choices)
@@ -1422,6 +1446,7 @@ def _pick_type_by_budget(rem: int) -> Optional[str]:
         if r <= acc:
             return t
     return choices[-1][0]
+
 
 
 def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Zombie"], want: int) -> List[
@@ -1500,7 +1525,8 @@ def spawn_wave_with_budget(game_state: "GameState",
         # choose a type that fits remaining budget
         remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in zombies if
                                  getattr(z, "_spawn_wave_tag", -1) == wave_index)
-        t = _pick_type_by_budget(max(1, remaining))
+        t = _pick_type_by_budget(max(1, remaining), current_level)
+
         if not t:
             break  # can't afford any type
 
@@ -1653,7 +1679,6 @@ class Player:
     def draw(self, screen):
         pygame.draw.rect(screen, (0, 255, 0), self.rect)
 
-
 class Zombie:
     def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED,
                  ztype: str = "basic", hp: Optional[int] = None):
@@ -1692,6 +1717,10 @@ class Zombie:
         self.spoils = 0              # 当前持有金币
         self._gold_glow_t = 0.0      # 金色拾取光晕计时器
         self.speed = float(self.speed)  # 改成 float，支持 +0.5 的增速
+        # split flags (only for splinter)
+        self._can_split = (self.type == "splinter")
+        self._split_done = False
+
 
 
         base_hp = 30 if hp is None else hp
@@ -1795,6 +1824,48 @@ class Zombie:
             if e2 >= dy: err += dy; x0 += sx
             if e2 <= dx: err += dx; y0 += sy
         return None
+
+    # --- module-level helper: split parent into 3 splinterlings ---
+    @staticmethod
+    def spawn_splinter_children(parent: "Zombie",
+                                zombies: list,
+                                game_state: "GameState",
+                                level_idx: int,
+                                wave_index: int):
+        gx = int((parent.x + parent.size * 0.5) // CELL_SIZE)
+        gy = int((parent.y + parent.size) // CELL_SIZE)
+        neighbors = [(gx + dx, gy + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if not (dx == 0 and dy == 0)]
+        random.shuffle(neighbors)
+
+        child_hp = max(1, int(parent.max_hp * SPLINTER_CHILD_HP_RATIO))
+        child_atk = max(1, int(parent.attack * SPLINTERLING_ATK_RATIO))
+        child_speed = min(ZOMBIE_SPEED_MAX, int(parent.speed) + int(SPLINTERLING_SPD_ADD))
+
+        spawned = 0
+        for nx, ny in neighbors:
+            if spawned >= SPLINTER_CHILD_COUNT:
+                break
+            if not (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE):
+                continue
+            if (nx, ny) in game_state.obstacles:
+                continue
+            occupied = False
+            for z in zombies:
+                zx = int((z.x + z.size * 0.5) // CELL_SIZE)
+                zy = int((z.y + z.size * 0.5) // CELL_SIZE)
+                if zx == nx and zy == ny:
+                    occupied = True
+                    break
+            if occupied:
+                continue
+
+            child = Zombie((nx, ny), attack=child_atk, speed=child_speed, ztype="splinterling", hp=child_hp)
+            child._can_split = False
+            child._split_done = True
+            zombies.append(child)
+            spawned += 1
+
+        return spawned
 
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
         # ---- BUFF/生成延迟/速度上限：与原逻辑一致 ----
@@ -1942,7 +2013,19 @@ class Zombie:
                     break
 
     def update_special(self, dt: float, player: 'Player', zombies: List['Zombie'],
-                       enemy_shots: List['EnemyShot']):
+                       enemy_shots: List['EnemyShot'], game_state: 'GameState' = None):
+
+        # --- Splinter passive split when HP <= 50% (non-lethal path) ---
+        if self._can_split and not self._split_done and self.hp > 0 and self.hp <= int(self.max_hp * 0.5):
+            # 标记已分裂，生成子体并移除自己
+            self._split_done = True
+            self._can_split = False
+            Zombie.spawn_splinter_children(self, zombies, game_state, level_idx=getattr(game_state, "current_level", 0), wave_index=0)
+
+            # 将自己“杀死”以便主循环移除（或者直接把 hp 置 0）
+            self.hp = 0
+            return
+
         # 远程怪：发射投射物
         if self.type in ("ranged", "spitter"):
             self.ranged_cd = max(0.0, (self.ranged_cd or 0.0) - dt)
@@ -2045,29 +2128,38 @@ class Bullet:
                     z.hp -= self.damage
 
                 if z.hp <= 0:
-                    # coin drop (with chance) at death
                     cx, cy = z.rect.centerx, z.rect.centery
+
+                    # --- Splinter: if not yet split, split on death instead of dropping loot now ---
+                    if getattr(z, "_can_split", False) and not getattr(z, "_split_done", False) and getattr(z, "type",
+                                                                                                            "") == "splinter":
+                        z._split_done = True
+                        z._can_split = False
+                        # 生成子体；父体不掉落金币（避免三倍通胀），XP也交给后续击杀子体获得
+                        spawn_splinter_children(z, zombies, game_state, level_idx=0, wave_index=0)
+                        # 从场上移除父体
+                        zombies.remove(z)
+                        self.alive = False
+                        return
+
+                    # --- normal death (non-splinter or already split) ---
                     drop_n = roll_spoils_for_zombie(z)
                     drop_n += int(getattr(z, "spoils", 0))
                     if drop_n > 0:
                         game_state.spawn_spoils(cx, cy, drop_n)
-                    # Small chance to drop a heal potion
                     if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
                         game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
-                    # player XP + inheritance if you were already doing that here earlier
                     if player:
                         base_xp = XP_PER_ZOMBIE_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
                         bonus = max(0, z.z_level - 1) * XP_ZLEVEL_BONUS
                         extra_by_spoils = int(getattr(z, "spoils", 0)) * int(Z_SPOIL_XP_BONUS_PER)
                         if getattr(z, "is_elite", False):  base_xp = int(base_xp * 1.5)
-                        if getattr(z, "is_boss", False):  base_xp = int(base_xp * 3.0)
+                        if getattr(z, "is_boss", False):   base_xp = int(base_xp * 3.0)
                         player.add_xp(base_xp + bonus + extra_by_spoils)
-
                     transfer_xp_to_neighbors(z, zombies)
                     zombies.remove(z)
-
-                self.alive = False
-                return
+                    self.alive = False
+                    return
 
         # 2) obstacles
         for gp, ob in list(game_state.obstacles.items()):
@@ -3405,7 +3497,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     break
         # special behaviors & enemy shots
         for z in list(zombies):
-            z.update_special(dt, player, zombies, enemy_shots)
+            z.update_special(dt, player, zombies, enemy_shots, game_state)
             if z.hp <= 0:
                 total_drop = int(SPOILS_PER_KILL) + int(getattr(z, "spoils", 0))
                 if total_drop > 0:
@@ -3670,7 +3762,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
 
         # Special behaviors & enemy shots
         for z in list(zombies):
-            z.update_special(dt, player, zombies, enemy_shots)
+            z.update_special(dt, player, zombies, enemy_shots, game_state)
+
             if z.hp <= 0:
                 total_drop = int(SPOILS_PER_KILL) + int(getattr(z, "spoils", 0))
                 if total_drop > 0:
