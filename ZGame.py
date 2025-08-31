@@ -4092,12 +4092,11 @@ if __name__ == "__main__":
 # Special weapon can be trade in shop using big items collected in game(GOLDCOLLECTOR, etc.) OR
 # Just make it only unlock by defeating boss/elite
 # set limit for player fire rate
-# Don't Starve view of game -> changing needed
 # monster type increased:
 # split in 3 sub(each with 20% hp) when hp <= 50%
 # influencer: when player approach, decrease player's speed, damage
 
-# Special weapon: GoldCollector, Razor, rage blade jinqiandao
+# Special weapon: GoldCollector, Razor, rage blade jingqiandao
 # Change the prize of the shop dynamic change with level increase
 
 # Zombie do not break blocks
