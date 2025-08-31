@@ -410,7 +410,7 @@ BOSS_ATK_MULT = 2.0
 BOSS_SPD_ADD = 1
 
 # persistent (per run) upgrades bought in shop
-META = {"spoils": 0, "dmg": 0, "firerate_mult": 1.0, "speed": 0, "maxhp": 0}
+META = {"spoils": 0, "dmg": 0, "firerate_mult": 1.0, "speed": 0, "maxhp": 0, "crit": 0.0}
 
 
 def reset_run_state():
@@ -422,6 +422,7 @@ def reset_run_state():
         "firerate_mult": 1.0,
         "speed": 0,
         "maxhp": 0,
+        "crit": 0.0
     })
     globals()["_carry_player_state"] = None  # 不带上一次的等级/经验
     globals()["_pending_shop"] = False  # 不从商店续开
@@ -527,6 +528,15 @@ BULLET_DAMAGE_ZOMBIE = 12
 BULLET_DAMAGE_BLOCK = 10
 ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
 MAX_FIRE_RANGE = 800.0  # pixels
+# --- CRIT & damage text ---
+CRIT_CHANCE_BASE = 0.05     # 基础暴击率=5%
+CRIT_MULT_BASE = 1.8        # 暴击伤害倍数，后续可以做商店项
+DMG_TEXT_TTL = 0.8          # 飘字存活时长（秒）
+DMG_TEXT_RISE = 42.0        # 垂直上升速度（像素/秒）
+DMG_TEXT_FADE = 0.25        # 尾段淡出比例（最后 25% 时间开始透明）
+DMG_TEXT_SIZE_NORMAL = 28
+DMG_TEXT_SIZE_CRIT   = 38
+
 # --- survival mode & player health ---
 LEVEL_TIME_LIMIT = 45.0  # seconds per run
 PLAYER_MAX_HP = 40  # player total health
@@ -1115,6 +1125,12 @@ def show_pause_menu(screen, background_surf):
     screen.blit(hp_text, (left_margin, y_offset))
     y_offset += 30
 
+    #暴击加成
+    crit_pct = int((CRIT_CHANCE_BASE + META.get("crit", 0.0)) * 100)
+    crit_text = font_tiny.render(f"Crit Chance: {crit_pct}%", True, (255, 220, 120))
+    screen.blit(crit_text, (left_margin, y_offset));
+    y_offset += 30
+
     # 右上角显示收集的卡牌
     right_margin = VIEW_W - 30
     y_offset = top_margin
@@ -1326,6 +1342,9 @@ def show_shop_screen(screen) -> Optional[str]:
          "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
         {"name": "+1 Speed", "key": "speed", "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
         {"name": "+5 Max HP", "key": "maxhp", "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
+        {"name": "+5% Crit", "key": "crit", "cost": 9,
+         "apply": lambda: META.update(crit=min(0.75, META.get("crit", 0.0) + 0.05))},
+
         {"name": "Reroll Offers", "key": "reroll", "cost": 3, "apply": "reroll"},
     ]
 
@@ -1609,6 +1628,10 @@ class Player:
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.max_hp = int(PLAYER_MAX_HP)
         self.hp = int(PLAYER_MAX_HP)
+        # --- crit stats ---
+        self.crit_chance = max(0.0, min(0.95, CRIT_CHANCE_BASE + float(META.get("crit", 0.0))))
+        self.crit_mult = float(CRIT_MULT_BASE)
+
         self.hit_cd = 0.0  # contact invulnerability timer (seconds)
         self.radius = PLAYER_RADIUS
 
@@ -1678,6 +1701,48 @@ class Player:
 
     def draw(self, screen):
         pygame.draw.rect(screen, (0, 255, 0), self.rect)
+
+# --- module-level helper: split parent into 3 splinterlings ---
+def spawn_splinter_children(parent: "Zombie",
+                            zombies: list,
+                            game_state: "GameState",
+                            level_idx: int,
+                            wave_index: int):
+    gx = int((parent.x + parent.size * 0.5) // CELL_SIZE)
+    gy = int((parent.y + parent.size) // CELL_SIZE)
+    neighbors = [(gx + dx, gy + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if not (dx == 0 and dy == 0)]
+    random.shuffle(neighbors)
+
+    child_hp = max(1, int(parent.max_hp * SPLINTER_CHILD_HP_RATIO))
+    child_atk = max(1, int(parent.attack * SPLINTERLING_ATK_RATIO))
+    child_speed = min(ZOMBIE_SPEED_MAX, int(parent.speed) + int(SPLINTERLING_SPD_ADD))
+
+    spawned = 0
+    for nx, ny in neighbors:
+        if spawned >= SPLINTER_CHILD_COUNT:
+            break
+        if not (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE):
+            continue
+        if (nx, ny) in game_state.obstacles:
+            continue
+        occupied = False
+        for z in zombies:
+            zx = int((z.x + z.size * 0.5) // CELL_SIZE)
+            zy = int((z.y + z.size * 0.5) // CELL_SIZE)
+            if zx == nx and zy == ny:
+                occupied = True
+                break
+        if occupied:
+            continue
+
+        child = Zombie((nx, ny), attack=child_atk, speed=child_speed, ztype="splinterling", hp=child_hp)
+        child._can_split = False
+        child._split_done = True
+        zombies.append(child)
+        spawned += 1
+
+    return spawned
+
 
 class Zombie:
     def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED,
@@ -1825,47 +1890,6 @@ class Zombie:
             if e2 <= dx: err += dx; y0 += sy
         return None
 
-    # --- module-level helper: split parent into 3 splinterlings ---
-    @staticmethod
-    def spawn_splinter_children(parent: "Zombie",
-                                zombies: list,
-                                game_state: "GameState",
-                                level_idx: int,
-                                wave_index: int):
-        gx = int((parent.x + parent.size * 0.5) // CELL_SIZE)
-        gy = int((parent.y + parent.size) // CELL_SIZE)
-        neighbors = [(gx + dx, gy + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if not (dx == 0 and dy == 0)]
-        random.shuffle(neighbors)
-
-        child_hp = max(1, int(parent.max_hp * SPLINTER_CHILD_HP_RATIO))
-        child_atk = max(1, int(parent.attack * SPLINTERLING_ATK_RATIO))
-        child_speed = min(ZOMBIE_SPEED_MAX, int(parent.speed) + int(SPLINTERLING_SPD_ADD))
-
-        spawned = 0
-        for nx, ny in neighbors:
-            if spawned >= SPLINTER_CHILD_COUNT:
-                break
-            if not (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE):
-                continue
-            if (nx, ny) in game_state.obstacles:
-                continue
-            occupied = False
-            for z in zombies:
-                zx = int((z.x + z.size * 0.5) // CELL_SIZE)
-                zy = int((z.y + z.size * 0.5) // CELL_SIZE)
-                if zx == nx and zy == ny:
-                    occupied = True
-                    break
-            if occupied:
-                continue
-
-            child = Zombie((nx, ny), attack=child_atk, speed=child_speed, ztype="splinterling", hp=child_hp)
-            child._can_split = False
-            child._split_done = True
-            zombies.append(child)
-            spawned += 1
-
-        return spawned
 
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
         # ---- BUFF/生成延迟/速度上限：与原逻辑一致 ----
@@ -2020,7 +2044,11 @@ class Zombie:
             # 标记已分裂，生成子体并移除自己
             self._split_done = True
             self._can_split = False
-            Zombie.spawn_splinter_children(self, zombies, game_state, level_idx=getattr(game_state, "current_level", 0), wave_index=0)
+            spawn_splinter_children(
+                self, zombies, game_state,
+                level_idx=getattr(game_state, "current_level", 0),
+                wave_index=0
+            )
 
             # 将自己“杀死”以便主循环移除（或者直接把 hp 置 0）
             self.hp = 0
@@ -2053,6 +2081,8 @@ class Zombie:
                     if player.hit_cd <= 0.0:
                         player.hp -= SUICIDE_DAMAGE
                         player.hit_cd = float(PLAYER_HIT_COOLDOWN)
+                        game_state.add_damage_text(player.rect.centerx, player.rect.centery, SUICIDE_DAMAGE, crit=False,
+                                                   kind="hp")
                 # （可选）对其它僵尸/可破坏障碍造成伤害，这里省略
                 self.hp = 0  # 自身消失
 
@@ -2118,14 +2148,32 @@ class Bullet:
         # 1) zombies
         for z in list(zombies):
             if r.colliderect(z.rect):
-                # shield first
+                # --- crit roll (use player's stats if available) ---
+                crit_p = float(getattr(player, "crit_chance", CRIT_CHANCE_BASE))
+                crit_m = float(getattr(player, "crit_mult", CRIT_MULT_BASE))
+                is_crit = (random.random() < max(0.0, min(0.99, crit_p)))
+                base = int(self.damage)
+                dealt = int(round(base * (crit_m if is_crit else 1.0)))
+
+                cx, cy = z.rect.centerx, z.rect.centery
+
+                # --- apply to shield first, overflow to HP ---
                 if getattr(z, "shield_hp", 0) > 0:
-                    z.shield_hp -= self.damage
+                    blocked = min(dealt, z.shield_hp)
+                    z.shield_hp -= dealt
+                    # 飘字：护盾伤害（蓝色）
+                    game_state.add_damage_text(cx, cy, blocked, crit=is_crit, kind="shield")
+                    overflow = dealt - blocked
                     if z.shield_hp < 0:
-                        z.hp += z.shield_hp
-                        z.shield_hp = 0
+                        # 已在一行里把溢出算进去了，这里不再额外处理
+                        pass
+                    if overflow > 0:
+                        z.hp -= overflow
+                        # 飘字：HP 伤害（红/金）
+                        game_state.add_damage_text(cx, cy - 10, overflow, crit=is_crit, kind="hp")
                 else:
-                    z.hp -= self.damage
+                    z.hp -= dealt
+                    game_state.add_damage_text(cx, cy, dealt, crit=is_crit, kind="hp")
 
                 if z.hp <= 0:
                     cx, cy = z.rect.centerx, z.rect.centery
@@ -2312,11 +2360,42 @@ class EnemyShot:
                 if player.hp < 0:
                     player.hp = 0
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
+            # 显示玩家受伤数字（红色，大号），敌人攻击不参与暴击
+            game_state.add_damage_text(player.rect.centerx, player.rect.centery, self.dmg, crit=False, kind="hp")
             self.alive = False
 
     def draw(self, screen, cam_x, cam_y):
         pygame.draw.circle(screen, (255, 120, 50), (int(self.x - cam_x), int(self.y - cam_y)), BULLET_RADIUS)
 
+class DamageText:
+    """世界坐标下的飘字（x,y 为像素，含 INFO_BAR_HEIGHT），按时间上浮并淡出。"""
+    def __init__(self, x_px: float, y_px: float, amount: int,
+                 crit: bool = False, kind: str = "hp"):
+        self.x = float(x_px)
+        self.y = float(y_px)
+        self.amount = int(amount)
+        self.crit = bool(crit)
+        self.kind = kind  # "hp"|"shield"
+        self.t = 0.0
+        self.ttl = float(DMG_TEXT_TTL)
+
+    def alive(self) -> bool:
+        return self.t < self.ttl
+
+    def step(self, dt: float):
+        self.t += dt
+
+    def screen_offset_y(self) -> float:
+        # 线性上升
+        return -DMG_TEXT_RISE * (self.t / self.ttl)
+
+    def alpha(self) -> int:
+        # 后段逐渐淡出
+        p = self.t / self.ttl
+        if p <= (1.0 - DMG_TEXT_FADE):
+            return 255
+        tail = (p - (1.0 - DMG_TEXT_FADE)) / max(1e-4, DMG_TEXT_FADE)
+        return max(0, int(255 * (1.0 - tail)))
 
 # ==================== 算法函数 ====================
 
@@ -2744,6 +2823,7 @@ class GameState:
         self.spoils = []  # List[Spoil]
         self.spoils_gained = 0
         self.heals = []  # List[HealPickup]
+        self.dmg_texts = []  # List[DamageText]
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -2804,6 +2884,16 @@ class GameState:
                 player.hp = min(player.max_hp, player.hp + h.heal)
                 healed += (player.hp - before)
         return healed
+
+    def add_damage_text(self, x_px: float, y_px: float, amount: int, crit: bool = False, kind: str = "hp"):
+        if amount <= 0: return
+        self.dmg_texts.append(DamageText(x_px, y_px, amount, crit=crit, kind=kind))
+
+    def update_damage_texts(self, dt: float):
+        for d in list(self.dmg_texts):
+            d.step(dt)
+            if not d.alive():
+                self.dmg_texts.remove(d)
 
 
 # ==================== 游戏渲染函数 ====================
@@ -2987,6 +3077,27 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
             rect.midbottom = (cx, cy)
             col = (240, 80, 80) if (p.hit_cd > 0 and (pygame.time.get_ticks() // 80) % 2 == 0) else (0, 255, 0)
             pygame.draw.rect(screen, col, rect)
+
+    # --- damage numbers (iso) ---
+    for d in getattr(game_state, "dmg_texts", []):
+        # 世界像素 -> 格 -> 等距投影
+        wx = d.x / CELL_SIZE
+        wy = (d.y - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+        sy += d.screen_offset_y()
+
+        # 颜色：HP=红/白，护盾=蓝
+        if d.kind == "shield":
+            col = (120, 200, 255)
+        else:
+            col = (255, 100, 100) if not d.crit else (255, 240, 120)
+
+        size = DMG_TEXT_SIZE_NORMAL if not d.crit else DMG_TEXT_SIZE_CRIT
+        font = pygame.font.SysFont(None, size, bold=d.crit)
+
+        surf = font.render(str(d.amount), True, col)
+        surf.set_alpha(d.alpha())
+        screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
 
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
@@ -3189,6 +3300,21 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         # if is_main:
         #     star = pygame.font.SysFont(None, 32).render("★", True, (255, 255, 120))
         #     screen.blit(star, (draw_rect.x + 8, draw_rect.y + 8))
+    # --- damage numbers (2D) ---
+    for d in getattr(game_state, "dmg_texts", []):
+        sx = int(d.x - cam_x)
+        sy = int(d.y - cam_y + d.screen_offset_y())
+        if d.kind == "shield":
+            col = (120, 200, 255)
+        else:
+            col = (255, 100, 100) if not d.crit else (255, 240, 120)
+
+        size = DMG_TEXT_SIZE_NORMAL if not d.crit else DMG_TEXT_SIZE_CRIT
+        font = pygame.font.SysFont(None, size, bold=d.crit)
+
+        surf = font.render(str(d.amount), True, col)
+        surf.set_alpha(d.alpha())
+        screen.blit(surf, surf.get_rect(center=(sx, sy)))
 
     draw_ui_topbar(screen, game_state, player, time_left=globals().get("_time_left_runtime"))
 
@@ -3464,6 +3590,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             z._gold_glow_t = max(0.0, getattr(z, "_gold_glow_t", 0.0) - dt)
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
+        game_state.update_damage_texts(dt)
         game_state.collect_heals(player)
 
         # Autofire handling
@@ -3490,6 +3617,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if player.hit_cd <= 0.0 and circle_touch(zombie, player):
                 player.hp -= int(ZOMBIE_CONTACT_DAMAGE)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
+                game_state.add_damage_text(player.rect.centerx, player.rect.centery, ZOMBIE_CONTACT_DAMAGE, crit=False,
+                                           kind="hp")
 
                 if player.hp <= 0:
                     game_result = "fail"
@@ -3707,6 +3836,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         game_state.update_spoils(dt)
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
+        game_state.update_damage_texts(dt)
         game_state.collect_heals(player)
 
         # Autofire
@@ -3745,6 +3875,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             if player.hit_cd <= 0.0 and circle_touch(zombie, player):
                 player.hp -= int(ZOMBIE_CONTACT_DAMAGE)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
+                game_state.add_damage_text(player.rect.centerx, player.rect.centery, ZOMBIE_CONTACT_DAMAGE, crit=False,
+                                           kind="hp")
 
                 if player.hp <= 0:
                     clear_save()
