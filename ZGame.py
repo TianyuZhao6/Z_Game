@@ -285,6 +285,10 @@ PLAYER_SPEED = 5
 ZOMBIE_SPEED = 2
 ZOMBIE_SPEED_MAX = 4.5
 ZOMBIE_ATTACK = 10
+# --- next-level scene buff cards ---
+SCENE_BIOMES = ["Domain of Wind", "Misty Forest", "Scorched Hell", "Bastion of Stone"]
+_next_biome = None  # 记录玩家本关在商店后选择的“下关场景”
+
 # --- Splinter family tuning ---
 SPLINTER_CHILD_COUNT = 3
 SPLINTER_CHILD_HP_RATIO = 0.20   # each child = 20% of parent's MAX HP
@@ -1424,7 +1428,11 @@ def show_shop_screen(screen) -> Optional[str]:
             if ev.type == pygame.MOUSEBUTTONDOWN:
                 if close.collidepoint(ev.pos):
                     flush_events()
-                    return None  # finish shop normally
+                    # <<< 在 NEXT 之后弹出“场景四选一” >>>
+                    chosen_biome = show_biome_picker_in_shop(screen)
+                    globals()["_next_biome"] = chosen_biome  # 记录到全局，供下一关读取
+                    return None  # 继续原有流程（结束商店）
+
                 for r, it, dyn_cost in rects:
                     if r.collidepoint(ev.pos) and META["spoils"] >= dyn_cost:
                         META["spoils"] -= dyn_cost
@@ -1435,6 +1443,103 @@ def show_shop_screen(screen) -> Optional[str]:
 
         clock.tick(60)
 
+def show_biome_picker_in_shop(screen) -> str:
+    """在商店 NEXT 之后弹出的“下关场景”四选一卡面。返回被选择的场景名。"""
+    clock = pygame.time.Clock()
+    title_font = pygame.font.SysFont(None, 56)
+    font = pygame.font.SysFont(None, 26)
+    back_font = pygame.font.SysFont(None, 48)
+
+    # 随机打乱四张卡的排列顺序（卡面名称固定）
+    names = list(SCENE_BIOMES)
+    random.shuffle(names)
+
+    # 卡片布局
+    card_w, card_h = 180, 240
+    gap = 20
+    total_w = len(names) * card_w + (len(names) - 1) * gap
+    start_x = (VIEW_W - total_w) // 2
+    y = 160
+
+    # 卡片对象
+    cards = []
+    for i, name in enumerate(names):
+        x = start_x + i * (card_w + gap)
+        rect = pygame.Rect(x, y, card_w, card_h)
+        cards.append({"name": name, "rect": rect, "revealed": False})
+
+    chosen = None  # 只允许选择一张
+
+    # 确认按钮
+    confirm = pygame.Rect(0, 0, 240, 56)
+    confirm.center = (VIEW_W // 2, y + card_h + 90)
+
+    def draw():
+        screen.fill((16, 16, 18))
+        # 标题
+        title = title_font.render("CHOOSE NEXT DOMAIN", True, (235, 235, 235))
+        screen.blit(title, title.get_rect(center=(VIEW_W // 2, 90)))
+
+        # 画四张卡
+        for c in cards:
+            r = c["rect"]
+            if c["revealed"]:
+                # 正面：高亮的卡面 + 名称
+                pygame.draw.rect(screen, (60, 66, 70), r, border_radius=12)
+                pygame.draw.rect(screen, (200, 200, 210), r, 2, border_radius=12)
+                name = c["name"].upper()
+                # 名称可能较长，分两行居中
+                parts = name.split()
+                text_lines = [" ".join(parts[:2]), " ".join(parts[2:])] if len(parts) > 2 else [name]
+                ty = r.centery - (len(text_lines) * 22) // 2
+                for line in text_lines:
+                    surf = font.render(line, True, (240, 240, 240))
+                    screen.blit(surf, surf.get_rect(center=(r.centerx, ty)))
+                    ty += 28
+                # 若是被选中的卡，再加一道边框
+                if chosen == c["name"]:
+                    pygame.draw.rect(screen, (255, 215, 120), r.inflate(6, 6), 3, border_radius=14)
+            else:
+                # 背面：深色 + “？”
+                pygame.draw.rect(screen, (36, 38, 42), r, border_radius=12)
+                pygame.draw.rect(screen, (80, 80, 84), r, 2, border_radius=12)
+                q = back_font.render("?", True, (180, 180, 190))
+                screen.blit(q, q.get_rect(center=r.center))
+
+        # 确认按钮（未选时灰掉）
+        if chosen:
+            pygame.draw.rect(screen, (50, 50, 50), confirm, border_radius=10)
+            txt = pygame.font.SysFont(None, 32).render("CONFIRM", True, (235, 235, 235))
+        else:
+            pygame.draw.rect(screen, (35, 35, 35), confirm, border_radius=10)
+            txt = pygame.font.SysFont(None, 32).render("CONFIRM", True, (120, 120, 120))
+        screen.blit(txt, txt.get_rect(center=confirm.center))
+
+        pygame.display.flip()
+
+    while True:
+        draw()
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                # 与其他界面一致：ESC 打开暂停→设置后返回
+                bg = screen.copy()
+                _ = pause_from_overlay(screen, bg)
+                flush_events()
+            if ev.type == pygame.MOUSEBUTTONDOWN:
+                # 点击卡片：若还未选中任何卡，则把这张翻开并选中；其他保持背面
+                if chosen is None:
+                    for c in cards:
+                        if c["rect"].collidepoint(ev.pos):
+                            c["revealed"] = True
+                            chosen = c["name"]
+                            break
+                # 点击确认：只有当 chosen 存在（即至少翻开并选择了一张）才生效
+                if chosen and confirm.collidepoint(ev.pos):
+                    flush_events()
+                    return chosen
+        clock.tick(60)
 
 def is_boss_level(level_idx_zero_based: int) -> bool:
     # UI shows Lv = level_idx_zero_based + 1
