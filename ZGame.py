@@ -282,6 +282,7 @@ DECOR_DENSITY = 0.06  # proportion of tiles to place non-blocking decorations
 MIN_ITEMS = 8  # ensure enough items on larger maps
 DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 5
+PLAYER_SPEED_CAP = 7.0
 ZOMBIE_SPEED = 2
 ZOMBIE_SPEED_MAX = 4.5
 ZOMBIE_ATTACK = 10
@@ -1728,7 +1729,7 @@ class Player:
     def __init__(self, pos: Tuple[int, int], speed: int = PLAYER_SPEED):
         self.x = pos[0] * CELL_SIZE
         self.y = pos[1] * CELL_SIZE
-        self.speed = speed
+        self.speed = float(speed)
         self.size = CELL_SIZE - 6
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.max_hp = int(PLAYER_MAX_HP)
@@ -1736,6 +1737,7 @@ class Player:
         # --- crit stats ---
         self.crit_chance = max(0.0, min(0.95, CRIT_CHANCE_BASE + float(META.get("crit", 0.0))))
         self.crit_mult = float(CRIT_MULT_BASE)
+
 
         self.hit_cd = 0.0  # contact invulnerability timer (seconds)
         self.radius = PLAYER_RADIUS
@@ -1748,7 +1750,7 @@ class Player:
         # per-run upgrades from shop (applied on spawn)
         self.bullet_damage = BULLET_DAMAGE_ZOMBIE + META.get("dmg", 0)
         self.fire_rate_mult = META.get("firerate_mult", 1.0)
-        self.speed += META.get("speed", 0)
+        self.speed = min(PLAYER_SPEED_CAP, max(1.0, self.speed + float(META.get("speed", 0))))
         self.max_hp += META.get("maxhp", 0)
         self.hp = min(self.hp + META.get("maxhp", 0), self.max_hp)
 
