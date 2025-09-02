@@ -1441,8 +1441,12 @@ def show_shop_screen(screen) -> Optional[str]:
                     flush_events()
                     # <<< 在 NEXT 之后弹出“场景四选一” >>>
                     chosen_biome = show_biome_picker_in_shop(screen)
-                    globals()["_next_biome"] = chosen_biome  # 记录到全局，供下一关读取
-                    return None  # 继续原有流程（结束商店）
+                    # 识别从翻卡界面透传出来的暂停菜单选择
+                    if chosen_biome in ("__HOME__", "__RESTART__", "__EXIT__"):
+                        return {"__HOME__": "home", "__RESTART__": "restart", "__EXIT__": "exit"}[chosen_biome]
+
+                    globals()["_next_biome"] = chosen_biome  # 正常选择到场景名
+                    return None  # 照常结束商店，进入下一关
 
                 for r, it, dyn_cost in rects:
                     if r.collidepoint(ev.pos) and META["spoils"] >= dyn_cost:
@@ -1534,10 +1538,23 @@ def show_biome_picker_in_shop(screen) -> str:
             if ev.type == pygame.QUIT:
                 pygame.quit(); sys.exit()
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
-                # 与其他界面一致：ESC 打开暂停→设置后返回
                 bg = screen.copy()
-                _ = pause_from_overlay(screen, bg)
-                flush_events()
+                pick = pause_from_overlay(screen, bg)
+                if pick in (None, "continue", "settings"):
+                    flush_events()
+                    continue  # 回到翻卡界面
+                if pick == "home":
+                    door_transition(screen)
+                    flush_events()
+                    return "__HOME__"
+                if pick == "restart":
+                    door_transition(screen)
+                    flush_events()
+                    return "__RESTART__"
+                if pick == "exit":
+                    pygame.quit()
+                    sys.exit()
+
             if ev.type == pygame.MOUSEBUTTONDOWN:
                 # 点击卡片：若还未选中任何卡，则把这张翻开并选中；其他保持背面
                 if chosen is None:
