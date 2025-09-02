@@ -276,6 +276,16 @@ ISO_EQ_GAIN = math.sqrt(2) * (ISO_CELL_W * 0.5)
 PLAYER_RADIUS = int(CELL_SIZE * 0.28)
 ZOMBIE_RADIUS = int(CELL_SIZE * 0.28)
 
+# 成长模式：'linear'（当前默认）或 'exp'（推荐）
+MON_SCALE_MODE = "exp"   # "linear" / "exp"
+MON_HP_GROWTH_PER_LEVEL = 0.08     # HP 每关 +8% 复利到软帽
+MON_ATK_GROWTH_PER_LEVEL = 0.09    # ATK 每关 +9% 复利到软帽
+MON_HP_GROWTH_PER_WAVE = 0.03      # HP 每波 +3% 复利
+MON_ATK_GROWTH_PER_WAVE = 0.03     # ATK 每波 +3% 复利
+MON_SOFTCAP_LEVEL = 10             # 关卡软帽起点
+MON_SOFTCAP_FACTOR = 0.40          # 软帽后有效增长强度只有 40%
+
+
 # --- map fill tuning ---
 OBSTACLE_DENSITY = 0.14  # proportion of tiles to become obstacles (including clusters)
 DECOR_DENSITY = 0.06  # proportion of tiles to place non-blocking decorations
@@ -2653,9 +2663,28 @@ def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | flo
     L = max(0, int(game_level))
     W = max(0, int(wave_index))
 
-    # multiplicative curves
-    hp_mult = (1.0 + _diminish_growth(L, MON_HP_GROWTH_PER_LEVEL)) * (1.0 + W * MON_HP_GROWTH_PER_WAVE)
-    atk_mult = (1.0 + _diminish_growth(L, MON_ATK_GROWTH_PER_LEVEL)) * (1.0 + W * MON_ATK_GROWTH_PER_WAVE)
+    # 原处在 monster_scalars_for 内
+    if MON_SCALE_MODE == "exp":
+        # 关卡指数成长 + 软帽后降低“有效年化”
+        pre = min(L, MON_SOFTCAP_LEVEL)
+        post = max(0, L - MON_SOFTCAP_LEVEL)
+
+        # 例：每关 8%（HP）/ 9%（ATK），软帽后仅按 40% 的强度继续复利
+        hp_mult_lvl = (1.0 + MON_HP_GROWTH_PER_LEVEL) ** pre \
+                      * (1.0 + MON_HP_GROWTH_PER_LEVEL * MON_SOFTCAP_FACTOR) ** post
+        atk_mult_lvl = (1.0 + MON_ATK_GROWTH_PER_LEVEL) ** pre \
+                       * (1.0 + MON_ATK_GROWTH_PER_LEVEL * MON_SOFTCAP_FACTOR) ** post
+
+        # 波次也改为复利（更平滑），不想动可保留原来的线性乘子
+        hp_mult_wave = (1.0 + MON_HP_GROWTH_PER_WAVE) ** W
+        atk_mult_wave = (1.0 + MON_ATK_GROWTH_PER_WAVE) ** W
+
+        hp_mult = hp_mult_lvl * hp_mult_wave
+        atk_mult = atk_mult_lvl * atk_mult_wave
+    else:
+        # ← 保留你现在的线性+软帽逻辑
+        hp_mult = (1.0 + _diminish_growth(L, MON_HP_GROWTH_PER_LEVEL)) * (1.0 + W * MON_HP_GROWTH_PER_WAVE)
+        atk_mult = (1.0 + _diminish_growth(L, MON_ATK_GROWTH_PER_LEVEL)) * (1.0 + W * MON_ATK_GROWTH_PER_WAVE)
 
     # additive speed bumps
     spd_add = (L // MON_SPD_ADD_EVERY_LEVELS) + (W // MON_SPD_ADD_EVERY_WAVES)
