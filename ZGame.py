@@ -778,6 +778,9 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
 
     if hit_x is not None:
         entity._hit_ob = hit_x
+    x_min, y_min, x_max, y_max = play_bounds_for_circle(r)
+    cx1 = max(x_min, min(cx1, x_max))
+
     entity.x = cx1 - size * 0.5  # 应用X位移（已夹到边界）
 
     # 更新圆心（X 已经改变）
@@ -810,6 +813,8 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
 
     if hit_y is not None:
         entity._hit_ob = hit_y
+    x_min, y_min, x_max, y_max = play_bounds_for_circle(r)
+    cy1 = max(y_min, min(cy1, y_max))
     # 应用Y位移（注意把 INFO_BAR_HEIGHT 减回去）
     entity.y = cy1 - size * 0.5 - INFO_BAR_HEIGHT
 
@@ -2552,6 +2557,15 @@ def resize_world_to_view():
         WINDOW_SIZE = GRID_SIZE * CELL_SIZE
         TOTAL_HEIGHT = WINDOW_SIZE + INFO_BAR_HEIGHT
 
+def play_bounds_for_circle(radius: float) -> tuple[float, float, float, float]:
+    """返回【圆心】在当前关卡内允许的最小/最大坐标 (x_min, y_min, x_max, y_max)。"""
+    w = GRID_SIZE * CELL_SIZE            # 地图像素宽
+    h = GRID_SIZE * CELL_SIZE            # 地图像素高（不包含顶部信息栏）
+    x_min = radius
+    x_max = w - radius
+    y_min = INFO_BAR_HEIGHT + radius
+    y_max = INFO_BAR_HEIGHT + h - radius
+    return x_min, y_min, x_max, y_max
 
 def iso_world_to_screen(wx: float, wy: float, wz: float = 0.0,
                         camx: float = 0.0, camy: float = 0.0) -> tuple[int, int]:
