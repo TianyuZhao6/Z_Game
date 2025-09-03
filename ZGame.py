@@ -4471,12 +4471,9 @@ if __name__ == "__main__":
 # Just make it only unlock by defeating boss/elite
 # set limit for player fire rate
 # monster type increased:
-# split in 3 sub(each with 20% hp) when hp <= 50%
 # influencer: when player approach, decrease player's speed, damage
 
 # Special weapon: GoldCollector, Razor, rage blade jingqiandao
-# Change the prize of the shop dynamic change with level increase
 
-# Zombie do not break blocks
 # 模型穿模，调大障碍物脚底的圆形hitbox判定，玩家左右移动的速度会比上下移动速度快不是视错觉需要调整方向向量，heal的颜色可以修改一下容易和敌蛋弄混
 # 引入场景buff肉鸽机制，每关开始前会有类似骰子的动画随机出本关的场景buff：暂时想到的风林火山， 敌我双方都会受到增益或debuff
