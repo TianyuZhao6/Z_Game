@@ -2275,13 +2275,14 @@ class Bullet:
         self.damage = int(damage)
 
     def update(self, dt: float, game_state: 'GameState', zombies: List['Zombie'], player: 'Player' = None):
-        if not self.alive: return
+        if not self.alive:
+            return
         nx = self.x + self.vx * dt
         ny = self.y + self.vy * dt
         self.traveled += ((nx - self.x) ** 2 + (ny - self.y) ** 2) ** 0.5
         self.x, self.y = nx, ny
         if self.traveled >= self.max_dist:
-            self.alive = False;
+            self.alive = False
             return
 
         r = pygame.Rect(int(self.x - BULLET_RADIUS), int(self.y - BULLET_RADIUS), BULLET_RADIUS * 2, BULLET_RADIUS * 2)
@@ -2354,7 +2355,7 @@ class Bullet:
         for gp, ob in list(game_state.obstacles.items()):
             if r.colliderect(ob.rect):
                 if ob.type == "Indestructible":
-                    self.alive = False;
+                    self.alive = False
                     return
                 elif ob.type == "Destructible":
                     ob.health = (ob.health or 0) - BULLET_DAMAGE_BLOCK
@@ -2365,7 +2366,7 @@ class Bullet:
                         if random.random() < SPOILS_BLOCK_DROP_CHANCE:
                             game_state.spawn_spoils(cx, cy, 1)
                         if player: player.add_xp(XP_PLAYER_BLOCK)
-                    self.alive = False;
+                    self.alive = False
                     return
 
     def draw(self, screen, cam_x, cam_y):
