@@ -268,6 +268,8 @@ ISO_CELL_W = 64  # 等距砖块在画面上的“菱形”宽
 ISO_CELL_H = 32  # 等距砖块在画面上的“菱形”半高（顶点到中心）
 ISO_WALL_Z = 22  # 障碍“墙体”抬起的高度（屏幕像素）
 ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
+SPATIAL_CELL = int(CELL_SIZE * 1.25)  # 统一网格大小
+
 
 WALL_STYLE = "hybrid"      # "billboard" | "prism" | "hybrid"
 
@@ -2978,6 +2980,33 @@ def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> G
 
 
 # ==================== 新增游戏状态类 ====================
+class SpatialHash:
+    def __init__(self, cell=64):
+        self.cell = int(cell)
+        self.buckets = {}
+
+    def _key(self, x, y):
+        return (int(x) // self.cell, int(y) // self.cell)
+
+    def rebuild(self, zombies):
+        self.buckets.clear()
+        for z in zombies:
+            k = self._key(z.rect.centerx, z.rect.centery)
+            self.buckets.setdefault(k, []).append(z)
+
+    def query_circle(self, x, y, r):
+        cx, cy = self._key(x, y)
+        out = []
+        rr = r + max(16, CELL_SIZE // 2)
+        for gx in (cx-1, cx, cx+1):
+            for gy in (cy-1, cy, cy+1):
+                for z in self.buckets.get((gx, gy), []):
+                    dx = z.rect.centerx - x
+                    dy = z.rect.centery - y
+                    if dx*dx + dy*dy <= rr*rr:
+                        out.append(z)
+        return out
+
 class GameState:
     def __init__(self, obstacles: Dict, items: Set, main_item_pos: List[Tuple[int, int]], decorations: list):
         self.obstacles = obstacles
@@ -3598,6 +3627,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     clock = pygame.time.Clock()
     time_left = float(LEVEL_TIME_LIMIT)
     globals()["_time_left_runtime"] = time_left
+    spatial = SpatialHash(SPATIAL_CELL)
 
     obstacles, items, player_start, zombie_starts, main_item_list, decorations = generate_game_entities(
         grid_size=GRID_SIZE,
