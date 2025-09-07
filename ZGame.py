@@ -362,6 +362,7 @@ XP_PER_ZOMBIE_TYPE = {
     "splinterling": 4,
 
 }
+
 XP_ZLEVEL_BONUS = 2  # bonus XP per zombie level above 1
 
 ZOMBIE_XP_TO_LEVEL = 15  # per level step for monsters
@@ -409,6 +410,44 @@ BOSS_EVERY_N_LEVELS = 5
 BOSS_HP_MULT_EXTRA = 3.0
 BOSS_ATK_MULT_EXTRA = 2.0
 BOSS_SPD_ADD_EXTRA = 1
+
+# ===== Boss1: Memory Devourer (腐蚀集群之心) =====
+MEMDEV_BASE_HP          = 1200   # 以第5关为基准
+MEMDEV_CONTACT_DAMAGE   = 40
+MEMDEV_SPEED            = 1.0    # 很慢
+
+# P1 / P2 酸液喷吐（地面腐蚀池）
+ACID_DPS                = 15                 # 站上去每秒伤害
+ACID_SLOW_FRAC          = 0.45               # 减速 45%
+ACID_LIFETIME           = 6.0
+ACID_TELEGRAPH_T        = 0.6                # 提示圈时长
+SPIT_WAVES_P1           = 3
+SPIT_WAVES_P2           = 2                  # 连续两次喷吐（每次多波）
+SPIT_CONE_DEG           = 60
+SPIT_PUDDLES_PER_WAVE   = 6
+SPIT_RANGE              = 6.0 * CELL_SIZE    # 每波最远生成点
+
+# 召唤小怪（腐蚀幼体）
+SPLIT_CD_P1             = 20.0
+SPLIT_CD_P2             = 15.0
+CHILD_HP                = 50
+CHILD_ATK               = 10
+CHILD_SPEED             = 2.2
+
+# 吸附融合（小怪>15s被拉回，BOSS 恢复100）
+FUSION_LIFETIME         = 15.0
+FUSION_HEAL             = 100
+FUSION_PULL_RADIUS      = 8.0 * CELL_SIZE
+
+# P3 全屏酸爆（每掉 10% 触发一次）
+RAIN_STEP               = 0.10
+RAIN_PUDDLES            = 18
+RAIN_TELEGRAPH_T        = 0.5
+
+# 濒死冲锋（<10%）
+CHARGE_THRESH           = 0.10
+CHARGE_SPEED            = 3.0
+
 
 # ----- affixes (small random spice) -----
 AFFIX_CHANCE_BASE = 0.10
@@ -477,6 +516,17 @@ ZOMBIE_COLORS = {
     "splinterling": (210, 160, 255),
 
 }
+# --- colors (add) ---
+ZOMBIE_COLORS.update({
+    "boss_mem": (170, 40, 200),  # 紫红色
+    "corruptling": (120, 220, 120),  # 浅绿
+})
+
+# --- XP rewards (add) ---
+XP_PER_ZOMBIE_TYPE.update({
+    "boss_mem": 40,  # base 给足奖励；击杀时还有 is_boss 3x 乘区
+    "corruptling": 5,
+})
 
 # --- wave spawning ---
 SPAWN_INTERVAL = 8.0
