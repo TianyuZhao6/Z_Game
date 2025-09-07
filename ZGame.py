@@ -156,6 +156,51 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     spoils_text = hud_font.render(f"{spoils_total}", True, (255, 255, 255))
     screen.blit(spoils_text, (coin_x + 14, coin_y))
 
+def _find_current_boss(zombies):
+    # 约定：任意 is_boss=True 的单位都当作 BOSS
+    for z in zombies:
+        if getattr(z, "is_boss", False):
+            return z
+    return None
+
+def draw_boss_hp_bar(screen, boss):
+    # ---- 尺寸与位置（顶栏下方一条大血条）----
+    bar_w = min(720, max(420, int(VIEW_W * 0.55)))
+    bar_h = 18
+    bx = (VIEW_W - bar_w) // 2
+    by = INFO_BAR_HEIGHT + 8
+
+    # ---- 比例与文字 ----
+    mhp = int(getattr(boss, "max_hp", max(1, boss.hp)))
+    cur = max(0, int(boss.hp))
+    ratio = 0.0 if mhp <= 0 else max(0.0, min(1.0, cur / float(mhp)))
+
+    # 名称回退：优先 boss_name/_display_name → Memory Devourer → BOSS
+    name = (getattr(boss, "boss_name", None)
+            or getattr(boss, "_display_name", None)
+            or ("Memory Devourer" if getattr(boss, "is_boss", False) else "BOSS"))
+
+    # 背板/边框
+    pygame.draw.rect(screen, (28, 28, 32), (bx-2, by-2, bar_w+4, bar_h+4), border_radius=8)
+    pygame.draw.rect(screen, (52, 52, 60), (bx, by, bar_w, bar_h), border_radius=6)
+
+    # 血量（红色填充）
+    fill_w = int(bar_w * ratio)
+    if fill_w > 0:
+        pygame.draw.rect(screen, (210, 64, 64), (bx, by, fill_w, bar_h), border_radius=6)
+
+    # 分段刻度（70%/40% 阶段线，方便读阶段）
+    for t in (0.7, 0.4):
+        tx = bx + int(bar_w * t)
+        pygame.draw.line(screen, (90, 90, 96), (tx, by), (tx, by + bar_h), 1)
+
+    # 标题与数值
+    title_font = pygame.font.SysFont(None, 26, bold=True)
+    small_font = pygame.font.SysFont(None, 22)
+    title = title_font.render(str(name), True, (240, 240, 240))
+    vals = small_font.render(f"{cur}/{mhp}", True, (235, 235, 235))
+    screen.blit(title, title.get_rect(midbottom=(VIEW_W // 2, by - 4)))
+    screen.blit(vals, vals.get_rect(midleft=(bx + 8, by + bar_h + 4)))
 
 def pause_game_modal(screen, bg_surface, clock, time_left):
     """
@@ -384,7 +429,7 @@ XP_CURVE_LINEAR = 3  # small linear term to smooth gaps
 XP_CURVE_SOFTCAP_START = 7  # start softly increasing after level 7
 XP_CURVE_SOFTCAP_POWER = 1.6  # how sharp the softcap rises (1.4–1.8 typical)
 
-ELITE_HP_MULT = 2.0
+# ELITE_HP_MULT = 2.0
 ELITE_ATK_MULT = 1.5
 ELITE_SPD_ADD = 1
 # ----- monster global scaling (by game level & wave) -----
@@ -412,9 +457,19 @@ BOSS_ATK_MULT_EXTRA = 2.0
 BOSS_SPD_ADD_EXTRA = 1
 
 # ===== Boss1: Memory Devourer (腐蚀集群之心) =====
-MEMDEV_BASE_HP = 1200  # 以第5关为基准
-MEMDEV_CONTACT_DAMAGE = 40
-MEMDEV_SPEED = 1.0  # 很慢
+# 数值：显著增厚血量与接触伤害
+MEMDEV_BASE_HP = 4200       # 以第5关为基准：从 1200 → 4200
+MEMDEV_CONTACT_DAMAGE = 60  # 接触伤害提高
+MEMDEV_SPEED = 0.9          # 很慢（后续阶段再涨）
+
+# Boss 外形/占格（仅碰撞与显示，不改变地图阻挡规则）
+BOSS_SIZE_FACTOR = 1.65     # 可视尺寸 = 1.65 × 单格
+BOSS_RADIUS_FACTOR = 0.90   # 脚底圆半径 = 0.90 × 单格（≈直径1.8格，能“卡住”单格通道）
+
+# Boss 掉落（保证性掉落，额外返还它吞的金币）
+BOSS_LOOT_MIN = 24
+BOSS_LOOT_MAX = 36
+BOSS_HEAL_POTIONS = 2       # 击杀掉落的治疗瓶数量
 
 # P1 / P2 酸液喷吐（地面腐蚀池）
 ACID_DPS = 15  # 站上去每秒伤害
@@ -1684,10 +1739,19 @@ def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Z
 def promote_to_boss(z: "Zombie"):
     """Promote a single zombie instance to boss (stats on top of current scaling)."""
     z.is_boss = True
-    z.max_hp = int(z.max_hp * BOSS_HP_MULT_EXTRA);
-    z.hp = z.max_hp
+    z.max_hp = int(z.max_hp * BOSS_HP_MULT_EXTRA); z.hp = z.max_hp
     z.attack = int(z.attack * BOSS_ATK_MULT_EXTRA)
     z.speed += BOSS_SPD_ADD_EXTRA
+
+    # === NEW: enlarge physical footprint ===
+    # 把 BOSS 的 AABB 拉大到 ~1.6 格高（等距里观感是“很占屏”）
+    old_cx, old_cy = z.rect.center
+    z.size = int(CELL_SIZE * 1.6)          # 占屏与卡位都更像“BOSS”
+    z.rect = pygame.Rect(0, 0, z.size, z.size)
+    z.rect.center = (old_cx, old_cy)
+    # 同步世界坐标（你的 move/渲染有用到 x/y）
+    z.x = float(z.rect.x)
+    z.y = float(z.rect.y - INFO_BAR_HEIGHT)
 
 
 def spawn_wave_with_budget(game_state: "GameState",
@@ -2426,6 +2490,39 @@ class Zombie:
         color = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         pygame.draw.rect(screen, color, self.rect)
 
+class MemoryDevourerBoss(Zombie):
+    """独立 Boss：更大体型/更大脚底圆/更高血攻；仍复用 Zombie 的大多数行为。"""
+    def __init__(self, grid_pos: tuple[int,int], level_idx: int):
+        gx, gy = grid_pos
+        # 计算血量：沿用你原先“第5关为基准 + 关卡成长”的口径
+        boss_hp = int(MEMDEV_BASE_HP * (1 + 0.15 * max(0, level_idx - 1)))
+
+        # 用父类构造出一个 type='boss_mem' 的单位，再整体重写体型与半径
+        super().__init__((gx, gy),
+                         attack=int(MEMDEV_CONTACT_DAMAGE),
+                         speed=int(max(1, MEMDEV_SPEED)),
+                         ztype="boss_mem",
+                         hp=boss_hp)
+
+        self.is_boss = True
+        self.boss_name = "Memory Devourer"
+        # —— 可视尺寸 & 脚底圆半径（决定“占格”感）——
+        base = CELL_SIZE - 6
+        self.size = int(base * BOSS_SIZE_FACTOR)
+        self.radius = int(CELL_SIZE * BOSS_RADIUS_FACTOR)
+
+        # 让 Boss 以“格中心”为锚点摆放（避免放大后顶到左上角）
+        cx = gx * CELL_SIZE + CELL_SIZE // 2
+        cy = gy * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT
+        self.rect = pygame.Rect(0, 0, self.size, self.size)
+        self.rect.center = (cx, cy)
+        self.x = float(self.rect.x)
+        self.y = float(self.rect.y - INFO_BAR_HEIGHT)
+
+        # 出生延迟维持一致
+        self.spawn_delay = 0.6
+
+    # （可选）你也可以覆盖 draw，画个大圆/贴图；目前沿用矩形色块就行
 
 class Bullet:
     def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE,
@@ -3001,27 +3098,9 @@ def apply_affix(z: "Zombie", affix: Optional[str]):
         z._affix_tag = "V"
 
 
-def create_memory_devourer(grid_xy: Tuple[int, int], level_idx: int) -> "Zombie":
-    gx, gy = grid_xy
+def create_memory_devourer(grid_xy: Tuple[int, int], level_idx: int) -> "MemoryDevourerBoss":
+    return MemoryDevourerBoss(grid_xy, level_idx)
 
-    # 数值：第5关首个Boss，HP按你之前的设计随关卡线性成长
-    boss_hp = int(MEMDEV_BASE_HP * (1 + 0.15 * max(0, level_idx - 1)))
-
-    # 正确的构造器用法：传格子坐标 + 具名参数
-    z = Zombie((gx, gy),
-               attack=int(MEMDEV_CONTACT_DAMAGE),
-               speed=int(max(1, MEMDEV_SPEED)),
-               ztype="boss_mem",
-               hp=boss_hp)
-
-    # 额外标记/微调
-    z.is_boss = True
-    z._affix_name = "armored"  # 可选：给个占位词缀，方便HUD展示
-    z.spawn_delay = 0.6        # 保持和普通僵尸一致的出生延迟
-    # Boss体型如果需要可放大显示，但别改物理脚印
-    # z.size = min(ZOMBIE_SIZE_MAX, z.size + 6); z.rect.w = z.rect.h = z.size
-
-    return z
 
 
 def spawn_corruptling_at(x_px: float, y_px: float) -> "Zombie":
@@ -3632,6 +3711,9 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
     #    —— 为避免重复代码，可以把那段 HUD 抽成一个小函数，这里调用即可。
     draw_ui_topbar(screen, game_state, player, time_left=globals().get("_time_left_runtime"))
+    _boss = _find_current_boss(zombies)
+    if _boss:
+        draw_boss_hp_bar(screen, _boss)
     pygame.display.flip()
 
     return screen.copy()
@@ -4484,35 +4566,6 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
 
     return "home", None, last_frame or screen.copy()
 
-
-def select_zombie_screen(screen, owned_cards: List[str]) -> str:
-    if not owned_cards: return "basic"
-    clock = pygame.time.Clock()
-    while True:
-        screen.fill((18, 18, 18))
-        title = pygame.font.SysFont(None, 48).render("Choose Next Level's Zombie", True, (230, 230, 230))
-        screen.blit(title, title.get_rect(center=(VIEW_W // 2, 110)))
-        rects = []
-        for i, card in enumerate(owned_cards):
-            x = VIEW_W // 2 - (len(owned_cards) * 140) // 2 + i * 140
-            rect = pygame.Rect(x, 180, 120, 160)
-            pygame.draw.rect(screen, (200, 200, 200), rect)
-            name = pygame.font.SysFont(None, 24).render(card.replace("_", " ").upper(), True, (30, 30, 30))
-            screen.blit(name, name.get_rect(center=(rect.centerx, rect.bottom - 18)))
-            pygame.draw.rect(screen, (40, 40, 40), rect, 3)
-            rects.append((rect, card))
-        confirm = draw_button(screen, "CONFIRM", (VIEW_W // 2 - 90, 370))
-        pygame.display.flip()
-        chosen = None
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                for rect, card in rects:
-                    if rect.collidepoint(event.pos): chosen = card
-                if confirm.collidepoint(event.pos) and (chosen or owned_cards):
-                    door_transition(screen)
-                    return chosen or owned_cards[0]
-        clock.tick(60)
 
 
 # ==================== 入口 ====================
