@@ -1821,6 +1821,8 @@ class Player:
         # --- crit stats ---
         self.crit_chance = max(0.0, min(0.95, CRIT_CHANCE_BASE + float(META.get("crit", 0.0))))
         self.crit_mult = float(CRIT_MULT_BASE)
+        self.slow_t = 0.0
+        self.slow_mult = 1.0  #
 
 
         self.hit_cd = 0.0  # contact invulnerability timer (seconds)
@@ -1865,7 +1867,10 @@ class Player:
         else:
             dx = dy = 0.0
 
-        speed = self.speed
+        base_spd = self.speed
+        if getattr(self, "slow_t", 0.0) > 0:
+            base_spd *= (1.0 - ACID_SLOW_FRAC)  # 例如 0.55x
+        speed = base_spd
         # collide_and_slide_circle(self, obstacles.values(), dx * speed, dy * speed)
         step_x, step_y = iso_equalized_step(dx, dy, self.speed)
         collide_and_slide_circle(self, obstacles.values(), step_x, step_y)
@@ -2485,6 +2490,23 @@ class HealPickup:
                 self.vh = 0.0
         self._update_rect()
 
+class AcidPool:
+    def __init__(self, x, y, r, dps, slow_frac, life):
+        self.x, self.y, self.r = x, y, r
+        self.dps, self.slow_frac = dps, slow_frac
+        self.t = life  # remaining time
+
+    def contains(self, px, py):
+        return (px - self.x) ** 2 + (py - self.y) ** 2 <= self.r ** 2
+
+class TelegraphCircle:
+    def __init__(self, x, y, r, life, kind="acid", payload=None, color=(255,60,60)):
+        self.x, self.y, self.r = x, y, r
+        self.t = life
+        self.kind = kind
+        self.payload = payload or {}
+        self.color = color
+
 
 class EnemyShot:
     def __init__(self, x: float, y: float, vx: float, vy: float, dmg: int, max_dist: float = MAX_FIRE_RANGE):
@@ -3071,6 +3093,9 @@ class GameState:
         self.spoils_gained = 0
         self.heals = []  # List[HealPickup]
         self.dmg_texts = []  # List[DamageText]
+        self.acids = []        # List[AcidPool]
+        self.telegraphs = []   # List[TelegraphCircle]
+
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -3131,6 +3156,43 @@ class GameState:
                 player.hp = min(player.max_hp, player.hp + h.heal)
                 healed += (player.hp - before)
         return healed
+
+    # ---- 地面腐蚀池 ----
+    def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME):
+        self.acids.append(AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life)))
+
+    def update_acids(self, dt: float, player: 'Player'):
+        # 伤害+减速只对玩家生效（后续可拓展给僵尸）
+        for a in list(self.acids):
+            a.t -= dt
+            if a.t <= 0:
+                self.acids.remove(a); continue
+            if a.contains(player.rect.centerx, player.rect.centery):
+                # 伤害：逐帧结算
+                player.hp -= int(a.dps * dt)
+                # 减速：打一个短暂 slow_t 计时
+                player.slow_t = max(getattr(player, "slow_t", 0.0), 0.3)
+        # no return
+
+    # ---- 攻击前的提示圈（到时后生成酸池等）----
+    def spawn_telegraph(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
+        self.telegraphs.append(TelegraphCircle(float(x), float(y), float(r), float(life), kind, payload, color))
+
+    def update_telegraphs(self, dt: float):
+        for t in list(self.telegraphs):
+            t.t -= dt
+            if t.t <= 0:
+                # 触发
+                if t.kind == "acid" and t.payload:
+                    # payload: dict with {count, radius, life, dps, slow}
+                    for px, py in t.payload.get("points", []):
+                        self.spawn_acid_pool(px, py,
+                                             r=t.payload.get("radius", 24),
+                                             dps=t.payload.get("dps", ACID_DPS),
+                                             slow_frac=t.payload.get("slow", ACID_SLOW_FRAC),
+                                             life=t.payload.get("life", ACID_LIFETIME))
+                self.telegraphs.remove(t)
+
 
     def add_damage_text(self, x_px: float, y_px: float, amount: int, crit: bool = False, kind: str = "hp"):
         if amount <= 0: return
@@ -3412,6 +3474,16 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         sy = int(item.center[1] - cam_y)
         color = (255, 255, 100) if item.is_main else (255, 255, 0)
         pygame.draw.circle(screen, color, (sx, sy), item.radius)
+    # --- Telegraphs (top-down) ---
+    for t in getattr(game_state, "telegraphs", []):
+        pygame.draw.circle(screen, (255, 60, 60),
+            (int(t.x - cam_x), int(t.y - cam_y)), int(t.r), 2)
+
+    # --- Acid pools (top-down) ---
+    for a in getattr(game_state, "acids", []):
+        s = pygame.Surface((int(a.r*2), int(a.r*2)), pygame.SRCALPHA)
+        pygame.draw.circle(s, (60, 200, 90, 110), (int(a.r), int(a.r)), int(a.r))
+        screen.blit(s, (int(a.x - a.r - cam_x), int(a.y - a.r - cam_y)))
 
     # decorations (non-colliding visual fillers)
     for gx, gy in getattr(game_state, 'decorations', []):
