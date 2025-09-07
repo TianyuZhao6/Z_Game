@@ -59,9 +59,11 @@ def mono_font(size: int) -> "pygame.font.Font":
         pass
     return pygame.font.SysFont("monospace", size)
 
+
 def feet_center(ent):
     # 世界坐标（含 INFO_BAR_HEIGHT 的平移）
     return (ent.x + ent.size * 0.5, ent.y + ent.size * 0.5 + INFO_BAR_HEIGHT)
+
 
 def circle_touch(a, b, extra=0.0) -> bool:
     ax, ay = feet_center(a)
@@ -69,8 +71,10 @@ def circle_touch(a, b, extra=0.0) -> bool:
     ra = getattr(a, "radius", a.size * 0.5)
     rb = getattr(b, "radius", b.size * 0.5)
     r = ra + rb + float(extra)
-    dx = ax - bx; dy = ay - by
-    return (dx*dx + dy*dy) <= (r*r)
+    dx = ax - bx;
+    dy = ay - by
+    return (dx * dx + dy * dy) <= (r * r)
+
 
 def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -> None:
     """
@@ -133,7 +137,6 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     # 小标签（在条右侧显示等级）
     xp_label = mono_small.render(f"Lv {int(getattr(player, 'level', 1))}", True, (210, 210, 230))
     screen.blit(xp_label, (xp_bx + xp_bar_w + 8, xp_by - 6))
-
 
     # ===== 右上角：物品 & 金币 =====
     hud_font = font_timer  # 统一字号
@@ -243,7 +246,6 @@ def ensure_passage_budget(obstacles: dict, grid_size: int, player_spawn: tuple, 
         obstacles.pop(pos, None)
 
 
-
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
 # - Card system UI polish (later pass)
@@ -270,8 +272,7 @@ ISO_WALL_Z = 22  # 障碍“墙体”抬起的高度（屏幕像素）
 ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
 SPATIAL_CELL = int(CELL_SIZE * 1.25)  # 统一网格大小
 
-
-WALL_STYLE = "hybrid"      # "billboard" | "prism" | "hybrid"
+WALL_STYLE = "hybrid"  # "billboard" | "prism" | "hybrid"
 
 ISO_EQ_GAIN = math.sqrt(2) * (ISO_CELL_W * 0.5)
 # 角色圆形碰撞半径
@@ -279,14 +280,13 @@ PLAYER_RADIUS = int(CELL_SIZE * 0.28)
 ZOMBIE_RADIUS = int(CELL_SIZE * 0.28)
 
 # 成长模式：'linear'（当前默认）或 'exp'（推荐）
-MON_SCALE_MODE = "exp"   # "linear" / "exp"
-MON_HP_GROWTH_PER_LEVEL = 0.08     # HP 每关 +8% 复利到软帽
-MON_ATK_GROWTH_PER_LEVEL = 0.09    # ATK 每关 +9% 复利到软帽
-MON_HP_GROWTH_PER_WAVE = 0.03      # HP 每波 +3% 复利
-MON_ATK_GROWTH_PER_WAVE = 0.03     # ATK 每波 +3% 复利
-MON_SOFTCAP_LEVEL = 10             # 关卡软帽起点
-MON_SOFTCAP_FACTOR = 0.40          # 软帽后有效增长强度只有 40%
-
+MON_SCALE_MODE = "exp"  # "linear" / "exp"
+MON_HP_GROWTH_PER_LEVEL = 0.08  # HP 每关 +8% 复利到软帽
+MON_ATK_GROWTH_PER_LEVEL = 0.09  # ATK 每关 +9% 复利到软帽
+MON_HP_GROWTH_PER_WAVE = 0.03  # HP 每波 +3% 复利
+MON_ATK_GROWTH_PER_WAVE = 0.03  # ATK 每波 +3% 复利
+MON_SOFTCAP_LEVEL = 10  # 关卡软帽起点
+MON_SOFTCAP_FACTOR = 0.40  # 软帽后有效增长强度只有 40%
 
 # --- map fill tuning ---
 OBSTACLE_DENSITY = 0.14  # proportion of tiles to become obstacles (including clusters)
@@ -304,10 +304,10 @@ _next_biome = None  # 记录玩家本关在商店后选择的“下关场景”
 
 # --- Splinter family tuning ---
 SPLINTER_CHILD_COUNT = 3
-SPLINTER_CHILD_HP_RATIO = 0.20   # each child = 20% of parent's MAX HP
-SPLINTERLING_ATK_RATIO = 0.60    # child attack ~60% of parent's attack
-SPLINTERLING_SPD_ADD = 1         # child runs a bit faster
-SPLINTER_UNLOCK_LEVEL = 2        # 0-based: unlock at Lv3 (after level 2)
+SPLINTER_CHILD_HP_RATIO = 0.20  # each child = 20% of parent's MAX HP
+SPLINTERLING_ATK_RATIO = 0.60  # child attack ~60% of parent's attack
+SPLINTERLING_SPD_ADD = 1  # child runs a bit faster
+SPLINTER_UNLOCK_LEVEL = 2  # 0-based: unlock at Lv3 (after level 2)
 # ----- meta progression -----
 SPOILS_PER_KILL = 3
 SPOILS_PER_BLOCK = 1
@@ -339,11 +339,11 @@ XP_PLAYER_BLOCK = 2
 XP_ZOMBIE_BLOCK = 3
 XP_TRANSFER_RATIO = 0.7  # special → survivors
 # --- shop pricing (level-scaled) ---
-SHOP_PRICE_EXP = 1.12      # 每关指数涨幅（与 roguelite 节奏接近，10 关≈3.1x）
-SHOP_PRICE_LINEAR = 0.02   # 每关线性微调（让早期也能感受到一点涨价）
-SHOP_PRICE_STACK = 1.15    # 同一条目多次购买的叠加涨幅
-SHOP_PRICE_REROLL_EXP = 1.06   # Reroll 的涨价更温和
-SHOP_PRICE_REROLL_STACK = 1.25 # 多次 Reroll 叠加更贵（防刷）
+SHOP_PRICE_EXP = 1.12  # 每关指数涨幅（与 roguelite 节奏接近，10 关≈3.1x）
+SHOP_PRICE_LINEAR = 0.02  # 每关线性微调（让早期也能感受到一点涨价）
+SHOP_PRICE_STACK = 1.15  # 同一条目多次购买的叠加涨幅
+SHOP_PRICE_REROLL_EXP = 1.06  # Reroll 的涨价更温和
+SHOP_PRICE_REROLL_STACK = 1.25  # 多次 Reroll 叠加更贵（防刷）
 # ----- healing drop tuning -----
 HEAL_DROP_CHANCE_ZOMBIE = 0.12  # 12% when a zombie dies
 HEAL_DROP_CHANCE_BLOCK = 0.08  # 8% when a destructible block is broken
@@ -368,13 +368,13 @@ XP_ZLEVEL_BONUS = 2  # bonus XP per zombie level above 1
 ZOMBIE_XP_TO_LEVEL = 15  # per level step for monsters
 PLAYER_XP_TO_LEVEL = 20  # base; scales by +20%
 # --- zombie spoils empowerment ---
-Z_SPOIL_HP_PER = 1          # 每 1 金币：+1 MaxHP & +1 当期HP
-Z_SPOIL_ATK_STEP = 5        # 每 5 金币：+1 攻击
-Z_SPOIL_SPD_STEP = 10       # 每 10 金币：+0.5 速度
+Z_SPOIL_HP_PER = 1  # 每 1 金币：+1 MaxHP & +1 当期HP
+Z_SPOIL_ATK_STEP = 5  # 每 5 金币：+1 攻击
+Z_SPOIL_SPD_STEP = 10  # 每 10 金币：+0.5 速度
 Z_SPOIL_SPD_ADD = 0.5
 Z_SPOIL_SPD_CAP = float(ZOMBIE_SPEED_MAX)  # 速度上限（保持与你总上限一致）
-Z_SPOIL_XP_BONUS_PER = 1    # 击杀时额外经验=每枚金币+1 XP
-Z_GLOW_TIME = 0.35          # 捡到金币时金色光晕持续时间（秒）
+Z_SPOIL_XP_BONUS_PER = 1  # 击杀时额外经验=每枚金币+1 XP
+Z_GLOW_TIME = 0.35  # 捡到金币时金色光晕持续时间（秒）
 
 # ----- player XP curve tuning -----
 # Requirement to go from level L -> L+1:
@@ -412,42 +412,41 @@ BOSS_ATK_MULT_EXTRA = 2.0
 BOSS_SPD_ADD_EXTRA = 1
 
 # ===== Boss1: Memory Devourer (腐蚀集群之心) =====
-MEMDEV_BASE_HP          = 1200   # 以第5关为基准
-MEMDEV_CONTACT_DAMAGE   = 40
-MEMDEV_SPEED            = 1.0    # 很慢
+MEMDEV_BASE_HP = 1200  # 以第5关为基准
+MEMDEV_CONTACT_DAMAGE = 40
+MEMDEV_SPEED = 1.0  # 很慢
 
 # P1 / P2 酸液喷吐（地面腐蚀池）
-ACID_DPS                = 15                 # 站上去每秒伤害
-ACID_SLOW_FRAC          = 0.45               # 减速 45%
-ACID_LIFETIME           = 6.0
-ACID_TELEGRAPH_T        = 0.6                # 提示圈时长
-SPIT_WAVES_P1           = 3
-SPIT_WAVES_P2           = 2                  # 连续两次喷吐（每次多波）
-SPIT_CONE_DEG           = 60
-SPIT_PUDDLES_PER_WAVE   = 6
-SPIT_RANGE              = 6.0 * CELL_SIZE    # 每波最远生成点
+ACID_DPS = 15  # 站上去每秒伤害
+ACID_SLOW_FRAC = 0.45  # 减速 45%
+ACID_LIFETIME = 6.0
+ACID_TELEGRAPH_T = 0.6  # 提示圈时长
+SPIT_WAVES_P1 = 3
+SPIT_WAVES_P2 = 2  # 连续两次喷吐（每次多波）
+SPIT_CONE_DEG = 60
+SPIT_PUDDLES_PER_WAVE = 6
+SPIT_RANGE = 6.0 * CELL_SIZE  # 每波最远生成点
 
 # 召唤小怪（腐蚀幼体）
-SPLIT_CD_P1             = 20.0
-SPLIT_CD_P2             = 15.0
-CHILD_HP                = 50
-CHILD_ATK               = 10
-CHILD_SPEED             = 2.2
+SPLIT_CD_P1 = 20.0
+SPLIT_CD_P2 = 15.0
+CHILD_HP = 50
+CHILD_ATK = 10
+CHILD_SPEED = 2.2
 
 # 吸附融合（小怪>15s被拉回，BOSS 恢复100）
-FUSION_LIFETIME         = 15.0
-FUSION_HEAL             = 100
-FUSION_PULL_RADIUS      = 8.0 * CELL_SIZE
+FUSION_LIFETIME = 15.0
+FUSION_HEAL = 100
+FUSION_PULL_RADIUS = 8.0 * CELL_SIZE
 
 # P3 全屏酸爆（每掉 10% 触发一次）
-RAIN_STEP               = 0.10
-RAIN_PUDDLES            = 18
-RAIN_TELEGRAPH_T        = 0.5
+RAIN_STEP = 0.10
+RAIN_PUDDLES = 18
+RAIN_TELEGRAPH_T = 0.5
 
 # 濒死冲锋（<10%）
-CHARGE_THRESH           = 0.10
-CHARGE_SPEED            = 3.0
-
+CHARGE_THRESH = 0.10
+CHARGE_SPEED = 3.0
 
 # ----- affixes (small random spice) -----
 AFFIX_CHANCE_BASE = 0.10
@@ -484,6 +483,7 @@ def reset_run_state():
     globals()["_pending_shop"] = False  # 不从商店续开
     globals().pop("_last_spoils", None)  # 清掉关末结算缓存
 
+
 def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
     """
     同一关内价格固定；进入下一关时按曲线整体上调。
@@ -497,6 +497,7 @@ def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
     lin = (1.0 + SHOP_PRICE_LINEAR * level_idx)
     price = int(round(base_cost * exp * lin))
     return max(1, price)
+
 
 # resume flags
 _pending_shop = False  # if True, CONTINUE should open the shop first
@@ -596,13 +597,13 @@ BULLET_DAMAGE_BLOCK = 10
 ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
 MAX_FIRE_RANGE = 800.0  # pixels
 # --- CRIT & damage text ---
-CRIT_CHANCE_BASE = 0.05     # 基础暴击率=5%
-CRIT_MULT_BASE = 1.8        # 暴击伤害倍数，后续可以做商店项
-DMG_TEXT_TTL = 0.8          # 飘字存活时长（秒）
-DMG_TEXT_RISE = 42.0        # 垂直上升速度（像素/秒）
-DMG_TEXT_FADE = 0.25        # 尾段淡出比例（最后 25% 时间开始透明）
+CRIT_CHANCE_BASE = 0.05  # 基础暴击率=5%
+CRIT_MULT_BASE = 1.8  # 暴击伤害倍数，后续可以做商店项
+DMG_TEXT_TTL = 0.8  # 飘字存活时长（秒）
+DMG_TEXT_RISE = 42.0  # 垂直上升速度（像素/秒）
+DMG_TEXT_FADE = 0.25  # 尾段淡出比例（最后 25% 时间开始透明）
 DMG_TEXT_SIZE_NORMAL = 28
-DMG_TEXT_SIZE_CRIT   = 38
+DMG_TEXT_SIZE_CRIT = 38
 
 # --- survival mode & player health ---
 LEVEL_TIME_LIMIT = 45.0  # seconds per run
@@ -787,6 +788,7 @@ def iso_equalized_step(dx: float, dy: float, speed: float) -> tuple[float, float
     scale = float(speed) * float(ISO_EQ_GAIN) / screen_mag
     return dx * scale, dy * scale
 
+
 def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     """
     以“圆心 + Minkowski 外扩”的方式，做【扫掠式】轴分离碰撞：
@@ -873,7 +875,6 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     # 同步 AABB（仅用于渲染/命中盒）
     entity.rect.x = int(entity.x)
     entity.rect.y = int(entity.y) + INFO_BAR_HEIGHT
-
 
 
 # === NEW: 等距相机偏移（基于玩家像素中心 → 网格中心 → 屏幕等距投影） ===
@@ -1197,7 +1198,7 @@ def show_pause_menu(screen, background_surf):
     screen.blit(hp_text, (left_margin, y_offset))
     y_offset += 30
 
-    #暴击加成
+    # 暴击加成
     crit_pct = int((CRIT_CHANCE_BASE + META.get("crit", 0.0)) * 100)
     crit_text = font_tiny.render(f"Crit Chance: {crit_pct}%", True, (255, 220, 120))
     screen.blit(crit_text, (left_margin, y_offset));
@@ -1515,6 +1516,7 @@ def show_shop_screen(screen) -> Optional[str]:
 
         clock.tick(60)
 
+
 def show_biome_picker_in_shop(screen) -> str:
     """在商店 NEXT 之后弹出的“下关场景”四选一卡面。返回被选择的场景名。"""
     clock = pygame.time.Clock()
@@ -1593,7 +1595,8 @@ def show_biome_picker_in_shop(screen) -> str:
         draw()
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
+                pygame.quit();
+                sys.exit()
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 bg = screen.copy()
                 pick = pause_from_overlay(screen, bg)
@@ -1626,6 +1629,7 @@ def show_biome_picker_in_shop(screen) -> str:
                     return chosen
         clock.tick(60)
 
+
 def is_boss_level(level_idx_zero_based: int) -> bool:
     # UI shows Lv = level_idx_zero_based + 1
     return ((level_idx_zero_based + 1) % BOSS_EVERY_N_LEVELS) == 0
@@ -1655,7 +1659,6 @@ def _pick_type_by_budget(rem: int, level_idx_zero_based: int) -> Optional[str]:
         if r <= acc:
             return t
     return choices[-1][0]
-
 
 
 def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Zombie"], want: int) -> List[
@@ -1722,9 +1725,11 @@ def spawn_wave_with_budget(game_state: "GameState",
         # if we must place a boss, do it once, then continue budget spending
         if force_boss and not boss_done:
             # create a durable type as base; pass wave_index=0 so make_scaled_zombie can apply "first-wave" scaling
-            z = make_scaled_zombie((gx, gy), "tank", current_level, 0)
-            # ensure only this one becomes a boss even if make_scaled_zombie marks others: explicitly promote
-            promote_to_boss(z)
+            z = create_memory_devourer((gx, gy), current_level)
+            zombies.append(z)
+            budget = 0
+            boss_done = True
+            continue
             zombies.append(z)
             spawned += 1
             boss_done = True
@@ -1824,7 +1829,6 @@ class Player:
         self.slow_t = 0.0
         self.slow_mult = 1.0  #
 
-
         self.hit_cd = 0.0  # contact invulnerability timer (seconds)
         self.radius = PLAYER_RADIUS
 
@@ -1875,7 +1879,6 @@ class Player:
         step_x, step_y = iso_equalized_step(dx, dy, self.speed)
         collide_and_slide_circle(self, obstacles.values(), step_x, step_y)
 
-
     def fire_cooldown(self) -> float:
         # smaller is faster; clamp to avoid abuse
         return FIRE_COOLDOWN / max(0.25, float(self.fire_rate_mult))
@@ -1897,6 +1900,7 @@ class Player:
 
     def draw(self, screen):
         pygame.draw.rect(screen, (0, 255, 0), self.rect)
+
 
 # --- module-level helper: split parent into 3 splinterlings ---
 def spawn_splinter_children(parent: "Zombie",
@@ -1975,14 +1979,12 @@ class Zombie:
         self._path = []  # 路径里的网格路点列表（不含起点）
         self._path_step = 0  # 当前要走向的路点索引
         # Spoil
-        self.spoils = 0              # 当前持有金币
-        self._gold_glow_t = 0.0      # 金色拾取光晕计时器
+        self.spoils = 0  # 当前持有金币
+        self._gold_glow_t = 0.0  # 金色拾取光晕计时器
         self.speed = float(self.speed)  # 改成 float，支持 +0.5 的增速
         # split flags (only for splinter)
         self._can_split = (self.type == "splinter")
         self._split_done = False
-
-
 
         base_hp = 30 if hp is None else hp
         # type tweaks
@@ -2044,7 +2046,6 @@ class Zombie:
         # 触发拾取光晕
         self._gold_glow_t = float(Z_GLOW_TIME)
 
-
     # ==== 通用：把朝向向量分解到等距基向量（e1=(1,1), e2=(1,-1)）====
     @staticmethod
     def iso_chase_step(from_xy, to_xy, speed):
@@ -2085,7 +2086,6 @@ class Zombie:
             if e2 >= dy: err += dy; x0 += sx
             if e2 <= dx: err += dx; y0 += sy
         return None
-
 
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
         # ---- BUFF/生成延迟/速度上限：与原逻辑一致 ----
@@ -2312,6 +2312,116 @@ class Zombie:
                         z.shield_t = SHIELD_DURATION
                 self.shield_cd = SHIELD_COOLDOWN
 
+        # 腐蚀幼体：死亡留酸；计时>15s 可被BOSS吸回
+        if self.type == "corruptling":
+            self._life = getattr(self, "_life", 0.0) + dt
+            if self.hp <= 0 and not getattr(self, "_acid_on_death", False):
+                game_state.spawn_acid_pool(self.rect.centerx, self.rect.centery, r=20, life=4.0, dps=ACID_DPS*0.8)
+                self._acid_on_death = True  # 让后续移除流程照常进行
+            # 吸附由 BOSS 侧发起，这里只负责寿命记录
+        # 记忆吞噬者（boss_mem）
+        if getattr(self, "is_boss", False) and getattr(self, "type", "") == "boss_mem":
+            hp_pct = max(0.0, self.hp / max(1, self.max_hp))
+
+            # 阶段切换
+            if hp_pct > 0.70:
+                self.phase = 1
+            elif hp_pct > 0.40:
+                self.phase = 2
+            else:
+                self.phase = 3
+
+            # 基础冷却
+            self._spit_cd  = max(0.0, getattr(self, "_spit_cd", 0.0)  - dt)
+            self._split_cd = max(0.0, getattr(self, "_split_cd", 0.0) - dt)
+
+            cx, cy = self.rect.centerx, self.rect.centery
+
+            # 阶段1：腐蚀喷吐 + 小怪 2 个/20s
+            if self.phase == 1:
+                if self._spit_cd <= 0.0:
+                    # 以玩家方向的扇形在地面“预警→落酸”
+                    px, py = player.rect.centerx, player.rect.centery
+                    ang = math.atan2(py - cy, px - cx)
+                    points = []
+                    for w in range(SPIT_WAVES_P1):
+                        for i in range(SPIT_PUDDLES_PER_WAVE):
+                            off_ang = ang + math.radians(random.uniform(-SPIT_CONE_DEG/2, SPIT_CONE_DEG/2))
+                            dist = (SPIT_RANGE * (i+1) / SPIT_PUDDLES_PER_WAVE) * random.uniform(0.6, 1.0)
+                            points.append((cx + math.cos(off_ang)*dist, cy + math.sin(off_ang)*dist))
+                    game_state.spawn_telegraph(cx, cy, r=28, life=ACID_TELEGRAPH_T, kind="acid",
+                        payload={"points": points, "radius": 24, "life": ACID_LIFETIME, "dps": ACID_DPS, "slow": ACID_SLOW_FRAC})
+                    self._spit_cd = 5.0
+
+                if self._split_cd <= 0.0:
+                    for _ in range(2):
+                        zombies.append(spawn_corruptling_at(cx + random.randint(-20,20), cy + random.randint(-20,20)))
+                    self._split_cd = SPLIT_CD_P1
+
+            # 阶段2：移动略快；喷吐“连续两次”；召唤 3 个/15s；吸附融合
+            if self.phase == 2:
+                self.speed = max(MEMDEV_SPEED, MEMDEV_SPEED + 0.5)
+                if self._spit_cd <= 0.0:
+                    for _ in range(2):  # 连续两次
+                        px, py = player.rect.centerx, player.rect.centery
+                        ang = math.atan2(py - cy, px - cx)
+                        points = []
+                        for w in range(SPIT_WAVES_P1):
+                            for i in range(SPIT_PUDDLES_PER_WAVE):
+                                off_ang = ang + math.radians(random.uniform(-SPIT_CONE_DEG/2, SPIT_CONE_DEG/2))
+                                dist = (SPIT_RANGE * (i+1) / SPIT_PUDDLES_PER_WAVE) * random.uniform(0.6, 1.0)
+                                points.append((cx + math.cos(off_ang)*dist, cy + math.sin(off_ang)*dist))
+                        game_state.spawn_telegraph(cx, cy, r=32, life=ACID_TELEGRAPH_T, kind="acid",
+                            payload={"points": points, "radius": 26, "life": ACID_LIFETIME, "dps": ACID_DPS, "slow": ACID_SLOW_FRAC})
+                    self._spit_cd = 5.0
+
+                if self._split_cd <= 0.0:
+                    for _ in range(3):
+                        zombies.append(spawn_corruptling_at(cx + random.randint(-20,20), cy + random.randint(-20,20)))
+                    self._split_cd = SPLIT_CD_P2
+
+                # 吸附融合：场上活过 15s 的腐蚀幼体被拉回并回血
+                pull_any = False
+                for z in list(zombies):
+                    if getattr(z, "type", "") == "corruptling" and getattr(z, "_life", 0.0) >= FUSION_LIFETIME:
+                        zx, zy = z.rect.centerx, z.rect.centery
+                        if (zx - cx)**2 + (zy - cy)**2 <= FUSION_PULL_RADIUS**2:
+                            z.hp = 0  # kill
+                            self.hp = min(self.max_hp, self.hp + FUSION_HEAL)
+                            pull_any = True
+                if pull_any:
+                    # 可选：加一个小数字飘字：+HP
+                    game_state.add_damage_text(cx, cy, +FUSION_HEAL, crit=False, kind="shield")  # 蓝色表示护盾/回复
+
+            # 阶段3：全屏酸爆(每降 10%一次) + 继续召唤；<10% 濒死冲锋
+            if self.phase == 3:
+                # 全屏酸爆：按阈值触发
+                next_pct = getattr(self, "_rain_next_pct", 0.40)
+                while hp_pct <= next_pct and next_pct >= 0.0:
+                    # 随机铺点（带预警）
+                    pts = []
+                    for _ in range(RAIN_PUDDLES):
+                        gx = random.randint(0, GRID_SIZE-1)
+                        gy = random.randint(0, GRID_SIZE-1)
+                        pts.append((gx*CELL_SIZE + CELL_SIZE//2, gy*CELL_SIZE + CELL_SIZE//2 + INFO_BAR_HEIGHT))
+                    game_state.spawn_telegraph(cx, cy, r=36, life=RAIN_TELEGRAPH_T, kind="acid",
+                        payload={"points": pts, "radius": 22, "life": ACID_LIFETIME, "dps": ACID_DPS, "slow": ACID_SLOW_FRAC})
+                    next_pct -= RAIN_STEP
+                    self._rain_next_pct = next_pct
+
+                # 继续召唤（比P2略低频防爆场）
+                if self._split_cd <= 0.0:
+                    for _ in range(2):
+                        zombies.append(spawn_corruptling_at(cx + random.randint(-20,20), cy + random.randint(-20,20)))
+                    self._split_cd = 16.0
+
+                # 濒死冲锋
+                if hp_pct <= CHARGE_THRESH and not getattr(self, "_charging", False):
+                    self._charging = True
+                    # 直接朝玩家方向加速移动，不受可破坏物阻挡（移动层会处理破坏）
+                    self.speed = CHARGE_SPEED
+
+
     def draw(self, screen):
         color = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         pygame.draw.rect(screen, color, self.rect)
@@ -2490,6 +2600,7 @@ class HealPickup:
                 self.vh = 0.0
         self._update_rect()
 
+
 class AcidPool:
     def __init__(self, x, y, r, dps, slow_frac, life):
         self.x, self.y, self.r = x, y, r
@@ -2499,8 +2610,9 @@ class AcidPool:
     def contains(self, px, py):
         return (px - self.x) ** 2 + (py - self.y) ** 2 <= self.r ** 2
 
+
 class TelegraphCircle:
-    def __init__(self, x, y, r, life, kind="acid", payload=None, color=(255,60,60)):
+    def __init__(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
         self.x, self.y, self.r = x, y, r
         self.t = life
         self.kind = kind
@@ -2581,8 +2693,10 @@ class EnemyShot:
     def draw(self, screen, cam_x, cam_y):
         pygame.draw.circle(screen, (255, 120, 50), (int(self.x - cam_x), int(self.y - cam_y)), BULLET_RADIUS)
 
+
 class DamageText:
     """世界坐标下的飘字（x,y 为像素，含 INFO_BAR_HEIGHT），按时间上浮并淡出。"""
+
     def __init__(self, x_px: float, y_px: float, amount: int,
                  crit: bool = False, kind: str = "hp"):
         self.x = float(x_px)
@@ -2611,6 +2725,7 @@ class DamageText:
         tail = (p - (1.0 - DMG_TEXT_FADE)) / max(1e-4, DMG_TEXT_FADE)
         return max(0, int(255 * (1.0 - tail)))
 
+
 # ==================== 算法函数 ====================
 
 def sign(v): return 1 if v > 0 else (-1 if v < 0 else 0)
@@ -2632,15 +2747,17 @@ def resize_world_to_view():
         WINDOW_SIZE = GRID_SIZE * CELL_SIZE
         TOTAL_HEIGHT = WINDOW_SIZE + INFO_BAR_HEIGHT
 
+
 def play_bounds_for_circle(radius: float) -> tuple[float, float, float, float]:
     """返回【圆心】在当前关卡内允许的最小/最大坐标 (x_min, y_min, x_max, y_max)。"""
-    w = GRID_SIZE * CELL_SIZE            # 地图像素宽
-    h = GRID_SIZE * CELL_SIZE            # 地图像素高（不包含顶部信息栏）
+    w = GRID_SIZE * CELL_SIZE  # 地图像素宽
+    h = GRID_SIZE * CELL_SIZE  # 地图像素高（不包含顶部信息栏）
     x_min = radius
     x_max = w - radius
     y_min = INFO_BAR_HEIGHT + radius
     y_max = INFO_BAR_HEIGHT + h - radius
     return x_min, y_min, x_max, y_max
+
 
 def iso_world_to_screen(wx: float, wy: float, wz: float = 0.0,
                         camx: float = 0.0, camy: float = 0.0) -> tuple[int, int]:
@@ -2691,6 +2808,45 @@ def draw_iso_prism(surface, gx, gy, top_color, camx, camy, wall_h=ISO_WALL_Z):
     pygame.draw.polygon(surface, c_r, r)
     pygame.draw.polygon(surface, c_top, top)
 
+# === ISO ground ellipse helpers ===
+
+def iso_circle_radii_screen(r_px: float) -> tuple[int, int]:
+    """
+    把“世界平面半径 r_px（像素）”转换成屏幕上的椭圆半径 (rx, ry)（像素）。
+    推导：沿屏幕水平轴的世界方向为 (dx,dy)=(t,-t)，垂直轴为 (t,t)，
+    由 iso_world_to_screen 的线性部分可得：
+      rx = r * ISO_CELL_W / (sqrt(2) * CELL_SIZE)
+      ry = r * ISO_CELL_H / (sqrt(2) * CELL_SIZE)
+    """
+    rx = int(r_px * (ISO_CELL_W / (math.sqrt(2) * CELL_SIZE)))
+    ry = int(r_px * (ISO_CELL_H / (math.sqrt(2) * CELL_SIZE)))
+    return max(1, rx), max(1, ry)
+
+def draw_iso_ground_ellipse(surface: pygame.Surface, x_px: float, y_px: float,
+                            r_px: float, color: tuple, alpha: int,
+                            camx: float, camy: float,
+                            *, fill: bool = True, width: int = 2) -> None:
+    """
+    在地面(等距)绘制一个椭圆：中心传入世界像素坐标 (x_px, y_px)，半径 r_px（世界像素）。
+    color=(R,G,B)，alpha=0..255。
+    """
+    # 世界“格”单位（iso_world_to_screen 需要传格坐标）
+    wx = x_px / CELL_SIZE
+    wy = (y_px - INFO_BAR_HEIGHT) / CELL_SIZE
+    cx, cy = iso_world_to_screen(wx, wy, 0, camx, camy)
+
+    rx, ry = iso_circle_radii_screen(float(r_px))
+
+    # 用一张带透明通道的小画布来画椭圆，再贴到主画面
+    surf = pygame.Surface((rx * 2 + 2, ry * 2 + 2), pygame.SRCALPHA)
+    rgba = (int(color[0]), int(color[1]), int(color[2]), int(alpha))
+    rect = pygame.Rect(1, 1, rx * 2, ry * 2)
+    if fill:
+        pygame.draw.ellipse(surf, rgba, rect)
+    else:
+        pygame.draw.ellipse(surf, rgba, rect, max(1, int(width)))
+
+    surface.blit(surf, (cx - rx - 1, cy - ry - 1))
 
 def roll_spoils_for_zombie(z: "Zombie") -> int:
     """Return number of coins to drop for a killed zombie, applying drop chance."""
@@ -2843,6 +2999,50 @@ def apply_affix(z: "Zombie", affix: Optional[str]):
         z.max_hp = int(z.max_hp * 1.10 + 1)
         z.hp = min(z.max_hp, z.hp + 2)
         z._affix_tag = "V"
+
+
+def create_memory_devourer(grid_xy: Tuple[int, int], level_idx: int) -> "Zombie":
+    gx, gy = grid_xy
+
+    # 数值：第5关首个Boss，HP按你之前的设计随关卡线性成长
+    boss_hp = int(MEMDEV_BASE_HP * (1 + 0.15 * max(0, level_idx - 1)))
+
+    # 正确的构造器用法：传格子坐标 + 具名参数
+    z = Zombie((gx, gy),
+               attack=int(MEMDEV_CONTACT_DAMAGE),
+               speed=int(max(1, MEMDEV_SPEED)),
+               ztype="boss_mem",
+               hp=boss_hp)
+
+    # 额外标记/微调
+    z.is_boss = True
+    z._affix_name = "armored"  # 可选：给个占位词缀，方便HUD展示
+    z.spawn_delay = 0.6        # 保持和普通僵尸一致的出生延迟
+    # Boss体型如果需要可放大显示，但别改物理脚印
+    # z.size = min(ZOMBIE_SIZE_MAX, z.size + 6); z.rect.w = z.rect.h = z.size
+
+    return z
+
+
+def spawn_corruptling_at(x_px: float, y_px: float) -> "Zombie":
+    """
+    从屏幕像素坐标生成腐蚀幼体（近战小怪）。
+    注意 y_px 包含了 INFO_BAR_HEIGHT，需要在换算格子时减掉。
+    """
+    # 像素 -> 格子；y 要扣掉信息栏偏移
+    gx = int(max(0, min(GRID_SIZE - 1, x_px // CELL_SIZE)))
+    gy = int(max(0, min(GRID_SIZE - 1, (y_px - INFO_BAR_HEIGHT) // CELL_SIZE)))
+
+    z = Zombie((gx, gy),
+               attack=int(CHILD_ATK),
+               speed=int(max(1, CHILD_SPEED)),
+               ztype="corruptling",
+               hp=int(CHILD_HP))
+
+    # 幼体更快进入战斗
+    z.spawn_delay = 0.25
+    return z
+
 
 
 def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_index: int) -> "Zombie":
@@ -3071,14 +3271,15 @@ class SpatialHash:
         cx, cy = self._key(x, y)
         out = []
         rr = r + max(16, CELL_SIZE // 2)
-        for gx in (cx-1, cx, cx+1):
-            for gy in (cy-1, cy, cy+1):
+        for gx in (cx - 1, cx, cx + 1):
+            for gy in (cy - 1, cy, cy + 1):
                 for z in self.buckets.get((gx, gy), []):
                     dx = z.rect.centerx - x
                     dy = z.rect.centery - y
-                    if dx*dx + dy*dy <= rr*rr:
+                    if dx * dx + dy * dy <= rr * rr:
                         out.append(z)
         return out
+
 
 class GameState:
     def __init__(self, obstacles: Dict, items: Set, main_item_pos: List[Tuple[int, int]], decorations: list):
@@ -3093,9 +3294,8 @@ class GameState:
         self.spoils_gained = 0
         self.heals = []  # List[HealPickup]
         self.dmg_texts = []  # List[DamageText]
-        self.acids = []        # List[AcidPool]
-        self.telegraphs = []   # List[TelegraphCircle]
-
+        self.acids = []  # List[AcidPool]
+        self.telegraphs = []  # List[TelegraphCircle]
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -3166,7 +3366,8 @@ class GameState:
         for a in list(self.acids):
             a.t -= dt
             if a.t <= 0:
-                self.acids.remove(a); continue
+                self.acids.remove(a);
+                continue
             if a.contains(player.rect.centerx, player.rect.centery):
                 # 伤害：逐帧结算
                 player.hp -= int(a.dps * dt)
@@ -3192,7 +3393,6 @@ class GameState:
                                              slow_frac=t.payload.get("slow", ACID_SLOW_FRAC),
                                              life=t.payload.get("life", ACID_LIFETIME))
                 self.telegraphs.remove(t)
-
 
     def add_damage_text(self, x_px: float, y_px: float, amount: int, crit: bool = False, kind: str = "hp"):
         if amount <= 0: return
@@ -3230,6 +3430,25 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
     for gx in range(gx_min, gx_max + 1):
         for gy in range(gy_min, gy_max + 1):
             draw_iso_tile(screen, gx, gy, grid_col, camx, camy, border=1)
+
+    # 2.5) 地面覆盖层：落点提示圈 + 酸池
+    # 先画提示圈（空心，颜色来自 TelegraphCircle.color）
+    for t in getattr(game_state, "telegraphs", []):
+        draw_iso_ground_ellipse(
+            screen, t.x, t.y, t.r,
+            color=t.color, alpha=180,
+            camx=camx, camy=camy,
+            fill=False, width=3
+        )
+
+    # 再画酸池（实心，微透明绿；你也可以做成分层：外圈更亮）
+    for a in getattr(game_state, "acids", []):
+        draw_iso_ground_ellipse(
+            screen, a.x, a.y, a.r,
+            color=(60, 200, 90), alpha=110,
+            camx=camx, camy=camy,
+            fill=True
+        )
 
     # 3) 收集需要按底部Y排序的可绘制体
     drawables = []
@@ -3349,14 +3568,15 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
             body.midbottom = (cx, cy)
             # 拾取光晕（金色）
             if getattr(z, "_gold_glow_t", 0.0) > 0.0:
-                glow = pygame.Surface((int(size*1.6), int(size*1.0)), pygame.SRCALPHA)
+                glow = pygame.Surface((int(size * 1.6), int(size * 1.0)), pygame.SRCALPHA)
                 alpha = int(120 * (z._gold_glow_t / Z_GLOW_TIME))
                 pygame.draw.ellipse(glow, (255, 220, 90, max(30, alpha)), glow.get_rect())
                 screen.blit(glow, glow.get_rect(center=(cx, cy)))
 
             # 本体
             size = int(CELL_SIZE * 0.6)
-            body = pygame.Rect(0, 0, size, size); body.midbottom = (cx, cy)
+            body = pygame.Rect(0, 0, size, size);
+            body.midbottom = (cx, cy)
             col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
             pygame.draw.rect(screen, col, body)
 
@@ -3477,11 +3697,11 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     # --- Telegraphs (top-down) ---
     for t in getattr(game_state, "telegraphs", []):
         pygame.draw.circle(screen, (255, 60, 60),
-            (int(t.x - cam_x), int(t.y - cam_y)), int(t.r), 2)
+                           (int(t.x - cam_x), int(t.y - cam_y)), int(t.r), 2)
 
     # --- Acid pools (top-down) ---
     for a in getattr(game_state, "acids", []):
-        s = pygame.Surface((int(a.r*2), int(a.r*2)), pygame.SRCALPHA)
+        s = pygame.Surface((int(a.r * 2), int(a.r * 2)), pygame.SRCALPHA)
         pygame.draw.circle(s, (60, 200, 90, 110), (int(a.r), int(a.r)), int(a.r))
         screen.blit(s, (int(a.x - a.r - cam_x), int(a.y - a.r - cam_y)))
 
@@ -3550,7 +3770,7 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
             screen.blit(aff_font.render(tag, True, (0, 0, 0)), (zr.x + 3, zr.y + 2))
         # 拾取光晕
         if getattr(zombie, "_gold_glow_t", 0.0) > 0.0:
-            glow = pygame.Surface((int(zr.width*1.6), int(zr.height*1.0)), pygame.SRCALPHA)
+            glow = pygame.Surface((int(zr.width * 1.6), int(zr.height * 1.0)), pygame.SRCALPHA)
             alpha = int(120 * (zombie._gold_glow_t / Z_GLOW_TIME))
             pygame.draw.ellipse(glow, (255, 220, 90, max(30, alpha)), glow.get_rect())
             screen.blit(glow, glow.get_rect(center=zr.midbottom))
@@ -3890,7 +4110,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                                   max_wave_reached=wave_index)
                     return 'home', config.get('reward', None), bg
 
-
                 elif choice == 'exit':
                     # write a progress save so Homepage shows CONTINUE
                     save_progress(current_level=current_level,
@@ -3912,6 +4131,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.update_heals(dt)
         game_state.update_damage_texts(dt)
         game_state.collect_heals(player)
+        # --- NEW: Telegraph/Acid 更新 + 减速衰减 ---
+        game_state.update_telegraphs(dt)              # 倒计时→到时生成酸池
+        game_state.update_acids(dt, player)           # 酸池伤害&施加 slow_t
+        player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)  # 每帧自然恢复
+
 
         # Autofire handling
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
