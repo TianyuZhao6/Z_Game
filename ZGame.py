@@ -429,9 +429,6 @@ XP_CURVE_LINEAR = 3  # small linear term to smooth gaps
 XP_CURVE_SOFTCAP_START = 7  # start softly increasing after level 7
 XP_CURVE_SOFTCAP_POWER = 1.6  # how sharp the softcap rises (1.4–1.8 typical)
 
-# ELITE_HP_MULT = 2.0
-ELITE_ATK_MULT = 1.5
-ELITE_SPD_ADD = 1
 # ----- monster global scaling (by game level & wave) -----
 MON_HP_GROWTH_PER_LEVEL = 0.10  # +10% HP per game level
 MON_ATK_GROWTH_PER_LEVEL = 0.08  # +8% ATK per game level
@@ -4675,7 +4672,7 @@ if __name__ == "__main__":
                 sys.exit()
 
         config = get_level_config(current_level)
-        chosen_zombie = select_zombie_screen(screen, zombie_cards_collected) if zombie_cards_collected else "basic"
+        chosen_zombie =  "basic"
         door_transition(screen)
         result, reward, bg = main_run_level(config, chosen_zombie)
 
@@ -4922,3 +4919,22 @@ if __name__ == "__main__":
 # 模型穿模，调大障碍物脚底的圆形hitbox判定，玩家左右移动的速度会比上下移动速度快不是视错觉需要调整方向向量，heal的颜色可以修改一下容易和敌蛋弄混
 # 引入场景buff肉鸽机制，每关开始前会有类似骰子的动画随机出本关的场景buff：暂时想到的风林火山， 敌我双方都会受到增益或debuff
 # need more roguelike features
+# 命名与分区注释
+#
+# 在大文件中加入清晰的“分区头”：
+#
+# Config & Balance
+#
+# Math & Utils
+#
+# Entity Classes（Player/Zombie/Bullet/Obstacle/Item/Boss）
+#
+# AI & Pathfinding（A* / Flow Field）
+#
+# Level Gen & Spawn
+#
+# Rendering（iso/ortho，内含 draw_hud）
+#
+# Screens（Shop/Domain/Success/Fail/Pause）
+#
+# Main loop / Main entry
