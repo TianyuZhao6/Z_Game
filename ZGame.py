@@ -168,8 +168,7 @@ def draw_boss_hp_bar(screen, boss):
     bar_w = min(720, max(420, int(VIEW_W * 0.55)))
     bar_h = 18
     bx = (VIEW_W - bar_w) // 2
-    by = INFO_BAR_HEIGHT + 8
-
+    by = INFO_BAR_HEIGHT + 44
     # ---- 比例与文字 ----
     mhp = int(getattr(boss, "max_hp", max(1, boss.hp)))
     cur = max(0, int(boss.hp))
@@ -199,40 +198,60 @@ def draw_boss_hp_bar(screen, boss):
     small_font = pygame.font.SysFont(None, 22)
     title = title_font.render(str(name), True, (240, 240, 240))
     vals = small_font.render(f"{cur}/{mhp}", True, (235, 235, 235))
+
+    title_shadow = pygame.font.SysFont(None, 26, bold=True).render(str(name), True, (0, 0, 0))
+    screen.blit(title_shadow, title_shadow.get_rect(midbottom=(VIEW_W // 2 + 1, by - 3)))
     screen.blit(title, title.get_rect(midbottom=(VIEW_W // 2, by - 4)))
+
     screen.blit(vals, vals.get_rect(midleft=(bx + 8, by + bar_h + 4)))
 
 def _find_all_bosses(zombies):
     return [z for z in zombies if getattr(z, "is_boss", False)]
 
 def draw_boss_hp_bars_twin(screen, bosses):
-    # 取前两只
     a, b = bosses[0], bosses[1]
+
     bar_w = min(720, max(420, int(VIEW_W * 0.55)))
-    bar_h = 14
+    bar_h = 16
     bx = (VIEW_W - bar_w) // 2
-    by = INFO_BAR_HEIGHT + 8
+    by = INFO_BAR_HEIGHT + 26   # 往下挪，避免和顶部信息重叠
 
-    def draw_one(boss, y, color=(220, 70, 70)):
-        mhp = int(getattr(boss, "max_hp", max(1, boss.hp)))
-        cur = max(0, int(boss.hp))
-        ratio = 0.0 if mhp <= 0 else max(0.0, min(1.0, cur / float(mhp)))
-        # 背景
-        pygame.draw.rect(screen, (30, 30, 34), (bx, y, bar_w, bar_h), border_radius=6)
-        # 前景
-        pygame.draw.rect(screen, color, (bx, y, int(bar_w * ratio), bar_h), border_radius=6)
-        # 描边
-        pygame.draw.rect(screen, (80, 80, 84), (bx, y, bar_w, bar_h), 2, border_radius=6)
-        # 名称与数值
-        font = pygame.font.SysFont(None, 20)
-        name = getattr(boss, "boss_name", getattr(boss, "_display_name", "BOSS"))
-        if getattr(boss, "_twin_powered", False):
-            name += " (ENRAGED)"
-        txt = font.render(f"{name}  {cur}/{mhp}", True, (235, 235, 235))
-        screen.blit(txt, (bx + 8, y - 18))
+    # —— 只显示一次标题（两只同名时不重复）——
+    title_name = (getattr(a, "boss_name", None) or getattr(a, "_display_name", None)
+                  or getattr(b, "boss_name", None) or getattr(b, "_display_name", None)
+                  or "BOSS")
+    title_font = pygame.font.SysFont(None, 26, bold=True)
+    title = title_font.render(str(title_name), True, (240, 240, 240))
+    screen.blit(title, title.get_rect(midbottom=(VIEW_W // 2, by - 6)))
 
-    draw_one(a, by, color=(220, 70, 70))
-    draw_one(b, by + bar_h + 10, color=(220, 120, 70))
+    def draw_one(boss, y, color):
+        mhp = max(1, int(getattr(boss, "max_hp", getattr(boss, "hp", 1))))
+        cur = max(0, int(getattr(boss, "hp", 0)))
+        ratio = max(0.0, min(1.0, cur / float(mhp)))
+
+        # 背板/描边
+        pygame.draw.rect(screen, (28, 28, 32), (bx-2, y-2, bar_w+4, bar_h+4), border_radius=8)
+        pygame.draw.rect(screen, (52, 52, 60), (bx, y, bar_w, bar_h), border_radius=6)
+
+        # 填充
+        if ratio > 0:
+            pygame.draw.rect(screen, color, (bx, y, int(bar_w * ratio), bar_h), border_radius=6)
+
+        # 阶段刻度
+        for t in (0.7, 0.4):
+            tx = bx + int(bar_w * t)
+            pygame.draw.line(screen, (90, 90, 96), (tx, y), (tx, y + bar_h), 1)
+
+        # 右侧数值
+        small = pygame.font.SysFont(None, 20)
+        vals = small.render(f"{cur}/{mhp}", True, (235, 235, 235))
+        screen.blit(vals, vals.get_rect(bottomright=(bx + bar_w - 6, y + bar_h + 16)))
+
+    y1 = by
+    y2 = by + bar_h + 12   # 两条之间 12px 间距
+    draw_one(a, y1, (210, 64, 64))
+    draw_one(b, y2, (230, 120, 70))
+
 
 def pause_game_modal(screen, bg_surface, clock, time_left):
     """
@@ -2572,14 +2591,14 @@ class MemoryDevourerBoss(Zombie):
         # 出生延迟维持一致
         self.spawn_delay = 0.6
 
-        def bind_twin(self, other, twin_id):
+    def bind_twin(self, other, twin_id):
             import weakref
             self.twin_id = twin_id
             self._twin_partner_ref = weakref.ref(other)
             other.twin_id = twin_id
             other._twin_partner_ref = weakref.ref(self)
 
-        def on_twin_partner_death(self):
+    def on_twin_partner_death(self):
             # 已触发过就不再触发
             if self._twin_powered or self.hp <= 0:
                 return
@@ -2650,7 +2669,8 @@ class Bullet:
 
                 if z.hp <= 0:
                     cx, cy = z.rect.centerx, z.rect.centery
-
+                    if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) is not None:
+                        trigger_twin_enrage(z, zombies, game_state)
                     # --- Splinter: if not yet split, split on death instead of dropping loot now ---
                     if getattr(z, "_can_split", False) and not getattr(z, "_split_done", False) and getattr(z, "type",
                                                                                                             "") == "splinter":
@@ -2703,6 +2723,9 @@ class Bullet:
                         if getattr(z, "is_elite", False):  base_xp = int(base_xp * 1.5)
                         if getattr(z, "is_boss", False):   base_xp = int(base_xp * 3.0)
                         player.add_xp(base_xp + bonus + extra_by_spoils)
+                        if getattr(z, "is_boss", False):
+                            trigger_twin_enrage(z, zombies, game_state)
+
                     transfer_xp_to_neighbors(z, zombies)
                     zombies.remove(z)
                     self.alive = False
@@ -2893,7 +2916,10 @@ class DamageText:
                  crit: bool = False, kind: str = "hp"):
         self.x = float(x_px)
         self.y = float(y_px)
-        self.amount = int(amount)
+        if isinstance(amount, (int, float)):
+            self.amount = int(amount)
+        else:
+            self.amount = str(amount)
         self.crit = bool(crit)
         self.kind = kind  # "hp"|"shield"
         self.t = 0.0
@@ -3260,6 +3286,60 @@ def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
     for t in near:
         t.gain_xp(share)
 
+def _find_twin_partner(z, zombies):
+    partner = None
+    ref = getattr(z, "_twin_partner_ref", None)
+    if callable(ref):
+        partner = ref()
+    elif ref is not None:
+        partner = ref
+    if partner is None and getattr(z, "twin_id", None) is not None:
+        for cand in zombies:
+            if getattr(cand, "is_boss", False) and getattr(cand, "twin_id", None) == z.twin_id and cand is not z:
+                partner = cand
+                break
+    return partner
+
+def trigger_twin_enrage(dead_boss, zombies, game_state):
+    """If a bonded twin dies, power up the partner exactly once."""
+    # locate partner
+    partner = None
+    ref = getattr(dead_boss, "_twin_partner_ref", None)
+    if callable(ref):
+        partner = ref()
+    elif ref is not None:
+        partner = ref
+    if partner is None:  # fall back: search by twin_id
+        tid = getattr(dead_boss, "twin_id", None)
+        if tid is not None:
+            for z in zombies:
+                if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) == tid and z is not dead_boss:
+                    partner = z
+                    break
+    if not partner or getattr(partner, "hp", 0) <= 0:
+        return
+
+    # already enraged? do nothing
+    if getattr(partner, "_twin_powered", False):
+        return
+
+    # heal to full and buff
+    partner.hp = int(getattr(partner, "max_hp", partner.hp))
+    partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
+    partner.speed  = int(partner.speed  + TWIN_ENRAGE_SPD_ADD)
+    partner._twin_powered = True
+    # optional: mark name so the UI can show it's angry
+    try:
+        partner.boss_name = (getattr(partner, "boss_name", "BOSS") + " [ENRAGED]")
+    except Exception:
+        pass
+
+    # floating label (now safe—accepts strings)
+    game_state.add_damage_text(partner.rect.centerx,
+                               partner.rect.top - 10,
+                               "ENRAGE!",  # string OK after step #1/#2
+                               crit=True, kind="hp")
+
 
 def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
                   obstacles: Dict[Tuple[int, int], Obstacle]):
@@ -3568,9 +3648,16 @@ class GameState:
                                              life=t.payload.get("life", ACID_LIFETIME))
                 self.telegraphs.remove(t)
 
-    def add_damage_text(self, x_px: float, y_px: float, amount: int, crit: bool = False, kind: str = "hp"):
-        if amount <= 0: return
-        self.dmg_texts.append(DamageText(x_px, y_px, amount, crit=crit, kind=kind))
+    def add_damage_text(self, x, y, amount, crit=False, kind="hp"):
+        # allow string labels ("ENRAGE!", "IMMUNE", etc.)
+        if isinstance(amount, (int, float)):
+            amount = int(amount)
+            if amount <= 0:
+                return
+            self.dmg_texts.append(DamageText(x, y, amount, crit, kind))
+        else:
+            # label path
+            self.dmg_texts.append(DamageText(x, y, str(amount), True if crit else False, kind))
 
     def update_damage_texts(self, dt: float):
         for d in list(self.dmg_texts):
@@ -3806,9 +3893,7 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
     #    —— 为避免重复代码，可以把那段 HUD 抽成一个小函数，这里调用即可。
     draw_ui_topbar(screen, game_state, player, time_left=globals().get("_time_left_runtime"))
-    _boss = _find_current_boss(zombies)
-    if _boss:
-        draw_boss_hp_bar(screen, _boss)
+
     bosses = _find_all_bosses(zombies)
     if len(bosses) >= 2:
         draw_boss_hp_bars_twin(screen, bosses[:2])
@@ -4359,6 +4444,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         for z in list(zombies):
             z.update_special(dt, player, zombies, enemy_shots, game_state)
             if z.hp <= 0:
+                if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) is not None:
+                    trigger_twin_enrage(z, zombies, game_state)
                 total_drop = int(SPOILS_PER_KILL) + int(getattr(z, "spoils", 0))
                 if total_drop > 0:
                     game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
