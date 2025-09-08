@@ -202,6 +202,38 @@ def draw_boss_hp_bar(screen, boss):
     screen.blit(title, title.get_rect(midbottom=(VIEW_W // 2, by - 4)))
     screen.blit(vals, vals.get_rect(midleft=(bx + 8, by + bar_h + 4)))
 
+def _find_all_bosses(zombies):
+    return [z for z in zombies if getattr(z, "is_boss", False)]
+
+def draw_boss_hp_bars_twin(screen, bosses):
+    # 取前两只
+    a, b = bosses[0], bosses[1]
+    bar_w = min(720, max(420, int(VIEW_W * 0.55)))
+    bar_h = 14
+    bx = (VIEW_W - bar_w) // 2
+    by = INFO_BAR_HEIGHT + 8
+
+    def draw_one(boss, y, color=(220, 70, 70)):
+        mhp = int(getattr(boss, "max_hp", max(1, boss.hp)))
+        cur = max(0, int(boss.hp))
+        ratio = 0.0 if mhp <= 0 else max(0.0, min(1.0, cur / float(mhp)))
+        # 背景
+        pygame.draw.rect(screen, (30, 30, 34), (bx, y, bar_w, bar_h), border_radius=6)
+        # 前景
+        pygame.draw.rect(screen, color, (bx, y, int(bar_w * ratio), bar_h), border_radius=6)
+        # 描边
+        pygame.draw.rect(screen, (80, 80, 84), (bx, y, bar_w, bar_h), 2, border_radius=6)
+        # 名称与数值
+        font = pygame.font.SysFont(None, 20)
+        name = getattr(boss, "boss_name", getattr(boss, "_display_name", "BOSS"))
+        if getattr(boss, "_twin_powered", False):
+            name += " (ENRAGED)"
+        txt = font.render(f"{name}  {cur}/{mhp}", True, (235, 235, 235))
+        screen.blit(txt, (bx + 8, y - 18))
+
+    draw_one(a, by, color=(220, 70, 70))
+    draw_one(b, by + bar_h + 10, color=(220, 120, 70))
+
 def pause_game_modal(screen, bg_surface, clock, time_left):
     """
     Show Pause (and Settings) while freezing the survival timer.
@@ -373,6 +405,12 @@ SPOILS_PER_TYPE = {  # average coins per zombie type (rounded when spawning)
     "splinterling": (0, 1),
 
 }
+# --- Twin Boss (Level 5 only) ---
+ENABLE_TWIN_BOSS = True
+TWIN_BOSS_LEVELS = {4}  # 关卡索引从0开始，4==第5关
+TWIN_ENRAGE_ATK_MULT = 1.35
+TWIN_ENRAGE_SPD_ADD  = 1
+
 # coin bounce feel
 COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
 COIN_GRAVITY = 400.0  # gravity pulling coin back to ground
@@ -1782,19 +1820,30 @@ def spawn_wave_with_budget(game_state: "GameState",
     while i < len(spots) and len(zombies) < cap:
         gx, gy = spots[i]
         i += 1
-
         # if we must place a boss, do it once, then continue budget spending
         if force_boss and not boss_done:
-            # create a durable type as base; pass wave_index=0 so make_scaled_zombie can apply "first-wave" scaling
-            z = create_memory_devourer((gx, gy), current_level)
-            zombies.append(z)
+            # 第5关采用 Twin；其余 Boss 关单体
+            if ENABLE_TWIN_BOSS and (current_level in TWIN_BOSS_LEVELS):
+                (gx1, gy1) = gx, gy
+                (gx2, gy2) = min(gx + 2, GRID_SIZE - 1), gy  # 简单平移，避免重叠
+                b1 = create_memory_devourer((gx1, gy1), current_level)
+                b2 = create_memory_devourer((gx2, gy2), current_level)
+                twin_id = random.randint(1000, 9999)
+                if hasattr(b1, "bind_twin"):
+                    b1.bind_twin(b2, twin_id)
+                else:
+                    b1.twin_id = b2.twin_id = twin_id
+                    b1._twin_partner_ref = b2
+                    b2._twin_partner_ref = b1
+                zombies.append(b1)
+                zombies.append(b2)
+            else:
+                z = create_memory_devourer((gx, gy), current_level)
+                zombies.append(z)
+
+            # 只放 Boss；这一波不再放小怪
             budget = 0
             boss_done = True
-            continue
-            zombies.append(z)
-            spawned += 1
-            boss_done = True
-            # no budget cost for the boss itself (or you can subtract THREAT_COSTS["tank"]*something if you prefer)
             continue
 
         # choose a type that fits remaining budget
@@ -2507,6 +2556,10 @@ class MemoryDevourerBoss(Zombie):
         base = CELL_SIZE - 6
         self.size = int(base * BOSS_SIZE_FACTOR)
         self.radius = int(CELL_SIZE * BOSS_RADIUS_FACTOR)
+        self.is_boss = True
+        self.twin_id = None
+        self._twin_powered = False
+        self._twin_partner_ref = None  # 弱引用或直接对象都可
 
         # 让 Boss 以“格中心”为锚点摆放（避免放大后顶到左上角）
         cx = gx * CELL_SIZE + CELL_SIZE // 2
@@ -2518,6 +2571,25 @@ class MemoryDevourerBoss(Zombie):
 
         # 出生延迟维持一致
         self.spawn_delay = 0.6
+
+        def bind_twin(self, other, twin_id):
+            import weakref
+            self.twin_id = twin_id
+            self._twin_partner_ref = weakref.ref(other)
+            other.twin_id = twin_id
+            other._twin_partner_ref = weakref.ref(self)
+
+        def on_twin_partner_death(self):
+            # 已触发过就不再触发
+            if self._twin_powered or self.hp <= 0:
+                return
+            # 回满血并狂暴
+            self.hp = int(getattr(self, "max_hp", self.hp))
+            self.attack = int(self.attack * TWIN_ENRAGE_ATK_MULT)
+            self.speed = int(self.speed + TWIN_ENRAGE_SPD_ADD)
+            self._twin_powered = True
+            # 可选：改名/标记，方便UI显示
+            self.boss_name = (getattr(self, "boss_name", "BOSS") + " [ENRAGED]")
 
     # （可选）你也可以覆盖 draw，画个大圆/贴图；目前沿用矩形色块就行
 
@@ -2586,6 +2658,32 @@ class Bullet:
                         z._can_split = False
                         # 生成子体；父体不掉落金币（避免三倍通胀），XP也交给后续击杀子体获得
                         spawn_splinter_children(z, zombies, game_state, level_idx=0, wave_index=0)
+                        # Twin：若死者是Boss且有存活的孪生体，让对方回满并狂暴
+                        if getattr(z, "is_boss", False):
+                            partner = None
+                            ref = getattr(z, "_twin_partner_ref", None)
+                            if callable(ref):  # weakref
+                                partner = ref()
+                            elif ref is not None:
+                                partner = ref
+                            # 如果没存ref，尝试在zombies里按twin_id搜
+                            if partner is None and getattr(z, "twin_id", None) is not None:
+                                for _cand in zombies:
+                                    if getattr(_cand, "is_boss", False) and getattr(_cand, "twin_id",
+                                                                                    None) == z.twin_id and _cand is not z:
+                                        partner = _cand
+                                        break
+
+                            if partner and getattr(partner, "hp", 0) > 0 and not getattr(partner, "_twin_powered",
+                                                                                         False):
+                                if hasattr(partner, "on_twin_partner_death"):
+                                    partner.on_twin_partner_death()
+                                else:
+                                    # 兜底：没有方法也强行赋值
+                                    partner.hp = int(getattr(partner, "max_hp", partner.hp))
+                                    partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
+                                    partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
+                                    partner._twin_powered = True
                         # 从场上移除父体
                         zombies.remove(z)
                         self.alive = False
@@ -3050,7 +3148,7 @@ def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | flo
     is_elite = (random.random() < elite_p)
 
     # boss only on boss levels (your global const already exists)
-    is_boss = ((L + 1) % BOSS_EVERY_N_LEVELS == 0) and (W == 0)  # first wave of boss level
+    is_boss = is_boss_level(game_level) and (wave_index == 0)  # first wave of boss level
 
     # apply elite/boss extras to the multipliers
     if is_elite:
@@ -3711,6 +3809,12 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
     _boss = _find_current_boss(zombies)
     if _boss:
         draw_boss_hp_bar(screen, _boss)
+    bosses = _find_all_bosses(zombies)
+    if len(bosses) >= 2:
+        draw_boss_hp_bars_twin(screen, bosses[:2])
+    elif len(bosses) == 1:
+        draw_boss_hp_bar(screen, bosses[0])
+
     pygame.display.flip()
 
     return screen.copy()
@@ -4142,7 +4246,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         return best, (best_d2 ** 0.5) if best else None
 
     # Initial spawn: use threat budget once
-    spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
+    # AFTER
+    spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
+    if spawned > 0:
+        wave_index += 1
+        globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
 
     running = True
     game_result = None
