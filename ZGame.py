@@ -2006,11 +2006,14 @@ class Player:
         else:
             dx = dy = 0.0
 
-        base_spd = self.speed
-        if getattr(self, "slow_t", 0.0) > 0:
-            base_spd *= (1.0 - ACID_SLOW_FRAC)  # 例如 0.55x
-        # collide_and_slide_circle(self, obstacles.values(), dx * speed, dy * speed)
-        step_x, step_y = iso_equalized_step(dx, dy, self.speed)
+        # 基础速度
+        spd = int(self.speed)
+        # 处于减速状态 → 应用减速（例如 35% 减速 = 速度*0.65）
+        if getattr(self, "slow_t", 0.0) > 0.0:
+            spd = max(1, int(spd * (1.0 - ACID_SLOW_FRAC)))  # ACID_SLOW_FRAC 建议 0.35~0.45
+
+        # 把“减速后的速度”喂给步进与碰撞
+        step_x, step_y = iso_equalized_step(dx, dy, spd)
         collide_and_slide_circle(self, obstacles.values(), step_x, step_y)
 
     def fire_cooldown(self) -> float:
@@ -4424,6 +4427,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     return 'exit', config.get('reward', None), bg
 
         keys = pygame.key.get_pressed()
+        # ---- slow 计时衰减 + 电告圈与酸池更新（在移动之前）----
+        player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
+        game_state.update_telegraphs(dt)  # 到时生成酸池
+        game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
+        # -----------------------------------------------
         player.move(keys, game_state.obstacles)
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt)
@@ -4696,6 +4704,11 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
 
         # movement & pickups
         keys = pygame.key.get_pressed()
+        # ---- slow 计时衰减 + 电告圈与酸池更新（在移动之前）----
+        player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
+        game_state.update_telegraphs(dt)  # 到时生成酸池
+        game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
+        # -----------------------------------------------
         player.move(keys, game_state.obstacles)
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt)
