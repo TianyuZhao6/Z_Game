@@ -530,6 +530,8 @@ ACID_DPS = 15  # 站上去每秒伤害
 ACID_SLOW_FRAC = 0.45  # 减速 45%
 ACID_LIFETIME = 6.0
 ACID_TELEGRAPH_T = 0.6  # 提示圈时长
+ACID_DOT_DURATION = 2.0     # 离开酸池后继续掉血的持续时间(秒)
+ACID_DOT_MULT = 0.6         # DoT 的每秒伤害 = ACID_DPS * 这个系数
 SPIT_WAVES_P1 = 3
 SPIT_WAVES_P2 = 2  # 连续两次喷吐（每次多波）
 SPIT_CONE_DEG = 60
@@ -1972,6 +1974,10 @@ class Player:
         self.speed = min(PLAYER_SPEED_CAP, max(1.0, self.speed + float(META.get("speed", 0))))
         self.max_hp += META.get("maxhp", 0)
         self.hp = min(self.hp + META.get("maxhp", 0), self.max_hp)
+        self.acid_dot_timer = 0.0  # 还剩多少秒的DoT
+        self.acid_dot_dps = 0.0  # 当前DoT每秒伤害（根据最近踩到的酸池设置）
+        self._acid_dmg_accum = 0.0  # 在池中时的“本帧累计伤害”浮点缓存
+        self._acid_dot_accum = 0.0  # 离开池后DoT的累计伤害缓存
 
     @property
     def pos(self):
@@ -3623,11 +3629,21 @@ class GameState:
                 self.acids.remove(a);
                 continue
             if a.contains(player.rect.centerx, player.rect.centery):
-                # 伤害：逐帧结算
-                player.hp -= int(a.dps * dt)
-                # 减速：打一个短暂 slow_t 计时
+                # —— 持续伤害（不截断）：把小数累加进缓存，满 1 再扣 1 HP ——
+                player._acid_dmg_accum += a.dps * dt
+                whole = int(player._acid_dmg_accum)
+                if whole > 0:
+                    player.hp -= whole
+                    self.add_damage_text(player.rect.centerx, player.rect.top - 8, whole, crit=False,
+                                               kind="hp_player")
+                    player._acid_dmg_accum -= whole
+
+                # —— 减速：刷新一个短缓冲（你原本就有） ——
                 player.slow_t = max(getattr(player, "slow_t", 0.0), 0.3)
-        # no return
+
+                # —— 赋予离开后的 DoT（中毒） ——
+                player.acid_dot_timer = max(player.acid_dot_timer, ACID_DOT_DURATION)
+                player.acid_dot_dps = max(player.acid_dot_dps, a.dps * ACID_DOT_MULT)
 
     # ---- 攻击前的提示圈（到时后生成酸池等）----
     def spawn_telegraph(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
@@ -4407,6 +4423,19 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.update_telegraphs(dt)              # 倒计时→到时生成酸池
         game_state.update_acids(dt, player)           # 酸池伤害&施加 slow_t
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)  # 每帧自然恢复
+        # —— 结算离开酸池后的 DoT（中毒） ——
+        if player.acid_dot_timer > 0.0:
+            player.acid_dot_timer = max(0.0, player.acid_dot_timer - dt)
+            player._acid_dot_accum += player.acid_dot_dps * dt
+            whole = int(player._acid_dot_accum)
+            if whole > 0:
+                player.hp -= whole
+                game_state.add_damage_text(player.rect.centerx, player.rect.top - 8, whole, crit=False,
+                                           kind="hp_player")
+                player._acid_dot_accum -= whole
+            # （可选）当计时走完，清空 DoT dps
+            if player.acid_dot_timer <= 0.0:
+                player.acid_dot_dps = 0.0
 
 
         # Autofire handling
