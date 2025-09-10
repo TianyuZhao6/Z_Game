@@ -2009,7 +2009,6 @@ class Player:
         base_spd = self.speed
         if getattr(self, "slow_t", 0.0) > 0:
             base_spd *= (1.0 - ACID_SLOW_FRAC)  # 例如 0.55x
-        speed = base_spd
         # collide_and_slide_circle(self, obstacles.values(), dx * speed, dy * speed)
         step_x, step_y = iso_equalized_step(dx, dy, self.speed)
         collide_and_slide_circle(self, obstacles.values(), step_x, step_y)
@@ -3621,29 +3620,48 @@ class GameState:
     def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME):
         self.acids.append(AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life)))
 
-    def update_acids(self, dt: float, player: 'Player'):
-        # 伤害+减速只对玩家生效（后续可拓展给僵尸）
-        for a in list(self.acids):
+    def update_acids(self, dt: float, player: "Player"):
+        # 衰减 slow / DoT 计时
+        player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
+        player.acid_dot_timer = max(0.0, getattr(player, "acid_dot_timer", 0.0) - dt)
+
+        # 维护一个按秒结算的累计器（避免帧率依赖）
+        if not hasattr(player, "_acid_dmg_accum"):
+            player._acid_dmg_accum = 0.0
+
+        # 只取当前踩到的酸池里“最强”的那个，而不是累加（防止重叠酸池爆表）
+        px, py = player.rect.centerx, player.rect.centery
+        max_dps = 0.0
+        max_slow = 0.0
+        touching = False
+
+        # 更新酸池寿命，同时检查是否踩中
+        alive = []
+        for a in self.acids:
             a.t -= dt
-            if a.t <= 0:
-                self.acids.remove(a);
-                continue
-            if a.contains(player.rect.centerx, player.rect.centery):
-                # —— 持续伤害（不截断）：把小数累加进缓存，满 1 再扣 1 HP ——
-                player._acid_dmg_accum += a.dps * dt
-                whole = int(player._acid_dmg_accum)
-                if whole > 0:
-                    player.hp -= whole
-                    self.add_damage_text(player.rect.centerx, player.rect.top - 8, whole, crit=False,
-                                               kind="hp_player")
-                    player._acid_dmg_accum -= whole
+            if a.t > 0:
+                alive.append(a)
+                if a.contains(px, py):
+                    touching = True
+                    if a.dps > max_dps: max_dps = a.dps
+                    if a.slow_frac > max_slow: max_slow = a.slow_frac
+        self.acids = alive
 
-                # —— 减速：刷新一个短缓冲（你原本就有） ——
-                player.slow_t = max(getattr(player, "slow_t", 0.0), 0.3)
+        if touching:
+            # 站在池里：按秒累加 dps（仅取最强那一摊）
+            player._acid_dmg_accum += max_dps * dt
+            ticks = int(player._acid_dmg_accum)  # 每满1点血扣一次
+            if ticks > 0:
+                player.hp -= ticks
+                player._acid_dmg_accum -= ticks
+                self.add_damage_text(px, player.rect.top - 10, ticks, crit=False, kind="hp")
 
-                # —— 赋予离开后的 DoT（中毒） ——
-                player.acid_dot_timer = max(player.acid_dot_timer, ACID_DOT_DURATION)
-                player.acid_dot_dps = max(player.acid_dot_dps, a.dps * ACID_DOT_MULT)
+            # 施加减速（刷新时长，让它留存一点点）
+            player.slow_t = max(player.slow_t, 0.40)  # 可调：0.3~0.5
+            # 刷新离开后的持续 DoT（占总 dps 的一部分）
+            player.acid_dot_timer = ACID_DOT_DURATION
+            player.acid_dot_dps = max_dps * ACID_DOT_MULT
+        # 不在池里：不做直接伤害；离开后的 DoT 由主循环统一结算
 
     # ---- 攻击前的提示圈（到时后生成酸池等）----
     def spawn_telegraph(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
