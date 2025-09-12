@@ -517,8 +517,8 @@ MEMDEV_CONTACT_DAMAGE = 60  # 接触伤害提高
 MEMDEV_SPEED = 0.9          # 很慢（后续阶段再涨）
 
 # Boss 外形/占格（仅碰撞与显示，不改变地图阻挡规则）
-BOSS_SIZE_FACTOR = 1.65     # 可视尺寸 = 1.65 × 单格
-BOSS_RADIUS_FACTOR = 0.90   # 脚底圆半径 = 0.90 × 单格（≈直径1.8格，能“卡住”单格通道）
+BOSS_SIZE_FACTOR = 3.65     # 可视尺寸 = 1.65 × 单格
+BOSS_RADIUS_FACTOR = 1.80   # 脚底圆半径 = 0.90 × 单格（≈直径1.8格，能“卡住”单格通道）
 
 # Boss 掉落（保证性掉落，额外返还它吞的金币）
 BOSS_LOOT_MIN = 24
@@ -2576,6 +2576,16 @@ class MemoryDevourerBoss(Zombie):
                          speed=int(max(1, MEMDEV_SPEED)),
                          ztype="boss_mem",
                          hp=boss_hp)
+        # 例：按比例放大到 1.8~2.2 倍 CELL_SIZE（按你项目常量来）
+        boss_size = int(CELL_SIZE * BOSS_SIZE_FACTOR)  # 或你自己的命名
+        cx, cy = self.rect.center
+
+        self.size = boss_size
+        self.rect.width = self.rect.height = self.size
+        self.rect.center = (cx, cy)
+
+        # 半径用同一套规则（保持与碰撞逻辑一致）
+        self.radius = int(self.size * 0.45)  # 或用你已有的常量/函数
 
         self.is_boss = True
         self.boss_name = "Memory Devourer"
@@ -3541,6 +3551,20 @@ class SpatialHash:
                     if dx * dx + dy * dy <= rr * rr:
                         out.append(z)
         return out
+
+def crush_blocks_in_rect(sweep_rect: pygame.Rect, game_state) -> int:
+    """Remove ANY obstacle cell whose rect intersects sweep_rect. Return removed count."""
+    removed = 0
+    if not hasattr(game_state, "obstacles") or not game_state.obstacles:
+        return 0
+    # 遍历拷贝，安全删除
+    for gp, ob in list(game_state.obstacles.items()):
+        if sweep_rect.colliderect(ob.rect):
+            # 无视类型，直接移除（包含 Indestructible / MainBlock）
+            # 如需震屏/音效/粒子，在这里加
+            del game_state.obstacles[gp]
+            removed += 1
+    return removed
 
 
 class GameState:
