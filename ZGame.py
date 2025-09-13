@@ -1855,23 +1855,17 @@ def spawn_wave_with_budget(game_state: "GameState",
                 b1 = create_memory_devourer((gx1, gy1), current_level)
                 b2 = create_memory_devourer((gx2, gy2), current_level)
                 twin_id = random.randint(1000, 9999)
-                if hasattr(b1, "bind_twin"):
-                    b1.bind_twin(b2, twin_id)
-                else:
-                    b1.twin_id = b2.twin_id = twin_id
-                    b1._twin_partner_ref = b2
-                    b2._twin_partner_ref = b1
-                zombies.append(b1)
-                zombies.append(b2)
-
+                #bind twins
                 b1._spawn_wave_tag = wave_index
                 b2._spawn_wave_tag = wave_index
+                zombies.append(b1)
+                zombies.append(b2)
                 boss_done = True
+
             else:
                 z = create_memory_devourer((gx, gy), current_level)
-                zombies.append(z)
-
                 z._spawn_wave_tag = wave_index
+                zombies.append(z)
                 boss_done = True
 
 
@@ -3913,7 +3907,7 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
             body = pygame.Rect(0, 0, draw_size, draw_size)
             body.midbottom = (cx, cy)
             col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
-            pygame.draw.rect(screen, col, body) 
+            pygame.draw.rect(screen, col, body)
 
             # 强化视觉：持币较多时加金色外轮廓
             coins = int(getattr(z, "spoils", 0))
