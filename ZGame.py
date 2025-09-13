@@ -429,6 +429,11 @@ ENABLE_TWIN_BOSS = True
 TWIN_BOSS_LEVELS = {4}  # 关卡索引从0开始，4==第5关
 TWIN_ENRAGE_ATK_MULT = 1.35
 TWIN_ENRAGE_SPD_ADD  = 1
+# --- boss footprint (2x2 tiles) ---
+BOSS_FOOTPRINT_TILES = 2          # 占格：2x2
+BOSS_VISUAL_MARGIN   = 6          # 视觉矩形边缘略收一点，避免贴边穿帮
+BOSS_RADIUS_SHRINK   = 0.98       # 圆半径微缩，减少“卡像素”感
+
 
 # coin bounce feel
 COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
@@ -1858,14 +1863,17 @@ def spawn_wave_with_budget(game_state: "GameState",
                     b2._twin_partner_ref = b1
                 zombies.append(b1)
                 zombies.append(b2)
+
+                b1._spawn_wave_tag = wave_index
+                b2._spawn_wave_tag = wave_index
+                boss_done = True
             else:
                 z = create_memory_devourer((gx, gy), current_level)
                 zombies.append(z)
 
-            # 只放 Boss；这一波不再放小怪
-            budget = 0
-            boss_done = True
-            continue
+                z._spawn_wave_tag = wave_index
+                boss_done = True
+
 
         # choose a type that fits remaining budget
         remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in zombies if
@@ -2589,18 +2597,17 @@ class MemoryDevourerBoss(Zombie):
 
         self.is_boss = True
         self.boss_name = "Memory Devourer"
-        # —— 可视尺寸 & 脚底圆半径（决定“占格”感）——
-        base = CELL_SIZE - 6
-        self.size = int(base * BOSS_SIZE_FACTOR)
-        self.radius = int(CELL_SIZE * BOSS_RADIUS_FACTOR)
-        self.is_boss = True
-        self.twin_id = None
-        self._twin_powered = False
-        self._twin_partner_ref = None  # 弱引用或直接对象都可
+        # —— 可视尺寸 & 脚底圆半径（2×2 占格）——
+        # 可视矩形 ≈ 2*CELL_SIZE，略收边
+        self.size = int(BOSS_FOOTPRINT_TILES * CELL_SIZE - BOSS_VISUAL_MARGIN)
 
-        # 让 Boss 以“格中心”为锚点摆放（避免放大后顶到左上角）
-        cx = gx * CELL_SIZE + CELL_SIZE // 2
-        cy = gy * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT
+        # 圆碰撞半径：让直径≈2*CELL_SIZE（正好“堵死”单格通道）
+        self.radius = int(BOSS_FOOTPRINT_TILES * CELL_SIZE * 0.5 * BOSS_RADIUS_SHRINK)
+
+        # 以 2×2 的几何中心为锚点摆放（grid_pos 视为这块 2×2 的“左上角格”）
+        cx = int((gx + 0.5 * BOSS_FOOTPRINT_TILES) * CELL_SIZE)
+        cy = int((gy + 0.5 * BOSS_FOOTPRINT_TILES) * CELL_SIZE) + INFO_BAR_HEIGHT
+
         self.rect = pygame.Rect(0, 0, self.size, self.size)
         self.rect.center = (cx, cy)
         self.x = float(self.rect.x)
@@ -4369,6 +4376,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             out.append(p)
             if len(out) >= n: break
         return out
+
 
     def find_target():
         px, py = player_center()
