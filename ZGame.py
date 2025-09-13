@@ -3892,22 +3892,28 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
             sh = pygame.Surface((ISO_CELL_W // 2, ISO_CELL_H // 2), pygame.SRCALPHA)
             pygame.draw.ellipse(sh, (0, 0, 0, ISO_SHADOW_ALPHA), sh.get_rect())
             screen.blit(sh, sh.get_rect(center=(cx, cy + 6)))
-            size = int(CELL_SIZE * 0.6)
-            body = pygame.Rect(0, 0, size, size);
+
+            base = int(CELL_SIZE * 0.6)
+            draw_size = base if not getattr(z, "is_boss", False) else max(base, int(z.rect.w))  # use boss rect
+
+            body = pygame.Rect(0, 0, draw_size, draw_size)
             body.midbottom = (cx, cy)
+
             # 拾取光晕（金色）
             if getattr(z, "_gold_glow_t", 0.0) > 0.0:
-                glow = pygame.Surface((int(size * 1.6), int(size * 1.0)), pygame.SRCALPHA)
+                glow = pygame.Surface((int(draw_size * 1.6), int(draw_size * 1.0)), pygame.SRCALPHA)
                 alpha = int(120 * (z._gold_glow_t / Z_GLOW_TIME))
                 pygame.draw.ellipse(glow, (255, 220, 90, max(30, alpha)), glow.get_rect())
                 screen.blit(glow, glow.get_rect(center=(cx, cy)))
 
             # 本体
-            size = int(CELL_SIZE * 0.6)
-            body = pygame.Rect(0, 0, size, size);
+            base = int(CELL_SIZE * 0.6)
+            draw_size = base if not getattr(z, "is_boss", False) else max(base, int(z.rect.w))  # use boss rect
+
+            body = pygame.Rect(0, 0, draw_size, draw_size)
             body.midbottom = (cx, cy)
             col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
-            pygame.draw.rect(screen, col, body)
+            pygame.draw.rect(screen, col, body) 
 
             # 强化视觉：持币较多时加金色外轮廓
             coins = int(getattr(z, "spoils", 0))
