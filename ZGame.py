@@ -394,6 +394,8 @@ PLAYER_SPEED_CAP = 7.0
 ZOMBIE_SPEED = 2
 ZOMBIE_SPEED_MAX = 4.5
 ZOMBIE_ATTACK = 10
+
+
 # --- next-level scene buff cards ---
 SCENE_BIOMES = ["Domain of Wind", "Misty Forest", "Scorched Hell", "Bastion of Stone"]
 _next_biome = None  # 记录玩家本关在商店后选择的“下关场景”
@@ -712,6 +714,9 @@ BULLET_DAMAGE_ZOMBIE = 12
 BULLET_DAMAGE_BLOCK = 10
 ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
 MAX_FIRE_RANGE = 800.0  # pixels
+# --- targeting / auto-aim (new) ---
+PLAYER_TARGET_RANGE = MAX_FIRE_RANGE        # 射程内才会当候选（默认=子弹射程）
+PLAYER_BLOCK_FORCE_RANGE_TILES = 2          # 玩家两格内遇到可破坏物 → 强制优先
 # --- CRIT & damage text ---
 CRIT_CHANCE_BASE = 0.05  # 基础暴击率=5%
 CRIT_MULT_BASE = 1.8  # 暴击伤害倍数，后续可以做商店项
@@ -4377,27 +4382,88 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if len(out) >= n: break
         return out
 
-
     def find_target():
-        px, py = player_center()
-        best = None
-        best_d2 = float('inf')
-        # Prefer zombies first
+        # 玩家中心（像素）
+        px, py = player.rect.centerx, player.rect.centery
+
+        # 玩家格坐标（用于“两格内”判断）
+        pgx = int(px // CELL_SIZE)
+        pgy = int((py - INFO_BAR_HEIGHT) // CELL_SIZE)
+
+        # 1) 两格内是否有可破坏障碍？有 → 直接优先最近的那一个
+        force_blocks = []
+        for gp, ob in game_state.obstacles.items():
+            if getattr(ob, "type", "") != "Destructible":
+                continue
+            gx, gy = gp
+            manh = abs(gx - pgx) + abs(gy - pgy)  # 曼哈顿距离（格）
+            if manh <= int(PLAYER_BLOCK_FORCE_RANGE_TILES):
+                cx, cy = ob.rect.centerx, ob.rect.centery
+                d2 = (cx - px) ** 2 + (cy - py) ** 2
+                force_blocks.append((d2, ('block', gp, ob, cx, cy)))
+
+        if force_blocks:
+            force_blocks.sort(key=lambda t: t[0])  # 最近优先
+            best_tuple = force_blocks[0][1]
+            d = (force_blocks[0][0]) ** 0.5
+            return best_tuple, d
+
+        # 2) 正常权重选择（仅考虑“射程内”的目标）
+        R2 = float(PLAYER_TARGET_RANGE) ** 2
+
+        # 收集候选：僵尸（射程内）
+        z_cands = []
         for z in zombies:
             cx, cy = z.rect.centerx, z.rect.centery
             d2 = (cx - px) ** 2 + (cy - py) ** 2
-            if d2 < best_d2:
-                best_d2 = d2
-                best = ('zombie', None, z, cx, cy)
-        # Then destructible blocks (non-main)
+            if d2 <= R2:
+                z_cands.append((z, cx, cy, d2))
+
+        # 收集候选：可破坏障碍（射程内）
+        b_cands = []
         for gp, ob in game_state.obstacles.items():
-            if ob.type == 'Destructible' and not getattr(ob, 'is_main_block', False):
-                cx, cy = ob.rect.centerx, ob.rect.centery
-                d2 = (cx - px) ** 2 + (cy - py) ** 2
-                if d2 < best_d2:
-                    best_d2 = d2;
-                    best = ('block', gp, ob, cx, cy)
-        return best, (best_d2 ** 0.5) if best else None
+            if getattr(ob, "type", "") != "Destructible":
+                continue
+            cx, cy = ob.rect.centerx, ob.rect.centery
+            d2 = (cx - px) ** 2 + (cy - py) ** 2
+            if d2 <= R2:
+                b_cands.append((gp, ob, cx, cy, d2))
+
+        # 射程内什么都没有 → 没目标
+        if not z_cands and not b_cands:
+            return (None, None)
+
+        # 权重评分：
+        # - 基于距离的衰减：基础分 = -d2 * k（d2 越小，分越高）
+        # - 僵尸优先：加较高常数；障碍其次：加较低常数
+        #   （权重不要过大，否则完全遮蔽距离差异）
+        DIST_K = 1e-4
+        W_ZOMBIE = 1200.0
+        W_BLOCK = 800.0
+
+        best = None
+        best_score = -1e18
+
+        # 僵尸优先（仍受距离影响）
+        for z, cx, cy, d2 in z_cands:
+            s = -d2 * DIST_K + W_ZOMBIE
+            # 若想进一步区分类型，可在此额外加分（例如自爆怪、远程怪等）
+            if s > best_score:
+                best_score = s
+                best = ('zombie', None, z, cx, cy, d2)
+
+        # 障碍次之（仍受距离影响）
+        for gp, ob, cx, cy, d2 in b_cands:
+            s = -d2 * DIST_K + W_BLOCK
+            if s > best_score:
+                best_score = s
+                best = ('block', gp, ob, cx, cy, d2)
+
+        if best is None:
+            return (None, None)
+
+        kind, gp_or_none, obj, cx, cy, d2 = best
+        return (kind, gp_or_none, obj, cx, cy), (d2 ** 0.5)
 
     # Initial spawn: use threat budget once
     # AFTER
@@ -4671,25 +4737,87 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         return player.x + player.size / 2, player.y + player.size / 2 + INFO_BAR_HEIGHT
 
     def find_target():
-        px, py = player_center()
-        best = None
-        best_d2 = float('inf')
-        # prefer zombies
+        # 玩家中心（像素）
+        px, py = player.rect.centerx, player.rect.centery
+
+        # 玩家格坐标（用于“两格内”判断）
+        pgx = int(px // CELL_SIZE)
+        pgy = int((py - INFO_BAR_HEIGHT) // CELL_SIZE)
+
+        # 1) 两格内是否有可破坏障碍？有 → 直接优先最近的那一个
+        force_blocks = []
+        for gp, ob in game_state.obstacles.items():
+            if getattr(ob, "type", "") != "Destructible":
+                continue
+            gx, gy = gp
+            manh = abs(gx - pgx) + abs(gy - pgy)  # 曼哈顿距离（格）
+            if manh <= int(PLAYER_BLOCK_FORCE_RANGE_TILES):
+                cx, cy = ob.rect.centerx, ob.rect.centery
+                d2 = (cx - px) ** 2 + (cy - py) ** 2
+                force_blocks.append((d2, ('block', gp, ob, cx, cy)))
+
+        if force_blocks:
+            force_blocks.sort(key=lambda t: t[0])  # 最近优先
+            best_tuple = force_blocks[0][1]
+            d = (force_blocks[0][0]) ** 0.5
+            return best_tuple, d
+
+        # 2) 正常权重选择（仅考虑“射程内”的目标）
+        R2 = float(PLAYER_TARGET_RANGE) ** 2
+
+        # 收集候选：僵尸（射程内）
+        z_cands = []
         for z in zombies:
             cx, cy = z.rect.centerx, z.rect.centery
             d2 = (cx - px) ** 2 + (cy - py) ** 2
-            if d2 < best_d2:
-                best_d2 = d2;
-                best = ('zombie', None, z, cx, cy)
-        # then destructible blocks
+            if d2 <= R2:
+                z_cands.append((z, cx, cy, d2))
+
+        # 收集候选：可破坏障碍（射程内）
+        b_cands = []
         for gp, ob in game_state.obstacles.items():
-            if ob.type == 'Destructible' and not getattr(ob, 'is_main_block', False):
-                cx, cy = ob.rect.centerx, ob.rect.centery
-                d2 = (cx - px) ** 2 + (cy - py) ** 2
-                if d2 < best_d2:
-                    best_d2 = d2;
-                    best = ('block', gp, ob, cx, cy)
-        return best, (best_d2 ** 0.5) if best else None
+            if getattr(ob, "type", "") != "Destructible":
+                continue
+            cx, cy = ob.rect.centerx, ob.rect.centery
+            d2 = (cx - px) ** 2 + (cy - py) ** 2
+            if d2 <= R2:
+                b_cands.append((gp, ob, cx, cy, d2))
+
+        # 射程内什么都没有 → 没目标
+        if not z_cands and not b_cands:
+            return (None, None)
+
+        # 权重评分：
+        # - 基于距离的衰减：基础分 = -d2 * k（d2 越小，分越高）
+        # - 僵尸优先：加较高常数；障碍其次：加较低常数
+        #   （权重不要过大，否则完全遮蔽距离差异）
+        DIST_K = 1e-4
+        W_ZOMBIE = 1200.0
+        W_BLOCK = 800.0
+
+        best = None
+        best_score = -1e18
+
+        # 僵尸优先（仍受距离影响）
+        for z, cx, cy, d2 in z_cands:
+            s = -d2 * DIST_K + W_ZOMBIE
+            # 若想进一步区分类型，可在此额外加分（例如自爆怪、远程怪等）
+            if s > best_score:
+                best_score = s
+                best = ('zombie', None, z, cx, cy, d2)
+
+        # 障碍次之（仍受距离影响）
+        for gp, ob, cx, cy, d2 in b_cands:
+            s = -d2 * DIST_K + W_BLOCK
+            if s > best_score:
+                best_score = s
+                best = ('block', gp, ob, cx, cy, d2)
+
+        if best is None:
+            return (None, None)
+
+        kind, gp_or_none, obj, cx, cy, d2 = best
+        return (kind, gp_or_none, obj, cx, cy), (d2 ** 0.5)
 
     while running:
         dt = clock.tick(60) / 1000.0
