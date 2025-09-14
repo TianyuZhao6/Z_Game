@@ -729,6 +729,7 @@ DMG_TEXT_SIZE_CRIT = 38
 
 # --- survival mode & player health ---
 LEVEL_TIME_LIMIT = 45.0  # seconds per run
+BOSS_TIME_LIMIT = 60.0  # seconds for boss levels
 PLAYER_MAX_HP = 40  # player total health
 ZOMBIE_CONTACT_DAMAGE = 20  # damage per contact tick
 PLAYER_HIT_COOLDOWN = 0.6  # seconds of i-frames after taking contact damage
@@ -1868,6 +1869,14 @@ def spawn_wave_with_budget(game_state: "GameState",
                 b1 = create_memory_devourer((gx1, gy1), current_level)
                 b2 = create_memory_devourer((gx2, gy2), current_level)
                 twin_id = random.randint(1000, 9999)
+                if hasattr(b1, "bind_twin"):
+                    b1.bind_twin(b2, twin_id)
+                else:
+                    # 极端兜底（如果项目里没有 bind_twin）
+                    b1.twin_id = twin_id;
+                    b2.twin_id = twin_id
+                    b1._twin_partner_ref = b2;
+                    b2._twin_partner_ref = b1
                 #bind twins
                 b1._spawn_wave_tag = wave_index
                 b2._spawn_wave_tag = wave_index
@@ -1902,6 +1911,43 @@ def spawn_wave_with_budget(game_state: "GameState",
         spawned += 1
 
     return spawned
+
+def trigger_twin_enrage(dead_boss, zombies, game_state):
+    """当一只 Twin Boss 死亡时，令存活的孪生体回满血并进入狂暴。"""
+    if not getattr(dead_boss, "is_boss", False):
+        return
+    tid = getattr(dead_boss, "twin_id", None)
+    if tid is None:
+        # 若没 twin_id，尝试用绑定的引用取另一只
+        ref = getattr(dead_boss, "_twin_partner_ref", None)
+        partner = ref() if callable(ref) else ref
+    else:
+        partner = None
+        ref = getattr(dead_boss, "_twin_partner_ref", None)
+        if callable(ref):
+            partner = ref()
+        if partner is None:
+            # 在场上按 twin_id 搜索另一只
+            for z in zombies:
+                if z is not dead_boss and getattr(z, "is_boss", False) and getattr(z, "twin_id", None) == tid:
+                    partner = z
+                    break
+
+    if partner and getattr(partner, "hp", 0) > 0 and not getattr(partner, "_twin_powered", False):
+        if hasattr(partner, "on_twin_partner_death"):
+            partner.on_twin_partner_death()
+        else:
+            # 兜底：没有方法也直接赋值
+            partner.hp = int(getattr(partner, "max_hp", partner.hp))
+            partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
+            partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
+            partner._twin_powered = True
+
+        # 小提示：给点飘字/特效
+        try:
+            game_state.add_damage_text(partner.rect.centerx, partner.rect.centery, "ENRAGED", crit=False, kind="shield")
+        except Exception:
+            pass
 
 
 # ==================== 数据结构 ====================
@@ -2403,6 +2449,8 @@ class Zombie:
             # 将自己“杀死”以便主循环移除（或者直接把 hp 置 0）
             self.hp = 0
             return
+        if getattr(self, "is_boss", False) and getattr(self, "hp", 0) <= 0:
+            trigger_twin_enrage(self, zombies, game_state)
 
         # 远程怪：发射投射物
         if self.type in ("ranged", "spitter"):
@@ -2435,6 +2483,8 @@ class Zombie:
                                                    kind="hp")
                 # （可选）对其它僵尸/可破坏障碍造成伤害，这里省略
                 self.hp = 0  # 自身消失
+        if getattr(self, "is_boss", False) and getattr(self, "hp", 0) <= 0:
+            trigger_twin_enrage(self, zombies, game_state)
 
         # 增益怪：周期性为周围友军加 BUFF
         if self.type == "buffer":
@@ -2712,32 +2762,32 @@ class Bullet:
                         z._can_split = False
                         # 生成子体；父体不掉落金币（避免三倍通胀），XP也交给后续击杀子体获得
                         spawn_splinter_children(z, zombies, game_state, level_idx=0, wave_index=0)
-                        # Twin：若死者是Boss且有存活的孪生体，让对方回满并狂暴
-                        if getattr(z, "is_boss", False):
-                            partner = None
-                            ref = getattr(z, "_twin_partner_ref", None)
-                            if callable(ref):  # weakref
-                                partner = ref()
-                            elif ref is not None:
-                                partner = ref
-                            # 如果没存ref，尝试在zombies里按twin_id搜
-                            if partner is None and getattr(z, "twin_id", None) is not None:
-                                for _cand in zombies:
-                                    if getattr(_cand, "is_boss", False) and getattr(_cand, "twin_id",
-                                                                                    None) == z.twin_id and _cand is not z:
-                                        partner = _cand
-                                        break
-
-                            if partner and getattr(partner, "hp", 0) > 0 and not getattr(partner, "_twin_powered",
-                                                                                         False):
-                                if hasattr(partner, "on_twin_partner_death"):
-                                    partner.on_twin_partner_death()
-                                else:
-                                    # 兜底：没有方法也强行赋值
-                                    partner.hp = int(getattr(partner, "max_hp", partner.hp))
-                                    partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
-                                    partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
-                                    partner._twin_powered = True
+                        # # Twin：若死者是Boss且有存活的孪生体，让对方回满并狂暴
+                        # if getattr(z, "is_boss", False):
+                        #     partner = None
+                        #     ref = getattr(z, "_twin_partner_ref", None)
+                        #     if callable(ref):  # weakref
+                        #         partner = ref()
+                        #     elif ref is not None:
+                        #         partner = ref
+                        #     # 如果没存ref，尝试在zombies里按twin_id搜
+                        #     if partner is None and getattr(z, "twin_id", None) is not None:
+                        #         for _cand in zombies:
+                        #             if getattr(_cand, "is_boss", False) and getattr(_cand, "twin_id",
+                        #                                                             None) == z.twin_id and _cand is not z:
+                        #                 partner = _cand
+                        #                 break
+                        #
+                        #     if partner and getattr(partner, "hp", 0) > 0 and not getattr(partner, "_twin_powered",
+                        #                                                                  False):
+                        #         if hasattr(partner, "on_twin_partner_death"):
+                        #             partner.on_twin_partner_death()
+                        #         else:
+                        #             # 兜底：没有方法也强行赋值
+                        #             partner.hp = int(getattr(partner, "max_hp", partner.hp))
+                        #             partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
+                        #             partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
+                        #             partner._twin_powered = True
                         # 从场上移除父体
                         zombies.remove(z)
                         self.alive = False
@@ -4319,7 +4369,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     pygame.display.set_caption("Zombie Card Game – Level")
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
-    time_left = float(LEVEL_TIME_LIMIT)
+    # --- initialize time_left before creating game_state, using global current_level ---
+    level_idx = int(globals().get("current_level", 0))
+    time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
+    globals()["_time_left_runtime"] = time_left
+
     globals()["_time_left_runtime"] = time_left
     spatial = SpatialHash(SPATIAL_CELL)
 
@@ -4335,6 +4389,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
 
     game_state = GameState(obstacles, items, main_item_list, decorations)
     game_state.current_level = current_level
+    # --- use boss-specific time limit AFTER game_state exists ---
+    level_idx = int(getattr(game_state, "current_level", 0))  # 0-based inside code
+    time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
+    globals()["_time_left_runtime"] = time_left
+
     player = Player(player_start, speed=PLAYER_SPEED)
     player.fire_cd = 0.0
     apply_player_carry(player, globals().get("_carry_player_state"))
