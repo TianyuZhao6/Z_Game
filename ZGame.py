@@ -1540,7 +1540,7 @@ def show_shop_screen(screen) -> Optional[str]:
     catalog = [
         {"name": "+1 Damage", "key": "dmg", "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
         {"name": "+5% Fire Rate", "key": "firerate", "cost": 7,
-         "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
+         "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.05)},
         {"name": "+10% Range", "key": "range", "cost": 7,
          "apply": lambda: META.update(range_mult=META.get("range_mult", 1.0) * 1.10)},
         {"name": "+1 Speed", "key": "speed", "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
