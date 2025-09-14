@@ -4374,7 +4374,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
     globals()["_time_left_runtime"] = time_left
 
-    globals()["_time_left_runtime"] = time_left
     spatial = SpatialHash(SPATIAL_CELL)
 
     obstacles, items, player_start, zombie_starts, main_item_list, decorations = generate_game_entities(
@@ -4545,8 +4544,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     running = True
     game_result = None
     last_frame = None
-    time_left = float(LEVEL_TIME_LIMIT)
-    globals()["_time_left_runtime"] = time_left
     clock.tick(60)
 
     while running:
