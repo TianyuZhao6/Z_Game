@@ -583,7 +583,7 @@ BOSS_ATK_MULT = 2.0
 BOSS_SPD_ADD = 1
 
 # persistent (per run) upgrades bought in shop
-META = {"spoils": 0, "dmg": 0, "firerate_mult": 1.0, "speed": 0, "maxhp": 0, "crit": 0.0}
+META = {"spoils": 0, "dmg": 0, "firerate_mult": 1.0, "range_mult": 1.0, "speed": 0, "maxhp": 0, "crit": 0.0}
 
 
 def reset_run_state():
@@ -593,6 +593,7 @@ def reset_run_state():
         "spoils": 0,  # 本轮金币
         "dmg": 0,
         "firerate_mult": 1.0,
+        "range_mult": 1.0,
         "speed": 0,
         "maxhp": 0,
         "crit": 0.0
@@ -1309,6 +1310,11 @@ def show_pause_menu(screen, background_surf):
     screen.blit(fr_text, (left_margin, y_offset))
     y_offset += 30
 
+    #射程加成
+    rng_text = font_tiny.render(f"Range: {META.get('range_mult', 1.0):.2f}x", True, (200, 200, 100))
+    screen.blit(rng_text, (left_margin, y_offset))
+    y_offset += 30
+
     # 速度加成
     speed_text = font_tiny.render(f"Speed: +{META['speed']}", True, (100, 100, 230))
     screen.blit(speed_text, (left_margin, y_offset))
@@ -1534,6 +1540,8 @@ def show_shop_screen(screen) -> Optional[str]:
         {"name": "+1 Damage", "key": "dmg", "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
         {"name": "+5% Fire Rate", "key": "firerate", "cost": 7,
          "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.10)},
+        {"name": "+10% Range", "key": "range", "cost": 7,
+         "apply": lambda: META.update(range_mult=META.get("range_mult", 1.0) * 1.10)},
         {"name": "+1 Speed", "key": "speed", "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
         {"name": "+5 Max HP", "key": "maxhp", "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
         {"name": "+5% Crit", "key": "crit", "cost": 9,
@@ -1978,6 +1986,8 @@ class Player:
         # per-run upgrades from shop (applied on spawn)
         self.bullet_damage = BULLET_DAMAGE_ZOMBIE + META.get("dmg", 0)
         self.fire_rate_mult = META.get("firerate_mult", 1.0)
+        self.range_base = float(MAX_FIRE_RANGE)  # 你的原始默认射程（像素）
+        self.range = float(self.range_base * META.get("range_mult", 1.0))
         self.speed = min(PLAYER_SPEED_CAP, max(1.0, self.speed + float(META.get("speed", 0))))
         self.max_hp += META.get("maxhp", 0)
         self.hp = min(self.hp + META.get("maxhp", 0), self.max_hp)
@@ -4409,7 +4419,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             return best_tuple, d
 
         # 2) 正常权重选择（仅考虑“射程内”的目标）
-        R2 = float(PLAYER_TARGET_RANGE) ** 2
+        R2 = float(getattr(player, "range", MAX_FIRE_RANGE)) ** 2
+
 
         # 收集候选：僵尸（射程内）
         z_cands = []
@@ -4565,13 +4576,13 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         # Autofire handling
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
         target, dist = find_target()
-        if target and player.fire_cd <= 0 and (dist is None or dist <= MAX_FIRE_RANGE):
+        if target and player.fire_cd <= 0 and (dist is None or dist <= player.range):
             _, gp, ob_or_z, cx, cy = target
             px, py = player_center()
             dx, dy = cx - px, cy - py
             length = (dx * dx + dy * dy) ** 0.5 or 1.0
             vx, vy = (dx / length) * BULLET_SPEED, (dy / length) * BULLET_SPEED
-            bullets.append(Bullet(px, py, vx, vy, MAX_FIRE_RANGE, damage=player.bullet_damage))
+            bullets.append(Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage))
             player.fire_cd += player.fire_cooldown()
 
         # Update bullets
@@ -4713,7 +4724,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     for b in snap.get("bullets", []):
         bobj = Bullet(float(b.get("x", 0.0)), float(b.get("y", 0.0)),
                       float(b.get("vx", 0.0)), float(b.get("vy", 0.0)),
-                      MAX_FIRE_RANGE)
+                      getattr(player, "range", MAX_FIRE_RANGE))
         bobj.traveled = float(b.get("traveled", 0.0))
         bullets.append(bobj)
 
@@ -4763,7 +4774,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             return best_tuple, d
 
         # 2) 正常权重选择（仅考虑“射程内”的目标）
-        R2 = float(PLAYER_TARGET_RANGE) ** 2
+        R2 = float(getattr(player, "range", MAX_FIRE_RANGE)) ** 2
 
         # 收集候选：僵尸（射程内）
         z_cands = []
@@ -4880,14 +4891,14 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         # Autofire
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
         target, dist = find_target()
-        if target and player.fire_cd <= 0 and (dist is None or dist <= MAX_FIRE_RANGE):
+        if target and player.fire_cd <= 0 and (dist is None or dist <= player.range):
             _, gp, ob_or_z, cx, cy = target
             px, py = player_center()
             dx, dy = cx - px, cy - py
             L = (dx * dx + dy * dy) ** 2 ** 0.5 if False else ((dx * dx + dy * dy) ** 0.5)  # keep readable
             L = L or 1.0
             vx, vy = (dx / L) * BULLET_SPEED, (dy / L) * BULLET_SPEED
-            bullets.append(Bullet(px, py, vx, vy, MAX_FIRE_RANGE, damage=player.bullet_damage))
+            bullets.append(Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage))
             player.fire_cd += player.fire_cooldown()
 
         # Update bullets
