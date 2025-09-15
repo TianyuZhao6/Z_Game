@@ -708,6 +708,9 @@ THREAT_WEIGHTS = {
 
 # --- combat tuning (Brotato-like) ---
 FIRE_RATE = None  # shots per second; if None, derive from BULLET_SPACING_PX
+# Fire-rate balance caps
+MAX_FIRERATE_MULT = 2.0       # hard cap on multiplier (≈2x base)
+MIN_FIRE_COOLDOWN = 0.12      # never shoot faster than once every 0.12s (~8.3/s)
 BULLET_SPEED = 1000.0  # pixels per second (controls travel speed)
 BULLET_SPACING_PX = 260.0  # desired spacing between bullets along their path
 BULLET_RADIUS = 4
@@ -2080,8 +2083,8 @@ class Player:
         collide_and_slide_circle(self, obstacles.values(), step_x, step_y)
 
     def fire_cooldown(self) -> float:
-        # smaller is faster; clamp to avoid abuse
-        return FIRE_COOLDOWN / max(0.25, float(self.fire_rate_mult))
+        eff = min(MAX_FIRERATE_MULT, float(self.fire_rate_mult))
+        return max(MIN_FIRE_COOLDOWN, FIRE_COOLDOWN / max(1.0, eff))
 
     def add_xp(self, amount: int):
         self.xp += int(max(0, amount))
