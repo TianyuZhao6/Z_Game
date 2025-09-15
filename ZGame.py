@@ -156,12 +156,14 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     spoils_text = hud_font.render(f"{spoils_total}", True, (255, 255, 255))
     screen.blit(spoils_text, (coin_x + 14, coin_y))
 
+
 def _find_current_boss(zombies):
     # 约定：任意 is_boss=True 的单位都当作 BOSS
     for z in zombies:
         if getattr(z, "is_boss", False):
             return z
     return None
+
 
 def draw_boss_hp_bar(screen, boss):
     # ---- 尺寸与位置（顶栏下方一条大血条）----
@@ -180,7 +182,7 @@ def draw_boss_hp_bar(screen, boss):
             or ("Memory Devourer" if getattr(boss, "is_boss", False) else "BOSS"))
 
     # 背板/边框
-    pygame.draw.rect(screen, (28, 28, 32), (bx-2, by-2, bar_w+4, bar_h+4), border_radius=8)
+    pygame.draw.rect(screen, (28, 28, 32), (bx - 2, by - 2, bar_w + 4, bar_h + 4), border_radius=8)
     pygame.draw.rect(screen, (52, 52, 60), (bx, by, bar_w, bar_h), border_radius=6)
 
     # 血量（红色填充）
@@ -205,8 +207,10 @@ def draw_boss_hp_bar(screen, boss):
 
     screen.blit(vals, vals.get_rect(midleft=(bx + 8, by + bar_h + 4)))
 
+
 def _find_all_bosses(zombies):
     return [z for z in zombies if getattr(z, "is_boss", False)]
+
 
 def draw_boss_hp_bars_twin(screen, bosses):
     a, b = bosses[0], bosses[1]
@@ -214,7 +218,7 @@ def draw_boss_hp_bars_twin(screen, bosses):
     bar_w = min(720, max(420, int(VIEW_W * 0.55)))
     bar_h = 16
     bx = (VIEW_W - bar_w) // 2
-    by = INFO_BAR_HEIGHT + 26   # 往下挪，避免和顶部信息重叠
+    by = INFO_BAR_HEIGHT + 26  # 往下挪，避免和顶部信息重叠
 
     # —— 只显示一次标题（两只同名时不重复）——
     title_name = (getattr(a, "boss_name", None) or getattr(a, "_display_name", None)
@@ -230,7 +234,7 @@ def draw_boss_hp_bars_twin(screen, bosses):
         ratio = max(0.0, min(1.0, cur / float(mhp)))
 
         # 背板/描边
-        pygame.draw.rect(screen, (28, 28, 32), (bx-2, y-2, bar_w+4, bar_h+4), border_radius=8)
+        pygame.draw.rect(screen, (28, 28, 32), (bx - 2, y - 2, bar_w + 4, bar_h + 4), border_radius=8)
         pygame.draw.rect(screen, (52, 52, 60), (bx, y, bar_w, bar_h), border_radius=6)
 
         # 填充
@@ -248,7 +252,7 @@ def draw_boss_hp_bars_twin(screen, bosses):
         screen.blit(vals, vals.get_rect(bottomright=(bx + bar_w - 6, y + bar_h + 16)))
 
     y1 = by
-    y2 = by + bar_h + 12   # 两条之间 12px 间距
+    y2 = by + bar_h + 12  # 两条之间 12px 间距
     draw_one(a, y1, (210, 64, 64))
     draw_one(b, y2, (230, 120, 70))
 
@@ -395,7 +399,6 @@ ZOMBIE_SPEED = 2
 ZOMBIE_SPEED_MAX = 4.5
 ZOMBIE_ATTACK = 10
 
-
 # --- next-level scene buff cards ---
 SCENE_BIOMES = ["Domain of Wind", "Misty Forest", "Scorched Hell", "Bastion of Stone"]
 _next_biome = None  # 记录玩家本关在商店后选择的“下关场景”
@@ -430,12 +433,11 @@ SPOILS_PER_TYPE = {  # average coins per zombie type (rounded when spawning)
 ENABLE_TWIN_BOSS = True
 TWIN_BOSS_LEVELS = {4}  # 关卡索引从0开始，4==第5关
 TWIN_ENRAGE_ATK_MULT = 1.35
-TWIN_ENRAGE_SPD_ADD  = 1
+TWIN_ENRAGE_SPD_ADD = 1
 # --- boss footprint (2x2 tiles) ---
-BOSS_FOOTPRINT_TILES = 2          # 占格：2x2
-BOSS_VISUAL_MARGIN   = 6          # 视觉矩形边缘略收一点，避免贴边穿帮
-BOSS_RADIUS_SHRINK   = 0.98       # 圆半径微缩，减少“卡像素”感
-
+BOSS_FOOTPRINT_TILES = 2  # 占格：2x2
+BOSS_VISUAL_MARGIN = 6  # 视觉矩形边缘略收一点，避免贴边穿帮
+BOSS_RADIUS_SHRINK = 0.98  # 圆半径微缩，减少“卡像素”感
 
 # coin bounce feel
 COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
@@ -519,26 +521,26 @@ BOSS_SPD_ADD_EXTRA = 1
 
 # ===== Boss1: Memory Devourer (腐蚀集群之心) =====
 # 数值：显著增厚血量与接触伤害
-MEMDEV_BASE_HP = 4200       # 以第5关为基准：从 1200 → 4200
+MEMDEV_BASE_HP = 4200  # 以第5关为基准：从 1200 → 4200
 MEMDEV_CONTACT_DAMAGE = 60  # 接触伤害提高
-MEMDEV_SPEED = 0.9          # 很慢（后续阶段再涨）
+MEMDEV_SPEED = 0.9  # 很慢（后续阶段再涨）
 
 # Boss 外形/占格（仅碰撞与显示，不改变地图阻挡规则）
-BOSS_SIZE_FACTOR = 3.65     # 可视尺寸 = 1.65 × 单格
-BOSS_RADIUS_FACTOR = 1.80   # 脚底圆半径 = 0.90 × 单格（≈直径1.8格，能“卡住”单格通道）
+BOSS_SIZE_FACTOR = 3.65  # 可视尺寸 = 1.65 × 单格
+BOSS_RADIUS_FACTOR = 1.80  # 脚底圆半径 = 0.90 × 单格（≈直径1.8格，能“卡住”单格通道）
 
 # Boss 掉落（保证性掉落，额外返还它吞的金币）
 BOSS_LOOT_MIN = 24
 BOSS_LOOT_MAX = 36
-BOSS_HEAL_POTIONS = 2       # 击杀掉落的治疗瓶数量
+BOSS_HEAL_POTIONS = 2  # 击杀掉落的治疗瓶数量
 
 # P1 / P2 酸液喷吐（地面腐蚀池）
 ACID_DPS = 15  # 站上去每秒伤害
 ACID_SLOW_FRAC = 0.45  # 减速 45%
 ACID_LIFETIME = 6.0
 ACID_TELEGRAPH_T = 0.6  # 提示圈时长
-ACID_DOT_DURATION = 2.0     # 离开酸池后继续掉血的持续时间(秒)
-ACID_DOT_MULT = 0.6         # DoT 的每秒伤害 = ACID_DPS * 这个系数
+ACID_DOT_DURATION = 2.0  # 离开酸池后继续掉血的持续时间(秒)
+ACID_DOT_MULT = 0.6  # DoT 的每秒伤害 = ACID_DPS * 这个系数
 SPIT_WAVES_P1 = 3
 SPIT_WAVES_P2 = 2  # 连续两次喷吐（每次多波）
 SPIT_CONE_DEG = 60
@@ -709,8 +711,8 @@ THREAT_WEIGHTS = {
 # --- combat tuning (Brotato-like) ---
 FIRE_RATE = None  # shots per second; if None, derive from BULLET_SPACING_PX
 # Fire-rate balance caps
-MAX_FIRERATE_MULT = 2.0       # hard cap on multiplier (≈2x base)
-MIN_FIRE_COOLDOWN = 0.12      # never shoot faster than once every 0.12s (~8.3/s)
+MAX_FIRERATE_MULT = 2.0  # hard cap on multiplier (≈2x base)
+MIN_FIRE_COOLDOWN = 0.12  # never shoot faster than once every 0.12s (~8.3/s)
 BULLET_SPEED = 1000.0  # pixels per second (controls travel speed)
 BULLET_SPACING_PX = 260.0  # desired spacing between bullets along their path
 BULLET_RADIUS = 4
@@ -719,8 +721,8 @@ BULLET_DAMAGE_BLOCK = 10
 ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
 MAX_FIRE_RANGE = 800.0  # pixels
 # --- targeting / auto-aim (new) ---
-PLAYER_TARGET_RANGE = MAX_FIRE_RANGE        # 射程内才会当候选（默认=子弹射程）
-PLAYER_BLOCK_FORCE_RANGE_TILES = 2          # 玩家两格内遇到可破坏物 → 强制优先
+PLAYER_TARGET_RANGE = MAX_FIRE_RANGE  # 射程内才会当候选（默认=子弹射程）
+PLAYER_BLOCK_FORCE_RANGE_TILES = 2  # 玩家两格内遇到可破坏物 → 强制优先
 # --- CRIT & damage text ---
 CRIT_CHANCE_BASE = 0.05  # 基础暴击率=5%
 CRIT_MULT_BASE = 1.8  # 暴击伤害倍数，后续可以做商店项
@@ -923,6 +925,8 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     这样即便步长较大/从角上斜切也不会穿过去。
     """
     entity._hit_ob = None
+    if getattr(entity, "can_crush_all_blocks", False) and not hasattr(entity, "_crush_queue"):
+        entity._crush_queue = []
     r = getattr(entity, "radius", max(8, CELL_SIZE // 3))
     size = entity.size
 
@@ -944,6 +948,12 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
         if min_left:
             cx1 = min_left[0]
             hit_x = min_left[1]
+            # ADD
+            if getattr(entity, "can_crush_all_blocks", False):
+                try:
+                    entity._crush_queue.append(hit_x)
+                except Exception:
+                    pass
     # 向左：对 right 边做相同处理
     elif dx < 0:
         max_right = None
@@ -953,8 +963,14 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
                 if (max_right is None) or (exp.right > max_right[0]):
                     max_right = (exp.right, ob)
         if max_right:
+            cy1 = cy0
             cx1 = max_right[0]
             hit_x = max_right[1]
+            if getattr(entity, "can_crush_all_blocks", False):
+                try:
+                    entity._crush_queue.append(hit_x)
+                except Exception:
+                    pass
 
     if hit_x is not None:
         entity._hit_ob = hit_x
@@ -980,6 +996,11 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
         if min_top:
             cy1 = min_top[0]
             hit_y = min_top[1]
+            if getattr(entity, "can_crush_all_blocks", False):
+                try:
+                    entity._crush_queue.append(hit_y)
+                except Exception:
+                    pass
     elif dy < 0:
         max_bottom = None
         for ob in obstacles_iter:
@@ -990,6 +1011,11 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
         if max_bottom:
             cy1 = max_bottom[0]
             hit_y = max_bottom[1]
+            if getattr(entity, "can_crush_all_blocks", False):
+                try:
+                    entity._crush_queue.append(hit_y)
+                except Exception:
+                    pass
 
     if hit_y is not None:
         entity._hit_ob = hit_y
@@ -1314,7 +1340,7 @@ def show_pause_menu(screen, background_surf):
     screen.blit(fr_text, (left_margin, y_offset))
     y_offset += 30
 
-    #射程加成
+    # 射程加成
     rng_text = font_tiny.render(f"Range: {META.get('range_mult', 1.0):.2f}x", True, (200, 200, 100))
     screen.blit(rng_text, (left_margin, y_offset))
     y_offset += 30
@@ -1817,14 +1843,15 @@ def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Z
 def promote_to_boss(z: "Zombie"):
     """Promote a single zombie instance to boss (stats on top of current scaling)."""
     z.is_boss = True
-    z.max_hp = int(z.max_hp * BOSS_HP_MULT_EXTRA); z.hp = z.max_hp
+    z.max_hp = int(z.max_hp * BOSS_HP_MULT_EXTRA);
+    z.hp = z.max_hp
     z.attack = int(z.attack * BOSS_ATK_MULT_EXTRA)
     z.speed += BOSS_SPD_ADD_EXTRA
 
     # === NEW: enlarge physical footprint ===
     # 把 BOSS 的 AABB 拉大到 ~1.6 格高（等距里观感是“很占屏”）
     old_cx, old_cy = z.rect.center
-    z.size = int(CELL_SIZE * 1.6)          # 占屏与卡位都更像“BOSS”
+    z.size = int(CELL_SIZE * 1.6)  # 占屏与卡位都更像“BOSS”
     z.rect = pygame.Rect(0, 0, z.size, z.size)
     z.rect.center = (old_cx, old_cy)
     # 同步世界坐标（你的 move/渲染有用到 x/y）
@@ -1880,7 +1907,7 @@ def spawn_wave_with_budget(game_state: "GameState",
                     b2.twin_id = twin_id
                     b1._twin_partner_ref = b2;
                     b2._twin_partner_ref = b1
-                #bind twins
+                # bind twins
                 b1._spawn_wave_tag = wave_index
                 b2._spawn_wave_tag = wave_index
                 zombies.append(b1)
@@ -1892,7 +1919,6 @@ def spawn_wave_with_budget(game_state: "GameState",
                 z._spawn_wave_tag = wave_index
                 zombies.append(z)
                 boss_done = True
-
 
         # choose a type that fits remaining budget
         remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in zombies if
@@ -1914,6 +1940,7 @@ def spawn_wave_with_budget(game_state: "GameState",
         spawned += 1
 
     return spawned
+
 
 def trigger_twin_enrage(dead_boss, zombies, game_state):
     """当一只 Twin Boss 死亡时，令存活的孪生体回满血并进入狂暴。"""
@@ -2312,15 +2339,17 @@ class Zombie:
         target_cx, target_cy = px, py
 
         # 若之前撞到了可破坏物，则临时聚焦（更积极地砍）
-        if getattr(self, "_hit_ob", None) and getattr(self._hit_ob, "type", "") == "Destructible":
-            self._focus_block = self._hit_ob
+        if getattr(self, "_hit_ob", None):
+            if getattr(self, "can_crush_all_blocks", False) or getattr(self._hit_ob, "type", "") == "Destructible":
+                self._focus_block = self._hit_ob
 
         # 视线被“可破坏物”先挡住 → 把它当作“门”优先破坏
         if not self._focus_block:
             gz = (int((self.x + self.size * 0.5) // CELL_SIZE), int((self.y + self.size * 0.5) // CELL_SIZE))
             gp = (int((player.x + player.size * 0.5) // CELL_SIZE), int((player.y + player.size * 0.5) // CELL_SIZE))
+
             ob = self.first_obstacle_on_grid_line(gz, gp, game_state.obstacles)
-            if ob and getattr(ob, "type", "") == "Destructible":
+            if ob and (getattr(self, "can_crush_all_blocks", False) or getattr(ob, "type", "") == "Destructible"):
                 self._focus_block = ob
 
         if self._focus_block:
@@ -2362,6 +2391,14 @@ class Zombie:
 
         oldx, oldy = self.x, self.y
         collide_and_slide_circle(self, obstacles, dx, dy)
+        # Bulldozer cleanup: crush anything we hit during sweep-collision
+        if getattr(self, "can_crush_all_blocks", False) and getattr(self, "_crush_queue", None):
+            for ob in list(self._crush_queue):
+                gp = getattr(ob, "grid_pos", None)
+                if gp in game_state.obstacles:
+                    del game_state.obstacles[gp]  # works for all types, incl. Indestructible & MainBlock
+            self._crush_queue.clear()
+            self._focus_block = None  # no longer blocked
 
         # —— 卡住检测 ——
         moved2 = (self.x - oldx) ** 2 + (self.y - oldy) ** 2
@@ -2415,24 +2452,41 @@ class Zombie:
         # 同步矩形
         self.rect.x = int(self.x)
         self.rect.y = int(self.y) + INFO_BAR_HEIGHT
-        # 圆心是否触到可破坏障碍 → 按CD扣血
+        # 圆心是否触到障碍 → Boss可直接碾碎，否则按原CD打可破坏物
         if self.attack_timer >= attack_interval:
             cx = self.x + self.size * 0.5
             cy = self.y + self.size * 0.5 + INFO_BAR_HEIGHT
-            for ob in obstacles:
-                if ob.type == "Destructible" and ob.rect.inflate(self.radius * 2, self.radius * 2).collidepoint(cx, cy):
-                    ob.health -= self.attack
-                    self.attack_timer = 0.0
-                    if ob.health <= 0:
-                        gp = ob.grid_pos
-                        if gp in game_state.obstacles: del game_state.obstacles[gp]
-                        cx2, cy2 = ob.rect.centerx, ob.rect.centery
-                        # 概率掉落
-                        if random.random() < SPOILS_BLOCK_DROP_CHANCE:
-                            game_state.spawn_spoils(cx2, cy2, 1)
-                        self.gain_xp(XP_ZOMBIE_BLOCK)
-                        if random.random() < HEAL_DROP_CHANCE_BLOCK:
-                            game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
+            for ob in list(obstacles):
+                if ob.rect.inflate(self.radius * 2, self.radius * 2).collidepoint(cx, cy):
+                    if getattr(self, "can_crush_all_blocks", False):
+                        # Bulldozer path: remove ANY obstacle it touches
+                        gp = getattr(ob, "grid_pos", None)
+                        if gp in game_state.obstacles:
+                            del game_state.obstacles[gp]
+                        # keep drops only for destructible; indestructible gives nothing
+                        if getattr(ob, "type", "") == "Destructible":
+                            cx2, cy2 = ob.rect.centerx, ob.rect.centery
+                            if random.random() < SPOILS_BLOCK_DROP_CHANCE:
+                                game_state.spawn_spoils(cx2, cy2, 1)
+                            self.gain_xp(XP_ZOMBIE_BLOCK)
+                            if random.random() < HEAL_DROP_CHANCE_BLOCK:
+                                game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
+                        self.attack_timer = 0.0
+                        self._focus_block = None
+                    else:
+                        # Non-boss: original behavior vs. Destructible
+                        if getattr(ob, "type", "") == "Destructible":
+                            ob.health -= self.attack
+                            self.attack_timer = 0.0
+                            if ob.health <= 0:
+                                gp = ob.grid_pos
+                                if gp in game_state.obstacles: del game_state.obstacles[gp]
+                                cx2, cy2 = ob.rect.centerx, ob.rect.centery
+                                if random.random() < SPOILS_BLOCK_DROP_CHANCE:
+                                    game_state.spawn_spoils(cx2, cy2, 1)
+                                self.gain_xp(XP_ZOMBIE_BLOCK)
+                                if random.random() < HEAL_DROP_CHANCE_BLOCK:
+                                    game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
                     break
 
     def update_special(self, dt: float, player: 'Player', zombies: List['Zombie'],
@@ -2523,7 +2577,7 @@ class Zombie:
         if self.type == "corruptling":
             self._life = getattr(self, "_life", 0.0) + dt
             if self.hp <= 0 and not getattr(self, "_acid_on_death", False):
-                game_state.spawn_acid_pool(self.rect.centerx, self.rect.centery, r=20, life=4.0, dps=ACID_DPS*0.8)
+                game_state.spawn_acid_pool(self.rect.centerx, self.rect.centery, r=20, life=4.0, dps=ACID_DPS * 0.8)
                 self._acid_on_death = True  # 让后续移除流程照常进行
             # 吸附由 BOSS 侧发起，这里只负责寿命记录
         # 记忆吞噬者（boss_mem）
@@ -2539,7 +2593,7 @@ class Zombie:
                 self.phase = 3
 
             # 基础冷却
-            self._spit_cd  = max(0.0, getattr(self, "_spit_cd", 0.0)  - dt)
+            self._spit_cd = max(0.0, getattr(self, "_spit_cd", 0.0) - dt)
             self._split_cd = max(0.0, getattr(self, "_split_cd", 0.0) - dt)
 
             cx, cy = self.rect.centerx, self.rect.centery
@@ -2553,16 +2607,17 @@ class Zombie:
                     points = []
                     for w in range(SPIT_WAVES_P1):
                         for i in range(SPIT_PUDDLES_PER_WAVE):
-                            off_ang = ang + math.radians(random.uniform(-SPIT_CONE_DEG/2, SPIT_CONE_DEG/2))
-                            dist = (SPIT_RANGE * (i+1) / SPIT_PUDDLES_PER_WAVE) * random.uniform(0.6, 1.0)
-                            points.append((cx + math.cos(off_ang)*dist, cy + math.sin(off_ang)*dist))
+                            off_ang = ang + math.radians(random.uniform(-SPIT_CONE_DEG / 2, SPIT_CONE_DEG / 2))
+                            dist = (SPIT_RANGE * (i + 1) / SPIT_PUDDLES_PER_WAVE) * random.uniform(0.6, 1.0)
+                            points.append((cx + math.cos(off_ang) * dist, cy + math.sin(off_ang) * dist))
                     game_state.spawn_telegraph(cx, cy, r=28, life=ACID_TELEGRAPH_T, kind="acid",
-                        payload={"points": points, "radius": 24, "life": ACID_LIFETIME, "dps": ACID_DPS, "slow": ACID_SLOW_FRAC})
+                                               payload={"points": points, "radius": 24, "life": ACID_LIFETIME,
+                                                        "dps": ACID_DPS, "slow": ACID_SLOW_FRAC})
                     self._spit_cd = 5.0
 
                 if self._split_cd <= 0.0:
                     for _ in range(2):
-                        zombies.append(spawn_corruptling_at(cx + random.randint(-20,20), cy + random.randint(-20,20)))
+                        zombies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
                     self._split_cd = SPLIT_CD_P1
 
             # 阶段2：移动略快；喷吐“连续两次”；召唤 3 个/15s；吸附融合
@@ -2575,16 +2630,17 @@ class Zombie:
                         points = []
                         for w in range(SPIT_WAVES_P1):
                             for i in range(SPIT_PUDDLES_PER_WAVE):
-                                off_ang = ang + math.radians(random.uniform(-SPIT_CONE_DEG/2, SPIT_CONE_DEG/2))
-                                dist = (SPIT_RANGE * (i+1) / SPIT_PUDDLES_PER_WAVE) * random.uniform(0.6, 1.0)
-                                points.append((cx + math.cos(off_ang)*dist, cy + math.sin(off_ang)*dist))
+                                off_ang = ang + math.radians(random.uniform(-SPIT_CONE_DEG / 2, SPIT_CONE_DEG / 2))
+                                dist = (SPIT_RANGE * (i + 1) / SPIT_PUDDLES_PER_WAVE) * random.uniform(0.6, 1.0)
+                                points.append((cx + math.cos(off_ang) * dist, cy + math.sin(off_ang) * dist))
                         game_state.spawn_telegraph(cx, cy, r=32, life=ACID_TELEGRAPH_T, kind="acid",
-                            payload={"points": points, "radius": 26, "life": ACID_LIFETIME, "dps": ACID_DPS, "slow": ACID_SLOW_FRAC})
+                                                   payload={"points": points, "radius": 26, "life": ACID_LIFETIME,
+                                                            "dps": ACID_DPS, "slow": ACID_SLOW_FRAC})
                     self._spit_cd = 5.0
 
                 if self._split_cd <= 0.0:
                     for _ in range(3):
-                        zombies.append(spawn_corruptling_at(cx + random.randint(-20,20), cy + random.randint(-20,20)))
+                        zombies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
                     self._split_cd = SPLIT_CD_P2
 
                 # 吸附融合：场上活过 15s 的腐蚀幼体被拉回并回血
@@ -2592,7 +2648,7 @@ class Zombie:
                 for z in list(zombies):
                     if getattr(z, "type", "") == "corruptling" and getattr(z, "_life", 0.0) >= FUSION_LIFETIME:
                         zx, zy = z.rect.centerx, z.rect.centery
-                        if (zx - cx)**2 + (zy - cy)**2 <= FUSION_PULL_RADIUS**2:
+                        if (zx - cx) ** 2 + (zy - cy) ** 2 <= FUSION_PULL_RADIUS ** 2:
                             z.hp = 0  # kill
                             self.hp = min(self.max_hp, self.hp + FUSION_HEAL)
                             pull_any = True
@@ -2608,18 +2664,19 @@ class Zombie:
                     # 随机铺点（带预警）
                     pts = []
                     for _ in range(RAIN_PUDDLES):
-                        gx = random.randint(0, GRID_SIZE-1)
-                        gy = random.randint(0, GRID_SIZE-1)
-                        pts.append((gx*CELL_SIZE + CELL_SIZE//2, gy*CELL_SIZE + CELL_SIZE//2 + INFO_BAR_HEIGHT))
+                        gx = random.randint(0, GRID_SIZE - 1)
+                        gy = random.randint(0, GRID_SIZE - 1)
+                        pts.append((gx * CELL_SIZE + CELL_SIZE // 2, gy * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT))
                     game_state.spawn_telegraph(cx, cy, r=36, life=RAIN_TELEGRAPH_T, kind="acid",
-                        payload={"points": pts, "radius": 22, "life": ACID_LIFETIME, "dps": ACID_DPS, "slow": ACID_SLOW_FRAC})
+                                               payload={"points": pts, "radius": 22, "life": ACID_LIFETIME,
+                                                        "dps": ACID_DPS, "slow": ACID_SLOW_FRAC})
                     next_pct -= RAIN_STEP
                     self._rain_next_pct = next_pct
 
                 # 继续召唤（比P2略低频防爆场）
                 if self._split_cd <= 0.0:
                     for _ in range(2):
-                        zombies.append(spawn_corruptling_at(cx + random.randint(-20,20), cy + random.randint(-20,20)))
+                        zombies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
                     self._split_cd = 16.0
 
                 # 濒死冲锋
@@ -2628,14 +2685,15 @@ class Zombie:
                     # 直接朝玩家方向加速移动，不受可破坏物阻挡（移动层会处理破坏）
                     self.speed = CHARGE_SPEED
 
-
     def draw(self, screen):
         color = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         pygame.draw.rect(screen, color, self.rect)
 
+
 class MemoryDevourerBoss(Zombie):
     """独立 Boss：更大体型/更大脚底圆/更高血攻；仍复用 Zombie 的大多数行为。"""
-    def __init__(self, grid_pos: tuple[int,int], level_idx: int):
+
+    def __init__(self, grid_pos: tuple[int, int], level_idx: int):
         gx, gy = grid_pos
         # 计算血量：沿用你原先“第5关为基准 + 关卡成长”的口径
         boss_hp = int(MEMDEV_BASE_HP * (1 + 0.15 * max(0, level_idx - 1)))
@@ -2665,6 +2723,8 @@ class MemoryDevourerBoss(Zombie):
 
         # 圆碰撞半径：让直径≈2*CELL_SIZE（正好“堵死”单格通道）
         self.radius = int(BOSS_FOOTPRINT_TILES * CELL_SIZE * 0.5 * BOSS_RADIUS_SHRINK)
+        # Twin boss bulldozer: can crush any obstacle
+        self.can_crush_all_blocks = True
 
         # 以 2×2 的几何中心为锚点摆放（grid_pos 视为这块 2×2 的“左上角格”）
         cx = int((gx + 0.5 * BOSS_FOOTPRINT_TILES) * CELL_SIZE)
@@ -2679,25 +2739,26 @@ class MemoryDevourerBoss(Zombie):
         self.spawn_delay = 0.6
 
     def bind_twin(self, other, twin_id):
-            import weakref
-            self.twin_id = twin_id
-            self._twin_partner_ref = weakref.ref(other)
-            other.twin_id = twin_id
-            other._twin_partner_ref = weakref.ref(self)
+        import weakref
+        self.twin_id = twin_id
+        self._twin_partner_ref = weakref.ref(other)
+        other.twin_id = twin_id
+        other._twin_partner_ref = weakref.ref(self)
 
     def on_twin_partner_death(self):
-            # 已触发过就不再触发
-            if self._twin_powered or self.hp <= 0:
-                return
-            # 回满血并狂暴
-            self.hp = int(getattr(self, "max_hp", self.hp))
-            self.attack = int(self.attack * TWIN_ENRAGE_ATK_MULT)
-            self.speed = int(self.speed + TWIN_ENRAGE_SPD_ADD)
-            self._twin_powered = True
-            # 可选：改名/标记，方便UI显示
-            self.boss_name = (getattr(self, "boss_name", "BOSS") + " [ENRAGED]")
+        # 已触发过就不再触发
+        if self._twin_powered or self.hp <= 0:
+            return
+        # 回满血并狂暴
+        self.hp = int(getattr(self, "max_hp", self.hp))
+        self.attack = int(self.attack * TWIN_ENRAGE_ATK_MULT)
+        self.speed = int(self.speed + TWIN_ENRAGE_SPD_ADD)
+        self._twin_powered = True
+        # 可选：改名/标记，方便UI显示
+        self.boss_name = (getattr(self, "boss_name", "BOSS") + " [ENRAGED]")
 
     # （可选）你也可以覆盖 draw，画个大圆/贴图；目前沿用矩形色块就行
+
 
 class Bullet:
     def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE,
@@ -3113,6 +3174,7 @@ def draw_iso_prism(surface, gx, gy, top_color, camx, camy, wall_h=ISO_WALL_Z):
     pygame.draw.polygon(surface, c_r, r)
     pygame.draw.polygon(surface, c_top, top)
 
+
 # === ISO ground ellipse helpers ===
 
 def iso_circle_radii_screen(r_px: float) -> tuple[int, int]:
@@ -3126,6 +3188,7 @@ def iso_circle_radii_screen(r_px: float) -> tuple[int, int]:
     rx = int(r_px * (ISO_CELL_W / (math.sqrt(2) * CELL_SIZE)))
     ry = int(r_px * (ISO_CELL_H / (math.sqrt(2) * CELL_SIZE)))
     return max(1, rx), max(1, ry)
+
 
 def draw_iso_ground_ellipse(surface: pygame.Surface, x_px: float, y_px: float,
                             r_px: float, color: tuple, alpha: int,
@@ -3152,6 +3215,7 @@ def draw_iso_ground_ellipse(surface: pygame.Surface, x_px: float, y_px: float,
         pygame.draw.ellipse(surf, rgba, rect, max(1, int(width)))
 
     surface.blit(surf, (cx - rx - 1, cy - ry - 1))
+
 
 def roll_spoils_for_zombie(z: "Zombie") -> int:
     """Return number of coins to drop for a killed zombie, applying drop chance."""
@@ -3310,7 +3374,6 @@ def create_memory_devourer(grid_xy: Tuple[int, int], level_idx: int) -> "MemoryD
     return MemoryDevourerBoss(grid_xy, level_idx)
 
 
-
 def spawn_corruptling_at(x_px: float, y_px: float) -> "Zombie":
     """
     从屏幕像素坐标生成腐蚀幼体（近战小怪）。
@@ -3329,7 +3392,6 @@ def spawn_corruptling_at(x_px: float, y_px: float) -> "Zombie":
     # 幼体更快进入战斗
     z.spawn_delay = 0.25
     return z
-
 
 
 def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_index: int) -> "Zombie":
@@ -3373,6 +3435,7 @@ def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
     for t in near:
         t.gain_xp(share)
 
+
 def _find_twin_partner(z, zombies):
     partner = None
     ref = getattr(z, "_twin_partner_ref", None)
@@ -3386,6 +3449,7 @@ def _find_twin_partner(z, zombies):
                 partner = cand
                 break
     return partner
+
 
 def trigger_twin_enrage(dead_boss, zombies, game_state):
     """If a bonded twin dies, power up the partner exactly once."""
@@ -3413,7 +3477,7 @@ def trigger_twin_enrage(dead_boss, zombies, game_state):
     # heal to full and buff
     partner.hp = int(getattr(partner, "max_hp", partner.hp))
     partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
-    partner.speed  = int(partner.speed  + TWIN_ENRAGE_SPD_ADD)
+    partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
     partner._twin_powered = True
     # optional: mark name so the UI can show it's angry
     try:
@@ -3620,6 +3684,7 @@ class SpatialHash:
                     if dx * dx + dy * dy <= rr * rr:
                         out.append(z)
         return out
+
 
 def crush_blocks_in_rect(sweep_rect: pygame.Rect, game_state) -> int:
     """Remove ANY obstacle cell whose rect intersects sweep_rect. Return removed count."""
@@ -4482,7 +4547,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         # 2) 正常权重选择（仅考虑“射程内”的目标）
         R2 = float(getattr(player, "range", MAX_FIRE_RANGE)) ** 2
 
-
         # 收集候选：僵尸（射程内）
         z_cands = []
         for z in zombies:
@@ -4614,8 +4678,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.update_damage_texts(dt)
         game_state.collect_heals(player)
         # --- NEW: Telegraph/Acid 更新 + 减速衰减 ---
-        game_state.update_telegraphs(dt)              # 倒计时→到时生成酸池
-        game_state.update_acids(dt, player)           # 酸池伤害&施加 slow_t
+        game_state.update_telegraphs(dt)  # 倒计时→到时生成酸池
+        game_state.update_acids(dt, player)  # 酸池伤害&施加 slow_t
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)  # 每帧自然恢复
         # —— 结算离开酸池后的 DoT（中毒） ——
         if player.acid_dot_timer > 0.0:
@@ -4630,7 +4694,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             # （可选）当计时走完，清空 DoT dps
             if player.acid_dot_timer <= 0.0:
                 player.acid_dot_dps = 0.0
-
 
         # Autofire handling
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
@@ -5049,7 +5112,6 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     return "home", None, last_frame or screen.copy()
 
 
-
 # ==================== 入口 ====================
 
 if __name__ == "__main__":
@@ -5157,7 +5219,7 @@ if __name__ == "__main__":
                 sys.exit()
 
         config = get_level_config(current_level)
-        chosen_zombie =  "basic"
+        chosen_zombie = "basic"
         door_transition(screen)
         result, reward, bg = main_run_level(config, chosen_zombie)
 
