@@ -1899,6 +1899,10 @@ def spawn_wave_with_budget(game_state: "GameState",
                 b1 = create_memory_devourer((gx1, gy1), current_level)
                 b2 = create_memory_devourer((gx2, gy2), current_level)
                 twin_id = random.randint(1000, 9999)
+                # ensure opposite slots so they flank instead of overlap
+                b1.twin_slot = +1
+                b2.twin_slot = -1
+
                 if hasattr(b1, "bind_twin"):
                     b1.bind_twin(b2, twin_id)
                 else:
@@ -2281,7 +2285,32 @@ class Zombie:
     def iso_chase_step(from_xy, to_xy, speed):
         fx, fy = from_xy
         tx, ty = to_xy
-        vx, vy = (tx - fx), (ty - fy)
+        # slot offset: perpendicular to target direction so the twins don’t overlap
+        dxp, dyp = tx - cx, ty - cy
+        mag = (dxp * dxp + dyp * dyp) ** 0.5 or 1.0
+        nx, ny = dxp / mag, dyp / mag
+        # left/right perpendicular, scaled to ~half a tile
+        px, py = -ny, nx
+        slot_off = 0.45 * CELL_SIZE * float(getattr(self, "twin_slot", +1))
+        tx += px * slot_off
+        ty += py * slot_off
+
+        # mild separation from partner if too close
+        partner = None
+        ref = getattr(self, "_twin_partner_ref", None)
+        if callable(ref):
+            partner = ref()
+        if partner and getattr(partner, "hp", 1) > 0:
+            pcx, pcy = partner.rect.centerx, partner.rect.centery
+            ddx, ddy = cx - pcx, cy - pcy
+            d2 = ddx * ddx + ddy * ddy
+            if d2 < (1.2 * CELL_SIZE) ** 2:
+                k = ((1.2 * CELL_SIZE) ** 2 - d2) / ((1.2 * CELL_SIZE) ** 2)
+                tx += ddx * 0.35 * k
+                ty += ddy * 0.35 * k
+
+        # recompute desired vector with the slotted/repulsed target
+        vx, vy = tx - cx, ty - cy
         if vx == 0 and vy == 0:
             return 0.0, 0.0
         # 投影到等距基 → 用符号决定“屏幕上的上下左右”
@@ -2388,6 +2417,23 @@ class Zombie:
                 ax, ay = dy, -dx  # 向右
             dx, dy = ax, ay
             self._avoid_t = max(0.0, self._avoid_t - dt)
+        # --- no-clip phase: skip collision resolution for a few frames after bulldozing
+        if getattr(self, "no_clip_t", 0.0) > 0.0:
+            self.no_clip_t = max(0.0, self.no_clip_t - dt)
+            self.x += dx
+            self.y += dy
+            # sync rect and bail directly into post-move logic
+            self.rect.x = int(self.x)
+            self.rect.y = int(self.y + INFO_BAR_HEIGHT)
+            # OPTIONAL tiny forward nudge to defeat integer clamp remnants
+            if abs(dx) < 0.5 and abs(dy) < 0.5:
+                self.x += 0.8 * (1 if (self.rect.centerx < player.rect.centerx) else -1)
+            goto_post_move = True
+        else:
+            goto_post_move = False
+
+        if not goto_post_move:
+            collide_and_slide_circle(self, obstacles, dx, dy)
 
         oldx, oldy = self.x, self.y
         collide_and_slide_circle(self, obstacles, dx, dy)
@@ -2399,6 +2445,34 @@ class Zombie:
                     del game_state.obstacles[gp]  # works for all types, incl. Indestructible & MainBlock
             self._crush_queue.clear()
             self._focus_block = None  # no longer blocked
+            # Ensure 2x2 footprint is fully clear (fixes “stuck after breaking grey block”)
+            try:
+                r = int(getattr(self, "radius", max(8, CELL_SIZE // 3)))
+                cx = self.x + self.size * 0.5
+                cy = self.y + self.size * 0.5 + INFO_BAR_HEIGHT
+                bb = pygame.Rect(int(cx - r), int(cy - r), int(2 * r), int(2 * r))
+
+                crushed_any = False
+                for gp, ob in list(game_state.obstacles.items()):
+                    # If the obstacle touches our collision circle’s bounding box, delete it.
+                    if ob.rect.colliderect(bb):
+                        del game_state.obstacles[gp]
+                        crushed_any = True
+                        # Only Destructible blocks drop spoils / heal, keep existing rules
+                        if getattr(ob, "type", "") == "Destructible":
+                            if random.random() < SPOILS_BLOCK_DROP_CHANCE:
+                                game_state.spawn_spoils(ob.rect.centerx, ob.rect.centery, 1)
+                            self.gain_xp(XP_ZOMBIE_BLOCK)
+                            if random.random() < HEAL_DROP_CHANCE_BLOCK:
+                                game_state.spawn_heal(ob.rect.centerx, ob.rect.centery, HEAL_POTION_AMOUNT)
+
+                if crushed_any:
+                    self._focus_block = None
+                    # prevent “stuck” heuristics from kicking in right after we bulldozed
+                    if hasattr(self, "_stuck_t"):
+                        self._stuck_t = 0.0
+            except Exception:
+                pass
 
         # —— 卡住检测 ——
         moved2 = (self.x - oldx) ** 2 + (self.y - oldy) ** 2
@@ -2448,6 +2522,9 @@ class Zombie:
         if self._path_step >= len(self._path):
             self._path = []
             self._path_step = 0
+        # allow passing the just-removed geometry this frame
+        if getattr(self, "can_crush_all_blocks", False):
+            self.no_clip_t = max(getattr(self, "no_clip_t", 0.0), 0.10)  # 0.10s ghost
 
         # 同步矩形
         self.rect.x = int(self.x)
@@ -2725,6 +2802,10 @@ class MemoryDevourerBoss(Zombie):
         self.radius = int(BOSS_FOOTPRINT_TILES * CELL_SIZE * 0.5 * BOSS_RADIUS_SHRINK)
         # Twin boss bulldozer: can crush any obstacle
         self.can_crush_all_blocks = True
+        self.no_clip_t = 0.0  # ghost through collisions for a few frames after crush
+        self._stuck_t = 0.0  # watch-dog for anti-stuck
+        self.twin_slot = getattr(self, "twin_slot", +1)  # +1 or -1 (assigned when binding)
+        self._last_pos = (float(self.x), float(self.y))
 
         # 以 2×2 的几何中心为锚点摆放（grid_pos 视为这块 2×2 的“左上角格”）
         cx = int((gx + 0.5 * BOSS_FOOTPRINT_TILES) * CELL_SIZE)
