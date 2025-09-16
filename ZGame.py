@@ -2281,47 +2281,16 @@ class Zombie:
         self._gold_glow_t = float(Z_GLOW_TIME)
 
     # ==== 通用：把朝向向量分解到等距基向量（e1=(1,1), e2=(1,-1)）====
+
     @staticmethod
     def iso_chase_step(from_xy, to_xy, speed):
         fx, fy = from_xy
         tx, ty = to_xy
-        # slot offset: perpendicular to target direction so the twins don’t overlap
-        dxp, dyp = tx - cx, ty - cy
-        mag = (dxp * dxp + dyp * dyp) ** 0.5 or 1.0
-        nx, ny = dxp / mag, dyp / mag
-        # left/right perpendicular, scaled to ~half a tile
-        px, py = -ny, nx
-        slot_off = 0.45 * CELL_SIZE * float(getattr(self, "twin_slot", +1))
-        tx += px * slot_off
-        ty += py * slot_off
-
-        # mild separation from partner if too close
-        partner = None
-        ref = getattr(self, "_twin_partner_ref", None)
-        if callable(ref):
-            partner = ref()
-        if partner and getattr(partner, "hp", 1) > 0:
-            pcx, pcy = partner.rect.centerx, partner.rect.centery
-            ddx, ddy = cx - pcx, cy - pcy
-            d2 = ddx * ddx + ddy * ddy
-            if d2 < (1.2 * CELL_SIZE) ** 2:
-                k = ((1.2 * CELL_SIZE) ** 2 - d2) / ((1.2 * CELL_SIZE) ** 2)
-                tx += ddx * 0.35 * k
-                ty += ddy * 0.35 * k
-
-        # recompute desired vector with the slotted/repulsed target
-        vx, vy = tx - cx, ty - cy
-        if vx == 0 and vy == 0:
-            return 0.0, 0.0
-        # 投影到等距基 → 用符号决定“屏幕上的上下左右”
-        a = (vx + vy) * 0.5  # e1分量
-        b = (vx - vy) * 0.5  # e2分量
-        mx = (1 if a > 0 else -1 if a < 0 else 0) + (1 if b > 0 else -1 if b < 0 else 0)
-        my = (1 if a > 0 else -1 if a < 0 else 0) - (1 if b > 0 else -1 if b < 0 else 0)
-        # 归一化再乘速度
-        l = (mx * mx + my * my) ** 0.5
-        dx, dy = (mx / l * speed, my / l * speed) if l != 0 else (0.0, 0.0)
-        return dx, dy
+        vx, vy = tx - fx, ty - fy
+        L = (vx * vx + vy * vy) ** 0.5 or 1.0
+        ux, uy = vx / L, vy / L
+        # use the same equalized speed you use for the player
+        return iso_equalized_step(ux, uy, speed)
 
     @staticmethod
     def feet_xy(entity):
@@ -2366,6 +2335,37 @@ class Zombie:
         zx, zy = Zombie.feet_xy(self)
         px, py = Zombie.feet_xy(player)
         target_cx, target_cy = px, py
+        # --- Twin “lane” offset and mild separation so they don’t block each other ---
+        if getattr(self, "is_boss", False) and getattr(self, "twin_id", None) is not None:
+            cx0 = self.x + self.size * 0.5
+            cy0 = self.y + self.size * 0.5 + INFO_BAR_HEIGHT
+
+            # direction to player/focus target
+            dxp, dyp = target_cx - cx0, target_cy - cy0
+            mag = (dxp * dxp + dyp * dyp) ** 0.5 or 1.0
+            nx, ny = dxp / mag, dyp / mag
+
+            # pick a lane: perpendicular offset (left/right by slot)
+            px, py = -ny, nx
+            slot = float(getattr(self, "twin_slot", +1))
+            lane_offset = 0.45 * CELL_SIZE * slot
+            target_cx += px * lane_offset
+            target_cy += py * lane_offset
+
+            # soft separation from partner if we’re too close
+            partner = None
+            ref = getattr(self, "_twin_partner_ref", None)
+            if callable(ref):
+                partner = ref()
+            if partner and getattr(partner, "hp", 1) > 0:
+                pcx, pcy = partner.rect.centerx, partner.rect.centery
+                ddx, ddy = cx0 - pcx, cy0 - pcy
+                d2 = ddx * ddx + ddy * ddy
+                too_close = (1.2 * CELL_SIZE) ** 2
+                if d2 < too_close:
+                    k = (too_close - d2) / too_close
+                    target_cx += ddx * 0.35 * k
+                    target_cy += ddy * 0.35 * k
 
         # 若之前撞到了可破坏物，则临时聚焦（更积极地砍）
         if getattr(self, "_hit_ob", None):
@@ -2408,6 +2408,9 @@ class Zombie:
         dx = (vx / L) * speed
         dy = (vy / L) * speed
 
+        oldx, oldy = float(self.x), float(self.y)
+
+
         # —— 侧移（反卡住）：被卡住一小会儿就沿着法向 90° 滑行 ——
         if self._avoid_t > 0.0:
             # 左右各一条切线，选择预先决定的那一边
@@ -2431,12 +2434,9 @@ class Zombie:
             goto_post_move = True
         else:
             goto_post_move = False
-
         if not goto_post_move:
             collide_and_slide_circle(self, obstacles, dx, dy)
 
-        oldx, oldy = self.x, self.y
-        collide_and_slide_circle(self, obstacles, dx, dy)
         # Bulldozer cleanup: crush anything we hit during sweep-collision
         if getattr(self, "can_crush_all_blocks", False) and getattr(self, "_crush_queue", None):
             for ob in list(self._crush_queue):
