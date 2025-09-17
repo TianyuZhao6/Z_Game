@@ -4700,7 +4700,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         return (kind, gp_or_none, obj, cx, cy), (d2 ** 0.5)
 
     # Initial spawn: use threat budget once
-    # AFTER
     spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
     if spawned > 0:
         wave_index += 1
