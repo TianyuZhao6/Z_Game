@@ -1894,35 +1894,53 @@ def spawn_wave_with_budget(game_state: "GameState",
         if force_boss and not boss_done:
             # 第5关采用 Twin；其余 Boss 关单体
             if ENABLE_TWIN_BOSS and (current_level in TWIN_BOSS_LEVELS):
-                (gx1, gy1) = gx, gy
-                (gx2, gy2) = min(gx + 2, GRID_SIZE - 1), gy  # 简单平移，避免重叠
-                b1 = create_memory_devourer((gx1, gy1), current_level)
+                # Clamp 2x2 footprints fully inside the grid and keep 2 tiles between them
+                gx0 = max(0, min(gx, GRID_SIZE - BOSS_FOOTPRINT_TILES))
+                gy0 = max(0, min(gy, GRID_SIZE - BOSS_FOOTPRINT_TILES))
+                gx2 = max(0, min(gx0 + BOSS_FOOTPRINT_TILES, GRID_SIZE - BOSS_FOOTPRINT_TILES))
+                gy2 = gy0
+
+                b1 = create_memory_devourer((gx0, gy0), current_level)
                 b2 = create_memory_devourer((gx2, gy2), current_level)
                 twin_id = random.randint(1000, 9999)
-                # ensure opposite slots so they flank instead of overlap
+
+                # opposite lanes so they don’t body-block each other
                 b1.twin_slot = +1
                 b2.twin_slot = -1
+
+                # Clear any obstacles inside their initial 2×2 footprints
+                def _clear_footprint(ent):
+                    r = pygame.Rect(int(ent.x), int(ent.y + INFO_BAR_HEIGHT), int(ent.size), int(ent.size))
+                    for gp, ob in list(game_state.obstacles.items()):
+                        if ob.rect.colliderect(r):
+                            del game_state.obstacles[gp]
+
+                _clear_footprint(b1)
+                _clear_footprint(b2)
 
                 if hasattr(b1, "bind_twin"):
                     b1.bind_twin(b2, twin_id)
                 else:
-                    # 极端兜底（如果项目里没有 bind_twin）
-                    b1.twin_id = twin_id;
+                    b1.twin_id = twin_id
                     b2.twin_id = twin_id
-                    b1._twin_partner_ref = b2;
+                    b1._twin_partner_ref = b2
                     b2._twin_partner_ref = b1
-                # bind twins
+
                 b1._spawn_wave_tag = wave_index
                 b2._spawn_wave_tag = wave_index
-                zombies.append(b1)
+                zombies.append(b1);
                 zombies.append(b2)
                 boss_done = True
 
             else:
-                z = create_memory_devourer((gx, gy), current_level)
-                z._spawn_wave_tag = wave_index
-                zombies.append(z)
-                boss_done = True
+                gx0 = max(0, min(gx, GRID_SIZE - BOSS_FOOTPRINT_TILES))
+                gy0 = max(0, min(gy, GRID_SIZE - BOSS_FOOTPRINT_TILES))
+                z = create_memory_devourer((gx0, gy0), current_level)
+                # Clear footprint at spawn
+                r = pygame.Rect(int(z.x), int(z.y + INFO_BAR_HEIGHT), int(z.size), int(z.size))
+                for gp, ob in list(game_state.obstacles.items()):
+                    if ob.rect.colliderect(r):
+                        del game_state.obstacles[gp]
 
         # choose a type that fits remaining budget
         remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in zombies if
@@ -2331,7 +2349,7 @@ class Zombie:
             self._spawn_elapsed += dt
             return
 
-            # 目标（默认追玩家；若锁定了一块挡路的可破坏物，则追它的中心）
+        # 目标（默认追玩家；若锁定了一块挡路的可破坏物，则追它的中心）
         zx, zy = Zombie.feet_xy(self)
         px, py = Zombie.feet_xy(player)
         target_cx, target_cy = px, py
@@ -2407,9 +2425,7 @@ class Zombie:
         L = (vx * vx + vy * vy) ** 0.5 or 1.0
         dx = (vx / L) * speed
         dy = (vy / L) * speed
-
-        oldx, oldy = float(self.x), float(self.y)
-
+        oldx, oldy = self.x, self.y
 
         # —— 侧移（反卡住）：被卡住一小会儿就沿着法向 90° 滑行 ——
         if self._avoid_t > 0.0:
@@ -2471,6 +2487,7 @@ class Zombie:
                     # prevent “stuck” heuristics from kicking in right after we bulldozed
                     if hasattr(self, "_stuck_t"):
                         self._stuck_t = 0.0
+                    self.no_clip_t = max(getattr(self, 'no_clip_t', 0.0), 0.10)
             except Exception:
                 pass
 
