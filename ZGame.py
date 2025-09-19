@@ -2340,9 +2340,14 @@ class Zombie:
 
         if not hasattr(self, "attack_timer"): self.attack_timer = 0.0
         self.attack_timer += dt
-        if self._spawn_elapsed < self.spawn_delay:
-            self._spawn_elapsed += dt
-            return
+        # wipe last-hit each frame (esp. when we skip collide due to no_clip)
+        self._hit_ob = None
+
+        # if our previous focus block was destroyed last frame, drop it
+        if getattr(self, "_focus_block", None):
+            gp = getattr(self._focus_block, "grid_pos", None)
+            if (gp is not None) and (gp not in game_state.obstacles):
+                self._focus_block = None
 
         # 目标（默认追玩家；若锁定了一块挡路的可破坏物，则追它的中心）
         zx, zy = Zombie.feet_xy(self)
@@ -2540,9 +2545,6 @@ class Zombie:
         if self._path_step >= len(self._path):
             self._path = []
             self._path_step = 0
-        # allow passing the just-removed geometry this frame
-        if getattr(self, "can_crush_all_blocks", False):
-            self.no_clip_t = max(getattr(self, "no_clip_t", 0.0), 0.10)  # 0.10s ghost
 
         # 同步矩形
         self.rect.x = int(self.x)
