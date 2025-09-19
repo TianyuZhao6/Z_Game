@@ -393,7 +393,7 @@ OBSTACLE_DENSITY = 0.14  # proportion of tiles to become obstacles (including cl
 DECOR_DENSITY = 0.06  # proportion of tiles to place non-blocking decorations
 MIN_ITEMS = 8  # ensure enough items on larger maps
 DESTRUCTIBLE_RATIO = 0.3
-PLAYER_SPEED = 5
+PLAYER_SPEED = 3.5
 PLAYER_SPEED_CAP = 7.0
 ZOMBIE_SPEED = 2
 ZOMBIE_SPEED_MAX = 4.5
@@ -521,9 +521,9 @@ BOSS_SPD_ADD_EXTRA = 1
 
 # ===== Boss1: Memory Devourer (腐蚀集群之心) =====
 # 数值：显著增厚血量与接触伤害
-MEMDEV_BASE_HP = 4200  # 以第5关为基准：从 1200 → 4200
+MEMDEV_BASE_HP = 6800  # 以第5关为基准：4200
 MEMDEV_CONTACT_DAMAGE = 60  # 接触伤害提高
-MEMDEV_SPEED = 0.9  # 很慢（后续阶段再涨）
+MEMDEV_SPEED = 1.5  # 很慢（后续阶段再涨）
 
 # Boss 外形/占格（仅碰撞与显示，不改变地图阻挡规则）
 BOSS_SIZE_FACTOR = 3.65  # 可视尺寸 = 1.65 × 单格
