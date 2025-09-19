@@ -930,6 +930,7 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     r = getattr(entity, "radius", max(8, CELL_SIZE // 3))
     size = entity.size
 
+
     # 起点（圆心，世界像素）
     cx0 = entity.x + size * 0.5
     cy0 = entity.y + size * 0.5 + INFO_BAR_HEIGHT
@@ -948,12 +949,9 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
         if min_left:
             cx1 = min_left[0]
             hit_x = min_left[1]
-            # ADD
             if getattr(entity, "can_crush_all_blocks", False):
-                try:
-                    entity._crush_queue.append(hit_x)
-                except Exception:
-                    pass
+                entity._crush_queue.append(hit_x)
+
     # 向左：对 right 边做相同处理
     elif dx < 0:
         max_right = None
@@ -963,14 +961,10 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
                 if (max_right is None) or (exp.right > max_right[0]):
                     max_right = (exp.right, ob)
         if max_right:
-            cy1 = cy0
             cx1 = max_right[0]
             hit_x = max_right[1]
             if getattr(entity, "can_crush_all_blocks", False):
-                try:
-                    entity._crush_queue.append(hit_x)
-                except Exception:
-                    pass
+                entity._crush_queue.append(hit_x)
 
     if hit_x is not None:
         entity._hit_ob = hit_x
@@ -2267,6 +2261,7 @@ class Zombie:
             self.attack = int(self.attack * 1.08 + 1)
             self.max_hp = int(self.max_hp * 1.10 + 1)
             self.hp = min(self.max_hp, self.hp + 2)
+        if not getattr(self, "is_boss", False):
             # SIZE growth (keep center & clamp)
             base = CELL_SIZE - 6
             new_size = min(ZOMBIE_SIZE_MAX, base + (self.z_level - 1) * 2)
@@ -2426,6 +2421,12 @@ class Zombie:
         dx = (vx / L) * speed
         dy = (vy / L) * speed
         oldx, oldy = self.x, self.y
+        # If target is exactly on us this frame, dodge sideways deterministically
+        if abs(vx) < 1e-3 and abs(vy) < 1e-3:
+            # use twin_slot to pick a perpendicular nudge so twins diverge instead of pinning
+            slot = float(getattr(self, "twin_slot", 1.0))
+            # a small sideways step (screen-aligned is fine here)
+            dx, dy = 0.0, slot * max(0.6, min(speed, 1.2))
 
         # —— 侧移（反卡住）：被卡住一小会儿就沿着法向 90° 滑行 ——
         if self._avoid_t > 0.0:
@@ -2798,16 +2799,7 @@ class MemoryDevourerBoss(Zombie):
                          speed=int(max(1, MEMDEV_SPEED)),
                          ztype="boss_mem",
                          hp=boss_hp)
-        # 例：按比例放大到 1.8~2.2 倍 CELL_SIZE（按你项目常量来）
-        boss_size = int(CELL_SIZE * BOSS_SIZE_FACTOR)  # 或你自己的命名
-        cx, cy = self.rect.center
 
-        self.size = boss_size
-        self.rect.width = self.rect.height = self.size
-        self.rect.center = (cx, cy)
-
-        # 半径用同一套规则（保持与碰撞逻辑一致）
-        self.radius = int(self.size * 0.45)  # 或用你已有的常量/函数
 
         self.is_boss = True
         self.boss_name = "Memory Devourer"
