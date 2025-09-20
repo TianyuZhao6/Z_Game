@@ -2128,7 +2128,36 @@ class Player:
     def pos(self):
         return int((self.x + self.size // 2) // CELL_SIZE), int((self.y + self.size // 2) // CELL_SIZE)
 
+    def apply_dot(self, dps: float, duration: float):
+        """Stackable DoT: each new source adds another ticking entry."""
+        self.dot_ticks.append((float(dps), float(duration)))
+
+    def take_damage(self, amount: int):
+        """Used by enemy projectiles / hazards that call player.take_damage."""
+        if self.hit_cd <= 0.0:
+            self.hp = max(0, self.hp - int(amount))
+            self.hit_cd = float(PLAYER_HIT_COOLDOWN)
+
     def move(self, keys, obstacles):
+        # reset frame-accumulated slow from hazards
+        self.apply_slow_extra = 0.0
+
+        # tick active DoTs (stackable)
+        if self.dot_ticks:
+            total = 0.0
+            for i in range(len(self.dot_ticks) - 1, -1, -1):
+                dps, t = self.dot_ticks[i]
+                dtick = min(dt, t)
+                total += dps * dtick
+                t -= dt
+                if t <= 0:
+                    self.dot_ticks.pop(i)
+                else:
+                    self.dot_ticks[i] = (dps, t)
+            if total > 0:
+                # integers feel better in this game; keep float if you prefer
+                self.hp = max(0, self.hp - int(total))
+
         # --- ISO 控制映射---
         mx = my = 0
         if keys[pygame.K_w]:
