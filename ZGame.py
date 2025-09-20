@@ -438,6 +438,40 @@ TWIN_ENRAGE_SPD_ADD = 1
 BOSS_FOOTPRINT_TILES = 2  # 占格：2x2
 BOSS_VISUAL_MARGIN = 6  # 视觉矩形边缘略收一点，避免贴边穿帮
 BOSS_RADIUS_SHRINK = 0.98  # 圆半径微缩，减少“卡像素”感
+# === Boss Skill Tunables ===
+BOSS_SKILLS_ENABLED_LEVELS = {4}  # Lv-5 twin (0-indexed)
+BOSS_TOXIC_DASH_CD = 6.0
+BOSS_TOXIC_DASH_WINDUP = 0.65
+BOSS_TOXIC_DASH_TIME = 0.55
+BOSS_TOXIC_DASH_SPEED_MULT = 3.25
+
+BOSS_VOMIT_CD = 5.0
+BOSS_VOMIT_COUNT = 7
+BOSS_VOMIT_CONE_DEG = 55
+BOSS_VOMIT_SPEED = 380
+BOSS_VOMIT_ARC_SEC = 0.45
+
+BOSS_SUMMON_CD = 10.0
+BOSS_SUMMON_COUNT = (3, 5)  # min, max
+WORMLING_SPEED = 210
+WORMLING_HP = 1
+WORMLING_LIFETIME = 10.0
+WORMLING_DAMAGE = 6
+
+ACID_POOL_DPS = 10            # damage / second
+ACID_POOL_SLOW = 0.35         # extra slow
+ACID_POOL_TIME = 6.0
+ACID_POOL_RADIUS_PX = int(CELL_SIZE * 0.65)
+
+SMALL_PUDDLE_TIME = 4.0
+SMALL_PUDDLE_RADIUS = int(CELL_SIZE * 0.45)
+
+# Optional enrage ring
+BOSS_RING_ENABLED = True
+BOSS_RING_BURSTS = 2
+BOSS_RING_PROJECTILES = 20
+BOSS_RING_SPEED = 420
+BOSS_RING_CD = 4.0
 
 # coin bounce feel
 COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
@@ -2087,6 +2121,8 @@ class Player:
         self.acid_dot_dps = 0.0  # 当前DoT每秒伤害（根据最近踩到的酸池设置）
         self._acid_dmg_accum = 0.0  # 在池中时的“本帧累计伤害”浮点缓存
         self._acid_dot_accum = 0.0  # 离开池后DoT的累计伤害缓存
+        self.dot_ticks = []  # list[(dps, t_left)]
+        self.apply_slow_extra = 0.0  # extra slow gathered each frame (hazards add to this)
 
     @property
     def pos(self):
@@ -2850,6 +2886,68 @@ class MemoryDevourerBoss(Zombie):
         self.boss_name = (getattr(self, "boss_name", "BOSS") + " [ENRAGED]")
 
     # （可选）你也可以覆盖 draw，画个大圆/贴图；目前沿用矩形色块就行
+
+class AcidPoolHazard:
+    def __init__(self, x, y, radius, dps, slow_add, ttl):
+        self.x, self.y = x, y
+        self.radius = radius
+        self.dps = dps
+        self.slow_add = slow_add
+        self.ttl = ttl
+        self.rect = pygame.Rect(int(x - radius), int(y - radius), radius*2, radius*2)
+
+    def update(self, dt, game_state, player):
+        self.ttl -= dt
+        # apply effect if player overlaps
+        if self.rect.colliderect(player.rect):
+            player.apply_slow_extra = max(getattr(player, "apply_slow_extra", 0.0), self.slow_add)
+            player.apply_dot(self.dps, 0.25)  # refreshes small ticks while standing
+
+        return self.ttl > 0
+
+    def draw(self, screen):
+        # soft, translucent green pool (simple circle)
+        pygame.draw.circle(screen, (40, 140, 60), (int(self.x), int(self.y)), self.radius, 0)
+        pygame.draw.circle(screen, (20, 90, 40), (int(self.x), int(self.y)), self.radius, 2)
+
+
+class ArcProjectile:
+    """Short-lived arc projectile that spawns a small puddle on impact."""
+    def __init__(self, x, y, angle_rad, speed, life_sec, on_impact):
+        self.x, self.y = float(x), float(y)
+        self.vx = math.cos(angle_rad) * speed
+        self.vy = math.sin(angle_rad) * speed
+        self.life = life_sec
+        self.on_impact = on_impact
+        self.rect = pygame.Rect(int(self.x)-4, int(self.y)-4, 8, 8)
+
+    def update(self, dt, game_state, player, obstacles):
+        self.life -= dt
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self.rect.center = (int(self.x), int(self.y))
+        # stop on obstacle or timeout
+        hit_wall = False
+        if obstacles:
+            # cheap tile test
+            for gp, ob in game_state.obstacles.items():
+                if ob.rect.colliderect(self.rect):
+                    hit_wall = True
+                    break
+        if self.life <= 0 or hit_wall:
+            if self.on_impact:
+                self.on_impact(int(self.x), int(self.y))
+            return False
+        # tiny damage on direct hit (optional)
+        if self.rect.colliderect(player.rect):
+            player.take_damage(4)
+            if self.on_impact:
+                self.on_impact(int(self.x), int(self.y))
+            return False
+        return True
+
+    def draw(self, screen):
+        pygame.draw.rect(screen, (80, 200, 80), self.rect, 0)
 
 
 class Bullet:
@@ -3808,6 +3906,9 @@ class GameState:
         self.dmg_texts = []  # List[DamageText]
         self.acids = []  # List[AcidPool]
         self.telegraphs = []  # List[TelegraphCircle]
+        self.hazards = []
+        self.projectiles = []
+        self.summons = []  # for wormlings
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
