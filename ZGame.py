@@ -2495,89 +2495,7 @@ class Zombie:
         dx = (vx / L) * speed
         dy = (vy / L) * speed
         oldx, oldy = self.x, self.y
-        # === Boss skills (Lv-5 twins only) ===
-        if getattr(self, "is_boss", False) and (game_state.current_level in BOSS_SKILLS_ENABLED_LEVELS):
-            now = pygame.time.get_ticks() / 1000.0
 
-            # 1) TOXIC DASH: wind-up line -> unstoppable dash -> acid trail
-            if self.skill_phase is None and now - self.skill_last["dash"] >= BOSS_TOXIC_DASH_CD:
-                if random.random() < 0.02:  # small chance each frame when in range
-                    self.skill_phase = "dash_wind"
-                    self.skill_t = BOSS_TOXIC_DASH_WINDUP
-                    cx = self.rect.centerx;
-                    cy = self.rect.centery
-                    dvx = target_cx - cx;
-                    dvy = target_cy - cy
-                    L = (dvx * dvx + dvy * dvy) ** 0.5 or 1.0
-                    self._dash_v = (dvx / L, dvy / L)
-
-            if self.skill_phase == "dash_wind":
-                self.skill_t -= dt
-                # (visual telegraph: optional line here)
-                if self.skill_t <= 0:
-                    self.skill_phase = "dash_go"
-                    self.skill_t = BOSS_TOXIC_DASH_TIME
-                    self.no_clip_t = max(getattr(self, "no_clip_t", 0.0), BOSS_TOXIC_DASH_TIME + 0.05)
-                    self.skill_last["dash"] = now
-
-            if self.skill_phase == "dash_go":
-                self.skill_t -= dt
-                dvx, dvy = self._dash_v
-                dash_speed = max(6.0, float(getattr(self, "speed", 2.0)) * BOSS_TOXIC_DASH_SPEED_MULT)
-                dx, dy = dvx * dash_speed, dvy * dash_speed
-
-                # trail acid pools
-                if random.random() < 0.28:
-                    game_state.hazards.append(
-                        AcidPoolHazard(self.rect.centerx, self.rect.centery,
-                                       ACID_POOL_RADIUS_PX, ACID_POOL_DPS, ACID_POOL_SLOW, 1.6))
-                if self.skill_t <= 0:
-                    self.skill_phase = None
-
-            # 2) VOMIT CONE: short-arc shots -> puddles
-            if (self.skill_phase is None) and (now - self.skill_last["vomit"] >= BOSS_VOMIT_CD):
-                if random.random() < 0.016:
-                    self.skill_last["vomit"] = now
-                    cx = self.rect.centerx;
-                    cy = self.rect.centery
-                    ang = math.atan2(player.rect.centery - cy, player.rect.centerx - cx)
-                    half = math.radians(BOSS_VOMIT_CONE_DEG / 2)
-                    for i in range(BOSS_VOMIT_COUNT):
-                        t = (i / (BOSS_VOMIT_COUNT - 1) if BOSS_VOMIT_COUNT > 1 else 0.5)
-                        a = ang - half + (2 * half) * t
-
-                        def _impact(ix, iy, _life=SMALL_PUDDLE_TIME):
-                            game_state.hazards.append(
-                                AcidPoolHazard(ix, iy, SMALL_PUDDLE_RADIUS,
-                                               ACID_POOL_DPS * 0.75, ACID_POOL_SLOW * 0.5, _life))
-
-                        game_state.projectiles.append(
-                            ArcProjectile(cx, cy, a, BOSS_VOMIT_SPEED, BOSS_VOMIT_ARC_SEC, _impact))
-
-            # 3) SUMMON WORMLINGS
-            if (self.skill_phase is None) and (now - self.skill_last["summon"] >= BOSS_SUMMON_CD):
-                if random.random() < 0.01:
-                    self.skill_last["summon"] = now
-                    n = random.randint(*BOSS_SUMMON_COUNT)
-                    r = int(self.size * 0.6)
-                    for _ in range(n):
-                        ox = random.randint(-r, r);
-                        oy = random.randint(-r, r)
-                        game_state.summons.append(Wormling(self.rect.centerx + ox, self.rect.centery + oy))
-
-            # 4) (Optional) ENRAGED SHOCKWAVE RING if twin is dead
-            if BOSS_RING_ENABLED and getattr(self, "twin_id", None) is not None:
-                partner = getattr(self, "_twin_partner_ref", None)
-                if callable(partner): partner = partner()
-                twin_dead = (not partner) or getattr(partner, "hp", 0) <= 0
-                if twin_dead and (now - self.skill_last["ring"] >= BOSS_RING_CD):
-                    self.skill_last["ring"] = now
-                    for _ in range(BOSS_RING_BURSTS):
-                        base = random.random() * math.tau
-                        for k in range(BOSS_RING_PROJECTILES):
-                            a = base + (k / BOSS_RING_PROJECTILES) * math.tau
-                            game_state.projectiles.append(ArcProjectile(
-                                self.rect.centerx, self.rect.centery, a, BOSS_RING_SPEED, 0.9, lambda x, y: None))
 
         # If target is exactly on us this frame, dodge sideways deterministically
         if abs(vx) < 1e-3 and abs(vy) < 1e-3:
@@ -3039,69 +2957,6 @@ class MemoryDevourerBoss(Zombie):
         self.boss_name = (getattr(self, "boss_name", "BOSS") + " [ENRAGED]")
 
     # （可选）你也可以覆盖 draw，画个大圆/贴图；目前沿用矩形色块就行
-
-class AcidPoolHazard:
-    def __init__(self, x, y, radius, dps, slow_add, ttl):
-        self.x, self.y = x, y
-        self.radius = radius
-        self.dps = dps
-        self.slow_add = slow_add
-        self.ttl = ttl
-        self.rect = pygame.Rect(int(x - radius), int(y - radius), radius*2, radius*2)
-
-    def update(self, dt, game_state, player):
-        self.ttl -= dt
-        # apply effect if player overlaps
-        if self.rect.colliderect(player.rect):
-            player.apply_slow_extra = max(getattr(player, "apply_slow_extra", 0.0), self.slow_add)
-            player.apply_dot(self.dps, 0.25)  # refreshes small ticks while standing
-
-        return self.ttl > 0
-
-    def draw(self, screen):
-        # soft, translucent green pool (simple circle)
-        pygame.draw.circle(screen, (40, 140, 60), (int(self.x), int(self.y)), self.radius, 0)
-        pygame.draw.circle(screen, (20, 90, 40), (int(self.x), int(self.y)), self.radius, 2)
-
-
-class ArcProjectile:
-    """Short-lived arc projectile that spawns a small puddle on impact."""
-    def __init__(self, x, y, angle_rad, speed, life_sec, on_impact):
-        self.x, self.y = float(x), float(y)
-        self.vx = math.cos(angle_rad) * speed
-        self.vy = math.sin(angle_rad) * speed
-        self.life = life_sec
-        self.on_impact = on_impact
-        self.rect = pygame.Rect(int(self.x)-4, int(self.y)-4, 8, 8)
-
-    def update(self, dt, game_state, player, obstacles):
-        self.life -= dt
-        self.x += self.vx * dt
-        self.y += self.vy * dt
-        self.rect.center = (int(self.x), int(self.y))
-        # stop on obstacle or timeout
-        hit_wall = False
-        if obstacles:
-            # cheap tile test
-            for gp, ob in game_state.obstacles.items():
-                if ob.rect.colliderect(self.rect):
-                    hit_wall = True
-                    break
-        if self.life <= 0 or hit_wall:
-            if self.on_impact:
-                self.on_impact(int(self.x), int(self.y))
-            return False
-        # tiny damage on direct hit (optional)
-        if self.rect.colliderect(player.rect):
-            player.take_damage(4)
-            if self.on_impact:
-                self.on_impact(int(self.x), int(self.y))
-            return False
-        return True
-
-    def draw(self, screen):
-        pygame.draw.rect(screen, (80, 200, 80), self.rect, 0)
-
 
 class Bullet:
     def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE,
@@ -4059,10 +3914,7 @@ class GameState:
         self.dmg_texts = []  # List[DamageText]
         self.acids = []  # List[AcidPool]
         self.telegraphs = []  # List[TelegraphCircle]
-        # --- hazards / projectiles / summons ---
-        self.hazards = []  # AcidPoolHazard instances
-        self.projectiles = []  # ArcProjectile instances
-        self.summons = []  # Wormling instances
+
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -4125,20 +3977,20 @@ class GameState:
         return healed
 
     # ---- 地面腐蚀池 ----
-    # def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME):
-    #     self.acids.append(AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life)))
-
-    def spawn_acid_pool(self, x, y, r=None, life=None, dps=None,
-                        slow=None, slow_frac=None, radius=None, ttl=None):
-        """
-        Canonical spawner for acid pools. Accepts both 'slow' and legacy 'slow_frac' (alias),
-        and 'r' or 'radius', 'life' or 'ttl'. All optional and default to global tunables.
-        """
-        R = int(r if r is not None else (radius if radius is not None else ACID_POOL_RADIUS_PX))
-        L = float(life if life is not None else (ttl if ttl is not None else ACID_POOL_TIME))
-        D = float(dps if dps is not None else ACID_POOL_DPS)
-        S = float(slow if slow is not None else (slow_frac if slow_frac is not None else ACID_POOL_SLOW))
-        self.hazards.append(AcidPoolHazard(int(x), int(y), R, D, S, L))
+    def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME):
+        self.acids.append(AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life)))
+    # def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, life=ACID_LIFETIME, slow_frac=None, slow=None):
+    #     # Accept either 'slow' or 'slow_frac' from older/newer callers
+    #     if slow_frac is None and slow is not None:
+    #         slow_frac = slow
+    #     if slow_frac is None:
+    #         slow_frac = ACID_SLOW_FRAC
+    #
+    #     # Clamp into play area
+    #     x = max(8, min(int(x), WINDOW_SIZE - 8))
+    #     y = max(INFO_BAR_HEIGHT + 8, min(int(y), WINDOW_SIZE + INFO_BAR_HEIGHT - 8))
+    #
+    #     self.acid_pools.append(AcidPool(int(x), int(y), int(r), float(dps), float(slow_frac), float(life)))
 
     def spawn_projectile(self, proj):
         self.projectiles.append(proj)
@@ -4454,17 +4306,6 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
         surf = font.render(str(d.amount), True, col)
         surf.set_alpha(d.alpha())
         screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
-    # hazards (under bullets/units looks best)
-    for h in game_state.hazards:
-        h.draw(screen)
-
-    # enemy/boss projectiles
-    for p in game_state.projectiles:
-        p.draw(screen)
-
-    # summons
-    for z in game_state.summons:
-        z.draw(screen)
 
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
@@ -5127,24 +4968,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
-
-        # --- hazards (acid pools / puddles) ---
-        if game_state.hazards:
-            # keep only those that are still alive after update
-            game_state.hazards[:] = [h for h in game_state.hazards if h.update(dt, game_state, player)]
-
-        # --- enemy projectiles (boss vomit / shockwaves) ---
-        if game_state.projectiles:
-            game_state.projectiles[:] = [
-                p for p in game_state.projectiles
-                if p.update(dt, game_state, player, game_state.obstacles)
-            ]
-
-        # --- temporary summons (wormlings) ---
-        if game_state.summons:
-            for z in list(game_state.summons):
-                if not z.update(dt, player, game_state):
-                    game_state.summons.remove(z)
 
         # >>> FAIL CONDITION <<<
         if player.hp <= 0:
