@@ -393,8 +393,8 @@ OBSTACLE_DENSITY = 0.14  # proportion of tiles to become obstacles (including cl
 DECOR_DENSITY = 0.06  # proportion of tiles to place non-blocking decorations
 MIN_ITEMS = 8  # ensure enough items on larger maps
 DESTRUCTIBLE_RATIO = 0.3
-PLAYER_SPEED = 3.5
-PLAYER_SPEED_CAP = 7.0
+PLAYER_SPEED = 4.5
+PLAYER_SPEED_CAP = 6.5
 ZOMBIE_SPEED = 2
 ZOMBIE_SPEED_MAX = 4.5
 ZOMBIE_ATTACK = 10
@@ -2138,7 +2138,7 @@ class Player:
             self.hp = max(0, self.hp - int(amount))
             self.hit_cd = float(PLAYER_HIT_COOLDOWN)
 
-    def move(self, keys, obstacles):
+    def move(self, keys, obstacles, dt):
         # reset frame-accumulated slow from hazards
         self.apply_slow_extra = 0.0
 
@@ -2183,8 +2183,9 @@ class Player:
         # 基础速度
         spd = int(self.speed)
         # 处于减速状态 → 应用减速（例如 35% 减速 = 速度*0.65）
-        if getattr(self, "slow_t", 0.0) > 0.0:
-            spd = max(1, int(spd * (1.0 - ACID_SLOW_FRAC)))  # ACID_SLOW_FRAC 建议 0.35~0.45
+        # hazards (acid) add extra slow this frame
+        if getattr(self, "apply_slow_extra", 0.0) > 0.0:
+            spd = max(1, int(spd * (1.0 - min(0.85, float(self.apply_slow_extra)))))
 
         # 把“减速后的速度”喂给步进与碰撞
         step_x, step_y = iso_equalized_step(dx, dy, spd)
@@ -2418,6 +2419,8 @@ class Zombie:
         zx, zy = Zombie.feet_xy(self)
         px, py = Zombie.feet_xy(player)
         target_cx, target_cy = px, py
+
+
         # --- Twin “lane” offset and mild separation so they don’t block each other ---
         if getattr(self, "is_boss", False) and getattr(self, "twin_id", None) is not None:
             cx0 = self.x + self.size * 0.5
@@ -2478,12 +2481,20 @@ class Zombie:
             if gx == nx and gy == ny:
                 self._path_step += 1
                 if self._path_step < len(self._path):
-                    nx, ny = self._path[self._path_step]d
+                    nx, ny = self._path[self._path_step]
             # 仍有路点：将追踪目标改成这个路点的“脚底”
             if self._path_step < len(self._path):
                 target_cx = nx * CELL_SIZE + CELL_SIZE * 0.5
                 target_cy = ny * CELL_SIZE + CELL_SIZE
 
+
+        # —— 连续向量追踪（不再用 8 向离散步进）——
+        vx = target_cx - (self.x + self.size * 0.5)
+        vy = target_cy - (self.y + self.size * 0.5 + INFO_BAR_HEIGHT)
+        L = (vx * vx + vy * vy) ** 0.5 or 1.0
+        dx = (vx / L) * speed
+        dy = (vy / L) * speed
+        oldx, oldy = self.x, self.y
         # === Boss skills (Lv-5 twins only) ===
         if getattr(self, "is_boss", False) and (game_state.current_level in BOSS_SKILLS_ENABLED_LEVELS):
             now = pygame.time.get_ticks() / 1000.0
@@ -2512,9 +2523,9 @@ class Zombie:
             if self.skill_phase == "dash_go":
                 self.skill_t -= dt
                 dvx, dvy = self._dash_v
-                dash_speed = float(getattr(self, "speed", 140)) * BOSS_TOXIC_DASH_SPEED_MULT
-                dx += dvx * dash_speed * dt
-                dy += dvy * dash_speed * dt
+                dash_speed = max(6.0, float(getattr(self, "speed", 2.0)) * BOSS_TOXIC_DASH_SPEED_MULT)
+                dx, dy = dvx * dash_speed, dvy * dash_speed
+
                 # trail acid pools
                 if random.random() < 0.28:
                     game_state.hazards.append(
@@ -2568,13 +2579,6 @@ class Zombie:
                             game_state.projectiles.append(ArcProjectile(
                                 self.rect.centerx, self.rect.centery, a, BOSS_RING_SPEED, 0.9, lambda x, y: None))
 
-        # —— 连续向量追踪（不再用 8 向离散步进）——
-        vx = target_cx - (self.x + self.size * 0.5)
-        vy = target_cy - (self.y + self.size * 0.5 + INFO_BAR_HEIGHT)
-        L = (vx * vx + vy * vy) ** 0.5 or 1.0
-        dx = (vx / L) * speed
-        dy = (vy / L) * speed
-        oldx, oldy = self.x, self.y
         # If target is exactly on us this frame, dodge sideways deterministically
         if abs(vx) < 1e-3 and abs(vy) < 1e-3:
             # use twin_slot to pick a perpendicular nudge so twins diverge instead of pinning
@@ -4055,9 +4059,10 @@ class GameState:
         self.dmg_texts = []  # List[DamageText]
         self.acids = []  # List[AcidPool]
         self.telegraphs = []  # List[TelegraphCircle]
-        self.hazards = []
-        self.projectiles = []
-        self.summons = []  # for wormlings
+        # --- hazards / projectiles / summons ---
+        self.hazards = []  # AcidPoolHazard instances
+        self.projectiles = []  # ArcProjectile instances
+        self.summons = []  # Wormling instances
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -4122,10 +4127,24 @@ class GameState:
     # ---- 地面腐蚀池 ----
     # def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME):
     #     self.acids.append(AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life)))
-    def spawn_acid_pool(self, x, y, r=ACID_POOL_RADIUS_PX, life=ACID_POOL_TIME,
-                        dps=ACID_POOL_DPS, slow=ACID_POOL_SLOW):
-        """Convenience: drop a hurting, slowing acid pool."""
-        self.hazards.append(AcidPoolHazard(int(x), int(y), int(r), float(dps), float(slow), float(life)))
+
+    def spawn_acid_pool(self, x, y, r=None, life=None, dps=None,
+                        slow=None, slow_frac=None, radius=None, ttl=None):
+        """
+        Canonical spawner for acid pools. Accepts both 'slow' and legacy 'slow_frac' (alias),
+        and 'r' or 'radius', 'life' or 'ttl'. All optional and default to global tunables.
+        """
+        R = int(r if r is not None else (radius if radius is not None else ACID_POOL_RADIUS_PX))
+        L = float(life if life is not None else (ttl if ttl is not None else ACID_POOL_TIME))
+        D = float(dps if dps is not None else ACID_POOL_DPS)
+        S = float(slow if slow is not None else (slow_frac if slow_frac is not None else ACID_POOL_SLOW))
+        self.hazards.append(AcidPoolHazard(int(x), int(y), R, D, S, L))
+
+    def spawn_projectile(self, proj):
+        self.projectiles.append(proj)
+
+    def spawn_wormling(self, x, y):
+        self.summons.append(Wormling(x, y))
 
     def update_acids(self, dt: float, player: "Player"):
         # 衰减 slow / DoT 计时
@@ -4435,6 +4454,17 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
         surf = font.render(str(d.amount), True, col)
         surf.set_alpha(d.alpha())
         screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
+    # hazards (under bullets/units looks best)
+    for h in game_state.hazards:
+        h.draw(screen)
+
+    # enemy/boss projectiles
+    for p in game_state.projectiles:
+        p.draw(screen)
+
+    # summons
+    for z in game_state.summons:
+        z.draw(screen)
 
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
@@ -5009,7 +5039,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.update_telegraphs(dt)  # 到时生成酸池
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
         # -----------------------------------------------
-        player.move(keys, game_state.obstacles)
+        player.move(keys, game_state.obstacles, dt)
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt)
         for z in zombies:
@@ -5097,6 +5127,24 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
+
+        # --- hazards (acid pools / puddles) ---
+        if game_state.hazards:
+            # keep only those that are still alive after update
+            game_state.hazards[:] = [h for h in game_state.hazards if h.update(dt, game_state, player)]
+
+        # --- enemy projectiles (boss vomit / shockwaves) ---
+        if game_state.projectiles:
+            game_state.projectiles[:] = [
+                p for p in game_state.projectiles
+                if p.update(dt, game_state, player, game_state.obstacles)
+            ]
+
+        # --- temporary summons (wormlings) ---
+        if game_state.summons:
+            for z in list(game_state.summons):
+                if not z.update(dt, player, game_state):
+                    game_state.summons.remove(z)
 
         # >>> FAIL CONDITION <<<
         if player.hp <= 0:
@@ -5347,7 +5395,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         game_state.update_telegraphs(dt)  # 到时生成酸池
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
         # -----------------------------------------------
-        player.move(keys, game_state.obstacles)
+        player.move(keys, game_state.obstacles, dt)
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt)
         game_state.collect_spoils(player.rect)
