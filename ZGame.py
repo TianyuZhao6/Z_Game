@@ -2478,11 +2478,95 @@ class Zombie:
             if gx == nx and gy == ny:
                 self._path_step += 1
                 if self._path_step < len(self._path):
-                    nx, ny = self._path[self._path_step]
+                    nx, ny = self._path[self._path_step]d
             # 仍有路点：将追踪目标改成这个路点的“脚底”
             if self._path_step < len(self._path):
                 target_cx = nx * CELL_SIZE + CELL_SIZE * 0.5
                 target_cy = ny * CELL_SIZE + CELL_SIZE
+
+        # === Boss skills (Lv-5 twins only) ===
+        if getattr(self, "is_boss", False) and (game_state.current_level in BOSS_SKILLS_ENABLED_LEVELS):
+            now = pygame.time.get_ticks() / 1000.0
+
+            # 1) TOXIC DASH: wind-up line -> unstoppable dash -> acid trail
+            if self.skill_phase is None and now - self.skill_last["dash"] >= BOSS_TOXIC_DASH_CD:
+                if random.random() < 0.02:  # small chance each frame when in range
+                    self.skill_phase = "dash_wind"
+                    self.skill_t = BOSS_TOXIC_DASH_WINDUP
+                    cx = self.rect.centerx;
+                    cy = self.rect.centery
+                    dvx = target_cx - cx;
+                    dvy = target_cy - cy
+                    L = (dvx * dvx + dvy * dvy) ** 0.5 or 1.0
+                    self._dash_v = (dvx / L, dvy / L)
+
+            if self.skill_phase == "dash_wind":
+                self.skill_t -= dt
+                # (visual telegraph: optional line here)
+                if self.skill_t <= 0:
+                    self.skill_phase = "dash_go"
+                    self.skill_t = BOSS_TOXIC_DASH_TIME
+                    self.no_clip_t = max(getattr(self, "no_clip_t", 0.0), BOSS_TOXIC_DASH_TIME + 0.05)
+                    self.skill_last["dash"] = now
+
+            if self.skill_phase == "dash_go":
+                self.skill_t -= dt
+                dvx, dvy = self._dash_v
+                dash_speed = float(getattr(self, "speed", 140)) * BOSS_TOXIC_DASH_SPEED_MULT
+                dx += dvx * dash_speed * dt
+                dy += dvy * dash_speed * dt
+                # trail acid pools
+                if random.random() < 0.28:
+                    game_state.hazards.append(
+                        AcidPoolHazard(self.rect.centerx, self.rect.centery,
+                                       ACID_POOL_RADIUS_PX, ACID_POOL_DPS, ACID_POOL_SLOW, 1.6))
+                if self.skill_t <= 0:
+                    self.skill_phase = None
+
+            # 2) VOMIT CONE: short-arc shots -> puddles
+            if (self.skill_phase is None) and (now - self.skill_last["vomit"] >= BOSS_VOMIT_CD):
+                if random.random() < 0.016:
+                    self.skill_last["vomit"] = now
+                    cx = self.rect.centerx;
+                    cy = self.rect.centery
+                    ang = math.atan2(player.rect.centery - cy, player.rect.centerx - cx)
+                    half = math.radians(BOSS_VOMIT_CONE_DEG / 2)
+                    for i in range(BOSS_VOMIT_COUNT):
+                        t = (i / (BOSS_VOMIT_COUNT - 1) if BOSS_VOMIT_COUNT > 1 else 0.5)
+                        a = ang - half + (2 * half) * t
+
+                        def _impact(ix, iy, _life=SMALL_PUDDLE_TIME):
+                            game_state.hazards.append(
+                                AcidPoolHazard(ix, iy, SMALL_PUDDLE_RADIUS,
+                                               ACID_POOL_DPS * 0.75, ACID_POOL_SLOW * 0.5, _life))
+
+                        game_state.projectiles.append(
+                            ArcProjectile(cx, cy, a, BOSS_VOMIT_SPEED, BOSS_VOMIT_ARC_SEC, _impact))
+
+            # 3) SUMMON WORMLINGS
+            if (self.skill_phase is None) and (now - self.skill_last["summon"] >= BOSS_SUMMON_CD):
+                if random.random() < 0.01:
+                    self.skill_last["summon"] = now
+                    n = random.randint(*BOSS_SUMMON_COUNT)
+                    r = int(self.size * 0.6)
+                    for _ in range(n):
+                        ox = random.randint(-r, r);
+                        oy = random.randint(-r, r)
+                        game_state.summons.append(Wormling(self.rect.centerx + ox, self.rect.centery + oy))
+
+            # 4) (Optional) ENRAGED SHOCKWAVE RING if twin is dead
+            if BOSS_RING_ENABLED and getattr(self, "twin_id", None) is not None:
+                partner = getattr(self, "_twin_partner_ref", None)
+                if callable(partner): partner = partner()
+                twin_dead = (not partner) or getattr(partner, "hp", 0) <= 0
+                if twin_dead and (now - self.skill_last["ring"] >= BOSS_RING_CD):
+                    self.skill_last["ring"] = now
+                    for _ in range(BOSS_RING_BURSTS):
+                        base = random.random() * math.tau
+                        for k in range(BOSS_RING_PROJECTILES):
+                            a = base + (k / BOSS_RING_PROJECTILES) * math.tau
+                            game_state.projectiles.append(ArcProjectile(
+                                self.rect.centerx, self.rect.centery, a, BOSS_RING_SPEED, 0.9, lambda x, y: None))
 
         # —— 连续向量追踪（不再用 8 向离散步进）——
         vx = target_cx - (self.x + self.size * 0.5)
@@ -2851,6 +2935,39 @@ class Zombie:
         color = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         pygame.draw.rect(screen, color, self.rect)
 
+class Wormling:
+    def __init__(self, x, y):
+        self.x, self.y = float(x), float(y)
+        self.speed = WORMLING_SPEED
+        self.hp = WORMLING_HP
+        self.life = WORMLING_LIFETIME
+        self.size = int(CELL_SIZE * 0.6)
+        self.rect = pygame.Rect(int(self.x), int(self.y), self.size, self.size)
+
+    def update(self, dt, player, game_state):
+        self.life -= dt
+        if self.life <= 0 or self.hp <= 0:
+            return False
+
+        dx = player.rect.centerx - self.rect.centerx
+        dy = player.rect.centery - self.rect.centery
+        d = (dx*dx + dy*dy) ** 0.5 or 1.0
+        vx = dx / d * self.speed
+        vy = dy / d * self.speed
+
+        self.x += vx * dt
+        self.y += vy * dt
+        self.rect.x = int(self.x)
+        self.rect.y = int(self.y)
+
+        # contact poke
+        if self.rect.colliderect(player.rect):
+            player.take_damage(WORMLING_DAMAGE)
+            return False
+        return True
+
+    def draw(self, screen):
+        pygame.draw.rect(screen, (120, 220, 120), self.rect, 0)
 
 class MemoryDevourerBoss(Zombie):
     """独立 Boss：更大体型/更大脚底圆/更高血攻；仍复用 Zombie 的大多数行为。"""
@@ -2859,6 +2976,9 @@ class MemoryDevourerBoss(Zombie):
         gx, gy = grid_pos
         # 计算血量：沿用你原先“第5关为基准 + 关卡成长”的口径
         boss_hp = int(MEMDEV_BASE_HP * (1 + 0.15 * max(0, level_idx - 1)))
+        self.skill_last = {"dash": -99, "vomit": -99, "summon": -99, "ring": -99}
+        self.skill_phase = None  # None | "dash_wind" | "dash_go"
+        self.skill_t = 0.0
 
         # 用父类构造出一个 type='boss_mem' 的单位，再整体重写体型与半径
         super().__init__((gx, gy),
@@ -4000,8 +4120,12 @@ class GameState:
         return healed
 
     # ---- 地面腐蚀池 ----
-    def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME):
-        self.acids.append(AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life)))
+    # def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME):
+    #     self.acids.append(AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life)))
+    def spawn_acid_pool(self, x, y, r=ACID_POOL_RADIUS_PX, life=ACID_POOL_TIME,
+                        dps=ACID_POOL_DPS, slow=ACID_POOL_SLOW):
+        """Convenience: drop a hurting, slowing acid pool."""
+        self.hazards.append(AcidPoolHazard(int(x), int(y), int(r), float(dps), float(slow), float(life)))
 
     def update_acids(self, dt: float, player: "Player"):
         # 衰减 slow / DoT 计时
