@@ -582,8 +582,8 @@ SPIT_PUDDLES_PER_WAVE = 6
 SPIT_RANGE = 6.0 * CELL_SIZE  # 每波最远生成点
 
 # 召唤小怪（腐蚀幼体）
-SPLIT_CD_P1 = 20.0
-SPLIT_CD_P2 = 15.0
+SPLIT_CD_P1 = 12.0
+SPLIT_CD_P2 = 7.0
 CHILD_HP = 50
 CHILD_ATK = 10
 CHILD_SPEED = 2.2
@@ -2804,7 +2804,7 @@ class Zombie:
                         game_state.spawn_telegraph(cx, cy, r=32, life=ACID_TELEGRAPH_T, kind="acid",
                                                    payload={"points": points, "radius": 26, "life": ACID_LIFETIME,
                                                             "dps": ACID_DPS, "slow": ACID_SLOW_FRAC})
-                    self._spit_cd = 5.0
+                    self._spit_cd = 4.0
 
                 if self._split_cd <= 0.0:
                     for _ in range(3):
@@ -2845,13 +2845,66 @@ class Zombie:
                 if self._split_cd <= 0.0:
                     for _ in range(2):
                         zombies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
-                    self._split_cd = 16.0
+                    self._split_cd = 12.0
 
                 # 濒死冲锋
                 if hp_pct <= CHARGE_THRESH and not getattr(self, "_charging", False):
                     self._charging = True
                     # 直接朝玩家方向加速移动，不受可破坏物阻挡（移动层会处理破坏）
                     self.speed = CHARGE_SPEED
+            # ===== Boss：蓄力冲刺（全阶段可触发，和濒死冲锋互不冲突） =====
+            # 轻量状态机：idle → wind → go → idle
+            if not hasattr(self, "_dash_state"):
+                self._dash_state = "idle"
+                self._dash_cd = random.uniform(5.0, 7.0)  # 初次错峰
+                self._dash_t = 0.0
+                self._dash_speed_hold = float(self.speed)
+
+            # 冷却推进
+            self._dash_cd = max(0.0, self._dash_cd - dt)
+
+            # 进入“蓄力”阶段
+            if self._dash_state == "idle" and self._dash_cd <= 0.0 and not getattr(self, "_charging", False):
+                px, py = player.rect.centerx, player.rect.centery
+                cx, cy = self.rect.centerx, self.rect.centery
+                vx, vy = px - cx, py - cy
+                L = (vx * vx + vy * vy) ** 0.5 or 1.0
+                self._dash_dir = (vx / L, vy / L)
+
+                self._dash_state = "wind"
+                self._dash_t = 0.45
+                self._dash_speed_hold = float(self.speed)
+                # 蓄力时显著减速，制造压迫前摇
+                self.speed = max(0.2, self._dash_speed_hold * 0.25)
+                # 残影预警（只是视觉，不落酸）
+                game_state.spawn_telegraph(cx, cy, r=int(getattr(self, "radius", self.size * 0.5) * 0.9),
+                                           life=self._dash_t, kind="dash", payload=None)
+
+            elif self._dash_state == "wind":
+                self._dash_t -= dt
+                self.speed = max(0.2, self._dash_speed_hold * 0.25)
+                if self._dash_t <= 0.0:
+                    self._dash_state = "go"
+                    self._dash_t = 0.28  # 冲刺持续时间
+                    # 用你的临时加速槽位做冲刺；结束自动恢复
+                    dash_mult = 3.5
+                    self.buff_spd_add = float(getattr(self, "buff_spd_add", 0.0)) + \
+                                        float(self._dash_speed_hold) * (dash_mult - 1.0)
+                    self.buff_t = max(getattr(self, "buff_t", 0.0), self._dash_t)
+                    # 冲刺期短暂无视碰撞（配合你已有 no_clip_t 逻辑穿越卡口）
+                    self.no_clip_t = max(getattr(self, "no_clip_t", 0.0), self._dash_t + 0.05)
+                    # 恢复基础速度（真正加速由 buff_t 控制）
+                    self.speed = self._dash_speed_hold
+
+            elif self._dash_state == "go":
+                self._dash_t -= dt
+                # 每帧掉个短命圈做“残影”
+                cx, cy = self.rect.centerx, self.rect.centery
+                game_state.spawn_telegraph(cx, cy, r=int(getattr(self, "radius", self.size * 0.5) * 0.8),
+                                           life=0.22, kind="dash", payload=None)
+                if self._dash_t <= 0.0:
+                    self._dash_state = "idle"
+                    self._dash_cd = random.uniform(4.5, 6.0)  # 下一次冷却
 
     def draw(self, screen):
         color = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
