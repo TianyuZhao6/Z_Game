@@ -472,6 +472,15 @@ BOSS_RING_BURSTS = 2
 BOSS_RING_PROJECTILES = 20
 BOSS_RING_SPEED = 420
 BOSS_RING_CD = 4.0
+# === Dash & Afterimage tunables ===
+BOSS_DASH_WINDUP = 0.40          # 蓄力前摇（保留张力）
+BOSS_DASH_GO_TIME = 0.60         # 冲刺持续时间（原来 0.28 太短）
+BOSS_DASH_SPEED_MULT = 4.2       # 冲刺速度倍数（原来 3.5 偏保守）
+BOSS_DASH_SPEED_MULT_ENRAGED = 4.8  # 激怒版可更高一点
+
+AFTERIMAGE_INTERVAL = 0.03       # 每隔多少秒生成一个残影
+AFTERIMAGE_TTL = 0.18            # 残影存在时长（秒）
+AFTERIMAGE_LIGHTEN = 1.25         # 残影颜色提亮系数
 
 # coin bounce feel
 COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
@@ -2255,6 +2264,31 @@ def spawn_splinter_children(parent: "Zombie",
 
     return spawned
 
+class AfterImageGhost:
+    """Boss 冲刺残影：同尺寸、浅色、逐渐淡出"""
+    def __init__(self, x, y, w, h, base_color, ttl=AFTERIMAGE_TTL):
+        self.x = int(x); self.y = int(y)
+        self.w = int(w); self.h = int(h)
+        # 提亮颜色
+        r,g,b = base_color if base_color else (120, 220, 160)
+        r = min(255, int(r * AFTERIMAGE_LIGHTEN))
+        g = min(255, int(g * AFTERIMAGE_LIGHTEN))
+        b = min(255, int(b * AFTERIMAGE_LIGHTEN))
+        self.color = (r,g,b)
+        self.ttl = float(ttl)
+        self.life0 = float(ttl)
+
+    def update(self, dt):
+        self.ttl -= dt
+        return self.ttl > 0
+
+    def draw(self, screen):
+        if self.ttl <= 0: return
+        alpha = max(0, min(255, int(255 * (self.ttl / self.life0))))
+        # 画一个和 Boss 同尺寸的半透明矩形（如果你是贴图，可以替换为贴图浅色化）
+        s = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
+        s.fill((*self.color, alpha))
+        screen.blit(s, (self.x - self.w//2, self.y - self.h//2))
 
 class Zombie:
     def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED,
@@ -2852,18 +2886,18 @@ class Zombie:
                     self._charging = True
                     # 直接朝玩家方向加速移动，不受可破坏物阻挡（移动层会处理破坏）
                     self.speed = CHARGE_SPEED
-            # ===== Boss：蓄力冲刺（全阶段可触发，和濒死冲锋互不冲突） =====
-            # 轻量状态机：idle → wind → go → idle
+            # ===== Boss：蓄力冲刺（全阶段可触发） =====
             if not hasattr(self, "_dash_state"):
                 self._dash_state = "idle"
-                self._dash_cd = random.uniform(5.0, 7.0)  # 初次错峰
+                self._dash_cd = random.uniform(4.5, 6.0)  # 初次错峰，比之前更紧凑一点
                 self._dash_t = 0.0
                 self._dash_speed_hold = float(self.speed)
+                self._ghost_accum = 0.0  # 残影生成计时器
 
             # 冷却推进
             self._dash_cd = max(0.0, self._dash_cd - dt)
 
-            # 进入“蓄力”阶段
+            # 进入“蓄力”
             if self._dash_state == "idle" and self._dash_cd <= 0.0 and not getattr(self, "_charging", False):
                 px, py = player.rect.centerx, player.rect.centery
                 cx, cy = self.rect.centerx, self.rect.centery
@@ -2872,11 +2906,12 @@ class Zombie:
                 self._dash_dir = (vx / L, vy / L)
 
                 self._dash_state = "wind"
-                self._dash_t = 0.45
+                self._dash_t = BOSS_DASH_WINDUP
                 self._dash_speed_hold = float(self.speed)
-                # 蓄力时显著减速，制造压迫前摇
+                self._ghost_accum = 0.0
+                # 蓄力时显著减速
                 self.speed = max(0.2, self._dash_speed_hold * 0.25)
-                # 残影预警（只是视觉，不落酸）
+                # 视觉预警：中心圈（可保留；不想要可以注释）
                 game_state.spawn_telegraph(cx, cy, r=int(getattr(self, "radius", self.size * 0.5) * 0.9),
                                            life=self._dash_t, kind="dash", payload=None)
 
@@ -2885,30 +2920,38 @@ class Zombie:
                 self.speed = max(0.2, self._dash_speed_hold * 0.25)
                 if self._dash_t <= 0.0:
                     self._dash_state = "go"
-                    self._dash_t = 0.28  # 冲刺持续时间
-                    # 用你的临时加速槽位做冲刺；结束自动恢复
-                    dash_mult = 3.5
-                    self.buff_spd_add = float(getattr(self, "buff_spd_add", 0.0)) + \
-                                        float(self._dash_speed_hold) * (dash_mult - 1.0)
+                    self._dash_t = BOSS_DASH_GO_TIME
+                    self.speed = self._dash_speed_hold  # 恢复基础，实际提速走 buff
+                    dash_mult = BOSS_DASH_SPEED_MULT_ENRAGED if getattr(self, "is_enraged",
+                                                                        False) else BOSS_DASH_SPEED_MULT
+                    self.buff_spd_add = float(getattr(self, "buff_spd_add", 0.0)) + float(self._dash_speed_hold) * (
+                                dash_mult - 1.0)
                     self.buff_t = max(getattr(self, "buff_t", 0.0), self._dash_t)
-                    # 冲刺期短暂无视碰撞（配合你已有 no_clip_t 逻辑穿越卡口）
+                    # 短暂无视碰撞：冲刺更“果断”
                     self.no_clip_t = max(getattr(self, "no_clip_t", 0.0), self._dash_t + 0.05)
-                    # 恢复基础速度（真正加速由 buff_t 控制）
-                    self.speed = self._dash_speed_hold
+                    # 预设下次冷却，稍后在 go 结束时生效（避免 wind 期间被改动）
+                    self._dash_cd_next = random.uniform(4.5, 6.0)
 
             elif self._dash_state == "go":
                 self._dash_t -= dt
-                # 每帧掉个短命圈做“残影”
-                cx, cy = self.rect.centerx, self.rect.centery
-                game_state.spawn_telegraph(cx, cy, r=int(getattr(self, "radius", self.size * 0.5) * 0.8),
-                                           life=0.22, kind="dash", payload=None)
+                # 残影：每隔 AFTERIMAGE_INTERVAL 丢一个 Boss 同尺寸、浅色的影子
+                self._ghost_accum += dt
+                while self._ghost_accum >= AFTERIMAGE_INTERVAL:
+                    self._ghost_accum -= AFTERIMAGE_INTERVAL
+                    cx, cy = self.rect.centerx, self.rect.centery
+                    # 尝试读取 Boss 自身颜色；没有就给个偏绿的默认
+                    base_color = getattr(self, "color", (120, 220, 160))
+                    game_state.ghosts.append(
+                        AfterImageGhost(cx, cy, self.size, self.size, base_color, ttl=AFTERIMAGE_TTL)
+                    )
                 if self._dash_t <= 0.0:
                     self._dash_state = "idle"
-                    self._dash_cd = random.uniform(4.5, 6.0)  # 下一次冷却
+                    self._dash_cd = getattr(self, "_dash_cd_next", random.uniform(4.5, 6.0))
 
     def draw(self, screen):
         color = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         pygame.draw.rect(screen, color, self.rect)
+
 
 class Wormling:
     def __init__(self, x, y):
@@ -3967,7 +4010,7 @@ class GameState:
         self.dmg_texts = []  # List[DamageText]
         self.acids = []  # List[AcidPool]
         self.telegraphs = []  # List[TelegraphCircle]
-
+        self.ghosts = []  # 冲刺残影列表
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -4359,6 +4402,9 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
         surf = font.render(str(d.amount), True, col)
         surf.set_alpha(d.alpha())
         screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
+
+    for g in game_state.ghosts:
+        g.draw(screen)
 
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
@@ -5356,6 +5402,10 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
+
+        # afterimages
+        if game_state.ghosts:
+            game_state.ghosts[:] = [g for g in game_state.ghosts if g.update(dt)]
 
         # Fail check (redundant guard)
         if player.hp <= 0:
