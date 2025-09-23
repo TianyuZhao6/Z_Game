@@ -458,8 +458,8 @@ WORMLING_HP = 1
 WORMLING_LIFETIME = 10.0
 WORMLING_DAMAGE = 6
 
-ACID_POOL_DPS = 10            # damage / second
-ACID_POOL_SLOW = 0.35         # extra slow
+ACID_POOL_DPS = 10  # damage / second
+ACID_POOL_SLOW = 0.35  # extra slow
 ACID_POOL_TIME = 6.0
 ACID_POOL_RADIUS_PX = int(CELL_SIZE * 0.65)
 
@@ -473,14 +473,14 @@ BOSS_RING_PROJECTILES = 20
 BOSS_RING_SPEED = 420
 BOSS_RING_CD = 4.0
 # === Dash & Afterimage tunables ===
-BOSS_DASH_WINDUP = 0.40          # 蓄力前摇（保留张力）
-BOSS_DASH_GO_TIME = 0.60         # 冲刺持续时间（原来 0.28 太短）
-BOSS_DASH_SPEED_MULT = 4.2       # 冲刺速度倍数（原来 3.5 偏保守）
+BOSS_DASH_WINDUP = 0.40  # 蓄力前摇（保留张力）
+BOSS_DASH_GO_TIME = 0.60  # 冲刺持续时间（原来 0.28 太短）
+BOSS_DASH_SPEED_MULT = 4.2  # 冲刺速度倍数（原来 3.5 偏保守）
 BOSS_DASH_SPEED_MULT_ENRAGED = 4.8  # 激怒版可更高一点
 
-AFTERIMAGE_INTERVAL = 0.03       # 每隔多少秒生成一个残影
-AFTERIMAGE_TTL = 0.18            # 残影存在时长（秒）
-AFTERIMAGE_LIGHTEN = 1.25         # 残影颜色提亮系数
+AFTERIMAGE_INTERVAL = 0.03  # 每隔多少秒生成一个残影
+AFTERIMAGE_TTL = 0.18  # 残影存在时长（秒）
+AFTERIMAGE_LIGHTEN = 1.25  # 残影颜色提亮系数
 
 # coin bounce feel
 COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
@@ -972,7 +972,6 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
         entity._crush_queue = []
     r = getattr(entity, "radius", max(8, CELL_SIZE // 3))
     size = entity.size
-
 
     # 起点（圆心，世界像素）
     cx0 = entity.x + size * 0.5
@@ -2264,17 +2263,21 @@ def spawn_splinter_children(parent: "Zombie",
 
     return spawned
 
+
 class AfterImageGhost:
     """Boss 冲刺残影：同尺寸、浅色、逐渐淡出"""
+
     def __init__(self, x, y, w, h, base_color, ttl=AFTERIMAGE_TTL):
-        self.x = int(x); self.y = int(y)
-        self.w = int(w); self.h = int(h)
+        self.x = int(x);
+        self.y = int(y)
+        self.w = int(w);
+        self.h = int(h)
         # 提亮颜色
-        r,g,b = base_color if base_color else (120, 220, 160)
+        r, g, b = base_color if base_color else (120, 220, 160)
         r = min(255, int(r * AFTERIMAGE_LIGHTEN))
         g = min(255, int(g * AFTERIMAGE_LIGHTEN))
         b = min(255, int(b * AFTERIMAGE_LIGHTEN))
-        self.color = (r,g,b)
+        self.color = (r, g, b)
         self.ttl = float(ttl)
         self.life0 = float(ttl)
 
@@ -2282,13 +2285,43 @@ class AfterImageGhost:
         self.ttl -= dt
         return self.ttl > 0
 
-    def draw(self, screen):
-        if self.ttl <= 0: return
+    def draw_topdown(self, screen, cam_x, cam_y):
+        if self.ttl <= 0:
+            return
         alpha = max(0, min(255, int(255 * (self.ttl / self.life0))))
-        # 画一个和 Boss 同尺寸的半透明矩形（如果你是贴图，可以替换为贴图浅色化）
         s = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
         s.fill((*self.color, alpha))
-        screen.blit(s, (self.x - self.w//2, self.y - self.h//2))
+        screen.blit(
+            s,
+            (int(self.x - cam_x - self.w // 2),
+             int(self.y - cam_y - self.h // 2))
+        )
+
+    # —— 新增：ISO 版本（世界→格→等距投影→屏幕）——
+    def draw_iso(self, screen, camx, camy):
+        if self.ttl <= 0:
+            return
+        alpha = max(0, min(255, int(255 * (self.ttl / self.life0))))
+        # 世界像素 -> 世界格（注意 HUD 偏移）
+        wx = self.x / CELL_SIZE
+        wy = (self.y - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+
+        # 用“脚点 midbottom”对齐人物矩形的地面锚点
+        rect = pygame.Rect(0, 0, int(self.w), int(self.h))
+        rect.midbottom = (int(sx), int(sy))
+        s = pygame.Surface(rect.size, pygame.SRCALPHA)
+        s.fill((*self.color, alpha))
+        screen.blit(s, rect.topleft)
+
+    # 兼容旧调用（万一还有地方直接用 draw）
+    def draw(self, screen):
+        # 默认按不带相机的老逻辑（不推荐），仅作兜底
+        if self.ttl <= 0: return
+        alpha = max(0, min(255, int(255 * (self.ttl / self.life0))))
+        s = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
+        s.fill((*self.color, alpha))
+        screen.blit(s, (self.x - self.w // 2, self.y - self.h // 2))
 
 class Zombie:
     def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED,
@@ -2454,7 +2487,6 @@ class Zombie:
         px, py = Zombie.feet_xy(player)
         target_cx, target_cy = px, py
 
-
         # --- Twin “lane” offset and mild separation so they don’t block each other ---
         if getattr(self, "is_boss", False) and getattr(self, "twin_id", None) is not None:
             cx0 = self.x + self.size * 0.5
@@ -2521,7 +2553,6 @@ class Zombie:
                 target_cx = nx * CELL_SIZE + CELL_SIZE * 0.5
                 target_cy = ny * CELL_SIZE + CELL_SIZE
 
-
         # —— 连续向量追踪（不再用 8 向离散步进）——
         vx = target_cx - (self.x + self.size * 0.5)
         vy = target_cy - (self.y + self.size * 0.5 + INFO_BAR_HEIGHT)
@@ -2529,7 +2560,6 @@ class Zombie:
         dx = (vx / L) * speed
         dy = (vy / L) * speed
         oldx, oldy = self.x, self.y
-
 
         # If target is exactly on us this frame, dodge sideways deterministically
         if abs(vx) < 1e-3 and abs(vy) < 1e-3:
@@ -2925,7 +2955,7 @@ class Zombie:
                     dash_mult = BOSS_DASH_SPEED_MULT_ENRAGED if getattr(self, "is_enraged",
                                                                         False) else BOSS_DASH_SPEED_MULT
                     self.buff_spd_add = float(getattr(self, "buff_spd_add", 0.0)) + float(self._dash_speed_hold) * (
-                                dash_mult - 1.0)
+                            dash_mult - 1.0)
                     self.buff_t = max(getattr(self, "buff_t", 0.0), self._dash_t)
                     # 短暂无视碰撞：冲刺更“果断”
                     self.no_clip_t = max(getattr(self, "no_clip_t", 0.0), self._dash_t + 0.05)
@@ -2969,7 +2999,7 @@ class Wormling:
 
         dx = player.rect.centerx - self.rect.centerx
         dy = player.rect.centery - self.rect.centery
-        d = (dx*dx + dy*dy) ** 0.5 or 1.0
+        d = (dx * dx + dy * dy) ** 0.5 or 1.0
         vx = dx / d * self.speed
         vy = dy / d * self.speed
 
@@ -2986,6 +3016,7 @@ class Wormling:
 
     def draw(self, screen):
         pygame.draw.rect(screen, (120, 220, 120), self.rect, 0)
+
 
 class MemoryDevourerBoss(Zombie):
     """独立 Boss：更大体型/更大脚底圆/更高血攻；仍复用 Zombie 的大多数行为。"""
@@ -3004,7 +3035,6 @@ class MemoryDevourerBoss(Zombie):
                          speed=int(max(1, MEMDEV_SPEED)),
                          ztype="boss_mem",
                          hp=boss_hp)
-
 
         self.is_boss = True
         self.boss_name = "Memory Devourer"
@@ -3053,6 +3083,7 @@ class MemoryDevourerBoss(Zombie):
         self.boss_name = (getattr(self, "boss_name", "BOSS") + " [ENRAGED]")
 
     # （可选）你也可以覆盖 draw，画个大圆/贴图；目前沿用矩形色块就行
+
 
 class Bullet:
     def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE,
@@ -4075,6 +4106,7 @@ class GameState:
     # ---- 地面腐蚀池 ----
     def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME):
         self.acids.append(AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life)))
+
     # def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, life=ACID_LIFETIME, slow_frac=None, slow=None):
     #     # Accept either 'slow' or 'slow_frac' from older/newer callers
     #     if slow_frac is None and slow is not None:
