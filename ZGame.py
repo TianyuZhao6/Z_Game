@@ -4435,8 +4435,8 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
         surf.set_alpha(d.alpha())
         screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
 
-    for g in game_state.ghosts:
-        g.draw(screen)
+    for g in getattr(game_state, "ghosts", []):
+        g.draw_iso(screen, camx, camy)
 
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
@@ -4671,6 +4671,9 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         surf = font.render(str(d.amount), True, col)
         surf.set_alpha(d.alpha())
         screen.blit(surf, surf.get_rect(center=(sx, sy)))
+
+    for g in getattr(game_state, "ghosts", []):
+        g.draw_topdown(screen, cam_x, cam_y)
 
     draw_ui_topbar(screen, game_state, player, time_left=globals().get("_time_left_runtime"))
 
