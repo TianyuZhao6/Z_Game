@@ -478,9 +478,10 @@ BOSS_DASH_GO_TIME = 0.60  # 冲刺持续时间（原来 0.28 太短）
 BOSS_DASH_SPEED_MULT = 4.2  # 冲刺速度倍数（原来 3.5 偏保守）
 BOSS_DASH_SPEED_MULT_ENRAGED = 4.8  # 激怒版可更高一点
 
-AFTERIMAGE_INTERVAL = 0.03  # 每隔多少秒生成一个残影
-AFTERIMAGE_TTL = 0.18  # 残影存在时长（秒）
-AFTERIMAGE_LIGHTEN = 1.25  # 残影颜色提亮系数
+AFTERIMAGE_INTERVAL = 0.02   # 约每 1/50 秒一个（轨迹更连续）
+AFTERIMAGE_TTL      = 0.10   # ~6 帧消失（60fps）
+AFTERIMAGE_LIGHTEN  = 1.20   # 轻微提亮，保持“浅色块”而不是荧光
+
 
 # coin bounce feel
 COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
@@ -2331,6 +2332,7 @@ class Zombie:
         self.attack = attack
         self.speed = speed
         self.type = ztype
+        self.color = ZOMBIE_COLORS.get(self.type, (255, 60, 60))
         # === special type state ===
         self.fuse = SUICIDE_FUSE if ztype in ("suicide", "bomber") else None
         self.buff_cd = 0.0 if ztype == "buffer" else None
@@ -2970,10 +2972,10 @@ class Zombie:
                     self._ghost_accum -= AFTERIMAGE_INTERVAL
                     cx, cy = self.rect.centerx, self.rect.centery
                     # 尝试读取 Boss 自身颜色；没有就给个偏绿的默认
-                    base_color = getattr(self, "color", (120, 220, 160))
                     game_state.ghosts.append(
-                        AfterImageGhost(cx, cy, self.size, self.size, base_color, ttl=AFTERIMAGE_TTL)
+                        AfterImageGhost(cx, cy, self.size, self.size, self.color, ttl=AFTERIMAGE_TTL)
                     )
+
                 if self._dash_t <= 0.0:
                     self._dash_state = "idle"
                     self._dash_cd = getattr(self, "_dash_cd_next", random.uniform(4.5, 6.0))
@@ -3036,6 +3038,7 @@ class MemoryDevourerBoss(Zombie):
                          ztype="boss_mem",
                          hp=boss_hp)
 
+        self.color = ZOMBIE_COLORS.get('boss_mem', (170, 40, 200))
         self.is_boss = True
         self.boss_name = "Memory Devourer"
         # —— 可视尺寸 & 脚底圆半径（2×2 占格）——
