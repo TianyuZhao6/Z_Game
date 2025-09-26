@@ -478,8 +478,8 @@ BOSS_DASH_GO_TIME = 0.60  # 冲刺持续时间（原来 0.28 太短）
 BOSS_DASH_SPEED_MULT = 4.2  # 冲刺速度倍数（原来 3.5 偏保守）
 BOSS_DASH_SPEED_MULT_ENRAGED = 4.8  # 激怒版可更高一点
 
-AFTERIMAGE_INTERVAL = 0.02   # 约每 1/50 秒一个（轨迹更连续）
-AFTERIMAGE_TTL      = 0.10   # ~6 帧消失（60fps）
+AFTERIMAGE_INTERVAL = 0.03   # 约每 1/50 秒一个（轨迹更连续）
+AFTERIMAGE_TTL      = 0.22   # ~6 帧消失（60fps）
 AFTERIMAGE_LIGHTEN  = 1.20   # 轻微提亮，保持“浅色块”而不是荧光
 
 
@@ -2350,6 +2350,9 @@ class Zombie:
         # split flags (only for splinter)
         self._can_split = (self.type == "splinter")
         self._split_done = False
+        # track trailing foot points for afterimage
+        self._foot_prev = (self.rect.centerx, self.rect.bottom)
+        self._foot_curr = (self.rect.centerx, self.rect.bottom)
 
         base_hp = 30 if hp is None else hp
         # type tweaks
@@ -2448,6 +2451,8 @@ class Zombie:
         return None
 
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
+        # shift last → prev at frame start
+        self._foot_prev = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))
         # ---- BUFF/生成延迟/速度上限：与原逻辑一致 ----
         base_attack = self.attack
         base_speed = float(self.speed)
@@ -2670,6 +2675,8 @@ class Zombie:
         # 同步矩形
         self.rect.x = int(self.x)
         self.rect.y = int(self.y) + INFO_BAR_HEIGHT
+        # record this frame's foot point
+        self._foot_curr = (self.rect.centerx, self.rect.bottom)
         # 圆心是否触到障碍 → Boss可直接碾碎，否则按原CD打可破坏物
         if self.attack_timer >= attack_interval:
             cx = self.x + self.size * 0.5
@@ -2949,17 +2956,23 @@ class Zombie:
                     # 预设下次冷却，稍后在 go 结束时生效（避免 wind 期间被改动）
                     self._dash_cd_next = random.uniform(4.5, 6.0)
 
+
             elif self._dash_state == "go":
                 self._dash_t -= dt
-                # 残影：每隔 AFTERIMAGE_INTERVAL 丢一个 Boss 同尺寸、浅色的影子
+                # emit ghosts along the actual path covered this frame (trailing)
                 self._ghost_accum += dt
-                while self._ghost_accum >= AFTERIMAGE_INTERVAL:
-                    self._ghost_accum -= AFTERIMAGE_INTERVAL
-                    fx, fy = self.rect.centerx, self.rect.bottom  # ← 脚底“落脚点”
-                    game_state.ghosts.append(
-                        AfterImageGhost(fx, fy, self.size, self.size, self.color, ttl=AFTERIMAGE_TTL)
-                    )
-
+                f0 = getattr(self, "_foot_prev", (self.rect.centerx, self.rect.bottom))  # last frame foot
+                f1 = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))  # this frame foot
+                n = int(self._ghost_accum // AFTERIMAGE_INTERVAL)
+                if n > 0:
+                    self._ghost_accum -= n * AFTERIMAGE_INTERVAL
+                    # place n ghosts between f0→f1 (closer to f0 = looks behind)
+                    for i in range(n):
+                        t = (i + 1) / (n + 1)  # 0 < t < 1
+                        gx = f0[0] * (1 - t) + f1[0] * t
+                        gy = f0[1] * (1 - t) + f1[1] * t
+                        game_state.ghosts.append(
+                            AfterImageGhost(gx, gy, self.size, self.size, self.color, ttl=AFTERIMAGE_TTL))
                 if self._dash_t <= 0.0:
                     self._dash_state = "idle"
                     self._dash_cd = getattr(self, "_dash_cd_next", random.uniform(4.5, 6.0))
