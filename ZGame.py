@@ -2266,63 +2266,47 @@ def spawn_splinter_children(parent: "Zombie",
 
 
 class AfterImageGhost:
-    """Boss 冲刺残影：同尺寸、浅色、逐渐淡出"""
-
     def __init__(self, x, y, w, h, base_color, ttl=AFTERIMAGE_TTL):
-        self.x = int(x);
-        self.y = int(y)
-        self.w = int(w);
-        self.h = int(h)
-        # 提亮颜色
-        r, g, b = base_color if base_color else (120, 220, 160)
+        self.x = int(x); self.y = int(y)   # 脚底世界像素
+        self.w = int(w); self.h = int(h)
+        r,g,b = base_color if base_color else (120,220,160)
         r = min(255, int(r * AFTERIMAGE_LIGHTEN))
         g = min(255, int(g * AFTERIMAGE_LIGHTEN))
         b = min(255, int(b * AFTERIMAGE_LIGHTEN))
-        self.color = (r, g, b)
-        self.ttl = float(ttl)
-        self.life0 = float(ttl)
+        self.color = (r,g,b)
+        self.ttl = float(ttl); self.life0 = float(ttl)
 
     def update(self, dt):
         self.ttl -= dt
         return self.ttl > 0
 
+    # —— Top-down：屏幕=世界−相机，按 midbottom 对齐 ——
     def draw_topdown(self, screen, cam_x, cam_y):
-        if self.ttl <= 0:
-            return
-        alpha = max(0, min(255, int(255 * (self.ttl / self.life0))))
-        s = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
+        if self.ttl <= 0: return
+        alpha = max(0, min(255, int(255 * (self.ttl/self.life0))))
+        rect = pygame.Rect(0, 0, self.w, self.h)
+        rect.midbottom = (int(self.x - cam_x), int(self.y - cam_y))
+        s = pygame.Surface(rect.size, pygame.SRCALPHA)
         s.fill((*self.color, alpha))
-        screen.blit(
-            s,
-            (int(self.x - cam_x - self.w // 2),
-             int(self.y - cam_y - self.h // 2))
-        )
+        screen.blit(s, rect.topleft)
 
-    # —— 新增：ISO 版本（世界→格→等距投影→屏幕）——
+    # —— ISO：脚底世界像素 → 世界格 → 等距投影坐标（再设 midbottom）——
     def draw_iso(self, screen, camx, camy):
-        if self.ttl <= 0:
-            return
-        alpha = max(0, min(255, int(255 * (self.ttl / self.life0))))
-        # 世界像素 -> 世界格（注意 HUD 偏移）
+        if self.ttl <= 0: return
+        alpha = max(0, min(255, int(255 * (self.ttl/self.life0))))
         wx = self.x / CELL_SIZE
         wy = (self.y - INFO_BAR_HEIGHT) / CELL_SIZE
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-
-        # 用“脚点 midbottom”对齐人物矩形的地面锚点
-        rect = pygame.Rect(0, 0, int(self.w), int(self.h))
+        rect = pygame.Rect(0, 0, self.w, self.h)
         rect.midbottom = (int(sx), int(sy))
         s = pygame.Surface(rect.size, pygame.SRCALPHA)
         s.fill((*self.color, alpha))
         screen.blit(s, rect.topleft)
 
-    # 兼容旧调用（万一还有地方直接用 draw）
+    # 兜底（仍有旧调用时，尽量别用它）
     def draw(self, screen):
-        # 默认按不带相机的老逻辑（不推荐），仅作兜底
-        if self.ttl <= 0: return
-        alpha = max(0, min(255, int(255 * (self.ttl / self.life0))))
-        s = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
-        s.fill((*self.color, alpha))
-        screen.blit(s, (self.x - self.w // 2, self.y - self.h // 2))
+        pass
+
 
 class Zombie:
     def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED,
@@ -2725,6 +2709,9 @@ class Zombie:
 
     def update_special(self, dt: float, player: 'Player', zombies: List['Zombie'],
                        enemy_shots: List['EnemyShot'], game_state: 'GameState' = None):
+        # --- frame-local centers (avoid UnboundLocal on cx/cy/px/py) ---
+        cx, cy = self.rect.centerx, self.rect.centery
+        px, py = player.rect.centerx, player.rect.centery
 
         # --- Splinter passive split when HP <= 50% (non-lethal path) ---
         if self._can_split and not self._split_done and self.hp > 0 and self.hp <= int(self.max_hp * 0.5):
@@ -2829,8 +2816,6 @@ class Zombie:
             # 基础冷却
             self._spit_cd = max(0.0, getattr(self, "_spit_cd", 0.0) - dt)
             self._split_cd = max(0.0, getattr(self, "_split_cd", 0.0) - dt)
-
-            cx, cy = self.rect.centerx, self.rect.centery
 
             # 阶段1：腐蚀喷吐 + 小怪 2 个/20s
             if self.phase == 1:
@@ -2970,10 +2955,9 @@ class Zombie:
                 self._ghost_accum += dt
                 while self._ghost_accum >= AFTERIMAGE_INTERVAL:
                     self._ghost_accum -= AFTERIMAGE_INTERVAL
-                    cx, cy = self.rect.centerx, self.rect.centery
-                    # 尝试读取 Boss 自身颜色；没有就给个偏绿的默认
+                    fx, fy = self.rect.centerx, self.rect.bottom  # ← 脚底“落脚点”
                     game_state.ghosts.append(
-                        AfterImageGhost(cx, cy, self.size, self.size, self.color, ttl=AFTERIMAGE_TTL)
+                        AfterImageGhost(fx, fy, self.size, self.size, self.color, ttl=AFTERIMAGE_TTL)
                     )
 
                 if self._dash_t <= 0.0:
