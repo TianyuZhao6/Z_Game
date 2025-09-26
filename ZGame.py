@@ -5090,6 +5090,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if not es.alive:
                 enemy_shots.remove(es)
 
+        # afterimages (update & prune)
+        if game_state.ghosts:
+            game_state.ghosts[:] = [g for g in game_state.ghosts if g.update(dt)]
+
         # >>> FAIL CONDITION <<<
         if player.hp <= 0:
             game_result = "fail"
