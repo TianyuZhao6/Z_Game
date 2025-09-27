@@ -2269,11 +2269,12 @@ class AfterImageGhost:
     def __init__(self, x, y, w, h, base_color, ttl=AFTERIMAGE_TTL):
         self.x = int(x); self.y = int(y)   # 脚底世界像素
         self.w = int(w); self.h = int(h)
-        r,g,b = base_color if base_color else (120,220,160)
-        r = min(255, int(r * AFTERIMAGE_LIGHTEN))
-        g = min(255, int(g * AFTERIMAGE_LIGHTEN))
-        b = min(255, int(b * AFTERIMAGE_LIGHTEN))
-        self.color = (r,g,b)
+        r, g, b = base_color if base_color else (120, 220, 160)
+        MIX = 0.42  # 0..1, how much to pull toward white
+        r = int(r + (255 - r) * MIX)
+        g = int(g + (255 - g) * MIX)
+        b = int(b + (255 - b) * MIX)
+        self.color = (r, g, b)
         self.ttl = float(ttl); self.life0 = float(ttl)
 
     def update(self, dt):
