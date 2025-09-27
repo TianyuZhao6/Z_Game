@@ -2351,9 +2351,7 @@ class Zombie:
         # split flags (only for splinter)
         self._can_split = (self.type == "splinter")
         self._split_done = False
-        # track trailing foot points for afterimage
-        self._foot_prev = (self.rect.centerx, self.rect.bottom)
-        self._foot_curr = (self.rect.centerx, self.rect.bottom)
+
 
         base_hp = 30 if hp is None else hp
         # type tweaks
@@ -2367,6 +2365,10 @@ class Zombie:
         self.max_hp = self.hp
         self.size = CELL_SIZE - 6
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
+        # track trailing foot points for afterimage
+        self._foot_prev = (self.rect.centerx, self.rect.bottom)
+        self._foot_curr = (self.rect.centerx, self.rect.bottom)
+
         self.spawn_delay = 0.6
         self._spawn_elapsed = 0.0
 
@@ -2395,6 +2397,9 @@ class Zombie:
                 self.rect.center = (cx, cy)
                 self.x = float(self.rect.x)
                 self.y = float(self.rect.y - INFO_BAR_HEIGHT)
+                # 用最终矩形重置残影足点，保证轨迹贴合
+                self._foot_prev = (self.rect.centerx, self.rect.bottom)
+                self._foot_curr = (self.rect.centerx, self.rect.bottom)
 
     def add_spoils(self, n: int):
         """僵尸拾取金币后的即时强化。"""
