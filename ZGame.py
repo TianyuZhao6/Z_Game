@@ -4796,8 +4796,13 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     clock = pygame.time.Clock()
     # --- initialize time_left before creating game_state, using global current_level ---
     level_idx = int(globals().get("current_level", 0))
-    time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
+    IS_BOSS_STAGE = is_boss_level(current_level)
+
+    # No timer for boss stages (use a harmless large placeholder for the HUD)
+    time_left = LEVEL_TIME_LIMIT if not IS_BOSS_STAGE else 3600.0  # 1 hour display, not actually used
     globals()["_time_left_runtime"] = time_left
+
+
 
     spatial = SpatialHash(SPATIAL_CELL)
 
@@ -4972,11 +4977,27 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     while running:
         dt = clock.tick(60) / 1000.0
         # countdown timer
-        time_left -= dt
-        globals()["_time_left_runtime"] = time_left
-        if time_left <= 0:
-            game_result = "success" if 'game_result' in locals() else "success"
-            running = False
+        if not IS_BOSS_STAGE:
+            time_left -= dt
+            globals()["_time_left_runtime"] = time_left
+
+        # if time_left <= 0:
+        #     game_result = "success" if 'game_result' in locals() else "success"
+        #     running = False
+        if IS_BOSS_STAGE:
+            # win when no living bosses remain
+            bosses_alive = [z for z in zombies if getattr(z, "is_boss", False) and getattr(z, "hp", 1) > 0]
+            if not bosses_alive:
+                # <<< existing success flow (show_success_screen etc.) >>>
+                background_surf = pygame.display.get_surface().copy()
+                reward = show_success_screen(screen, background_surf, reward_choices)
+                return "success", reward, background_surf
+        else:
+            if time_left <= 0:
+                # <<< existing success flow by timer >>>
+                background_surf = pygame.display.get_surface().copy()
+                reward = show_success_screen(screen, background_surf, reward_choices)
+                return "success", reward, background_surf
 
         # === wave spawning ===
         spawn_timer += dt
