@@ -565,7 +565,7 @@ BOSS_SPD_ADD_EXTRA = 1
 
 # ===== Boss1: Memory Devourer (腐蚀集群之心) =====
 # 数值：显著增厚血量与接触伤害
-MEMDEV_BASE_HP = 6800  # 以第5关为基准：4200
+MEMDEV_BASE_HP = 5200  # 以第5关为基准
 MEMDEV_CONTACT_DAMAGE = 60  # 接触伤害提高
 MEMDEV_SPEED = 1.5  # 很慢（后续阶段再涨）
 
@@ -1880,7 +1880,7 @@ def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Z
 def promote_to_boss(z: "Zombie"):
     """Promote a single zombie instance to boss (stats on top of current scaling)."""
     z.is_boss = True
-    z.max_hp = int(z.max_hp * BOSS_HP_MULT_EXTRA);
+    z.max_hp = int(z.max_hp * BOSS_HP_MULT_EXTRA)
     z.hp = z.max_hp
     z.attack = int(z.attack * BOSS_ATK_MULT_EXTRA)
     z.speed += BOSS_SPD_ADD_EXTRA
@@ -4796,12 +4796,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     clock = pygame.time.Clock()
     # --- initialize time_left before creating game_state, using global current_level ---
     level_idx = int(globals().get("current_level", 0))
-    IS_BOSS_STAGE = is_boss_level(current_level)
-
-    # No timer for boss stages (use a harmless large placeholder for the HUD)
-    time_left = LEVEL_TIME_LIMIT if not IS_BOSS_STAGE else 3600.0  # 1 hour display, not actually used
+    time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
     globals()["_time_left_runtime"] = time_left
-
 
 
     spatial = SpatialHash(SPATIAL_CELL)
@@ -4977,27 +4973,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     while running:
         dt = clock.tick(60) / 1000.0
         # countdown timer
-        if not IS_BOSS_STAGE:
-            time_left -= dt
-            globals()["_time_left_runtime"] = time_left
-
-        # if time_left <= 0:
-        #     game_result = "success" if 'game_result' in locals() else "success"
-        #     running = False
-        if IS_BOSS_STAGE:
-            # win when no living bosses remain
-            bosses_alive = [z for z in zombies if getattr(z, "is_boss", False) and getattr(z, "hp", 1) > 0]
-            if not bosses_alive:
-                # <<< existing success flow (show_success_screen etc.) >>>
-                background_surf = pygame.display.get_surface().copy()
-                reward = show_success_screen(screen, background_surf, reward_choices)
-                return "success", reward, background_surf
-        else:
-            if time_left <= 0:
-                # <<< existing success flow by timer >>>
-                background_surf = pygame.display.get_surface().copy()
-                reward = show_success_screen(screen, background_surf, reward_choices)
-                return "success", reward, background_surf
+        time_left -= dt
+        globals()["_time_left_runtime"] = time_left
+        if time_left <= 0:
+            game_result = "success" if 'game_result' in locals() else "success"
+            running = False
 
         # === wave spawning ===
         spawn_timer += dt
