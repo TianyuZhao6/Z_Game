@@ -565,7 +565,7 @@ BOSS_SPD_ADD_EXTRA = 1
 
 # ===== Boss1: Memory Devourer (腐蚀集群之心) =====
 # 数值：显著增厚血量与接触伤害
-MEMDEV_BASE_HP = 5200  # 以第5关为基准
+MEMDEV_BASE_HP = 5300  # 以第5关为基准
 MEMDEV_CONTACT_DAMAGE = 60  # 接触伤害提高
 MEMDEV_SPEED = 1.5  # 很慢（后续阶段再涨）
 
