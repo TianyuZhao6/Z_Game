@@ -735,6 +735,8 @@ ZOMBIE_COLORS = {
 ZOMBIE_COLORS.update({
     "boss_mem": (170, 40, 200),  # 紫红色
     "corruptling": (120, 220, 120),  # 浅绿
+    "boss_mist":   (150, 140, 220),   # 冷紫
+    "mist_clone":  (180, 170, 240),   # 更浅，便于区分
 })
 
 # --- XP rewards (add) ---
