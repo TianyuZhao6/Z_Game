@@ -1036,6 +1036,8 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     if dx > 0:
         min_left = None
         for ob in obstacles_iter:
+            if getattr(ob, "nonblocking", False):
+                continue
             exp = ob.rect.inflate(r * 2, r * 2)
             if exp.top <= cy0 <= exp.bottom and cx0 <= exp.left <= cx1:
                 if (min_left is None) or (exp.left < min_left[0]):
@@ -1050,6 +1052,8 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     elif dx < 0:
         max_right = None
         for ob in obstacles_iter:
+            if getattr(ob, "nonblocking", False):
+                continue
             exp = ob.rect.inflate(r * 2, r * 2)
             if exp.top <= cy0 <= exp.bottom and cx1 <= exp.right <= cx0:
                 if (max_right is None) or (exp.right > max_right[0]):
@@ -1077,6 +1081,9 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     if dy > 0:
         min_top = None
         for ob in obstacles_iter:
+            if getattr(ob, "nonblocking", False):
+                continue
+
             exp = ob.rect.inflate(r * 2, r * 2)
             if exp.left <= cx0 <= exp.right and cy0 <= exp.top <= cy1:
                 if (min_top is None) or (exp.top < min_top[0]):
@@ -1092,6 +1099,9 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     elif dy < 0:
         max_bottom = None
         for ob in obstacles_iter:
+            if getattr(ob, "nonblocking", False):
+                continue
+
             exp = ob.rect.inflate(r * 2, r * 2)
             if exp.left <= cx0 <= exp.right and cy1 <= exp.bottom <= cy0:
                 if (max_bottom is None) or (exp.bottom > max_bottom[0]):
