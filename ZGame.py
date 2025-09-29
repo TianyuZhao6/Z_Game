@@ -472,6 +472,8 @@ BOSS_RING_BURSTS = 2
 BOSS_RING_PROJECTILES = 20
 BOSS_RING_SPEED = 420
 BOSS_RING_CD = 4.0
+
+
 # === Dash & Afterimage tunables ===
 BOSS_DASH_WINDUP = 0.40  # 蓄力前摇（保留张力）
 BOSS_DASH_GO_TIME = 0.60  # 冲刺持续时间（原来 0.28 太短）
@@ -611,6 +613,53 @@ RAIN_TELEGRAPH_T = 0.5
 # 濒死冲锋（<10%）
 CHARGE_THRESH = 0.10
 CHARGE_SPEED = 3.0
+# --- Mistweaver (Boss II) — appears at Lv10 (index 9) ---
+MISTWEAVER_LEVELS = {9}     # 0-based：第10关
+MIST_BASE_HP = 6500
+MIST_CONTACT_DAMAGE = 28
+MIST_SPEED = 2.2            # 略慢于玩家
+
+# Fog field (被动视野压缩)
+FOG_VIEW_TILES = 6                      # 约 6 格视距
+FOG_OVERLAY_ALPHA = 190                 # 覆雾不透明度
+FOG_LANTERN_COUNT = 3                   # 地图生成 3 个“驱雾灯笼”
+FOG_LANTERN_HP = 60
+FOG_LANTERN_CLEAR_RADIUS = int(CELL_SIZE * 3.2)   # 灯笼清雾半径（~3~4格）
+
+# 雾门闪现
+MIST_BLINK_CD = 10.0
+MIST_DOOR_STAY = 2.0
+MIST_DOOR_DPS = 5
+MIST_DOOR_SLOW = 0.20
+
+# P1
+MIST_P1_BLADE_CD = 3.5
+MIST_P1_BLADE_COUNT = 3           # 扇形 3 枚
+MIST_P1_STRIP_TIME = 1.2
+MIST_P1_STRIP_DPS  = 10
+MIST_P1_STRIP_SLOW = 0.35
+MIST_SUMMON_IMPS   = 3            # 每轮召唤 3 个 Wormling
+
+# P2
+MIST_P2_STORM_CD   = 8.0
+MIST_P2_STORM_WIND = 0.8
+MIST_P2_STORM_POINTS = 8
+MIST_P2_POOL_DPS   = 14
+MIST_P2_POOL_SLOW  = 0.40
+MIST_SILENCE_TIME  = 3.0
+MIST_SILENCE_RADIUS = int(CELL_SIZE * 3.0)
+
+# P3
+MIST_SONAR_STEP    = 0.10         # 每掉 10% 触发一次
+MIST_MARK_TIME     = 3.0          # 被声纳命中后“被标记”时长
+MIST_CHASE_BOOST   = 1.0          # 标记时 Boss 额外 +1.0 速度
+MIST_PHASE_CHANCE  = 0.15         # 受击 15% 雾化
+MIST_PHASE_TIME    = 0.7
+MIST_PHASE_TELE_TILES = 2.0       # 雾化时瞬位 2 格
+
+# 远程伤害抗性（>=5格距离 → 0.8x）
+MIST_RANGED_REDUCE_TILES = 5
+MIST_RANGED_MULT         = 0.8
 
 # ----- affixes (small random spice) -----
 AFFIX_CHANCE_BASE = 0.10
@@ -5854,7 +5903,6 @@ if __name__ == "__main__":
 # Add new type of boss: BOSS Ⅱ：「雾织母巫 · Mistweaver」
 #
 # 主题：大雾支配者，靠分身与迷雾错位压迫。
-# 它教玩家什么：在视野受限与多目标干扰下，学会读预警、拉开站位，优先处理“视野物件”。
 #
 # 基本数值（以第10关为基准）
 #
