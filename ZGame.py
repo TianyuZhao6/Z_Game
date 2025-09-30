@@ -2138,6 +2138,16 @@ class Obstacle:
     def grid_pos(self):
         return self.rect.x // CELL_SIZE, (self.rect.y - INFO_BAR_HEIGHT) // CELL_SIZE
 
+class FogLantern(Obstacle):
+    def __init__(self, x: int, y: int, hp: int = FOG_LANTERN_HP):
+        super().__init__(x, y, "Lantern", health=hp)
+        self.nonblocking = True  # 关键：不参与移动碰撞
+        # 更明显一点的可视尺寸
+        self.rect = pygame.Rect(self.rect.x + 6, self.rect.y + 6, CELL_SIZE - 12, CELL_SIZE - 12)
+
+    @property
+    def alive(self):
+        return self.health is None or self.health > 0
 
 class MainBlock(Obstacle):
     def __init__(self, x: int, y: int, health: Optional[int] = MAIN_BLOCK_HEALTH):
@@ -4109,6 +4119,9 @@ class GameState:
         self.acids = []  # List[AcidPool]
         self.telegraphs = []  # List[TelegraphCircle]
         self.ghosts = []  # 冲刺残影列表
+        self.fog_on = False
+        self.fog_radius_px = FOG_VIEW_TILES * CELL_SIZE
+        self._fog_ui_t = 0.0  # 轻微呼吸动画
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
