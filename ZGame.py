@@ -3161,6 +3161,160 @@ class MemoryDevourerBoss(Zombie):
 
     # （可选）你也可以覆盖 draw，画个大圆/贴图；目前沿用矩形色块就行
 
+class MistClone(Zombie):
+    def __init__(self, gx: int, gy: int):
+        super().__init__((gx, gy), attack=8, speed=int(MIST_SPEED*CELL_SIZE/ CELL_SIZE), ztype="mist_clone", hp=1)
+        self.color = ZOMBIE_COLORS["mist_clone"]
+        self.size = CELL_SIZE - 6
+        self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
+        self.is_illusion = True
+
+    def update_special(self, dt, player, zombies, enemy_shots, game_state=None):
+        # 命中即散，死亡时留一个小雾爆
+        if self.hp <= 0 and not getattr(self, "_mist_boom", False):
+            game_state.spawn_acid_pool(self.rect.centerx, self.rect.centery,
+                                       r=int(CELL_SIZE*0.6), life=1.2, dps=8, slow=0.25)
+            self._mist_boom = True
+
+
+class MistweaverBoss(Zombie):
+    def __init__(self, grid_pos: tuple[int, int], level_idx: int):
+        gx, gy = grid_pos
+        super().__init__((gx, gy),
+                         attack=MIST_CONTACT_DAMAGE,
+                         speed=int(MIST_SPEED),
+                         ztype="boss_mist",
+                         hp=int(MIST_BASE_HP * (1 + 0.12 * max(0, level_idx - 9))))
+        self.is_boss = True
+        self.boss_name = "Mistweaver"
+        self.color = ZOMBIE_COLORS["boss_mist"]
+        # 体型稍大（比普通僵尸更有压迫感）
+        self.size = int(CELL_SIZE * 1.6)
+        self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
+        self.radius = int(self.size * 0.55)
+
+        # 阶段
+        self.phase = 1
+        self._storm_cd = 2.0
+        self._blade_cd = 1.5
+        self._blink_cd = MIST_BLINK_CD
+        self._sonar_next = 1.0   # 下一个“HP 比例阈值”（先置 100%→70% 时触发）
+        self._clone_ids = set()
+
+        # 启动时请求雾场（GameState 每帧会判定并开启）
+        self._want_fog = True
+
+    def _has_clones(self, zombies):
+        n = 0
+        for z in zombies:
+            if getattr(z, "is_illusion", False) and getattr(z, "hp", 0) > 0:
+                n += 1
+        return n
+
+    def _ensure_clones(self, zombies, game_state):
+        # 至多 2 个分身存在
+        need = max(0, 2 - self._has_clones(zombies))
+        while need > 0:
+            # 随机在本体附近 2~3 格生成
+            gx = int((self.x + self.size*0.5) // CELL_SIZE) + random.choice((-3,-2,2,3))
+            gy = int((self.y + self.size*0.5) // CELL_SIZE) + random.choice((-3,-2,2,3))
+            if 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE and (gx, gy) not in game_state.obstacles:
+                zombies.append(MistClone(gx, gy))
+                need -= 1
+
+    def _do_blink(self, game_state):
+        # 在两处随机门之间闪现一次，并在原地留下 2 秒雾门减速/DoT
+        cx, cy = self.rect.centerx, self.rect.centery
+        # 随机另一个位置（边缘附近）
+        gx = random.choice((2, GRID_SIZE-3))
+        gy = random.randint(2, GRID_SIZE-3)
+        tx = gx * CELL_SIZE + CELL_SIZE//2
+        ty = gy * CELL_SIZE + CELL_SIZE//2 + INFO_BAR_HEIGHT
+        # 两处门的提示圈 + 伤害池（2秒）
+        game_state.spawn_acid_pool(cx, cy, r=int(CELL_SIZE*0.9), life=MIST_DOOR_STAY, dps=MIST_DOOR_DPS, slow=MIST_DOOR_SLOW)
+        game_state.spawn_acid_pool(tx, ty, r=int(CELL_SIZE*0.9), life=MIST_DOOR_STAY, dps=MIST_DOOR_DPS, slow=MIST_DOOR_SLOW)
+        # 把自己瞬移到对门
+        self.x = tx - self.size*0.5
+        self.y = ty - self.size*0.5 - INFO_BAR_HEIGHT
+        self.rect.x = int(self.x)
+        self.rect.y = int(self.y) + INFO_BAR_HEIGHT
+
+    def update_special(self, dt, player, zombies, enemy_shots, game_state=None):
+        hp_pct = max(0.0, self.hp / max(1, self.max_hp))
+        self.phase = 1 if hp_pct > 0.70 else (2 if hp_pct > 0.35 else 3)
+
+        # 保持分身
+        self._ensure_clones(zombies, game_state)
+
+        # 雾门闪现 CD
+        self._blink_cd -= dt
+        if self._blink_cd <= 0:
+            self._do_blink(game_state)
+            self._blink_cd = MIST_BLINK_CD
+
+        # P1：雾刃扇形 + 召唤雾妖（wormlings）
+        if self.phase == 1:
+            self._blade_cd -= dt
+            if self._blade_cd <= 0:
+                ang0 = math.atan2(player.rect.centery - self.rect.centery, player.rect.centerx - self.rect.centerx)
+                spread = math.radians(40)
+                for i in range(-1, 2):   # -1,0,1
+                    ang = ang0 + i * spread
+                    # 用 4~5 个小池子拼“雾带”
+                    for k in range(1, 5):
+                        d = k * CELL_SIZE * 1.0
+                        x = self.rect.centerx + math.cos(ang) * d
+                        y = self.rect.centery + math.sin(ang) * d
+                        game_state.spawn_acid_pool(x, y, r=int(CELL_SIZE*0.45),
+                                                   life=MIST_P1_STRIP_TIME, dps=MIST_P1_STRIP_DPS, slow=MIST_P1_STRIP_SLOW)
+                self._blade_cd = MIST_P1_BLADE_CD
+
+            # 召唤
+            self._storm_cd -= dt
+            if self._storm_cd <= 0:
+                for _ in range(MIST_SUMMON_IMPS):
+                    game_state.wormlings.append(Wormling(self.rect.centerx, self.rect.centery))
+                self._storm_cd = 6.5
+
+        # P2：白化风暴（0.8s 后落 8 个雾池）+ 静默领域
+        if self.phase == 2:
+            self._storm_cd -= dt
+            if self._storm_cd <= 0:
+                # 先做一个“全屏白雾”预警（用 acid telegraph 也行）
+                pts = []
+                for _ in range(MIST_P2_STORM_POINTS):
+                    gx = random.randint(1, GRID_SIZE - 2)
+                    gy = random.randint(1, GRID_SIZE - 2)
+                    x = gx * CELL_SIZE + CELL_SIZE // 2
+                    y = gy * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT
+                    pts.append((x, y))
+                # 直接在 0.8s 后落雾池（用 telegraph 的 payload 或者简单延迟）
+                for (x, y) in pts:
+                    game_state.spawn_telegraph(self.rect.centerx, self.rect.centery,
+                                               r=22, life=MIST_P2_STORM_WIND, kind="acid",
+                                               payload={"points":[(x, y)], "radius": int(CELL_SIZE*0.5),
+                                                        "life": 4.0, "dps": MIST_P2_POOL_DPS, "slow": MIST_P2_POOL_SLOW})
+                self._storm_cd = MIST_P2_STORM_CD
+
+            # 静默领域：随机一个圆区 3 秒，里面额外减速（简化成强减速代替“禁技能”）
+            if random.random() < 0.007:  # 低频随机触发
+                rx = random.randint(CELL_SIZE*3, WINDOW_SIZE - CELL_SIZE*3)
+                ry = random.randint(CELL_SIZE*3, WINDOW_SIZE - CELL_SIZE*3) + INFO_BAR_HEIGHT
+                game_state.spawn_acid_pool(rx, ry, r=MIST_SILENCE_RADIUS, life=MIST_SILENCE_TIME, dps=0, slow=0.50)
+
+        # P3：声纳圈；被命中者“被标记”，Boss 追击加速
+        if self.phase == 3:
+            next_pct = getattr(self, "_sonar_next", 0.70)
+            while hp_pct <= next_pct and next_pct >= 0.0:
+                game_state.spawn_telegraph(self.rect.centerx, self.rect.centery,
+                                           r=int(self.radius*1.8), life=0.6, kind="ring",
+                                           payload={"note":"mist_sonar"})
+                self._sonar_next = next_pct - MIST_SONAR_STEP
+                next_pct = self._sonar_next
+            # 如果玩家处于“标记”，给予追击加速
+            if getattr(player, "_mist_mark_t", 0.0) > 0.0:
+                self.buff_t = max(self.buff_t, dt)
+                self.buff_spd_add = max(self.buff_spd_add, MIST_CHASE_BOOST)
 
 class Bullet:
     def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE,
@@ -4187,18 +4341,6 @@ class GameState:
     def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME):
         self.acids.append(AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life)))
 
-    # def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, life=ACID_LIFETIME, slow_frac=None, slow=None):
-    #     # Accept either 'slow' or 'slow_frac' from older/newer callers
-    #     if slow_frac is None and slow is not None:
-    #         slow_frac = slow
-    #     if slow_frac is None:
-    #         slow_frac = ACID_SLOW_FRAC
-    #
-    #     # Clamp into play area
-    #     x = max(8, min(int(x), WINDOW_SIZE - 8))
-    #     y = max(INFO_BAR_HEIGHT + 8, min(int(y), WINDOW_SIZE + INFO_BAR_HEIGHT - 8))
-    #
-    #     self.acid_pools.append(AcidPool(int(x), int(y), int(r), float(dps), float(slow_frac), float(life)))
 
     def spawn_projectile(self, proj):
         self.projectiles.append(proj)
@@ -4284,6 +4426,54 @@ class GameState:
             d.step(dt)
             if not d.alive():
                 self.dmg_texts.remove(d)
+
+    def enable_fog_field(self):
+        if self.fog_on:
+            return
+        self.fog_on = True
+        # 随机放置 3 个“非阻挡”的驱雾灯笼
+        spawned = 0
+        tried = 0
+        while spawned < FOG_LANTERN_COUNT and tried < 200:
+            tried += 1
+            gx = random.randint(2, GRID_SIZE - 3)
+            gy = random.randint(2, GRID_SIZE - 3)
+            if (gx, gy) in self.obstacles:
+                continue
+            # 避免放在玩家脚下：用主角出生点近似
+            self.obstacles[(gx, gy)] = FogLantern(gx, gy)
+            spawned += 1
+
+    def disable_fog_field(self):
+        if not self.fog_on:
+            return
+        self.fog_on = False
+        # 清理已死的灯笼；保留其它障碍不动
+        for gp, ob in list(self.obstacles.items()):
+            if getattr(ob, "type", "") == "Lantern":
+                del self.obstacles[gp]
+
+    def draw_fog_overlay(self, screen, cam_x, cam_y, player):
+        if not self.fog_on:
+            return
+        self._fog_ui_t += 0.03
+        ov = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+        ov.fill((14, 16, 20, FOG_OVERLAY_ALPHA))
+
+        # 玩家开“洞”
+        pr = int(self.fog_radius_px)
+        cx, cy = player.rect.centerx - cam_x, player.rect.centery - cam_y
+        pygame.draw.circle(ov, (0, 0, 0, 0), (int(cx), int(cy)), pr)
+
+        # 灯笼开“洞”
+        for ob in self.obstacles.values():
+            if getattr(ob, "type", "") == "Lantern" and getattr(ob, "health", 1) > 0:
+                lr = int(FOG_LANTERN_CLEAR_RADIUS * (1.0 + 0.03 * math.sin(self._fog_ui_t)))
+                lx = ob.rect.centerx - cam_x
+                ly = ob.rect.centery - cam_y
+                pygame.draw.circle(ov, (0, 0, 0, 0), (int(lx), int(ly)), lr)
+
+        screen.blit(ov, (0, 0))
 
 
 # ==================== 游戏渲染函数 ====================
