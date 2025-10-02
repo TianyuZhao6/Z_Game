@@ -3451,6 +3451,15 @@ class Bullet:
                         if player: player.add_xp(XP_PLAYER_BLOCK)
                     self.alive = False
                     return
+        # 命中灯笼
+        for gp, ob in list(game_state.obstacles.items()):
+            if getattr(ob, "type", "") == "Lantern" and r.colliderect(ob.rect):
+                if ob.health is not None:
+                    ob.health -= BULLET_DAMAGE_BLOCK
+                    if ob.health <= 0:
+                        del game_state.obstacles[gp]
+                self.alive = False
+                return
 
     def draw(self, screen, cam_x, cam_y):
         pygame.draw.circle(screen, (255, 255, 255), (int(self.x - cam_x), int(self.y - cam_y)), BULLET_RADIUS)
