@@ -5377,6 +5377,16 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         # afterimages (update & prune)
         if game_state.ghosts:
             game_state.ghosts[:] = [g for g in game_state.ghosts if g.update(dt)]
+            
+        # Fog
+        boss_now = _find_current_boss(zombies)
+        if boss_now and getattr(boss_now, "type", "") == "boss_mist":
+            if not getattr(game_state, "fog_on", False):
+                game_state.enable_fog_field()
+        else:
+            # Boss 不在了 → 收雾
+            if getattr(game_state, "fog_on", False):
+                game_state.disable_fog_field()
 
         # >>> FAIL CONDITION <<<
         if player.hp <= 0:
