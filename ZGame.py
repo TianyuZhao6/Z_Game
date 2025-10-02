@@ -3352,6 +3352,30 @@ class Bullet:
                 dealt = int(round(base * (crit_m if is_crit else 1.0)))
 
                 cx, cy = z.rect.centerx, z.rect.centery
+                # ==== Mistweaver 专属：远程抗性 + 受击雾化 ====
+                if getattr(z, "type", "") == "boss_mist":
+                    # 受击雾化：直接免伤并瞬位
+                    if random.random() < MIST_PHASE_CHANCE:
+                        # 取消这发伤害
+                        game_state.add_damage_text(z.rect.centerx, z.rect.centery, "PHASE", crit=False, kind="shield")
+                        # 向远离玩家的方向瞬位 2 格
+                        dx = z.rect.centerx - player.rect.centerx
+                        dy = z.rect.centery - player.rect.centery
+                        L = (dx * dx + dy * dy) ** 0.5 or 1.0
+                        ox = dx / L * (MIST_PHASE_TELE_TILES * CELL_SIZE)
+                        oy = dy / L * (MIST_PHASE_TELE_TILES * CELL_SIZE)
+                        z.x += ox;
+                        z.y += oy - INFO_BAR_HEIGHT
+                        z.rect.x = int(z.x);
+                        z.rect.y = int(z.y + INFO_BAR_HEIGHT)
+                        self.alive = False
+                        return
+
+                    # 远程伤害抗性（≥5格）
+                    dist_tiles = math.hypot((z.rect.centerx - self.x) / CELL_SIZE,
+                                            (z.rect.centery - self.y) / CELL_SIZE)
+                    if dist_tiles >= MIST_RANGED_REDUCE_TILES:
+                        dealt = int(dealt * MIST_RANGED_MULT)
 
                 # --- apply to shield first, overflow to HP ---
                 if getattr(z, "shield_hp", 0) > 0:
@@ -3382,32 +3406,7 @@ class Bullet:
                         z._can_split = False
                         # 生成子体；父体不掉落金币（避免三倍通胀），XP也交给后续击杀子体获得
                         spawn_splinter_children(z, zombies, game_state, level_idx=0, wave_index=0)
-                        # # Twin：若死者是Boss且有存活的孪生体，让对方回满并狂暴
-                        # if getattr(z, "is_boss", False):
-                        #     partner = None
-                        #     ref = getattr(z, "_twin_partner_ref", None)
-                        #     if callable(ref):  # weakref
-                        #         partner = ref()
-                        #     elif ref is not None:
-                        #         partner = ref
-                        #     # 如果没存ref，尝试在zombies里按twin_id搜
-                        #     if partner is None and getattr(z, "twin_id", None) is not None:
-                        #         for _cand in zombies:
-                        #             if getattr(_cand, "is_boss", False) and getattr(_cand, "twin_id",
-                        #                                                             None) == z.twin_id and _cand is not z:
-                        #                 partner = _cand
-                        #                 break
-                        #
-                        #     if partner and getattr(partner, "hp", 0) > 0 and not getattr(partner, "_twin_powered",
-                        #                                                                  False):
-                        #         if hasattr(partner, "on_twin_partner_death"):
-                        #             partner.on_twin_partner_death()
-                        #         else:
-                        #             # 兜底：没有方法也强行赋值
-                        #             partner.hp = int(getattr(partner, "max_hp", partner.hp))
-                        #             partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
-                        #             partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
-                        #             partner._twin_powered = True
+
                         # 从场上移除父体
                         zombies.remove(z)
                         self.alive = False
@@ -5377,7 +5376,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         # afterimages (update & prune)
         if game_state.ghosts:
             game_state.ghosts[:] = [g for g in game_state.ghosts if g.update(dt)]
-            
+
         # Fog
         boss_now = _find_current_boss(zombies)
         if boss_now and getattr(boss_now, "type", "") == "boss_mist":
