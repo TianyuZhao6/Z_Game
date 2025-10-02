@@ -2040,6 +2040,7 @@ def spawn_wave_with_budget(game_state: "GameState",
                     if ob.rect.colliderect(r):
                         del game_state.obstacles[gp]
 
+
         # choose a type that fits remaining budget
         remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in zombies if
                                  getattr(z, "_spawn_wave_tag", -1) == wave_index)
