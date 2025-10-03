@@ -1990,11 +1990,12 @@ def spawn_wave_with_budget(game_state: "GameState",
         i += 1
         # if we must place a boss, do it once, then continue budget spending
         if force_boss and not boss_done:
+            gx0 = max(0, min(gx, GRID_SIZE - BOSS_FOOTPRINT_TILES))
+            gy0 = max(0, min(gy, GRID_SIZE - BOSS_FOOTPRINT_TILES))
             # 第5关采用 Twin；其余 Boss 关单体
             if ENABLE_TWIN_BOSS and (current_level in TWIN_BOSS_LEVELS):
                 # Clamp 2x2 footprints fully inside the grid and keep 2 tiles between them
-                gx0 = max(0, min(gx, GRID_SIZE - BOSS_FOOTPRINT_TILES))
-                gy0 = max(0, min(gy, GRID_SIZE - BOSS_FOOTPRINT_TILES))
+
                 gx2 = max(0, min(gx0 + BOSS_FOOTPRINT_TILES, GRID_SIZE - BOSS_FOOTPRINT_TILES))
                 gy2 = gy0
 
@@ -2030,16 +2031,30 @@ def spawn_wave_with_budget(game_state: "GameState",
                 zombies.append(b2)
                 boss_done = True
 
-            else:
-                gx0 = max(0, min(gx, GRID_SIZE - BOSS_FOOTPRINT_TILES))
-                gy0 = max(0, min(gy, GRID_SIZE - BOSS_FOOTPRINT_TILES))
-                z = create_memory_devourer((gx0, gy0), current_level)
-                # Clear footprint at spawn
+            elif current_level in MISTWEAVER_LEVELS:
+                # Mistweaver：第10关
+                z = MistweaverBoss((gx0, gy0), current_level)
                 r = pygame.Rect(int(z.x), int(z.y + INFO_BAR_HEIGHT), int(z.size), int(z.size))
                 for gp, ob in list(game_state.obstacles.items()):
                     if ob.rect.colliderect(r):
                         del game_state.obstacles[gp]
+                z._spawn_wave_tag = wave_index
+                zombies.append(z)
+                boss_done = True
+                # 让本关启动雾场（GameState 里会响应）
+                if hasattr(game_state, "request_fog_field"):
+                    game_state.request_fog_field()
 
+            else:
+                z = create_memory_devourer((gx0, gy0), current_level)  # 你现有的函数
+            # 清脚下障碍（保持与你 twin 的逻辑一致）
+            r = pygame.Rect(int(z.x), int(z.y + INFO_BAR_HEIGHT), int(z.size), int(z.size))
+            for gp, ob in list(game_state.obstacles.items()):
+                if ob.rect.colliderect(r):
+                    del game_state.obstacles[gp]
+            z._spawn_wave_tag = wave_index
+            zombies.append(z)
+            boss_done = True
 
         # choose a type that fits remaining budget
         remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in zombies if
