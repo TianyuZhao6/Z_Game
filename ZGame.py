@@ -619,6 +619,26 @@ MIST_BASE_HP = 6500
 MIST_CONTACT_DAMAGE = 28
 MIST_SPEED = 2.2            # 略慢于玩家
 
+# 统一的地面危害样式
+HAZARD_STYLES = {
+    "acid": {  # 绿色腐蚀
+        "fill": (70, 200, 100),  # 主色
+        "ring": (150, 255, 170), # 外圈高光
+        "particle": (120, 230, 140),
+    },
+    "mist": {  # 冷色雾池
+        "fill": (160, 170, 220),
+        "ring": (210, 220, 255),
+        "particle": (200, 210, 240),
+    },
+    "mist_door": {  # 雾门：更偏白、带脉冲圈
+        "fill": (190, 200, 255),
+        "ring": (240, 245, 255),
+        "particle": (220, 230, 255),
+        "pulse": True
+    },
+}
+
 # Fog field (被动视野压缩)
 FOG_VIEW_TILES = 6                      # 约 6 格视距
 FOG_OVERLAY_ALPHA = 190                 # 覆雾不透明度
@@ -2046,17 +2066,18 @@ def spawn_wave_with_budget(game_state: "GameState",
                     game_state.request_fog_field()
 
             else:
-                z = create_memory_devourer((gx0, gy0), current_level)  # 你现有的函数
-            # 清脚下障碍（保持与你 twin 的逻辑一致）
-            r = pygame.Rect(int(z.x), int(z.y + INFO_BAR_HEIGHT), int(z.size), int(z.size))
-            for gp, ob in list(game_state.obstacles.items()):
-                if ob.rect.colliderect(r):
-                    del game_state.obstacles[gp]
-            z._spawn_wave_tag = wave_index
-            zombies.append(z)
-            boss_done = True
+                # 其它 Boss 关：单体 Memory Devourer
+                z = create_memory_devourer((gx0, gy0), current_level)
+                r = pygame.Rect(int(z.x), int(z.y + INFO_BAR_HEIGHT), int(z.size), int(z.size))
+                for gp, ob in list(game_state.obstacles.items()):
+                    if ob.rect.colliderect(r):
+                        del game_state.obstacles[gp]
+                z._spawn_wave_tag = wave_index
+                zombies.append(z)
+                boss_done = True
+            continue
 
-        # choose a type that fits remaining budget
+            # choose a type that fits remaining budget
         remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in zombies if
                                  getattr(z, "_spawn_wave_tag", -1) == wave_index)
         t = _pick_type_by_budget(max(1, remaining), current_level)
@@ -4300,6 +4321,9 @@ class GameState:
         self.fog_on = False
         self.fog_radius_px = FOG_VIEW_TILES * CELL_SIZE
         self._fog_ui_t = 0.0  # 轻微呼吸动画
+        self.fog_active = False
+        self.fog_alpha = FOG_OVERLAY_ALPHA
+        self.lanterns = []  # [(x_px, y_px, hp)]
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -4362,9 +4386,11 @@ class GameState:
         return healed
 
     # ---- 地面腐蚀池 ----
-    def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME):
-        self.acids.append(AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life)))
-
+    def spawn_acid_pool(self, x, y, r=ACID_POOL_RADIUS_PX, life=ACID_POOL_TIME, dps=ACID_POOL_DPS, slow=ACID_POOL_SLOW,
+                        style="acid"):
+        pool = {"x": int(x), "y": int(y), "r": int(r), "life": float(life), "t": float(life),
+                "dps": float(dps), "slow": float(slow), "style": style, "pcd": 0.0}
+        self.hazards.append(pool)
 
     def spawn_projectile(self, proj):
         self.projectiles.append(proj)
@@ -4477,6 +4503,26 @@ class GameState:
             if getattr(ob, "type", "") == "Lantern":
                 del self.obstacles[gp]
 
+    def request_fog_field(self):
+        # 供 Boss 生成时调用（见上文 spawn_wave_with_budget）
+        self._want_fog = True
+
+    def ensure_fog_field(self, obstacles):
+        if getattr(self, "_want_fog", False) and not self.fog_active:
+            self.fog_active = True
+            self._want_fog = False
+            # 随机 3 个灯笼（不与障碍重叠；放到 obstacles 里以便可被打掉）
+            placed = 0
+            tries = 200
+            while placed < FOG_LANTERN_COUNT and tries > 0:
+                tries -= 1
+                gx = random.randint(2, GRID_SIZE - 3)
+                gy = random.randint(2, GRID_SIZE - 3)
+                if (gx, gy) in obstacles: continue
+                ob = FogLantern(gx, gy, hp=FOG_LANTERN_HP)
+                obstacles[(gx, gy)] = ob
+                placed += 1
+
     def draw_fog_overlay(self, screen, cam_x, cam_y, player):
         if not self.fog_on:
             return
@@ -4496,7 +4542,6 @@ class GameState:
                 lx = ob.rect.centerx - cam_x
                 ly = ob.rect.centery - cam_y
                 pygame.draw.circle(ov, (0, 0, 0, 0), (int(lx), int(ly)), lr)
-
         screen.blit(ov, (0, 0))
 
 
