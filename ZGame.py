@@ -4392,6 +4392,37 @@ class GameState:
                 "dps": float(dps), "slow": float(slow), "style": style, "pcd": 0.0}
         self.hazards.append(pool)
 
+        for h in list(self.hazards):
+            h["t"] -= dt
+            if h["t"] <= 0:
+                self.hazards.remove(h);
+                continue
+            style = HAZARD_STYLES.get(h.get("style", "acid"), HAZARD_STYLES["acid"])
+            cx = int(h["x"] - cam_x);
+            cy = int(h["y"] - cam_y);
+            rr = int(h["r"])
+            # 主体圆
+            s = pygame.Surface((rr * 2, rr * 2), pygame.SRCALPHA)
+            alpha = max(40, int(150 * (h["t"] / h["life"])))
+            pygame.draw.circle(s, (*style["fill"], alpha), (rr, rr), rr)
+            # 外圈高光
+            pygame.draw.circle(s, (*style["ring"], max(30, alpha // 2)), (rr, rr), rr, width=3)
+            screen.blit(s, (cx - rr, cy - rr))
+            # 简单粒子：每 0.06s 随机 2~3 个小点
+            h["pcd"] += dt
+            if h["pcd"] > 0.06:
+                h["pcd"] = 0.0
+                for _ in range(3):
+                    px = cx + random.randint(-rr, rr)
+                    py = cy + random.randint(-rr, rr)
+                    if (px - cx) ** 2 + (py - cy) ** 2 <= rr * rr:
+                        pygame.draw.circle(screen, style["particle"], (px, py), 2)
+            # 雾门：加脉冲环
+            if style.get("pulse"):
+                ph = (1.0 - (h["t"] / h["life"]))
+                ring_r = int(rr * 0.6 + rr * 0.25 * math.sin(ph * 6.28))
+                pygame.draw.circle(screen, style["ring"], (cx, cy), ring_r, width=2)
+
     def spawn_projectile(self, proj):
         self.projectiles.append(proj)
 
@@ -4543,8 +4574,7 @@ class GameState:
                 ly = ob.rect.centery - cam_y
                 pygame.draw.circle(ov, (0, 0, 0, 0), (int(lx), int(ly)), lr)
         screen.blit(ov, (0, 0))
-
-
+       
 # ==================== 游戏渲染函数 ====================
 def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
                     bullets=None, enemy_shots=None) -> pygame.Surface:
