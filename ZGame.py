@@ -4561,6 +4561,32 @@ class GameState:
                 obstacles[(gx, gy)] = ob
                 placed += 1
 
+    def _place_fog_lanterns(self, count=3):
+        import random
+        placed = 0
+        tries = 200
+        while placed < count and tries > 0:
+            tries -= 1
+            gx = random.randint(2, GRID_SIZE - 3)
+            gy = random.randint(2, GRID_SIZE - 3)
+            gp = (gx, gy)
+            # 不要与障碍/道具重合
+            if gp in self.obstacles:
+                continue
+            # 与其他灯笼保持一定距离（避免堆在一起）
+            ok = True
+            for ob in self.obstacles.values():
+                if getattr(ob, "type", "") == "Lantern":
+                    x0, y0 = ob.grid_pos
+                    if abs(x0 - gx) + abs(y0 - gy) < 5:
+                        ok = False;
+                        break
+            if not ok:
+                continue
+            # 放置
+            lan = FogLantern(gx, gy, hp=FOG_LANTERN_HP)
+            self.obstacles[gp] = lan
+            placed += 1
     def draw_hazards_iso(self, screen, camx, camy):
         # 1) 落点提示圈（telegraphs）
         for t in getattr(self, "telegraphs", []):
