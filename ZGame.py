@@ -4587,26 +4587,60 @@ class GameState:
             lan = FogLantern(gx, gy, hp=FOG_LANTERN_HP)
             self.obstacles[gp] = lan
             placed += 1
+
     def draw_hazards_iso(self, screen, camx, camy):
-        # 1) 落点提示圈（telegraphs）
-        for t in getattr(self, "telegraphs", []):
-            draw_iso_ground_ellipse(screen, t.x, t.y, t.r, color=t.color,
-                                    alpha=180, camx=camx, camy=camy, fill=False)
+        # 1) 落点预警圈（telegraphs）
+        for t in list(self.telegraphs):
+            # 你已有 draw_iso_ground_ellipse 之类的地表椭圆工具，就用它
+            draw_iso_ground_ellipse(
+                screen, t["x"], t["y"], t["r"],
+                color=t.get("color", (240, 220, 120)),
+                alpha=t.get("alpha", 180),
+                camx=camx, camy=camy, fill=False
+            )
 
-        # 2) 酸池 / 雾池（共享地面椭圆绘制，颜色来自 style）
-        for a in getattr(self, "acids", []):
-            col = getattr(a, "color", (90, 255, 120))  # 或从 HAZARD_STYLES 取
-            draw_iso_ground_ellipse(screen, a.x, a.y, a.r, color=col,
-                                    alpha=120, camx=camx, camy=camy, fill=True)
-
-        for h in getattr(self, "hazards", []):
-            st = HAZARD_STYLES.get(getattr(h, "style", "acid"), None)
+        # 2) 地面危害（acid / mist / mist_door 统一 style）
+        for h in list(self.hazards):
+            st = HAZARD_STYLES.get(h.get("style", "acid"))
             if not st:
                 continue
-            draw_iso_ground_ellipse(screen, h.x, h.y, h.r,
-                                    color=st["fill"], alpha=st["alpha"],
-                                    camx=camx, camy=camy, fill=True)
-            # 雾门可以再叠一层细长椭圆或门框效果
+            draw_iso_ground_ellipse(
+                screen, h["x"], h["y"], h["r"],
+                color=st["fill"], alpha=120, camx=camx, camy=camy, fill=True
+            )
+            # 雾门可选：加一圈呼吸窄环
+            if h.get("style") == "mist_door" and st.get("pulse", False):
+                draw_iso_ground_ellipse(
+                    screen, h["x"], h["y"], int(h["r"] * (1.05 + 0.02 * math.sin(self._fog_ui_t))),
+                    color=st["ring"], alpha=140, camx=camx, camy=camy, fill=False
+                )
+
+        # 3) Boss 残影（等距版按“脚底 midbottom”对齐）
+        for g in list(self.ghosts):
+            g.draw_iso(screen, camx, camy)
+
+    def draw_fog_overlay(self, screen, cam_x, cam_y, player):
+        if not self.fog_on:
+            return
+        self._fog_ui_t += 0.03
+
+        ov = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+        ov.fill((14, 16, 20, FOG_OVERLAY_ALPHA))
+
+        # 玩家“视野洞”
+        pr = int(self.fog_radius_px)
+        cx, cy = player.rect.centerx - cam_x, player.rect.centery - cam_y
+        pygame.draw.circle(ov, (0, 0, 0, 0), (int(cx), int(cy)), pr)
+
+        # 灯笼清雾圈（有轻微呼吸脉动）
+        for ob in self.obstacles.values():
+            if getattr(ob, "type", "") == "Lantern" and getattr(ob, "health", 1) > 0:
+                lr = int(FOG_LANTERN_CLEAR_RADIUS * (1.0 + 0.03 * math.sin(self._fog_ui_t)))
+                lx = ob.rect.centerx - cam_x
+                ly = ob.rect.centery - cam_y
+                pygame.draw.circle(ov, (0, 0, 0, 0), (int(lx), int(ly)), lr)
+
+        screen.blit(ov, (0, 0))
 
 
 # ==================== 游戏渲染函数 ====================
@@ -4842,6 +4876,9 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
         g.draw_iso(screen, camx, camy)
 
     game_state.draw_hazards_iso(screen, camx, camy)
+
+    if getattr(game_state, "fog_on", False):
+        game_state.draw_fog_overlay(screen, camx, camy, player)
 
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
