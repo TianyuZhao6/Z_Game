@@ -4555,53 +4555,46 @@ class GameState:
             self.obstacles[gp] = lan
             placed += 1
 
-
-    def draw_hazards_iso(self, screen, camx, camy):
-        # 1) 落点预警圈（telegraphs）
-        for t in list(self.telegraphs):
-            # 你已有 draw_iso_ground_ellipse 之类的地表椭圆工具，就用它
+    def draw_hazards_iso(self, screen, cam_x, cam_y):
+        # 1) Telegraph（空心圈）
+        for t in list(getattr(self, "telegraphs", [])):
+            # 颜色/透明度由 telegraph 自带
             draw_iso_ground_ellipse(
-                screen, t["x"], t["y"], t["r"],
-                color=t.get("color", (240, 220, 120)),
-                alpha=t.get("alpha", 180),
-                camx=camx, camy=camy, fill=False
+                screen, t.x, t.y, t.r,
+                color=getattr(t, "color", (255, 80, 80)), alpha=180,
+                camx=cam_x, camy=cam_y, fill=False, width=2
             )
 
-        # 2) 地面危害（acid / mist / mist_door 统一 style）
-        for h in list(self.hazards):
-            st = HAZARD_STYLES.get(h.get("style", "acid"))
-            if not st:
-                continue
-            draw_iso_ground_ellipse(
-                screen, h["x"], h["y"], h["r"],
-                color=st["fill"], alpha=120, camx=camx, camy=camy, fill=True
-            )
-            # 雾门可选：加一圈呼吸窄环
-            if h.get("style") == "mist_door" and st.get("pulse", False):
-                draw_iso_ground_ellipse(
-                    screen, h["x"], h["y"], int(h["r"] * (1.05 + 0.02 * math.sin(self._fog_ui_t))),
-                    color=st["ring"], alpha=140, camx=camx, camy=camy, fill=False
-                )
+        # 2) Acid/Mist Pools（实体椭圆）
+        for a in list(getattr(self, "acids", [])):
+            style = getattr(a, "style", "acid")
+            st = HAZARD_STYLES.get(style, HAZARD_STYLES.get("acid", {"fill": (90, 255, 120), "ring": (30, 160, 60)}))
+            # 使用寿命比例做淡出
+            life0 = max(0.001, float(getattr(a, "life0", getattr(a, "t", 1.0))))
+            alpha = int(150 * max(0.15, min(1.0, a.t / life0)))
+            # 填充
+            draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["fill"], alpha, cam_x, cam_y, fill=True)
+            # 细边
+            draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["ring"], 180, cam_x, cam_y, fill=False, width=2)
 
-        # 3) Boss 残影（等距版按“脚底 midbottom”对齐）
-        for g in list(self.ghosts):
-            g.draw_iso(screen, camx, camy)
-
-    def draw_fog_overlay(self, screen, cam_x, cam_y, player):
-        if not self.fog_on:
+    def draw_fog_overlay(self, screen, cam_x, cam_y, player, obstacles):
+        if not getattr(self, "fog_active", False):
             return
-        self._fog_ui_t += 0.03
 
+        # 轻微脉动
+        self._fog_ui_t += 0.06
         ov = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-        ov.fill((14, 16, 20, FOG_OVERLAY_ALPHA))
+        # 整体雾幕
+        ov.fill((18, 18, 22, 210))
 
-        # 玩家“视野洞”
-        pr = int(self.fog_radius_px)
-        cx, cy = player.rect.centerx - cam_x, player.rect.centery - cam_y
+        # 玩家视野孔
+        pr = int(self.fog_radius_px * (1.0 + 0.03 * math.sin(self._fog_ui_t)))
+        cx = player.rect.centerx - cam_x
+        cy = player.rect.centery - cam_y
         pygame.draw.circle(ov, (0, 0, 0, 0), (int(cx), int(cy)), pr)
 
-        # 灯笼清雾圈（有轻微呼吸脉动）
-        for ob in self.obstacles.values():
+        # 灯笼开“洞”
+        for ob in obstacles.values():
             if getattr(ob, "type", "") == "Lantern" and getattr(ob, "health", 1) > 0:
                 lr = int(FOG_LANTERN_CLEAR_RADIUS * (1.0 + 0.03 * math.sin(self._fog_ui_t)))
                 lx = ob.rect.centerx - cam_x
@@ -4844,7 +4837,6 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
         g.draw_iso(screen, camx, camy)
 
     game_state.draw_hazards_iso(screen, camx, camy)
-
 
     if getattr(game_state, "fog_on", False):
         game_state.draw_fog_overlay(screen, camx, camy, player)
