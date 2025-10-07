@@ -3273,10 +3273,6 @@ class MistweaverBoss(Zombie):
                                    dps=MIST_DOOR_DPS, slow=MIST_DOOR_SLOW, style="mist_door")
         game_state.spawn_acid_pool(tx, ty, r=int(CELL_SIZE * 0.9), life=MIST_DOOR_STAY,
                                    dps=MIST_DOOR_DPS, slow=MIST_DOOR_SLOW, style="mist_door")
-        # 雾刃落带/白化风暴落点
-        game_state.spawn_acid_pool(x, y, r=..., life=..., dps=MIST_P2_POOL_DPS,
-                                   slow=MIST_P2_POOL_SLOW, style="mist")
-
         # 把自己瞬移到对门
         self.x = tx - self.size*0.5
         self.y = ty - self.size*0.5 - INFO_BAR_HEIGHT
@@ -4393,42 +4389,13 @@ class GameState:
         return healed
 
     # ---- 地面腐蚀池 ----
-    def spawn_acid_pool(self, x, y, r=ACID_POOL_RADIUS_PX, life=ACID_POOL_TIME, dps=ACID_POOL_DPS, slow=ACID_POOL_SLOW,
-                        style="acid"):
-        pool = {"x": int(x), "y": int(y), "r": int(r), "life": float(life), "t": float(life),
-                "dps": float(dps), "slow": float(slow), "style": style, "pcd": 0.0}
-        self.hazards.append(pool)
-
-        for h in list(self.hazards):
-            h["t"] -= dt
-            if h["t"] <= 0:
-                self.hazards.remove(h);
-                continue
-            style = HAZARD_STYLES.get(h.get("style", "acid"), HAZARD_STYLES["acid"])
-            cx = int(h["x"] - cam_x);
-            cy = int(h["y"] - cam_y);
-            rr = int(h["r"])
-            # 主体圆
-            s = pygame.Surface((rr * 2, rr * 2), pygame.SRCALPHA)
-            alpha = max(40, int(150 * (h["t"] / h["life"])))
-            pygame.draw.circle(s, (*style["fill"], alpha), (rr, rr), rr)
-            # 外圈高光
-            pygame.draw.circle(s, (*style["ring"], max(30, alpha // 2)), (rr, rr), rr, width=3)
-            screen.blit(s, (cx - rr, cy - rr))
-            # 简单粒子：每 0.06s 随机 2~3 个小点
-            h["pcd"] += dt
-            if h["pcd"] > 0.06:
-                h["pcd"] = 0.0
-                for _ in range(3):
-                    px = cx + random.randint(-rr, rr)
-                    py = cy + random.randint(-rr, rr)
-                    if (px - cx) ** 2 + (py - cy) ** 2 <= rr * rr:
-                        pygame.draw.circle(screen, style["particle"], (px, py), 2)
-            # 雾门：加脉冲环
-            if style.get("pulse"):
-                ph = (1.0 - (h["t"] / h["life"]))
-                ring_r = int(rr * 0.6 + rr * 0.25 * math.sin(ph * 6.28))
-                pygame.draw.circle(screen, style["ring"], (cx, cy), ring_r, width=2)
+    # 在 GameState 内，替换/保留为 ↓ 这个版本
+    def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME, style="acid"):
+        a = AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life))
+        # 让渲染可以按风格变色/变样式
+        a.life0 = float(life)
+        a.style = style
+        self.acids.append(a)
 
     def spawn_projectile(self, proj):
         self.projectiles.append(proj)
@@ -4587,6 +4554,7 @@ class GameState:
             lan = FogLantern(gx, gy, hp=FOG_LANTERN_HP)
             self.obstacles[gp] = lan
             placed += 1
+
 
     def draw_hazards_iso(self, screen, camx, camy):
         # 1) 落点预警圈（telegraphs）
@@ -4876,6 +4844,7 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
         g.draw_iso(screen, camx, camy)
 
     game_state.draw_hazards_iso(screen, camx, camy)
+
 
     if getattr(game_state, "fog_on", False):
         game_state.draw_fog_overlay(screen, camx, camy, player)
