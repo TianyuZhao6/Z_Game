@@ -473,17 +473,15 @@ BOSS_RING_PROJECTILES = 20
 BOSS_RING_SPEED = 420
 BOSS_RING_CD = 4.0
 
-
 # === Dash & Afterimage tunables ===
 BOSS_DASH_WINDUP = 0.40  # 蓄力前摇（保留张力）
 BOSS_DASH_GO_TIME = 0.60  # 冲刺持续时间（原来 0.28 太短）
 BOSS_DASH_SPEED_MULT = 4.2  # 冲刺速度倍数（原来 3.5 偏保守）
 BOSS_DASH_SPEED_MULT_ENRAGED = 4.8  # 激怒版可更高一点
 
-AFTERIMAGE_INTERVAL = 0.03   # 约每 1/50 秒一个（轨迹更连续）
-AFTERIMAGE_TTL      = 0.22   # ~6 帧消失（60fps）
-AFTERIMAGE_LIGHTEN  = 1.20   # 轻微提亮，保持“浅色块”而不是荧光
-
+AFTERIMAGE_INTERVAL = 0.03  # 约每 1/50 秒一个（轨迹更连续）
+AFTERIMAGE_TTL = 0.22  # ~6 帧消失（60fps）
+AFTERIMAGE_LIGHTEN = 1.20  # 轻微提亮，保持“浅色块”而不是荧光
 
 # coin bounce feel
 COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
@@ -614,16 +612,16 @@ RAIN_TELEGRAPH_T = 0.5
 CHARGE_THRESH = 0.10
 CHARGE_SPEED = 3.0
 # --- Mistweaver (Boss II) — appears at Lv10 (index 9) ---
-MISTWEAVER_LEVELS = {9}     # 0-based：第10关
+MISTWEAVER_LEVELS = {9}  # 0-based：第10关
 MIST_BASE_HP = 6500
 MIST_CONTACT_DAMAGE = 28
-MIST_SPEED = 2.2            # 略慢于玩家
+MIST_SPEED = 2.2  # 略慢于玩家
 
 # 统一的地面危害样式
 HAZARD_STYLES = {
     "acid": {  # 绿色腐蚀
         "fill": (70, 200, 100),  # 主色
-        "ring": (150, 255, 170), # 外圈高光
+        "ring": (150, 255, 170),  # 外圈高光
         "particle": (120, 230, 140),
     },
     "mist": {  # 冷色雾池
@@ -640,11 +638,11 @@ HAZARD_STYLES = {
 }
 
 # Fog field (被动视野压缩)
-FOG_VIEW_TILES = 6                      # 约 6 格视距
-FOG_OVERLAY_ALPHA = 190                 # 覆雾不透明度
-FOG_LANTERN_COUNT = 3                   # 地图生成 3 个“驱雾灯笼”
+FOG_VIEW_TILES = 6  # 约 6 格视距
+FOG_OVERLAY_ALPHA = 190  # 覆雾不透明度
+FOG_LANTERN_COUNT = 3  # 地图生成 3 个“驱雾灯笼”
 FOG_LANTERN_HP = 60
-FOG_LANTERN_CLEAR_RADIUS = int(CELL_SIZE * 3.2)   # 灯笼清雾半径（~3~4格）
+FOG_LANTERN_CLEAR_RADIUS = int(CELL_SIZE * 3.2)  # 灯笼清雾半径（~3~4格）
 
 # 雾门闪现
 MIST_BLINK_CD = 10.0
@@ -654,32 +652,32 @@ MIST_DOOR_SLOW = 0.20
 
 # P1
 MIST_P1_BLADE_CD = 3.5
-MIST_P1_BLADE_COUNT = 3           # 扇形 3 枚
+MIST_P1_BLADE_COUNT = 3  # 扇形 3 枚
 MIST_P1_STRIP_TIME = 1.2
-MIST_P1_STRIP_DPS  = 10
+MIST_P1_STRIP_DPS = 10
 MIST_P1_STRIP_SLOW = 0.35
-MIST_SUMMON_IMPS   = 3            # 每轮召唤 3 个 Wormling
+MIST_SUMMON_IMPS = 3  # 每轮召唤 3 个 Wormling
 
 # P2
-MIST_P2_STORM_CD   = 8.0
+MIST_P2_STORM_CD = 8.0
 MIST_P2_STORM_WIND = 0.8
 MIST_P2_STORM_POINTS = 8
-MIST_P2_POOL_DPS   = 14
-MIST_P2_POOL_SLOW  = 0.40
-MIST_SILENCE_TIME  = 3.0
+MIST_P2_POOL_DPS = 14
+MIST_P2_POOL_SLOW = 0.40
+MIST_SILENCE_TIME = 3.0
 MIST_SILENCE_RADIUS = int(CELL_SIZE * 3.0)
 
 # P3
-MIST_SONAR_STEP    = 0.10         # 每掉 10% 触发一次
-MIST_MARK_TIME     = 3.0          # 被声纳命中后“被标记”时长
-MIST_CHASE_BOOST   = 1.0          # 标记时 Boss 额外 +1.0 速度
-MIST_PHASE_CHANCE  = 0.15         # 受击 15% 雾化
-MIST_PHASE_TIME    = 0.7
-MIST_PHASE_TELE_TILES = 2.0       # 雾化时瞬位 2 格
+MIST_SONAR_STEP = 0.10  # 每掉 10% 触发一次
+MIST_MARK_TIME = 3.0  # 被声纳命中后“被标记”时长
+MIST_CHASE_BOOST = 1.0  # 标记时 Boss 额外 +1.0 速度
+MIST_PHASE_CHANCE = 0.15  # 受击 15% 雾化
+MIST_PHASE_TIME = 0.7
+MIST_PHASE_TELE_TILES = 2.0  # 雾化时瞬位 2 格
 
 # 远程伤害抗性（>=5格距离 → 0.8x）
 MIST_RANGED_REDUCE_TILES = 5
-MIST_RANGED_MULT         = 0.8
+MIST_RANGED_MULT = 0.8
 
 # ----- affixes (small random spice) -----
 AFFIX_CHANCE_BASE = 0.10
@@ -755,8 +753,8 @@ ZOMBIE_COLORS = {
 ZOMBIE_COLORS.update({
     "boss_mem": (170, 40, 200),  # 紫红色
     "corruptling": (120, 220, 120),  # 浅绿
-    "boss_mist":   (150, 140, 220),   # 冷紫
-    "mist_clone":  (180, 170, 240),   # 更浅，便于区分
+    "boss_mist": (150, 140, 220),  # 冷紫
+    "mist_clone": (180, 170, 240),  # 更浅，便于区分
 })
 
 # --- XP rewards (add) ---
@@ -2175,6 +2173,7 @@ class Obstacle:
     def grid_pos(self):
         return self.rect.x // CELL_SIZE, (self.rect.y - INFO_BAR_HEIGHT) // CELL_SIZE
 
+
 class FogLantern(Obstacle):
     def __init__(self, x: int, y: int, hp: int = FOG_LANTERN_HP):
         super().__init__(x, y, "Lantern", health=hp)
@@ -2185,6 +2184,7 @@ class FogLantern(Obstacle):
     @property
     def alive(self):
         return self.health is None or self.health > 0
+
 
 class MainBlock(Obstacle):
     def __init__(self, x: int, y: int, health: Optional[int] = MAIN_BLOCK_HEALTH):
@@ -2375,15 +2375,18 @@ def spawn_splinter_children(parent: "Zombie",
 
 class AfterImageGhost:
     def __init__(self, x, y, w, h, base_color, ttl=AFTERIMAGE_TTL):
-        self.x = int(x); self.y = int(y)   # 脚底世界像素
-        self.w = int(w); self.h = int(h)
+        self.x = int(x);
+        self.y = int(y)  # 脚底世界像素
+        self.w = int(w);
+        self.h = int(h)
         r, g, b = base_color if base_color else (120, 220, 160)
         MIX = 0.42  # 0..1, how much to pull toward white
         r = int(r + (255 - r) * MIX)
         g = int(g + (255 - g) * MIX)
         b = int(b + (255 - b) * MIX)
         self.color = (r, g, b)
-        self.ttl = float(ttl); self.life0 = float(ttl)
+        self.ttl = float(ttl);
+        self.life0 = float(ttl)
 
     def update(self, dt):
         self.ttl -= dt
@@ -2392,7 +2395,7 @@ class AfterImageGhost:
     # —— Top-down：屏幕=世界−相机，按 midbottom 对齐 ——
     def draw_topdown(self, screen, cam_x, cam_y):
         if self.ttl <= 0: return
-        alpha = max(0, min(255, int(255 * (self.ttl/self.life0))))
+        alpha = max(0, min(255, int(255 * (self.ttl / self.life0))))
         rect = pygame.Rect(0, 0, self.w, self.h)
         rect.midbottom = (int(self.x - cam_x), int(self.y - cam_y))
         s = pygame.Surface(rect.size, pygame.SRCALPHA)
@@ -2402,7 +2405,7 @@ class AfterImageGhost:
     # —— ISO：脚底世界像素 → 世界格 → 等距投影坐标（再设 midbottom）——
     def draw_iso(self, screen, camx, camy):
         if self.ttl <= 0: return
-        alpha = max(0, min(255, int(255 * (self.ttl/self.life0))))
+        alpha = max(0, min(255, int(255 * (self.ttl / self.life0))))
         wx = self.x / CELL_SIZE
         wy = (self.y - INFO_BAR_HEIGHT) / CELL_SIZE
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
@@ -2459,7 +2462,6 @@ class Zombie:
         # split flags (only for splinter)
         self._can_split = (self.type == "splinter")
         self._split_done = False
-
 
         base_hp = 30 if hp is None else hp
         # type tweaks
@@ -3198,9 +3200,10 @@ class MemoryDevourerBoss(Zombie):
 
     # （可选）你也可以覆盖 draw，画个大圆/贴图；目前沿用矩形色块就行
 
+
 class MistClone(Zombie):
     def __init__(self, gx: int, gy: int):
-        super().__init__((gx, gy), attack=8, speed=int(MIST_SPEED*CELL_SIZE/ CELL_SIZE), ztype="mist_clone", hp=1)
+        super().__init__((gx, gy), attack=8, speed=int(MIST_SPEED * CELL_SIZE / CELL_SIZE), ztype="mist_clone", hp=1)
         self.color = ZOMBIE_COLORS["mist_clone"]
         self.size = CELL_SIZE - 6
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
@@ -3210,7 +3213,7 @@ class MistClone(Zombie):
         # 命中即散，死亡时留一个小雾爆
         if self.hp <= 0 and not getattr(self, "_mist_boom", False):
             game_state.spawn_acid_pool(self.rect.centerx, self.rect.centery,
-                                       r=int(CELL_SIZE*0.6), life=1.2, dps=8, slow=0.25)
+                                       r=int(CELL_SIZE * 0.6), life=1.2, dps=8, slow_frac=0.25)
             self._mist_boom = True
 
 
@@ -3235,7 +3238,7 @@ class MistweaverBoss(Zombie):
         self._storm_cd = 2.0
         self._blade_cd = 1.5
         self._blink_cd = MIST_BLINK_CD
-        self._sonar_next = 1.0   # 下一个“HP 比例阈值”（先置 100%→70% 时触发）
+        self._sonar_next = 1.0  # 下一个“HP 比例阈值”（先置 100%→70% 时触发）
         self._clone_ids = set()
 
         # 启动时请求雾场（GameState 每帧会判定并开启）
@@ -3253,8 +3256,8 @@ class MistweaverBoss(Zombie):
         need = max(0, 2 - self._has_clones(zombies))
         while need > 0:
             # 随机在本体附近 2~3 格生成
-            gx = int((self.x + self.size*0.5) // CELL_SIZE) + random.choice((-3,-2,2,3))
-            gy = int((self.y + self.size*0.5) // CELL_SIZE) + random.choice((-3,-2,2,3))
+            gx = int((self.x + self.size * 0.5) // CELL_SIZE) + random.choice((-3, -2, 2, 3))
+            gy = int((self.y + self.size * 0.5) // CELL_SIZE) + random.choice((-3, -2, 2, 3))
             if 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE and (gx, gy) not in game_state.obstacles:
                 zombies.append(MistClone(gx, gy))
                 need -= 1
@@ -3263,19 +3266,19 @@ class MistweaverBoss(Zombie):
         # 在两处随机门之间闪现一次，并在原地留下 2 秒雾门减速/DoT
         cx, cy = self.rect.centerx, self.rect.centery
         # 随机另一个位置（边缘附近）
-        gx = random.choice((2, GRID_SIZE-3))
-        gy = random.randint(2, GRID_SIZE-3)
-        tx = gx * CELL_SIZE + CELL_SIZE//2
-        ty = gy * CELL_SIZE + CELL_SIZE//2 + INFO_BAR_HEIGHT
+        gx = random.choice((2, GRID_SIZE - 3))
+        gy = random.randint(2, GRID_SIZE - 3)
+        tx = gx * CELL_SIZE + CELL_SIZE // 2
+        ty = gy * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT
         # 两处门的提示圈 + 伤害池（2秒）
         # 雾门
         game_state.spawn_acid_pool(cx, cy, r=int(CELL_SIZE * 0.9), life=MIST_DOOR_STAY,
-                                   dps=MIST_DOOR_DPS, slow=MIST_DOOR_SLOW, style="mist_door")
+                                   dps=MIST_DOOR_DPS, slow_frac=MIST_DOOR_SLOW, style="mist_door")
         game_state.spawn_acid_pool(tx, ty, r=int(CELL_SIZE * 0.9), life=MIST_DOOR_STAY,
-                                   dps=MIST_DOOR_DPS, slow=MIST_DOOR_SLOW, style="mist_door")
+                                   dps=MIST_DOOR_DPS, slow_frac=MIST_DOOR_SLOW, style="mist_door")
         # 把自己瞬移到对门
-        self.x = tx - self.size*0.5
-        self.y = ty - self.size*0.5 - INFO_BAR_HEIGHT
+        self.x = tx - self.size * 0.5
+        self.y = ty - self.size * 0.5 - INFO_BAR_HEIGHT
         self.rect.x = int(self.x)
         self.rect.y = int(self.y) + INFO_BAR_HEIGHT
 
@@ -3298,15 +3301,16 @@ class MistweaverBoss(Zombie):
             if self._blade_cd <= 0:
                 ang0 = math.atan2(player.rect.centery - self.rect.centery, player.rect.centerx - self.rect.centerx)
                 spread = math.radians(40)
-                for i in range(-1, 2):   # -1,0,1
+                for i in range(-1, 2):  # -1,0,1
                     ang = ang0 + i * spread
                     # 用 4~5 个小池子拼“雾带”
                     for k in range(1, 5):
                         d = k * CELL_SIZE * 1.0
                         x = self.rect.centerx + math.cos(ang) * d
                         y = self.rect.centery + math.sin(ang) * d
-                        game_state.spawn_acid_pool(x, y, r=int(CELL_SIZE*0.45),
-                                                   life=MIST_P1_STRIP_TIME, dps=MIST_P1_STRIP_DPS, slow=MIST_P1_STRIP_SLOW)
+                        game_state.spawn_acid_pool(x, y, r=int(CELL_SIZE * 0.45),
+                                                   life=MIST_P1_STRIP_TIME, dps=MIST_P1_STRIP_DPS,
+                                                   slow_frac=MIST_P1_STRIP_SLOW)
                 self._blade_cd = MIST_P1_BLADE_CD
 
             # 召唤
@@ -3332,29 +3336,31 @@ class MistweaverBoss(Zombie):
                 for (x, y) in pts:
                     game_state.spawn_telegraph(self.rect.centerx, self.rect.centery,
                                                r=22, life=MIST_P2_STORM_WIND, kind="acid",
-                                               payload={"points":[(x, y)], "radius": int(CELL_SIZE*0.5),
-                                                        "life": 4.0, "dps": MIST_P2_POOL_DPS, "slow": MIST_P2_POOL_SLOW})
+                                               payload={"points": [(x, y)], "radius": int(CELL_SIZE * 0.5),
+                                                        "life": 4.0, "dps": MIST_P2_POOL_DPS,
+                                                        "slow": MIST_P2_POOL_SLOW})
                 self._storm_cd = MIST_P2_STORM_CD
 
             # 静默领域：随机一个圆区 3 秒，里面额外减速（简化成强减速代替“禁技能”）
             if random.random() < 0.007:  # 低频随机触发
-                rx = random.randint(CELL_SIZE*3, WINDOW_SIZE - CELL_SIZE*3)
-                ry = random.randint(CELL_SIZE*3, WINDOW_SIZE - CELL_SIZE*3) + INFO_BAR_HEIGHT
-                game_state.spawn_acid_pool(rx, ry, r=MIST_SILENCE_RADIUS, life=MIST_SILENCE_TIME, dps=0, slow=0.50)
+                rx = random.randint(CELL_SIZE * 3, WINDOW_SIZE - CELL_SIZE * 3)
+                ry = random.randint(CELL_SIZE * 3, WINDOW_SIZE - CELL_SIZE * 3) + INFO_BAR_HEIGHT
+                game_state.spawn_acid_pool(rx, ry, r=MIST_SILENCE_RADIUS, life=MIST_SILENCE_TIME, dps=0, slow_frac=0.50)
 
         # P3：声纳圈；被命中者“被标记”，Boss 追击加速
         if self.phase == 3:
             next_pct = getattr(self, "_sonar_next", 0.70)
             while hp_pct <= next_pct and next_pct >= 0.0:
                 game_state.spawn_telegraph(self.rect.centerx, self.rect.centery,
-                                           r=int(self.radius*1.8), life=0.6, kind="ring",
-                                           payload={"note":"mist_sonar"})
+                                           r=int(self.radius * 1.8), life=0.6, kind="ring",
+                                           payload={"note": "mist_sonar"})
                 self._sonar_next = next_pct - MIST_SONAR_STEP
                 next_pct = self._sonar_next
             # 如果玩家处于“标记”，给予追击加速
             if getattr(player, "_mist_mark_t", 0.0) > 0.0:
                 self.buff_t = max(self.buff_t, dt)
                 self.buff_spd_add = max(self.buff_spd_add, MIST_CHASE_BOOST)
+
 
 class Bullet:
     def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE,
@@ -4327,6 +4333,7 @@ class GameState:
         self.fog_active = False
         self.fog_alpha = FOG_OVERLAY_ALPHA
         self.lanterns = []  # [(x_px, y_px, hp)]
+        self.wormlings = []
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -4388,13 +4395,45 @@ class GameState:
                 healed += (player.hp - before)
         return healed
 
+    def update_wormlings(self, dt, player):
+        """Tick & prune boss minions."""
+        for w in list(self.wormlings):
+            if not w.update(dt, player, self):
+                self.wormlings.remove(w)
+
+    def draw_wormlings_iso(self, screen, camx, camy):
+        """Simple rectangles in ISO view (same visual style as other blocks)."""
+        for w in self.wormlings:
+            # world (feet center) → grid → iso screen
+            wx = (w.x + w.size * 0.5) / CELL_SIZE
+            wy = (w.y + w.size) / CELL_SIZE
+            sx, sy = iso_world_to_screen(wx, wy, 0.0, camx, camy)
+            r = pygame.Rect(0, 0, w.size, w.size)
+            # align by midbottom like other entities
+            r.midbottom = (int(sx), int(sy))
+            pygame.draw.rect(screen, (120, 220, 120), r)
+
     # ---- 地面腐蚀池 ----w
     # 在 GameState 内，替换/保留为 ↓ 这个版本
-    def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME, style="acid"):
+    # ---- 地面腐蚀池（兼容旧/新参数名）----
+    def spawn_acid_pool(self,
+                        x, y,
+                        r=24,
+                        dps=ACID_DPS,
+                        life=ACID_LIFETIME,
+                        slow_frac=None,  # 新参数名
+                        slow=None,  # 旧参数名（向后兼容）
+                        style="acid"):  # 可用于雾池/雾门上色
+        # 兼容处理：优先采用 slow_frac；否则用 slow；最后回退到默认常量
+        if slow_frac is None and slow is not None:
+            slow_frac = slow
+        if slow_frac is None:
+            slow_frac = ACID_SLOW_FRAC
+
         a = AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life))
-        # 让渲染可以按风格变色/变样式
-        a.life0 = float(life)
-        a.style = style
+        # 可选：让绘制侧能按风格自定义颜色/粒子
+        setattr(a, "style", style)
+        setattr(a, "life0", float(life))
         self.acids.append(a)
 
     def spawn_projectile(self, proj):
@@ -4836,6 +4875,8 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
     for g in getattr(game_state, "ghosts", []):
         g.draw_iso(screen, camx, camy)
 
+    game_state.draw_wormlings_iso(screen, camx, camy)
+
     game_state.draw_hazards_iso(screen, camx, camy)
 
     if getattr(game_state, "fog_on", False):
@@ -5196,7 +5237,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
     globals()["_time_left_runtime"] = time_left
 
-
     spatial = SpatialHash(SPATIAL_CELL)
 
     obstacles, items, player_start, zombie_starts, main_item_list, decorations = generate_game_entities(
@@ -5506,6 +5546,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
+
+        # --- wormlings ---
+        if game_state.wormlings:
+            game_state.update_wormlings(dt, player)
 
         # afterimages (update & prune)
         if game_state.ghosts:
@@ -5855,10 +5899,6 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
-
-        # afterimages
-        if game_state.ghosts:
-            game_state.ghosts[:] = [g for g in game_state.ghosts if g.update(dt)]
 
         # Fail check (redundant guard)
         if player.hp <= 0:
