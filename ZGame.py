@@ -4329,10 +4329,10 @@ class GameState:
         self.ghosts = []  # 冲刺残影列表
         self.fog_on = False
         self.fog_radius_px = FOG_VIEW_TILES * CELL_SIZE
-        self._fog_ui_t = 0.0  # 轻微呼吸动画
-        self.fog_active = False
+        self.fog_enabled: bool = False
         self.fog_alpha = FOG_OVERLAY_ALPHA
-        self.lanterns = []  # [(x_px, y_px, hp)]
+        self.fog_lanterns: list = []  # FogLantern 实例
+        self._fog_pulse_t: float = 0.0  # 呼吸脉冲
         self.wormlings = []
 
     def count_destructible_obstacles(self) -> int:
@@ -4548,51 +4548,49 @@ class GameState:
                 del self.obstacles[gp]
 
     def request_fog_field(self):
-        # 供 Boss 生成时调用（见上文 spawn_wave_with_budget）
-        self._want_fog = True
+        """被 Mistweaver 触发后立即落雾并生成灯笼（只做一次）。"""
+        if self.fog_enabled:
+            return
+        self.fog_enabled = True
+        self.spawn_fog_lanterns()
 
-    def ensure_fog_field(self, obstacles):
-        if getattr(self, "_want_fog", False) and not self.fog_active:
-            self.fog_active = True
-            self._want_fog = False
-            # 随机 3 个灯笼（不与障碍重叠；放到 obstacles 里以便可被打掉）
-            placed = 0
-            tries = 200
-            while placed < FOG_LANTERN_COUNT and tries > 0:
-                tries -= 1
-                gx = random.randint(2, GRID_SIZE - 3)
-                gy = random.randint(2, GRID_SIZE - 3)
-                if (gx, gy) in obstacles: continue
-                ob = FogLantern(gx, gy, hp=FOG_LANTERN_HP)
-                obstacles[(gx, gy)] = ob
-                placed += 1
-
-    def _place_fog_lanterns(self, count=3):
-        import random
-        placed = 0
-        tries = 200
-        while placed < count and tries > 0:
-            tries -= 1
-            gx = random.randint(2, GRID_SIZE - 3)
-            gy = random.randint(2, GRID_SIZE - 3)
-            gp = (gx, gy)
-            # 不要与障碍/道具重合
-            if gp in self.obstacles:
+    def spawn_fog_lanterns(self, n: int = FOG_LANTERN_COUNT):
+        """在非阻挡格上随机放置 n 个雾灯笼（非阻挡），同时放入 self.fog_lanterns。"""
+        self.fog_lanterns.clear()
+        cells = [(x, y) for x in range(GRID_SIZE) for y in range(GRID_SIZE)
+                 if (x, y) not in self.obstacles]
+        random.shuffle(cells)
+        taken = set()
+        for _ in range(n):
+            if not cells: break
+            gx, gy = cells.pop()
+            # 保证彼此不要太近
+            if any(abs(gx - ax) + abs(gy - ay) < 6 for ax, ay in taken):
                 continue
-            # 与其他灯笼保持一定距离（避免堆在一起）
-            ok = True
-            for ob in self.obstacles.values():
-                if getattr(ob, "type", "") == "Lantern":
-                    x0, y0 = ob.grid_pos
-                    if abs(x0 - gx) + abs(y0 - gy) < 5:
-                        ok = False;
-                        break
-            if not ok:
-                continue
-            # 放置
+            taken.add((gx, gy))
             lan = FogLantern(gx, gy, hp=FOG_LANTERN_HP)
-            self.obstacles[gp] = lan
-            placed += 1
+            self.fog_lanterns.append(lan)
+
+    def draw_lanterns_iso(self, screen, camx, camy):
+        """等距画雾灯笼（小方块+柔光圈）。"""
+        for lan in list(self.fog_lanterns):
+            if not lan.alive:
+                self.fog_lanterns.remove(lan)
+                continue
+            # 网格转等距
+            gx, gy = lan.grid_pos
+            sx, sy = iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
+            # 灯体
+            body = pygame.Rect(0, 0, int(CELL_SIZE * 0.55), int(CELL_SIZE * 0.55))
+            body.center = (int(sx), int(sy - ISO_WALL_Z * 0.2))
+            pygame.draw.rect(screen, (255, 230, 120), body, border_radius=6)
+            pygame.draw.rect(screen, (120, 80, 20), body, 2, border_radius=6)
+            # 柔光（用半透明圈提示清雾半径）
+            glow = pygame.Surface((FOG_LANTERN_CLEAR_RADIUS * 2, FOG_LANTERN_CLEAR_RADIUS * 2), pygame.SRCALPHA)
+            pygame.draw.circle(glow, (255, 240, 180, 50),
+                               (FOG_LANTERN_CLEAR_RADIUS, FOG_LANTERN_CLEAR_RADIUS),
+                               FOG_LANTERN_CLEAR_RADIUS)
+            screen.blit(glow, glow.get_rect(center=(int(sx), int(sy))))
 
     def draw_hazards_iso(self, screen, cam_x, cam_y):
         # 1) Telegraph（空心圈）
@@ -4616,31 +4614,42 @@ class GameState:
             # 细边
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["ring"], 180, cam_x, cam_y, fill=False, width=2)
 
-    def draw_fog_overlay(self, screen, cam_x, cam_y, player, obstacles):
-        if not getattr(self, "fog_active", False):
+    def draw_fog_overlay(self, screen, camx, camy, player, obstacles):
+        """在世界层上方绘制一层‘黑雾’，对玩家与灯笼的范围挖透明洞。"""
+        if not self.fog_enabled:
             return
 
-        # 轻微脉动
-        self._fog_ui_t += 0.06
-        ov = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-        # 整体雾幕
-        ov.fill((18, 18, 22, 210))
+        w, h = screen.get_size()
+        mask = pygame.Surface((w, h), pygame.SRCALPHA)
+        # 整屏覆雾
+        mask.fill((0, 0, 0, FOG_OVERLAY_ALPHA))
 
-        # 玩家视野孔
-        pr = int(self.fog_radius_px * (1.0 + 0.03 * math.sin(self._fog_ui_t)))
-        cx = player.rect.centerx - cam_x
-        cy = player.rect.centery - cam_y
-        pygame.draw.circle(ov, (0, 0, 0, 0), (int(cx), int(cy)), pr)
+        # === 挖‘清晰洞’ ===
+        clear_r = FOG_VIEW_TILES * CELL_SIZE
+        # 1) 玩家
+        psx, psy = iso_world_to_screen(player.rect.centerx / CELL_SIZE,
+                                       (player.rect.centery - INFO_BAR_HEIGHT) / CELL_SIZE,
+                                       0, camx, camy)
+        pygame.draw.circle(mask, (0, 0, 0, 0), (int(psx), int(psy)), int(clear_r))
 
-        # 灯笼开“洞”
-        for ob in obstacles.values():
-            if getattr(ob, "type", "") == "Lantern" and getattr(ob, "health", 1) > 0:
-                lr = int(FOG_LANTERN_CLEAR_RADIUS * (1.0 + 0.03 * math.sin(self._fog_ui_t)))
-                lx = ob.rect.centerx - cam_x
-                ly = ob.rect.centery - cam_y
-                pygame.draw.circle(ov, (0, 0, 0, 0), (int(lx), int(ly)), lr)
+        # 2) 每个存活的雾灯笼
+        for lan in self.fog_lanterns:
+            if not lan.alive:
+                continue
+            gx, gy = lan.grid_pos
+            sx, sy = iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
+            pygame.draw.circle(mask, (0, 0, 0, 0), (int(sx), int(sy)), int(FOG_LANTERN_CLEAR_RADIUS))
 
-        screen.blit(ov, (0, 0))
+        # 可选：微弱的呼吸脉冲，让雾面有生命感
+        self._fog_pulse_t = (self._fog_pulse_t + 0.016) % 1.0
+        pulse = int(14 * (0.5 + 0.5 * math.sin(self._fog_pulse_t * math.tau)))
+        if pulse > 0:
+            edge = pygame.Surface((w, h), pygame.SRCALPHA)
+            edge.fill((220, 220, 240, pulse))
+            mask.blit(edge, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+
+        # 覆盖到屏幕
+        screen.blit(mask, (0, 0))
 
 
 # ==================== 游戏渲染函数 ====================
