@@ -4388,7 +4388,7 @@ class GameState:
                 healed += (player.hp - before)
         return healed
 
-    # ---- 地面腐蚀池 ----
+    # ---- 地面腐蚀池 ----w
     # 在 GameState 内，替换/保留为 ↓ 这个版本
     def spawn_acid_pool(self, x, y, r=24, dps=ACID_DPS, slow_frac=ACID_SLOW_FRAC, life=ACID_LIFETIME, style="acid"):
         a = AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life))
@@ -4606,11 +4606,11 @@ class GameState:
 
 # ==================== 游戏渲染函数 ====================
 def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
-                    bullets=None, enemy_shots=None) -> pygame.Surface:
+                    bullets=None, enemy_shots=None, obstacles=None) -> pygame.Surface:
     # 1) 计算以“玩家所在格”为中心的相机
     px_grid = (player.x + player.size / 2) / CELL_SIZE
     py_grid = (player.y + player.size / 2) / CELL_SIZE
-    # 将玩家的等距投影放到屏幕中心，得到 cam 偏移
+    # 将玩家的等距投影放到屏幕中心，得到 cam 偏移d
     pxs, pys = iso_world_to_screen(px_grid, py_grid, 0, 0, 0)
     camx = pxs - VIEW_W // 2
     camy = pys - (VIEW_H - INFO_BAR_HEIGHT) // 2
@@ -4839,7 +4839,7 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
     game_state.draw_hazards_iso(screen, camx, camy)
 
     if getattr(game_state, "fog_on", False):
-        game_state.draw_fog_overlay(screen, camx, camy, player)
+        game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)
 
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
