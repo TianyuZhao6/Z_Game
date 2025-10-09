@@ -3308,9 +3308,10 @@ class MistweaverBoss(Zombie):
                         d = k * CELL_SIZE * 1.0
                         x = self.rect.centerx + math.cos(ang) * d
                         y = self.rect.centery + math.sin(ang) * d
+                        # P1 雾刃：雾带小池子 -> 统一 style='mist'
                         game_state.spawn_acid_pool(x, y, r=int(CELL_SIZE * 0.45),
                                                    life=MIST_P1_STRIP_TIME, dps=MIST_P1_STRIP_DPS,
-                                                   slow_frac=MIST_P1_STRIP_SLOW)
+                                                   slow_frac=MIST_P1_STRIP_SLOW, style="mist")  # ★
                 self._blade_cd = MIST_P1_BLADE_CD
 
             # 召唤
@@ -3318,6 +3319,10 @@ class MistweaverBoss(Zombie):
             if self._storm_cd <= 0:
                 for _ in range(MIST_SUMMON_IMPS):
                     game_state.wormlings.append(Wormling(self.rect.centerx, self.rect.centery))
+                    w = Wormling(self.rect.centerx, self.rect.centery)
+                    setattr(w, "color", (228, 218, 255))  # ★ 白紫
+                    game_state.wormlings.append(w)
+
                 self._storm_cd = 6.5
 
         # P2：白化风暴（0.8s 后落 8 个雾池）+ 静默领域
@@ -3338,7 +3343,7 @@ class MistweaverBoss(Zombie):
                                                r=22, life=MIST_P2_STORM_WIND, kind="acid",
                                                payload={"points": [(x, y)], "radius": int(CELL_SIZE * 0.5),
                                                         "life": 4.0, "dps": MIST_P2_POOL_DPS,
-                                                        "slow": MIST_P2_POOL_SLOW})
+                                                        "slow": MIST_P2_POOL_SLOW},  color=HAZARD_STYLES["mist"]["ring"])
                 self._storm_cd = MIST_P2_STORM_CD
 
             # 静默领域：随机一个圆区 3 秒，里面额外减速（简化成强减速代替“禁技能”）
@@ -4411,7 +4416,8 @@ class GameState:
             r = pygame.Rect(0, 0, w.size, w.size)
             # align by midbottom like other entities
             r.midbottom = (int(sx), int(sy))
-            pygame.draw.rect(screen, (120, 220, 120), r)
+            col = getattr(w, "color", (120, 220, 120))  # ★ 先取实例色，没有就用旧的绿色
+            pygame.draw.rect(screen, col, r)
 
     # ---- 地面腐蚀池 ----w
     # 在 GameState 内，替换/保留为 ↓ 这个版本
