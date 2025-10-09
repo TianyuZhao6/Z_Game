@@ -616,6 +616,21 @@ MISTWEAVER_LEVELS = {9}  # 0-based：第10关
 MIST_BASE_HP = 6500
 MIST_CONTACT_DAMAGE = 28
 MIST_SPEED = 2.2  # 略慢于玩家
+MISTLING_LIFETIME = 10.0
+MISTLING_BLAST_RADIUS = 70
+MISTLING_BLAST_DAMAGE = 18
+MISTLING_PULL_RADIUS = int(7.5 * CELL_SIZE)
+MISTLING_HEAL = 120
+XP_PER_ZOMBIE_TYPE["mistling"] = 5
+
+MIST_RING_BURSTS = 3
+MIST_RING_PROJECTILES = 28
+MIST_RING_SPEED = 420.0
+MIST_RING_CD = 5.5
+MIST_RING_DAMAGE = 10
+
+
+
 
 # 统一的地面危害样式
 HAZARD_STYLES = {
@@ -747,6 +762,7 @@ ZOMBIE_COLORS = {
     "shielder": (60, 160, 255),
     "splinter": (180, 120, 250),
     "splinterling": (210, 160, 255),
+    "mistling": (228, 218, 255),
 
 }
 # --- colors (add) ---
@@ -2061,7 +2077,8 @@ def spawn_wave_with_budget(game_state: "GameState",
                 boss_done = True
                 # 让本关启动雾场（GameState 里会响应）
                 if hasattr(game_state, "request_fog_field"):
-                    game_state.request_fog_field()
+                    game_state.request_fog_field(player)
+
 
             else:
                 # 其它 Boss 关：单体 Memory Devourer
@@ -2155,13 +2172,7 @@ class Obstacle:
         px = x * CELL_SIZE;
         py = y * CELL_SIZE + INFO_BAR_HEIGHT
         self.rect = pygame.Rect(px, py, CELL_SIZE, CELL_SIZE)
-        # if USE_ISO:
-        #     # 先收一点，近似菱形脚印
-        #     w_in = int(CELL_SIZE * 0.20)
-        #     h_in = int(CELL_SIZE * 0.30)
-        #     foot = self.rect.inflate(-w_in, -h_in)
-        #
-        #     self.rect = foot
+
 
         self.type: str = obstacle_type
         self.health: Optional[int] = health
@@ -2917,6 +2928,21 @@ class Zombie:
                         z.shield_t = SHIELD_DURATION
                 self.shield_cd = SHIELD_COOLDOWN
 
+        # 小雾妖：可被攻击；死时自爆；计时≥10s 会被 Boss 收回（由 Boss 侧结算回血）
+        if self.type == "mistling":
+            # 计时
+            self._life = getattr(self, "_life", 0.0) + dt
+            # 被击杀 → 自爆（一次性）
+            if self.hp <= 0 and not getattr(self, "_boom_done", False):
+                cx, cy = self.rect.centerx, self.rect.centery
+                pr = player.rect
+                if (pr.centerx - cx) ** 2 + (pr.centery - cy) ** 2 <= (MISTLING_BLAST_RADIUS ** 2):
+                    if player.hit_cd <= 0.0:
+                        player.hp = max(0, player.hp - MISTLING_BLAST_DAMAGE)
+                        player.hit_cd = float(PLAYER_HIT_COOLDOWN)
+                self._boom_done = True
+                # 允许主循环正常移除
+
         # 腐蚀幼体：死亡留酸；计时>15s 可被BOSS吸回
         if self.type == "corruptling":
             self._life = getattr(self, "_life", 0.0) + dt
@@ -3240,9 +3266,15 @@ class MistweaverBoss(Zombie):
         self._blink_cd = MIST_BLINK_CD
         self._sonar_next = 1.0  # 下一个“HP 比例阈值”（先置 100%→70% 时触发）
         self._clone_ids = set()
+        self.can_crush_all_blocks = True
+        self.no_clip_t = 0.0  # 推平后的短暂无视碰撞（你已有清理）
 
         # 启动时请求雾场（GameState 每帧会判定并开启）
         self._want_fog = True
+        # 弹幕
+        self._ring_cd = random.uniform(2.0, 3.5)
+        self._ring_bursts_left = 0
+        self._ring_burst_t = 0.0
 
     def _has_clones(self, zombies):
         n = 0
@@ -3317,11 +3349,12 @@ class MistweaverBoss(Zombie):
             # 召唤
             self._storm_cd -= dt
             if self._storm_cd <= 0:
+                # Mistweaver 召唤（原来追加 Wormling 的地方）
                 for _ in range(MIST_SUMMON_IMPS):
-                    game_state.wormlings.append(Wormling(self.rect.centerx, self.rect.centery))
-                    w = Wormling(self.rect.centerx, self.rect.centery)
-                    setattr(w, "color", (228, 218, 255))  # ★ 白紫
-                    game_state.wormlings.append(w)
+                    ox = random.randint(-24, 24);
+                    oy = random.randint(-24, 24)
+                    zombies.append(spawn_mistling_at(self.rect.centerx + ox, self.rect.centery + oy,
+                                                     level_idx=getattr(game_state, "current_level", 0)))
 
                 self._storm_cd = 6.5
 
@@ -3365,6 +3398,44 @@ class MistweaverBoss(Zombie):
             if getattr(player, "_mist_mark_t", 0.0) > 0.0:
                 self.buff_t = max(self.buff_t, dt)
                 self.buff_spd_add = max(self.buff_spd_add, MIST_CHASE_BOOST)
+        # P4： —— 自身为圆心的三连发散射 ——
+        self._ring_cd = max(0.0, self._ring_cd - dt)
+        if self._ring_bursts_left > 0:
+            self._ring_burst_t -= dt
+            if self._ring_burst_t <= 0.0:
+                # 发一环
+                for i in range(MIST_RING_PROJECTILES):
+                    ang = (2 * math.pi) * (i / MIST_RING_PROJECTILES)
+                    vx = math.cos(ang) * MIST_RING_SPEED
+                    vy = math.sin(ang) * MIST_RING_SPEED
+                    enemy_shots.append(EnemyShot(self.rect.centerx, self.rect.centery, vx, vy, MIST_RING_DAMAGE))
+                self._ring_bursts_left -= 1
+                self._ring_burst_t = 0.20  # 连发间隔（秒）
+                # 给一点白紫预警圈（可选）
+                game_state.spawn_telegraph(self.rect.centerx, self.rect.centery, r=int(self.radius * 0.95), life=0.20,
+                                           kind="acid", color=HAZARD_STYLES["mist"]["ring"])
+        else:
+            if self._ring_cd <= 0.0:
+                self._ring_bursts_left = MIST_RING_BURSTS
+                self._ring_burst_t = 0.0  # 立刻发第一环
+                self._ring_cd = MIST_RING_CD
+
+        # --- Mistling 回收：在 Boss 周围半径内的雾妖会被回收并为 Boss 回血 ---
+        pull_any = False
+        cx, cy = self.rect.center  # ← 确保有中心坐标可用
+
+        for z in list(zombies):
+            if getattr(z, "type", "") == "mistling":
+                zx, zy = z.rect.centerx, z.rect.centery
+                # 进入回收半径：直接被回收（相当于被击杀），标记发生回收
+                if (zx - cx) ** 2 + (zy - cy) ** 2 <= (MISTLING_PULL_RADIUS ** 2):
+                    z.hp = 0
+                    pull_any = True
+
+        if pull_any:
+            # Boss 回血，并在 Boss 中心飘字（白紫色的“护盾/治疗”风格）
+            self.hp = min(self.max_hp, self.hp + MISTLING_HEAL)
+            game_state.add_damage_text(cx, cy, f"+{MISTLING_HEAL}", crit=False, kind="shield")
 
 
 class Bullet:
@@ -3652,6 +3723,19 @@ class EnemyShot:
                         del game_state.obstacles[gp]
                     self.alive = False
                     return
+                # EnemyShot.update(...) 内，判玩家前插入：
+                for lan in list(getattr(game_state, "fog_lanterns", [])):
+                    if not getattr(lan, "alive", True):
+                        continue
+                    gx, gy = lan.grid_pos
+                    cx = int(gx * CELL_SIZE + CELL_SIZE * 0.5)
+                    cy = int(gy * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT)
+                    if r.collidepoint(cx, cy):
+                        lan.hp = max(0, getattr(lan, "hp", 1) - self.dmg)
+                        if lan.hp == 0:
+                            lan.alive = False
+                        self.alive = False
+                        return
 
                 # 其他未知类型：默认阻挡
                 self.alive = False
@@ -4008,6 +4092,12 @@ def spawn_corruptling_at(x_px: float, y_px: float) -> "Zombie":
     z.spawn_delay = 0.25
     return z
 
+def spawn_mistling_at(cx, cy, level_idx=0):
+    gx = max(0, min(GRID_SIZE - 1, int(cx // CELL_SIZE)))
+    gy = max(0, min(GRID_SIZE - 1, int((cy - INFO_BAR_HEIGHT) // CELL_SIZE)))
+    z = Zombie((gx, gy), attack=10, speed=3, ztype="mistling", hp=24)
+    return z
+
 
 def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_index: int) -> "Zombie":
     """Factory: spawn a zombie already scaled, with elite/boss & affixes applied."""
@@ -4338,7 +4428,6 @@ class GameState:
         self.fog_alpha = FOG_OVERLAY_ALPHA
         self.fog_lanterns: list = []  # FogLantern 实例
         self._fog_pulse_t: float = 0.0  # 呼吸脉冲
-        self.wormlings = []
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -4400,24 +4489,6 @@ class GameState:
                 healed += (player.hp - before)
         return healed
 
-    def update_wormlings(self, dt, player):
-        """Tick & prune boss minions."""
-        for w in list(self.wormlings):
-            if not w.update(dt, player, self):
-                self.wormlings.remove(w)
-
-    def draw_wormlings_iso(self, screen, camx, camy):
-        """Simple rectangles in ISO view (same visual style as other blocks)."""
-        for w in self.wormlings:
-            # world (feet center) → grid → iso screen
-            wx = (w.x + w.size * 0.5) / CELL_SIZE
-            wy = (w.y + w.size) / CELL_SIZE
-            sx, sy = iso_world_to_screen(wx, wy, 0.0, camx, camy)
-            r = pygame.Rect(0, 0, w.size, w.size)
-            # align by midbottom like other entities
-            r.midbottom = (int(sx), int(sy))
-            col = getattr(w, "color", (120, 220, 120))  # ★ 先取实例色，没有就用旧的绿色
-            pygame.draw.rect(screen, col, r)
 
     # ---- 地面腐蚀池 ----w
     # 在 GameState 内，替换/保留为 ↓ 这个版本
@@ -4445,8 +4516,6 @@ class GameState:
     def spawn_projectile(self, proj):
         self.projectiles.append(proj)
 
-    def spawn_wormling(self, x, y):
-        self.summons.append(Wormling(x, y))
 
     def update_acids(self, dt: float, player: "Player"):
         # 衰减 slow / DoT 计时
@@ -4553,50 +4622,75 @@ class GameState:
             if getattr(ob, "type", "") == "Lantern":
                 del self.obstacles[gp]
 
-    def request_fog_field(self):
-        """被 Mistweaver 触发后立即落雾并生成灯笼（只做一次）。"""
-        if self.fog_enabled:
+    # --- GameState ---
+    def request_fog_field(self, player=None):
+        """首次启动雾场 & 刷新灯笼。player 可选（首次刷 Boss 时可能还没 self.player）。"""
+        if getattr(self, "_fog_inited", False):
             return
+        self._fog_inited = True
         self.fog_enabled = True
-        self.spawn_fog_lanterns()
+        if not hasattr(self, "fog_lanterns"):
+            self.fog_lanterns = []
+        self.spawn_fog_lanterns(player)
 
-    def spawn_fog_lanterns(self, n: int = FOG_LANTERN_COUNT):
-        """在非阻挡格上随机放置 n 个雾灯笼（非阻挡），同时放入 self.fog_lanterns。"""
+    def spawn_fog_lanterns(self, player=None):
+        """把 FOG_LANTERN_COUNT 个灯笼刷在可走格上，尽量离玩家远；无玩家时以地图中心为基准。"""
+        if not hasattr(self, "fog_lanterns"):
+            self.fog_lanterns = []
         self.fog_lanterns.clear()
-        cells = [(x, y) for x in range(GRID_SIZE) for y in range(GRID_SIZE)
-                 if (x, y) not in self.obstacles]
-        random.shuffle(cells)
-        taken = set()
+
+        # 占用格：障碍 + 掉落物品
+        taken = set(self.obstacles.keys()) | {(it.x, it.y) for it in getattr(self, "items", [])}
+
+        # 取玩家网格坐标（若无，则用地图中心）
+        if player is None and hasattr(self, "player"):
+            player = self.player
+        if player is not None and hasattr(player, "rect"):
+            px = int(player.rect.centerx // CELL_SIZE)
+            py = int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE)
+        else:
+            px = GRID_SIZE // 2
+            py = GRID_SIZE // 2
+
+        # 候选格：可走、且与玩家的曼哈顿距离≥6
+        all_cells = [(x, y) for y in range(GRID_SIZE) for x in range(GRID_SIZE)
+                     if (x, y) not in taken and abs(x - px) + abs(y - py) >= 6]
+        random.shuffle(all_cells)
+
+        n = int(FOG_LANTERN_COUNT)
         for _ in range(n):
-            if not cells: break
-            gx, gy = cells.pop()
-            # 保证彼此不要太近
-            if any(abs(gx - ax) + abs(gy - ay) < 6 for ax, ay in taken):
-                continue
-            taken.add((gx, gy))
-            lan = FogLantern(gx, gy, hp=FOG_LANTERN_HP)
-            self.fog_lanterns.append(lan)
+            if not all_cells:
+                break
+            gx, gy = all_cells.pop()
+            self.fog_lanterns.append(FogLantern(gx, gy, hp=FOG_LANTERN_HP))
 
     def draw_lanterns_iso(self, screen, camx, camy):
-        """等距画雾灯笼（小方块+柔光圈）。"""
         for lan in list(self.fog_lanterns):
             if not lan.alive:
-                self.fog_lanterns.remove(lan)
                 continue
-            # 网格转等距
             gx, gy = lan.grid_pos
             sx, sy = iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
-            # 灯体
+            # 柔光圈
+            glow = pygame.Surface((int(CELL_SIZE * 2.2), int(CELL_SIZE * 1.4)), pygame.SRCALPHA)
+            pygame.draw.ellipse(glow, (255, 240, 120, 90), glow.get_rect())
+            screen.blit(glow, glow.get_rect(center=(int(sx), int(sy + 6))).topleft)
+            # 方灯体
             body = pygame.Rect(0, 0, int(CELL_SIZE * 0.55), int(CELL_SIZE * 0.55))
-            body.center = (int(sx), int(sy - ISO_WALL_Z * 0.2))
+            body.center = (int(sx), int(sy - 4))
             pygame.draw.rect(screen, (255, 230, 120), body, border_radius=6)
             pygame.draw.rect(screen, (120, 80, 20), body, 2, border_radius=6)
-            # 柔光（用半透明圈提示清雾半径）
-            glow = pygame.Surface((FOG_LANTERN_CLEAR_RADIUS * 2, FOG_LANTERN_CLEAR_RADIUS * 2), pygame.SRCALPHA)
-            pygame.draw.circle(glow, (255, 240, 180, 50),
-                               (FOG_LANTERN_CLEAR_RADIUS, FOG_LANTERN_CLEAR_RADIUS),
-                               FOG_LANTERN_CLEAR_RADIUS)
-            screen.blit(glow, glow.get_rect(center=(int(sx), int(sy))))
+
+    def draw_lanterns_topdown(self, screen, camx, camy):
+        for lan in list(self.fog_lanterns):
+            if not lan.alive:
+                continue
+            gx, gy = lan.grid_pos
+            cx = int(gx * CELL_SIZE + CELL_SIZE * 0.5 - camx)
+            cy = int(gy * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT - camy)
+            body = pygame.Rect(0, 0, int(CELL_SIZE * 0.55), int(CELL_SIZE * 0.55))
+            body.center = (cx, cy)
+            pygame.draw.rect(screen, (255, 230, 120), body, border_radius=6)
+            pygame.draw.rect(screen, (120, 80, 20), body, 2, border_radius=6)
 
     def draw_hazards_iso(self, screen, cam_x, cam_y):
         # 1) Telegraph（空心圈）
@@ -4890,12 +4984,14 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
     for g in getattr(game_state, "ghosts", []):
         g.draw_iso(screen, camx, camy)
 
-    game_state.draw_wormlings_iso(screen, camx, camy)
-
     game_state.draw_hazards_iso(screen, camx, camy)
 
     if getattr(game_state, "fog_on", False):
         game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)
+    if USE_ISO:
+        game_state.draw_lanterns_iso(screen, camx, camy)
+    else:
+        game_state.draw_lanterns_topdown(screen, camx, camy)
 
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
@@ -5561,10 +5657,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
-
-        # --- wormlings ---
-        if game_state.wormlings:
-            game_state.update_wormlings(dt, player)
 
         # afterimages (update & prune)
         if game_state.ghosts:
