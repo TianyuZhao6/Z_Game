@@ -650,6 +650,12 @@ HAZARD_STYLES = {
         "particle": (220, 230, 255),
         "pulse": True
     },
+    "dash_mist": {
+       "fill": (190, 195, 255),
+       "ring": (245, 246, 255),
+       "particle": (220, 225, 255),
+}
+
 }
 
 # Fog field (被动视野压缩)
@@ -2188,7 +2194,7 @@ class Obstacle:
 class FogLantern(Obstacle):
     def __init__(self, x: int, y: int, hp: int = FOG_LANTERN_HP):
         super().__init__(x, y, "Lantern", health=hp)
-        self.nonblocking = True  # 关键：不参与移动碰撞
+        self.nonblocking = False  # 关键：不参与移动碰撞
         # 更明显一点的可视尺寸
         self.rect = pygame.Rect(self.rect.x + 6, self.rect.y + 6, CELL_SIZE - 12, CELL_SIZE - 12)
 
@@ -3079,7 +3085,7 @@ class Zombie:
                 self.speed = max(0.2, self._dash_speed_hold * 0.25)
                 # 视觉预警：中心圈（可保留；不想要可以注释）
                 game_state.spawn_telegraph(cx, cy, r=int(getattr(self, "radius", self.size * 0.5) * 0.9),
-                                           life=self._dash_t, kind="dash", payload=None)
+                                           life=self._dash_t, kind="dash_mist", payload=None)
 
             elif self._dash_state == "wind":
                 self._dash_t -= dt
@@ -3408,7 +3414,10 @@ class MistweaverBoss(Zombie):
                     ang = (2 * math.pi) * (i / MIST_RING_PROJECTILES)
                     vx = math.cos(ang) * MIST_RING_SPEED
                     vy = math.sin(ang) * MIST_RING_SPEED
-                    enemy_shots.append(EnemyShot(self.rect.centerx, self.rect.centery, vx, vy, MIST_RING_DAMAGE))
+                    enemy_shots.append(EnemyShot(self.rect.centerx, self.rect.centery, vx, vy, MIST_RING_DAMAGE,
+                                                 radius=20,  # 体积增大（原来多为4）
+                                                 color=ZOMBIE_COLORS["boss_mist"]
+                                                 ))
                 self._ring_bursts_left -= 1
                 self._ring_burst_t = 0.20  # 连发间隔（秒）
                 # 给一点白紫预警圈（可选）
@@ -3670,12 +3679,14 @@ class TelegraphCircle:
 
 
 class EnemyShot:
-    def __init__(self, x: float, y: float, vx: float, vy: float, dmg: int, max_dist: float = MAX_FIRE_RANGE):
+    def __init__(self, x: float, y: float, vx: float, vy: float, dmg: int, max_dist: float = MAX_FIRE_RANGE, radius=4,color=(255, 120, 50)):
         self.x, self.y = x, y
         self.vx, self.vy = vx, vy
         self.dmg = int(dmg)
         self.traveled = 0.0
+        self.r = int(radius)
         self.max_dist = max_dist
+        self.color = tuple(color)
         self.alive = True
 
     def update(self, dt: float, player: 'Player', game_state: 'GameState'):
@@ -3753,7 +3764,7 @@ class EnemyShot:
             self.alive = False
 
     def draw(self, screen, cam_x, cam_y):
-        pygame.draw.circle(screen, (255, 120, 50), (int(self.x - cam_x), int(self.y - cam_y)), BULLET_RADIUS)
+        pygame.draw.circle(screen, self.color, (int(self.x - cam_x), int(self.y - cam_y)), self.r)
 
 
 class DamageText:
