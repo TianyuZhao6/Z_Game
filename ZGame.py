@@ -3085,7 +3085,7 @@ class Zombie:
                 self.speed = max(0.2, self._dash_speed_hold * 0.25)
                 # 视觉预警：中心圈（可保留；不想要可以注释）
                 game_state.spawn_telegraph(cx, cy, r=int(getattr(self, "radius", self.size * 0.5) * 0.9),
-                                           life=self._dash_t, kind="dash_mist", payload=None)
+                                           life=self._dash_t, kind="acid", payload=None)
 
             elif self._dash_state == "wind":
                 self._dash_t -= dt
@@ -3379,7 +3379,7 @@ class MistweaverBoss(Zombie):
                 # 直接在 0.8s 后落雾池（用 telegraph 的 payload 或者简单延迟）
                 for (x, y) in pts:
                     game_state.spawn_telegraph(self.rect.centerx, self.rect.centery,
-                                               r=22, life=MIST_P2_STORM_WIND, kind="acid",
+                                               r=22, life=MIST_P2_STORM_WIND, kind="dash_mist",
                                                payload={"points": [(x, y)], "radius": int(CELL_SIZE * 0.5),
                                                         "life": 4.0, "dps": MIST_P2_POOL_DPS,
                                                         "slow": MIST_P2_POOL_SLOW},  color=HAZARD_STYLES["mist"]["ring"])
@@ -3396,7 +3396,7 @@ class MistweaverBoss(Zombie):
             next_pct = getattr(self, "_sonar_next", 0.70)
             while hp_pct <= next_pct and next_pct >= 0.0:
                 game_state.spawn_telegraph(self.rect.centerx, self.rect.centery,
-                                           r=int(self.radius * 1.8), life=0.6, kind="ring",
+                                           r=int(self.radius * 1.8), life=0.6, kind="dash_mist",
                                            payload={"note": "mist_sonar"})
                 self._sonar_next = next_pct - MIST_SONAR_STEP
                 next_pct = self._sonar_next
@@ -3763,8 +3763,15 @@ class EnemyShot:
             game_state.add_damage_text(player.rect.centerx, player.rect.centery, self.dmg, crit=False, kind="hp")
             self.alive = False
 
-    def draw(self, screen, cam_x, cam_y):
-        pygame.draw.circle(screen, self.color, (int(self.x - cam_x), int(self.y - cam_y)), self.r)
+    def draw_topdown(self, screen, camx, camy):
+        pygame.draw.circle(screen, self.color,
+                           (int(self.x - camx), int(self.y - camy)), self.r)
+
+    def draw_iso(self, screen, camx, camy):
+        wx = self.x / CELL_SIZE
+        wy = (self.y - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0.0, camx, camy)
+        pygame.draw.circle(screen, self.color, (int(sx), int(sy)), self.r)
 
 
 class DamageText:
