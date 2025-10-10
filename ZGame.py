@@ -4650,7 +4650,7 @@ class GameState:
             self.fog_lanterns = []
         self.fog_lanterns.clear()
 
-        # 占用格：障碍 + 掉落物品
+        # 已占用：障碍 + 物品
         taken = set(self.obstacles.keys()) | {(it.x, it.y) for it in getattr(self, "items", [])}
 
         # 取玩家网格坐标（若无，则用地图中心）
@@ -4664,16 +4664,18 @@ class GameState:
             py = GRID_SIZE // 2
 
         # 候选格：可走、且与玩家的曼哈顿距离≥6
-        all_cells = [(x, y) for y in range(GRID_SIZE) for x in range(GRID_SIZE)
-                     if (x, y) not in taken and abs(x - px) + abs(y - py) >= 6]
-        random.shuffle(all_cells)
+        cells = [(x, y) for y in range(GRID_SIZE) for x in range(GRID_SIZE)
+                 if (x, y) not in taken and abs(x - px) + abs(y - py) >= 6]
+        random.shuffle(cells)
 
-        n = int(FOG_LANTERN_COUNT)
-        for _ in range(n):
-            if not all_cells:
+        want = int(FOG_LANTERN_COUNT)
+        for _ in range(want):
+            if not cells:
                 break
-            gx, gy = all_cells.pop()
-            self.fog_lanterns.append(FogLantern(gx, gy, hp=FOG_LANTERN_HP))
+            gx, gy = cells.pop()
+            lan = FogLantern(gx, gy, hp=FOG_LANTERN_HP)  # ★ 真正创建
+            self.fog_lanterns.append(lan)  # ★ 放进列表
+            self.obstacles[(gx, gy)] = lan  # ★ 作为障碍注册（有碰撞体积）
 
     def draw_lanterns_iso(self, screen, camx, camy):
         for lan in list(self.fog_lanterns):
