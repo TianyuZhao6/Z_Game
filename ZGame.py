@@ -627,7 +627,7 @@ MIST_RING_BURSTS = 3
 MIST_RING_PROJECTILES = 28
 MIST_RING_SPEED = 420.0
 MIST_RING_CD = 5.5
-MIST_RING_DAMAGE = 10
+MIST_RING_DAMAGE = 18
 
 
 
@@ -3384,7 +3384,7 @@ class MistweaverBoss(Zombie):
                                                         "life": 4.0, "dps": MIST_P2_POOL_DPS,
                                                         "slow": MIST_P2_POOL_SLOW},  color=HAZARD_STYLES["mist"]["ring"])
                 self._storm_cd = MIST_P2_STORM_CD
-
+# TODO
             # 静默领域：随机一个圆区 3 秒，里面额外减速（简化成强减速代替“禁技能”）
             if random.random() < 0.007:  # 低频随机触发
                 rx = random.randint(CELL_SIZE * 3, WINDOW_SIZE - CELL_SIZE * 3)
@@ -3397,7 +3397,7 @@ class MistweaverBoss(Zombie):
             while hp_pct <= next_pct and next_pct >= 0.0:
                 game_state.spawn_telegraph(self.rect.centerx, self.rect.centery,
                                            r=int(self.radius * 1.8), life=0.6, kind="dash_mist",
-                                           payload={"note": "mist_sonar"})
+                                           payload={"note": "mist_sonar"}, color=HAZARD_STYLES["mist"]["ring"])
                 self._sonar_next = next_pct - MIST_SONAR_STEP
                 next_pct = self._sonar_next
             # 如果玩家处于“标记”，给予追击加速
@@ -3414,10 +3414,12 @@ class MistweaverBoss(Zombie):
                     ang = (2 * math.pi) * (i / MIST_RING_PROJECTILES)
                     vx = math.cos(ang) * MIST_RING_SPEED
                     vy = math.sin(ang) * MIST_RING_SPEED
-                    enemy_shots.append(EnemyShot(self.rect.centerx, self.rect.centery, vx, vy, MIST_RING_DAMAGE,
-                                                 radius=20,  # 体积增大（原来多为4）
-                                                 color=ZOMBIE_COLORS["boss_mist"]
-                                                 ))
+                    col = HAZARD_STYLES["mist"]["ring"]  # 白紫
+                    es = EnemyShot(self.rect.centerx, self.rect.centery, vx, vy, MIST_RING_DAMAGE)
+                    es.r = 10  # 弹幕体积增大（原来等于 BULLET_RADIUS）
+                    es.color = col  # 统一成 Boss 白紫
+                    enemy_shots.append(es)
+
                 self._ring_bursts_left -= 1
                 self._ring_burst_t = 0.20  # 连发间隔（秒）
                 # 给一点白紫预警圈（可选）
