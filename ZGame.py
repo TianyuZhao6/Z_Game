@@ -3414,11 +3414,10 @@ class MistweaverBoss(Zombie):
                     ang = (2 * math.pi) * (i / MIST_RING_PROJECTILES)
                     vx = math.cos(ang) * MIST_RING_SPEED
                     vy = math.sin(ang) * MIST_RING_SPEED
-                    col = HAZARD_STYLES["mist"]["ring"]  # 白紫
-                    es = EnemyShot(self.rect.centerx, self.rect.centery, vx, vy, MIST_RING_DAMAGE)
-                    es.r = 10  # 弹幕体积增大（原来等于 BULLET_RADIUS）
-                    es.color = col  # 统一成 Boss 白紫
-                    enemy_shots.append(es)
+                    enemy_shots.append(
+                        MistShot(self.rect.centerx, self.rect.centery, vx, vy,
+                                 MIST_RING_DAMAGE, radius=10, color=HAZARD_STYLES["mist"]["ring"])
+                    )
 
                 self._ring_bursts_left -= 1
                 self._ring_burst_t = 0.20  # 连发间隔（秒）
@@ -4877,7 +4876,10 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
         for es in enemy_shots:
             wx, wy = es.x / CELL_SIZE, (es.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-            drawables.append(("eshot", sy, {"cx": sx, "cy": sy}))
+            if isinstance(es, MistShot):
+                drawables.append(("mistshot", sy, {"cx": sx, "cy": sy, "obj": es}))
+            else:
+                drawables.append(("eshot", sy, {"cx": sx, "cy": sy}))
 
     # 4) 排序后统一绘制（只保留这一段循环）
     drawables.sort(key=lambda x: x[1])
@@ -4935,6 +4937,11 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
             pygame.draw.circle(screen, (255, 255, 255), (data["cx"], data["cy"]), BULLET_RADIUS)
         elif kind == "eshot":
             pygame.draw.circle(screen, (255, 120, 50), (data["cx"], data["cy"]), BULLET_RADIUS)
+        elif kind == "mistshot":
+            es = data.get("obj")
+            rad = int(getattr(es, "r", BULLET_RADIUS))
+            col = getattr(es, "color", HAZARD_STYLES["mist"]["ring"])
+            pygame.draw.circle(screen, col, (data["cx"], data["cy"]), rad)
         elif kind == "zombie":
             z, cx, cy = data["z"], data["cx"], data["cy"]
             sh = pygame.Surface((ISO_CELL_W // 2, ISO_CELL_H // 2), pygame.SRCALPHA)
