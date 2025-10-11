@@ -3775,6 +3775,12 @@ class EnemyShot:
         sx, sy = iso_world_to_screen(wx, wy, 0.0, camx, camy)
         pygame.draw.circle(screen, self.color, (int(sx), int(sy)), self.r)
 
+class MistShot(EnemyShot):
+    """Mistweaver 专用弹幕：自带半径/颜色，不影响普通 EnemyShot。"""
+    def __init__(self, x, y, vx, vy, damage, radius=10, color=None):
+        super().__init__(x, y, vx, vy, damage)
+        self.r = int(radius)
+        self.color = color or HAZARD_STYLES["mist"]["ring"]
 
 class DamageText:
     """世界坐标下的飘字（x,y 为像素，含 INFO_BAR_HEIGHT），按时间上浮并淡出。"""
@@ -4830,6 +4836,8 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
             base_col = (int(200 * t), int(80 * t), int(80 * t))
         top_pts = iso_tile_points(gx, gy, camx, camy)
         sort_y = top_pts[2][1] + (ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
+        if getattr(ob, "type", "") == "Lantern":
+            continue
         drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": base_col}))
 
     # 3.2 地面上的小物：金币 / 治疗（存屏幕像素坐标）
