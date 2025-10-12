@@ -3384,12 +3384,13 @@ class MistweaverBoss(Zombie):
                                                         "life": 4.0, "dps": MIST_P2_POOL_DPS,
                                                         "slow": MIST_P2_POOL_SLOW},  color=HAZARD_STYLES["mist"]["ring"])
                 self._storm_cd = MIST_P2_STORM_CD
-# TODO
+
             # 静默领域：随机一个圆区 3 秒，里面额外减速（简化成强减速代替“禁技能”）
             if random.random() < 0.007:  # 低频随机触发
                 rx = random.randint(CELL_SIZE * 3, WINDOW_SIZE - CELL_SIZE * 3)
                 ry = random.randint(CELL_SIZE * 3, WINDOW_SIZE - CELL_SIZE * 3) + INFO_BAR_HEIGHT
-                game_state.spawn_acid_pool(rx, ry, r=MIST_SILENCE_RADIUS, life=MIST_SILENCE_TIME, dps=0, slow_frac=0.50)
+                game_state.spawn_acid_pool(rx, ry, r=MIST_SILENCE_RADIUS, life=MIST_SILENCE_TIME,
+                                           dps=0, slow_frac=0.50, style="mist")
 
         # P3：声纳圈；被命中者“被标记”，Boss 追击加速
         if self.phase == 3:
@@ -3704,8 +3705,9 @@ class EnemyShot:
             return
 
         # 本帧碰撞 AABB
-        r = pygame.Rect(int(self.x - BULLET_RADIUS), int(self.y - BULLET_RADIUS),
-                        BULLET_RADIUS * 2, BULLET_RADIUS * 2)
+        # 本帧碰撞 AABB（优先用自身半径）
+        _rr = int(getattr(self, "r", BULLET_RADIUS))
+        r = pygame.Rect(int(self.x - _rr), int(self.y - _rr), _rr * 2, _rr * 2)
 
         # 1) 先撞障碍（会阻挡子弹）
         for gp, ob in list(game_state.obstacles.items()):
@@ -4525,7 +4527,7 @@ class GameState:
                         life=ACID_LIFETIME,
                         slow_frac=None,  # 新参数名
                         slow=None,  # 旧参数名（向后兼容）
-                        style="acid"):  # 可用于雾池/雾门上色
+                        style= "acid"):  # 可用于雾池/雾门上色
         # 兼容处理：优先采用 slow_frac；否则用 slow；最后回退到默认常量
         if slow_frac is None and slow is not None:
             slow_frac = slow
