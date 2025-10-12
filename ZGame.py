@@ -453,10 +453,7 @@ BOSS_VOMIT_ARC_SEC = 0.45
 
 BOSS_SUMMON_CD = 10.0
 BOSS_SUMMON_COUNT = (3, 5)  # min, max
-WORMLING_SPEED = 210
-WORMLING_HP = 1
-WORMLING_LIFETIME = 10.0
-WORMLING_DAMAGE = 6
+
 
 ACID_POOL_DPS = 10  # damage / second
 ACID_POOL_SLOW = 0.35  # extra slow
@@ -3128,41 +3125,6 @@ class Zombie:
     def draw(self, screen):
         color = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         pygame.draw.rect(screen, color, self.rect)
-
-
-class Wormling:
-    def __init__(self, x, y):
-        self.x, self.y = float(x), float(y)
-        self.speed = WORMLING_SPEED
-        self.hp = WORMLING_HP
-        self.life = WORMLING_LIFETIME
-        self.size = int(CELL_SIZE * 0.6)
-        self.rect = pygame.Rect(int(self.x), int(self.y), self.size, self.size)
-
-    def update(self, dt, player, game_state):
-        self.life -= dt
-        if self.life <= 0 or self.hp <= 0:
-            return False
-
-        dx = player.rect.centerx - self.rect.centerx
-        dy = player.rect.centery - self.rect.centery
-        d = (dx * dx + dy * dy) ** 0.5 or 1.0
-        vx = dx / d * self.speed
-        vy = dy / d * self.speed
-
-        self.x += vx * dt
-        self.y += vy * dt
-        self.rect.x = int(self.x)
-        self.rect.y = int(self.y)
-
-        # contact poke
-        if self.rect.colliderect(player.rect):
-            player.take_damage(WORMLING_DAMAGE)
-            return False
-        return True
-
-    def draw(self, screen):
-        pygame.draw.rect(screen, (120, 220, 120), self.rect, 0)
 
 
 class MemoryDevourerBoss(Zombie):
