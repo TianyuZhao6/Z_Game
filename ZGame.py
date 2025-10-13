@@ -610,7 +610,7 @@ CHARGE_THRESH = 0.10
 CHARGE_SPEED = 3.0
 # --- Mistweaver (Boss II) — appears at Lv10 (index 9) ---
 MISTWEAVER_LEVELS = {9}  # 0-based：第10关
-MIST_BASE_HP = 6500
+MIST_BASE_HP = 8000
 MIST_CONTACT_DAMAGE = 28
 MIST_SPEED = 2.2  # 略慢于玩家
 MISTLING_LIFETIME = 10.0
