@@ -4470,6 +4470,28 @@ class GameState:
                 self.spoils.remove(s)
                 gained += s.value
         return gained
+    
+    def lose_coins(self, amount: int) -> int:
+        """从本局临时金币（spoils_gained）优先扣，再从META['spoils']扣；返回实际扣除数。"""
+        amt = int(max(0, amount))
+        if amt <= 0:
+            return 0
+        taken = 0
+        # 先扣本局
+        g = int(getattr(self, "spoils_gained", 0))
+        d = min(g, amt)
+        self.spoils_gained = g - d
+        taken += d
+        amt -= d
+        # 不足再扣全局
+        try:
+            meta = globals().get("META", {})
+            rest = min(int(meta.get("spoils", 0)), amt)
+            meta["spoils"] = int(meta.get("spoils", 0)) - rest
+            taken += rest
+        except Exception:
+            pass
+        return taken
 
     def spawn_heal(self, x_px: float, y_px: float, amount: int = HEAL_POTION_AMOUNT):
         jx = random.uniform(-6, 6);
