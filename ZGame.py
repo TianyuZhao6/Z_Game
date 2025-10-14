@@ -608,6 +608,18 @@ RAIN_TELEGRAPH_T = 0.5
 # 濒死冲锋（<10%）
 CHARGE_THRESH = 0.10
 CHARGE_SPEED = 3.0
+# ===== Coin Bandit（金币大盗）常量 =====
+BANDIT_MIN_LEVEL_IDX = 2          # 前两关不出现（0基索引：2=第三关）
+BANDIT_SPAWN_CHANCE_PER_WAVE = 0.28  # 每个非Boss波次独立检定（每关最多1只）
+BANDIT_BASE_HP = 85
+BANDIT_BASE_SPEED = 2.1           # 相对普通僵尸更快（再叠加z_level等成长）
+BANDIT_ESCAPE_TIME_BASE = 18.0    # 逃跑倒计时（秒）
+BANDIT_ESCAPE_TIME_MIN = 10.0     # 下限
+BANDIT_STEAL_RATE_MIN = 2         # 每秒最少偷取金币
+BANDIT_STEAL_RATE_MAX = 10        # 每秒最多偷取金币
+BANDIT_BONUS_RATE = 0.25          # 击杀后额外奖励比例（在偷取总额基础上再+25%）
+BANDIT_BONUS_FLAT = 2             # 击杀后额外固定奖励
+
 # --- Mistweaver (Boss II) — appears at Lv10 (index 9) ---
 MISTWEAVER_LEVELS = {9}  # 0-based：第10关
 MIST_BASE_HP = 8000
@@ -625,9 +637,6 @@ MIST_RING_PROJECTILES = 28
 MIST_RING_SPEED = 420.0
 MIST_RING_CD = 5.5
 MIST_RING_DAMAGE = 18
-
-
-
 
 # 统一的地面危害样式
 HAZARD_STYLES = {
@@ -766,6 +775,7 @@ ZOMBIE_COLORS = {
     "splinter": (180, 120, 250),
     "splinterling": (210, 160, 255),
     "mistling": (228, 218, 255),
+    "bandit": (255, 215, 0),  # 金币大盗：金色
 
 }
 # --- colors (add) ---
@@ -4417,6 +4427,8 @@ class GameState:
         self.fog_alpha = FOG_OVERLAY_ALPHA
         self.fog_lanterns: list = []  # FogLantern 实例
         self._fog_pulse_t: float = 0.0  # 呼吸脉冲
+        self.bandit_spawned_this_level = False  # 本关是否已出现过金币大盗
+
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
