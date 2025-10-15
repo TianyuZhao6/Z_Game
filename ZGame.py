@@ -2043,8 +2043,8 @@ def spawn_wave_with_budget(game_state: "GameState",
         gx, gy = spots.pop()  # 占用一个出生点
         cx = int(gx * CELL_SIZE + CELL_SIZE*0.5)
         cy = int(gy * CELL_SIZE + CELL_SIZE*0.5 + INFO_BAR_HEIGHT)
-        bandit = make_coin_bandit((cx - min(ZOMBIE_SIZE_MAX)*0.5, cy - INFO_BAR_HEIGHT - min(ZOMBIE_SIZE_MAX)*0.5),
-                                  level_idx, wave_index, int(budget))
+        bandit = make_coin_bandit((cx, cy), level_idx, wave_index, int(budget))
+
         zombies.append(bandit)
         game_state.bandit_spawned_this_level = True
 
@@ -2974,10 +2974,13 @@ class Zombie:
             steal_units = int(self._steal_accum)
             if steal_units >= 1 and game_state is not None:
                 self._steal_accum -= steal_units
-                got = game_state.lose_coins(steal_units)  # 先扣本局，再扣全局【见上文GameState.lose_coins】
+                # 只扣 META['spoils']，不去动“本关内的临时币/地上币”
+                avail = int(META.get("spoils", 0))
+                got = min(steal_units, avail)
                 if got > 0:
-                    self._stolen_total += got
-                    # 在自己头顶飘一个小“-$”
+                    META["spoils"] = avail - got
+                    self._stolen_total = int(getattr(self, "_stolen_total", 0)) + got
+                    # 飘一个 -数字 的提示
                     game_state.add_damage_text(self.rect.centerx, self.rect.centery, f"-{got}", crit=False, kind="hp")
 
             # 逃跑计时
@@ -3565,6 +3568,21 @@ class Bullet:
                         spawn_splinter_children(z, zombies, game_state, level_idx=0, wave_index=0)
 
                         # 从场上移除父体
+                        zombies.remove(z)
+                        self.alive = False
+                        return
+                    # ==== Coin Bandit：返还所有已偷 META 币 + 奖励 ====
+                    if getattr(z, "type", "") == "bandit":
+                        stolen = int(getattr(z, "_stolen_total", 0))
+                        bonus = (int(stolen * BANDIT_BONUS_RATE) + int(BANDIT_BONUS_FLAT)) if stolen > 0 else 0
+                        refund = stolen + bonus
+                        if refund > 0:
+                            game_state.spawn_spoils(cx, cy, refund)  # 掉一袋钱：玩家自己去捡
+                        # bandit 的普通随机掉落就不要叠加了，直接走移除流程
+                        if player:
+                            base_xp = XP_PER_ZOMBIE_TYPE.get("bandit", XP_PLAYER_KILL)
+                            player.add_xp(base_xp)
+                        transfer_xp_to_neighbors(z, zombies)
                         zombies.remove(z)
                         self.alive = False
                         return
@@ -4177,45 +4195,41 @@ def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_i
     return z
 
 
-def make_coin_bandit(pos_xy, level_idx: int, wave_idx: int, budget: int):
-    x, y = pos_xy
-    z = Zombie(x, y, size=min(ZOMBIE_SIZE_MAX))
-    z.type = "bandit"
-    z.is_elite = True  # 以“精英”样式描边
-    z.ai_mode = "flee"  # 核心：逃离玩家
-    z.z_level = max(1, int(1 + level_idx * 0.25))
+def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int):
+    # world_xy 是“脚底世界坐标”（包含 INFO_BAR_HEIGHT 偏移的像素）
+    wx, wy = world_xy
+    gx = max(0, min(int(wx // CELL_SIZE), GRID_SIZE - 1))
+    gy = max(0, min(int((wy - INFO_BAR_HEIGHT) // CELL_SIZE), GRID_SIZE - 1))  # ← 关键：扣掉顶栏
 
-    # ---- 非线性缩放（随关卡与预算增长）----
-    # 速度：基础 + 对预算的次方根 + 关卡微调
+    # 用网格坐标创建 Zombie（引擎的 Zombie 构造本来就需要网格）
+    z = Zombie((gx, gy), ztype="bandit", speed=BANDIT_BASE_SPEED)
+
+    # ===== 非线性随关卡/预算缩放 =====
+    z.z_level = max(1, int(1 + level_idx * 0.25))
     scale_spd = (max(1.0, budget) ** 0.33) * 0.12 + 0.05 * level_idx
-    z.speed = BANDIT_BASE_SPEED + scale_spd
-    # 生命：基础 * log1p(预算) * 关卡修正
+    z.speed = min(ZOMBIE_SPEED_MAX, BANDIT_BASE_SPEED + scale_spd)
+
     z.max_hp = int(round(BANDIT_BASE_HP * (1.0 + math.log1p(max(0, budget)) * 0.14) * (1.0 + 0.06 * level_idx)))
     z.hp = z.max_hp
-    z.attack = 1  # 几乎不打人（主要是偷钱与逃离）
+    z.attack = 1               # 不是用来打人的
+    z.is_elite = True          # 精英描边
+    # z.ai_mode = "flee"         # 逃离玩家
 
-    # 偷钱速率：在 [2,10] 内做非线性插值
+    # 偷币逻辑：只动用“meta coin”，不碰本局普通金币
     steal_raw = BANDIT_STEAL_RATE_MIN + (BANDIT_STEAL_RATE_MAX - BANDIT_STEAL_RATE_MIN) * (
-                1.0 - math.exp(-0.5 - 0.08 * level_idx - 0.004 * max(0, budget)))
+        1.0 - math.exp(-0.5 - 0.08 * level_idx - 0.004 * max(0, budget))
+    )
     z.steal_per_sec = int(max(BANDIT_STEAL_RATE_MIN, min(BANDIT_STEAL_RATE_MAX, round(steal_raw))))
-
-    # 逃跑时间：基础 - 与预算/关卡相关的小幅缩短，但不低于下限
     esc_raw = BANDIT_ESCAPE_TIME_BASE - 0.004 * max(0, budget) - 0.4 * level_idx
     z.escape_t = max(BANDIT_ESCAPE_TIME_MIN, esc_raw)
 
-    # 追踪偷取额与奖励
+    # 跟踪偷取与掉落奖励
     z._stolen_total = 0
     z._steal_accum = 0.0
     z._bonus_rate = BANDIT_BONUS_RATE
-    z._bonus_flat = BANDIT_BONUS_FLAT
-
-    # 视觉：持续淡金光（复用拾取光晕通道）
-    z._gold_glow_t = 9999.0  # 在draw里会逐步衰减；我们在update_special里持久刷新
-
-    # 为了少量识别（字母角标）
-    z._affix_tag = "$"
 
     return z
+
 
 
 def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
@@ -5492,6 +5506,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
 
     game_state = GameState(obstacles, items, main_item_list, decorations)
     game_state.current_level = current_level
+    game_state.bandit_spawned_this_level = False
+
     # --- use boss-specific time limit AFTER game_state exists ---
     level_idx = int(getattr(game_state, "current_level", 0))  # 0-based inside code
     time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
