@@ -2029,6 +2029,31 @@ def spawn_wave_with_budget(game_state: "GameState",
     spawned = 0
     boss_done = False
 
+    # ==== 金币大盗：随机在非Boss关卡与波次出现（每关最多一只；Lv1-2不出现）====
+    try:
+        level_idx = int(globals().get("current_level", 0))
+    except Exception:
+        level_idx = 0
+    if (level_idx >= BANDIT_MIN_LEVEL_IDX
+        and not is_boss_level(level_idx)
+        and not getattr(game_state, "bandit_spawned_this_level", False)
+        and random.random() < BANDIT_SPAWN_CHANCE_PER_WAVE
+        and spots):
+
+        gx, gy = spots.pop()  # 占用一个出生点
+        cx = int(gx * CELL_SIZE + CELL_SIZE*0.5)
+        cy = int(gy * CELL_SIZE + CELL_SIZE*0.5 + INFO_BAR_HEIGHT)
+        bandit = make_coin_bandit((cx - min(ZOMBIE_SIZE_MAX)*0.5, cy - INFO_BAR_HEIGHT - min(ZOMBIE_SIZE_MAX)*0.5),
+                                  level_idx, wave_index, int(budget))
+        zombies.append(bandit)
+        game_state.bandit_spawned_this_level = True
+
+        # 视觉提示 + 飘字
+        game_state.add_damage_text(cx, cy, "COIN BANDIT!", crit=True, kind="shield")
+        # 可选：地面金色提示圈（用 TelegraphCircle）
+        if hasattr(game_state, "telegraphs"):
+            game_state.telegraphs.append(TelegraphCircle(cx, cy, int(CELL_SIZE*1.1), 0.9, kind="bandit", color=(255,215,0)))
+
     # spend budget until no type fits or cap/positions exhausted
     i = 0
     while i < len(spots) and len(zombies) < cap:
@@ -4125,7 +4150,7 @@ def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_i
 
 def make_coin_bandit(pos_xy, level_idx: int, wave_idx: int, budget: int):
     x, y = pos_xy
-    z = Zombie(x, y, size=ZOMBIE_SIZE_MAX)
+    z = Zombie(x, y, size=min(ZOMBIE_SIZE_MAX))
     z.type = "bandit"
     z.is_elite = True  # 以“精英”样式描边
     z.ai_mode = "flee"  # 核心：逃离玩家
