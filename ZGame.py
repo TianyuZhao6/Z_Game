@@ -454,7 +454,6 @@ BOSS_VOMIT_ARC_SEC = 0.45
 BOSS_SUMMON_CD = 10.0
 BOSS_SUMMON_COUNT = (3, 5)  # min, max
 
-
 ACID_POOL_DPS = 10  # damage / second
 ACID_POOL_SLOW = 0.35  # extra slow
 ACID_POOL_TIME = 6.0
@@ -609,16 +608,16 @@ RAIN_TELEGRAPH_T = 0.5
 CHARGE_THRESH = 0.10
 CHARGE_SPEED = 3.0
 # ===== Coin Bandit（金币大盗）常量 =====
-BANDIT_MIN_LEVEL_IDX = 2          # 前两关不出现（0基索引：2=第三关）
+BANDIT_MIN_LEVEL_IDX = 2  # 前两关不出现（0基索引：2=第三关）
 BANDIT_SPAWN_CHANCE_PER_WAVE = 0.28  # 每个非Boss波次独立检定（每关最多1只）
 BANDIT_BASE_HP = 85
-BANDIT_BASE_SPEED = 2.1           # 相对普通僵尸更快（再叠加z_level等成长）
-BANDIT_ESCAPE_TIME_BASE = 18.0    # 逃跑倒计时（秒）
-BANDIT_ESCAPE_TIME_MIN = 10.0     # 下限
-BANDIT_STEAL_RATE_MIN = 2         # 每秒最少偷取金币
-BANDIT_STEAL_RATE_MAX = 10        # 每秒最多偷取金币
-BANDIT_BONUS_RATE = 0.25          # 击杀后额外奖励比例（在偷取总额基础上再+25%）
-BANDIT_BONUS_FLAT = 2             # 击杀后额外固定奖励
+BANDIT_BASE_SPEED = 2.1  # 相对普通僵尸更快（再叠加z_level等成长）
+BANDIT_ESCAPE_TIME_BASE = 18.0  # 逃跑倒计时（秒）
+BANDIT_ESCAPE_TIME_MIN = 10.0  # 下限
+BANDIT_STEAL_RATE_MIN = 2  # 每秒最少偷取金币
+BANDIT_STEAL_RATE_MAX = 10  # 每秒最多偷取金币
+BANDIT_BONUS_RATE = 0.25  # 击杀后额外奖励比例（在偷取总额基础上再+25%）
+BANDIT_BONUS_FLAT = 2  # 击杀后额外固定奖励
 
 # --- Mistweaver (Boss II) — appears at Lv10 (index 9) ---
 MISTWEAVER_LEVELS = {9}  # 0-based：第10关
@@ -657,10 +656,10 @@ HAZARD_STYLES = {
         "pulse": True
     },
     "dash_mist": {
-       "fill": (190, 195, 255),
-       "ring": (245, 246, 255),
-       "particle": (220, 225, 255),
-}
+        "fill": (190, 195, 255),
+        "ring": (245, 246, 255),
+        "particle": (220, 225, 255),
+    }
 
 }
 
@@ -2186,7 +2185,6 @@ class Obstacle:
         py = y * CELL_SIZE + INFO_BAR_HEIGHT
         self.rect = pygame.Rect(px, py, CELL_SIZE, CELL_SIZE)
 
-
         self.type: str = obstacle_type
         self.health: Optional[int] = health
 
@@ -3354,7 +3352,7 @@ class MistweaverBoss(Zombie):
                                                r=22, life=MIST_P2_STORM_WIND, kind="dash_mist",
                                                payload={"points": [(x, y)], "radius": int(CELL_SIZE * 0.5),
                                                         "life": 4.0, "dps": MIST_P2_POOL_DPS,
-                                                        "slow": MIST_P2_POOL_SLOW},  color=HAZARD_STYLES["mist"]["ring"])
+                                                        "slow": MIST_P2_POOL_SLOW}, color=HAZARD_STYLES["mist"]["ring"])
                 self._storm_cd = MIST_P2_STORM_CD
 
             # 静默领域：随机一个圆区 3 秒，里面额外减速（简化成强减速代替“禁技能”）
@@ -3653,7 +3651,8 @@ class TelegraphCircle:
 
 
 class EnemyShot:
-    def __init__(self, x: float, y: float, vx: float, vy: float, dmg: int, max_dist: float = MAX_FIRE_RANGE, radius=4,color=(255, 120, 50)):
+    def __init__(self, x: float, y: float, vx: float, vy: float, dmg: int, max_dist: float = MAX_FIRE_RANGE, radius=4,
+                 color=(255, 120, 50)):
         self.x, self.y = x, y
         self.vx, self.vy = vx, vy
         self.dmg = int(dmg)
@@ -3748,12 +3747,15 @@ class EnemyShot:
         sx, sy = iso_world_to_screen(wx, wy, 0.0, camx, camy)
         pygame.draw.circle(screen, self.color, (int(sx), int(sy)), self.r)
 
+
 class MistShot(EnemyShot):
     """Mistweaver 专用弹幕：自带半径/颜色，不影响普通 EnemyShot。"""
+
     def __init__(self, x, y, vx, vy, damage, radius=10, color=None):
         super().__init__(x, y, vx, vy, damage)
         self.r = int(radius)
         self.color = color or HAZARD_STYLES["mist"]["ring"]
+
 
 class DamageText:
     """世界坐标下的飘字（x,y 为像素，含 INFO_BAR_HEIGHT），按时间上浮并淡出。"""
@@ -4091,6 +4093,7 @@ def spawn_corruptling_at(x_px: float, y_px: float) -> "Zombie":
     z.spawn_delay = 0.25
     return z
 
+
 def spawn_mistling_at(cx, cy, level_idx=0):
     gx = max(0, min(GRID_SIZE - 1, int(cx // CELL_SIZE)))
     gy = max(0, min(GRID_SIZE - 1, int((cy - INFO_BAR_HEIGHT) // CELL_SIZE)))
@@ -4117,6 +4120,47 @@ def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_i
 
     # ← cap final move speed
     z.speed = min(ZOMBIE_SPEED_MAX, max(1, z.speed))
+    return z
+
+
+def make_coin_bandit(pos_xy, level_idx: int, wave_idx: int, budget: int):
+    x, y = pos_xy
+    z = Zombie(x, y, size=ZOMBIE_SIZE_MAX)
+    z.type = "bandit"
+    z.is_elite = True  # 以“精英”样式描边
+    z.ai_mode = "flee"  # 核心：逃离玩家
+    z.z_level = max(1, int(1 + level_idx * 0.25))
+
+    # ---- 非线性缩放（随关卡与预算增长）----
+    # 速度：基础 + 对预算的次方根 + 关卡微调
+    scale_spd = (max(1.0, budget) ** 0.33) * 0.12 + 0.05 * level_idx
+    z.speed = BANDIT_BASE_SPEED + scale_spd
+    # 生命：基础 * log1p(预算) * 关卡修正
+    z.max_hp = int(round(BANDIT_BASE_HP * (1.0 + math.log1p(max(0, budget)) * 0.14) * (1.0 + 0.06 * level_idx)))
+    z.hp = z.max_hp
+    z.attack = 1  # 几乎不打人（主要是偷钱与逃离）
+
+    # 偷钱速率：在 [2,10] 内做非线性插值
+    steal_raw = BANDIT_STEAL_RATE_MIN + (BANDIT_STEAL_RATE_MAX - BANDIT_STEAL_RATE_MIN) * (
+                1.0 - math.exp(-0.5 - 0.08 * level_idx - 0.004 * max(0, budget)))
+    z.steal_per_sec = int(max(BANDIT_STEAL_RATE_MIN, min(BANDIT_STEAL_RATE_MAX, round(steal_raw))))
+
+    # 逃跑时间：基础 - 与预算/关卡相关的小幅缩短，但不低于下限
+    esc_raw = BANDIT_ESCAPE_TIME_BASE - 0.004 * max(0, budget) - 0.4 * level_idx
+    z.escape_t = max(BANDIT_ESCAPE_TIME_MIN, esc_raw)
+
+    # 追踪偷取额与奖励
+    z._stolen_total = 0
+    z._steal_accum = 0.0
+    z._bonus_rate = BANDIT_BONUS_RATE
+    z._bonus_flat = BANDIT_BONUS_FLAT
+
+    # 视觉：持续淡金光（复用拾取光晕通道）
+    z._gold_glow_t = 9999.0  # 在draw里会逐步衰减；我们在update_special里持久刷新
+
+    # 为了少量识别（字母角标）
+    z._affix_tag = "$"
+
     return z
 
 
@@ -4429,7 +4473,6 @@ class GameState:
         self._fog_pulse_t: float = 0.0  # 呼吸脉冲
         self.bandit_spawned_this_level = False  # 本关是否已出现过金币大盗
 
-
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
 
@@ -4470,7 +4513,7 @@ class GameState:
                 self.spoils.remove(s)
                 gained += s.value
         return gained
-    
+
     def lose_coins(self, amount: int) -> int:
         """从本局临时金币（spoils_gained）优先扣，再从META['spoils']扣；返回实际扣除数。"""
         amt = int(max(0, amount))
@@ -4512,7 +4555,6 @@ class GameState:
                 healed += (player.hp - before)
         return healed
 
-
     # ---- 地面腐蚀池 ----w
     # 在 GameState 内，替换/保留为 ↓ 这个版本
     # ---- 地面腐蚀池（兼容旧/新参数名）----
@@ -4523,7 +4565,7 @@ class GameState:
                         life=ACID_LIFETIME,
                         slow_frac=None,  # 新参数名
                         slow=None,  # 旧参数名（向后兼容）
-                        style= "acid"):  # 可用于雾池/雾门上色
+                        style="acid"):  # 可用于雾池/雾门上色
         # 兼容处理：优先采用 slow_frac；否则用 slow；最后回退到默认常量
         if slow_frac is None and slow is not None:
             slow_frac = slow
@@ -4538,7 +4580,6 @@ class GameState:
 
     def spawn_projectile(self, proj):
         self.projectiles.append(proj)
-
 
     def update_acids(self, dt: float, player: "Player"):
         # 衰减 slow / DoT 计时
