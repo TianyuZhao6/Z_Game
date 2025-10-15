@@ -2964,6 +2964,35 @@ class Zombie:
                         z.shield_t = SHIELD_DURATION
                 self.shield_cd = SHIELD_COOLDOWN
 
+        # ==== 金币大盗：持续偷钱、计时逃脱 ====
+        if getattr(self, "type", "") == "bandit":
+            # 持续闪金光（维持金色淡晕）
+            self._gold_glow_t = max(self._gold_glow_t, 0.2)
+
+            # 偷钱累积：以秒为单位的离散扣除，避免浮点抖动
+            self._steal_accum += float(getattr(self, "steal_per_sec", BANDIT_STEAL_RATE_MIN)) * dt
+            steal_units = int(self._steal_accum)
+            if steal_units >= 1 and game_state is not None:
+                self._steal_accum -= steal_units
+                got = game_state.lose_coins(steal_units)  # 先扣本局，再扣全局【见上文GameState.lose_coins】
+                if got > 0:
+                    self._stolen_total += got
+                    # 在自己头顶飘一个小“-$”
+                    game_state.add_damage_text(self.rect.centerx, self.rect.centery, f"-{got}", crit=False, kind="hp")
+
+            # 逃跑计时
+            self.escape_t = max(0.0, float(getattr(self, "escape_t", BANDIT_ESCAPE_TIME_BASE)) - dt)
+            if self.escape_t <= 0.0:
+                # 逃离战场：不掉落，不给经验
+                # 发一个“ESCAPED”提示
+                if game_state is not None:
+                    game_state.add_damage_text(self.rect.centerx, self.rect.centery, "ESCAPED", crit=False, kind="shield")
+                try:
+                    zombies.remove(self)
+                except Exception:
+                    pass
+                return
+
         # 小雾妖：可被攻击；死时自爆；计时≥10s 会被 Boss 收回（由 Boss 侧结算回血）
         if self.type == "mistling":
             # 计时
