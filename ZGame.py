@@ -4885,6 +4885,73 @@ class GameState:
         # 覆盖到屏幕
         screen.blit(mask, (0, 0))
 
+# ==================== 相机 ====================
+def compute_cam_for_center(cx: int, cy: int) -> tuple[int, int]:
+    """给定一个世界像素中心点(cx,cy)，返回摄像机(cam_x, cam_y)并做世界边界夹紧。"""
+    world_w = GRID_SIZE * CELL_SIZE
+    world_h = GRID_SIZE * CELL_SIZE + INFO_BAR_HEIGHT
+    cam_x = int(cx - VIEW_W // 2)
+    cam_y = int(cy - (VIEW_H - INFO_BAR_HEIGHT) // 2)
+
+    if VIEW_W > world_w:
+        pad_x = (VIEW_W - world_w) // 2
+        cam_x = -pad_x
+    else:
+        cam_x = max(0, min(cam_x, world_w - VIEW_W))
+
+    if VIEW_H > world_h:
+        pad_y = (VIEW_H - world_h) // 2
+        cam_y = -pad_y
+    else:
+        cam_y = max(0, min(cam_y, world_h - VIEW_H))
+
+    return cam_x, cam_y
+
+def play_focus_cinematic(screen, game_state, player, zombies, target_xy, label="BOSS ARRIVED!", go_time=0.7, back_time=0.7):
+    """
+    期间：不处理移动/子弹/敌人/计时，不读按键，单纯渲染若干帧。
+    target_xy 是世界像素中心(含 INFO_BAR_HEIGHT 修正后)。
+    """
+    clock = pygame.time.Clock()
+
+    # 起点：玩家脚底中心（像素）
+    px = int(player.x + player.size * 0.5)
+    py = int(player.y + player.size * 0.5 + INFO_BAR_HEIGHT)
+
+    start_cam = compute_cam_for_center(px, py)
+    focus_cam = compute_cam_for_center(int(target_xy[0]), int(target_xy[1]))
+
+    def _lerp(a, b, t):
+        return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+    # 阶段1：平移去目标
+    t = 0.0
+    while t < go_time:
+        t += clock.tick(60) / 1000.0
+        k = min(1.0, t / go_time)
+        cam = _lerp(start_cam, focus_cam, k)
+        frame = render_game(screen, game_state, player, zombies, bullets=None, enemy_shots=None, override_cam=(int(cam[0]), int(cam[1])))
+        # 叠一行大字提示（可选）
+        if label:
+            font = pygame.font.SysFont(None, 64)
+            s = font.render(label, True, (255, 215, 0))
+            screen.blit(s, s.get_rect(center=(VIEW_W//2, INFO_BAR_HEIGHT + 60)))
+        pygame.display.flip()
+
+        # 期间忽略所有事件（禁止操作）
+        for _ in pygame.event.get():
+            pass
+
+    # 阶段2：平移回玩家
+    t = 0.0
+    while t < back_time:
+        t += clock.tick(60) / 1000.0
+        k = min(1.0, t / back_time)
+        cam = _lerp(focus_cam, start_cam, k)
+        frame = render_game(screen, game_state, player, zombies, bullets=None, enemy_shots=None, override_cam=(int(cam[0]), int(cam[1])))
+        pygame.display.flip()
+        for _ in pygame.event.get():
+            pass
 
 # ==================== 游戏渲染函数 ====================
 def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
@@ -5155,7 +5222,7 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
 
 def render_game(screen: pygame.Surface, game_state, player: Player, zombies: List[Zombie],
                 bullets: Optional[List['Bullet']] = None,
-                enemy_shots: Optional[List[EnemyShot]] = None) -> pygame.Surface:
+                enemy_shots: Optional[List[EnemyShot]] = None, override_cam: tuple[int, int] | None = None) -> pygame.Surface:
     # Camera centers on player; add pillarbox if the viewport is wider/taller than the world
     world_w = GRID_SIZE * CELL_SIZE
     world_h = GRID_SIZE * CELL_SIZE + INFO_BAR_HEIGHT
@@ -5164,6 +5231,22 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     cam_x = int(player.x + player.size // 2 - VIEW_W // 2)
     cam_y = int(player.y + player.size // 2 - (VIEW_H - INFO_BAR_HEIGHT) // 2)
 
+    # === 新增：若指定 override_cam，则用它代替（同时保持边界夹紧效果） ===
+    if override_cam is not None:
+        _cx, _cy = override_cam
+        # 复用同样的边界夹紧
+        world_w = GRID_SIZE * CELL_SIZE
+        world_h = GRID_SIZE * CELL_SIZE + INFO_BAR_HEIGHT
+        if VIEW_W > world_w:
+            pad_x = (VIEW_W - world_w) // 2
+            cam_x = -pad_x
+        else:
+            cam_x = max(0, min(int(_cx), world_w - VIEW_W))
+        if VIEW_H > world_h:
+            pad_y = (VIEW_H - world_h) // 2
+            cam_y = -pad_y
+        else:
+            cam_y = max(0, min(int(_cy), world_h - VIEW_H))
     # Horizontal: if the screen is wider than the world, center the world (pillarbox both sides)
     if VIEW_W > world_w:
         pad_x = (VIEW_W - world_w) // 2
