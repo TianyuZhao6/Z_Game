@@ -2035,24 +2035,26 @@ def spawn_wave_with_budget(game_state: "GameState",
     except Exception:
         level_idx = 0
     if (level_idx >= BANDIT_MIN_LEVEL_IDX
-        and not is_boss_level(level_idx)
-        and not getattr(game_state, "bandit_spawned_this_level", False)
-        and random.random() < BANDIT_SPAWN_CHANCE_PER_WAVE
-        and spots):
+            and not is_boss_level(level_idx)
+            and not getattr(game_state, "bandit_spawned_this_level", False)
+            and random.random() < BANDIT_SPAWN_CHANCE_PER_WAVE
+            and spots):
 
         gx, gy = spots.pop()  # 占用一个出生点
-        cx = int(gx * CELL_SIZE + CELL_SIZE*0.5)
-        cy = int(gy * CELL_SIZE + CELL_SIZE*0.5 + INFO_BAR_HEIGHT)
+        cx = int(gx * CELL_SIZE + CELL_SIZE * 0.5)
+        cy = int(gy * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT)
         bandit = make_coin_bandit((cx, cy), level_idx, wave_index, int(budget))
 
         zombies.append(bandit)
         game_state.bandit_spawned_this_level = True
+        game_state.pending_focus = ("bandit", (cx, cy))
 
         # 视觉提示 + 飘字
         game_state.add_damage_text(cx, cy, "COIN BANDIT!", crit=True, kind="shield")
         # 可选：地面金色提示圈（用 TelegraphCircle）
         if hasattr(game_state, "telegraphs"):
-            game_state.telegraphs.append(TelegraphCircle(cx, cy, int(CELL_SIZE*1.1), 0.9, kind="bandit", color=(255,215,0)))
+            game_state.telegraphs.append(
+                TelegraphCircle(cx, cy, int(CELL_SIZE * 1.1), 0.9, kind="bandit", color=(255, 215, 0)))
 
     # spend budget until no type fits or cap/positions exhausted
     i = 0
@@ -2112,10 +2114,10 @@ def spawn_wave_with_budget(game_state: "GameState",
                 z._spawn_wave_tag = wave_index
                 zombies.append(z)
                 boss_done = True
+
                 # 让本关启动雾场（GameState 里会响应）
                 if hasattr(game_state, "request_fog_field"):
                     game_state.request_fog_field(player)
-
 
             else:
                 # 其它 Boss 关：单体 Memory Devourer
@@ -2989,7 +2991,8 @@ class Zombie:
                 # 逃离战场：不掉落，不给经验
                 # 发一个“ESCAPED”提示
                 if game_state is not None:
-                    game_state.add_damage_text(self.rect.centerx, self.rect.centery, "ESCAPED", crit=False, kind="shield")
+                    game_state.add_damage_text(self.rect.centerx, self.rect.centery, "ESCAPED", crit=False,
+                                               kind="shield")
                 try:
                     zombies.remove(self)
                 except Exception:
@@ -4211,13 +4214,13 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int):
 
     z.max_hp = int(round(BANDIT_BASE_HP * (1.0 + math.log1p(max(0, budget)) * 0.14) * (1.0 + 0.06 * level_idx)))
     z.hp = z.max_hp
-    z.attack = 1               # 不是用来打人的
-    z.is_elite = True          # 精英描边
+    z.attack = 1  # 不是用来打人的
+    z.is_elite = True  # 精英描边
     # z.ai_mode = "flee"         # 逃离玩家
 
     # 偷币逻辑：只动用“meta coin”，不碰本局普通金币
     steal_raw = BANDIT_STEAL_RATE_MIN + (BANDIT_STEAL_RATE_MAX - BANDIT_STEAL_RATE_MIN) * (
-        1.0 - math.exp(-0.5 - 0.08 * level_idx - 0.004 * max(0, budget))
+            1.0 - math.exp(-0.5 - 0.08 * level_idx - 0.004 * max(0, budget))
     )
     z.steal_per_sec = int(max(BANDIT_STEAL_RATE_MIN, min(BANDIT_STEAL_RATE_MAX, round(steal_raw))))
     esc_raw = BANDIT_ESCAPE_TIME_BASE - 0.004 * max(0, budget) - 0.4 * level_idx
@@ -4229,7 +4232,6 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int):
     z._bonus_rate = BANDIT_BONUS_RATE
 
     return z
-
 
 
 def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
@@ -4885,6 +4887,7 @@ class GameState:
         # 覆盖到屏幕
         screen.blit(mask, (0, 0))
 
+
 # ==================== 相机 ====================
 def compute_cam_for_center(cx: int, cy: int) -> tuple[int, int]:
     """给定一个世界像素中心点(cx,cy)，返回摄像机(cam_x, cam_y)并做世界边界夹紧。"""
@@ -4907,7 +4910,9 @@ def compute_cam_for_center(cx: int, cy: int) -> tuple[int, int]:
 
     return cam_x, cam_y
 
-def play_focus_cinematic(screen, game_state, player, zombies, target_xy, label="BOSS ARRIVED!", go_time=0.7, back_time=0.7):
+
+def play_focus_cinematic(screen, game_state, player, zombies, target_xy, label="BOSS ARRIVED!", go_time=0.7,
+                         back_time=0.7):
     """
     期间：不处理移动/子弹/敌人/计时，不读按键，单纯渲染若干帧。
     target_xy 是世界像素中心(含 INFO_BAR_HEIGHT 修正后)。
@@ -4930,12 +4935,13 @@ def play_focus_cinematic(screen, game_state, player, zombies, target_xy, label="
         t += clock.tick(60) / 1000.0
         k = min(1.0, t / go_time)
         cam = _lerp(start_cam, focus_cam, k)
-        frame = render_game(screen, game_state, player, zombies, bullets=None, enemy_shots=None, override_cam=(int(cam[0]), int(cam[1])))
+        frame = render_game(screen, game_state, player, zombies, bullets=None, enemy_shots=None,
+                            override_cam=(int(cam[0]), int(cam[1])))
         # 叠一行大字提示（可选）
         if label:
             font = pygame.font.SysFont(None, 64)
             s = font.render(label, True, (255, 215, 0))
-            screen.blit(s, s.get_rect(center=(VIEW_W//2, INFO_BAR_HEIGHT + 60)))
+            screen.blit(s, s.get_rect(center=(VIEW_W // 2, INFO_BAR_HEIGHT + 60)))
         pygame.display.flip()
 
         # 期间忽略所有事件（禁止操作）
@@ -4948,10 +4954,12 @@ def play_focus_cinematic(screen, game_state, player, zombies, target_xy, label="
         t += clock.tick(60) / 1000.0
         k = min(1.0, t / back_time)
         cam = _lerp(focus_cam, start_cam, k)
-        frame = render_game(screen, game_state, player, zombies, bullets=None, enemy_shots=None, override_cam=(int(cam[0]), int(cam[1])))
+        frame = render_game(screen, game_state, player, zombies, bullets=None, enemy_shots=None,
+                            override_cam=(int(cam[0]), int(cam[1])))
         pygame.display.flip()
         for _ in pygame.event.get():
             pass
+
 
 # ==================== 游戏渲染函数 ====================
 def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
@@ -5222,7 +5230,8 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
 
 def render_game(screen: pygame.Surface, game_state, player: Player, zombies: List[Zombie],
                 bullets: Optional[List['Bullet']] = None,
-                enemy_shots: Optional[List[EnemyShot]] = None, override_cam: tuple[int, int] | None = None) -> pygame.Surface:
+                enemy_shots: Optional[List[EnemyShot]] = None,
+                override_cam: tuple[int, int] | None = None) -> pygame.Surface:
     # Camera centers on player; add pillarbox if the viewport is wider/taller than the world
     world_w = GRID_SIZE * CELL_SIZE
     world_h = GRID_SIZE * CELL_SIZE + INFO_BAR_HEIGHT
@@ -5615,6 +5624,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     spawn_timer = 0.0
     wave_index = 0
 
+
     def player_center():
         return player.x + player.size / 2, player.y + player.size / 2 + INFO_BAR_HEIGHT
 
@@ -5749,6 +5759,26 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
 
     while running:
         dt = clock.tick(60) / 1000.0
+        # ==== 消费镜头聚焦请求：完全暂停游戏与计时 ====
+        if getattr(game_state, "pending_focus", None):
+            label, (fx, fy) = game_state.pending_focus
+            game_state.pending_focus = None  # 只消费一次
+            saved_time = time_left  # 暂存倒计时，不让它减少
+
+            # 播放镜头戏：先拉到目标，再回到玩家，期间忽略全部输入与逻辑
+            play_focus_cinematic(
+                pygame.display.get_surface(),
+                game_state, player, zombies,
+                (int(fx), int(fy)),
+                "COIN BANDIT!" if label == "bandit" else "BOSS ARRIVED!",
+                go_time=0.7, back_time=0.7
+            )
+
+            time_left = saved_time  # 恢复倒计时
+            # 可选：渲染一帧，避免黑屏闪烁
+            last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+            continue  # 直接进入下一帧，不做本帧的移动/攻击/计时
+
         # countdown timer
         time_left -= dt
         globals()["_time_left_runtime"] = time_left
