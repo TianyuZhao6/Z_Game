@@ -1221,6 +1221,7 @@ def draw_button(screen, label, pos, size=(180, 56), bg=(40, 40, 40), fg=(240, 24
 
 
 def compute_player_dps(p: "Player" | None) -> float:
+    # DPS shown in the pause menu is wrong, Fix it later
     if p is None:
         # 兜底：用 META 粗估
         base_dmg = BULLET_DAMAGE_ZOMBIE + float(META.get("dmg", 0))
