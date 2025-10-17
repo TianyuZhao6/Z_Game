@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sys
 import pygame
 import math
@@ -257,12 +259,14 @@ def draw_boss_hp_bars_twin(screen, bosses):
     draw_one(b, y2, (230, 120, 70))
 
 
-def pause_game_modal(screen, bg_surface, clock, time_left):
+def pause_game_modal(screen, bg_surface, clock, time_left, player):
     """
     Show Pause (and Settings) while freezing the survival timer.
     Returns (choice, updated_time_left) where choice is:
     'continue' | 'restart' | 'home' | 'exit'
     """
+    globals()["_pause_player_ref"] = player
+
     # 1) start wall-clock for how long we stay paused
     pause_start_ms = pygame.time.get_ticks()
 
@@ -610,7 +614,7 @@ CHARGE_SPEED = 3.0
 # ===== Coin Bandit（金币大盗）常量 =====
 BANDIT_MIN_LEVEL_IDX = 2  # 前两关不出现（0基索引：2=第三关）
 BANDIT_SPAWN_CHANCE_PER_WAVE = 0.28  # 每个非Boss波次独立检定（每关最多1只）
-BANDIT_BASE_HP = 85
+BANDIT_BASE_HP = 150
 BANDIT_BASE_SPEED = 2.1  # 相对普通僵尸更快（再叠加z_level等成长）
 BANDIT_ESCAPE_TIME_BASE = 18.0  # 逃跑倒计时（秒）
 BANDIT_ESCAPE_TIME_MIN = 10.0  # 下限
@@ -720,16 +724,69 @@ BOSS_EVERY_N_LEVELS = 5
 BOSS_HP_MULT = 4.0
 BOSS_ATK_MULT = 2.0
 BOSS_SPD_ADD = 1
+# --- combat tuning (Brotato-like) ---
+FIRE_RATE = None  # shots per second; if None, derive from BULLET_SPACING_PX
+# --- survival mode & player health ---
+LEVEL_TIME_LIMIT = 45.0  # seconds per run
+BOSS_TIME_LIMIT = 60.0  # seconds for boss levels
+PLAYER_MAX_HP = 40  # player total health
+ZOMBIE_CONTACT_DAMAGE = 20  # damage per contact tick
+PLAYER_HIT_COOLDOWN = 0.6  # seconds of i-frames after taking contact damage
 
+# Fire-rate balance caps
+MAX_FIRERATE_MULT = 2.0  # hard cap on multiplier (≈2x base)
+MIN_FIRE_COOLDOWN = 0.12  # never shoot faster than once every 0.12s (~8.3/s)
+BULLET_SPEED = 1000.0  # pixels per second (controls travel speed)
+BULLET_SPACING_PX = 260.0  # desired spacing between bullets along their path
+BULLET_RADIUS = 4
+BULLET_DAMAGE_ZOMBIE = 12
+BULLET_DAMAGE_BLOCK = 10
+ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
+MAX_FIRE_RANGE = 800.0  # pixels
+# --- targeting / auto-aim (new) ---
+PLAYER_TARGET_RANGE = MAX_FIRE_RANGE  # 射程内才会当候选（默认=子弹射程）
+PLAYER_BLOCK_FORCE_RANGE_TILES = 2  # 玩家两格内遇到可破坏物 → 强制优先
+# --- CRIT & damage text ---
+CRIT_CHANCE_BASE = 0.05  # 基础暴击率=5%
+CRIT_MULT_BASE = 1.8  # 暴击伤害倍数，后续可以做商店项
+DMG_TEXT_TTL = 0.8  # 飘字存活时长（秒）
+DMG_TEXT_RISE = 42.0  # 垂直上升速度（像素/秒）
+DMG_TEXT_FADE = 0.25  # 尾段淡出比例（最后 25% 时间开始透明）
+DMG_TEXT_SIZE_NORMAL = 28
+DMG_TEXT_SIZE_CRIT = 38
 # persistent (per run) upgrades bought in shop
-META = {"spoils": 0, "dmg": 0, "firerate_mult": 1.0, "range_mult": 1.0, "speed": 0, "maxhp": 0, "crit": 0.0}
+META = {
+    # —— 本轮累积资源 ——
+    "spoils": 0,
+
+    # —— 初始（基准）数值 ——（来自常量）
+    "base_dmg": BULLET_DAMAGE_ZOMBIE,
+    "base_fire_cd": MIN_FIRE_COOLDOWN,  # 以冷却秒数作为基准
+    "base_range": float(MAX_FIRE_RANGE),
+    "base_speed": float(PLAYER_SPEED),
+    "base_maxhp": int(PLAYER_MAX_HP),
+    "base_crit": float(CRIT_CHANCE_BASE),
+
+    # —— 附加/加成 ——（购买/掉落/升级得到）
+    "dmg": 0,  # 伤害 +X
+    "firerate_mult": 1.0,  # 攻速 ×mult
+    "range_mult": 1.0,  # 射程 ×mult
+    "speed": 0,  # 速度 +X
+    "maxhp": 0,  # 最大生命 +X
+    "crit": 0.0  # 暴击率 +X（0~1）
+}
 
 
 def reset_run_state():
-    """开新局时把本轮相关的所有进度归零（不影响设置里的音量等）。"""
-    META.clear()
     META.update({
-        "spoils": 0,  # 本轮金币
+        "spoils": 0,
+        "base_dmg": BULLET_DAMAGE_ZOMBIE,
+        "base_fire_cd": FIRE_COOLDOWN,
+        "base_range": float(MAX_FIRE_RANGE),
+        "base_speed": float(PLAYER_SPEED),
+        "base_maxhp": int(PLAYER_MAX_HP),
+        "base_crit": float(CRIT_CHANCE_BASE),
+
         "dmg": 0,
         "firerate_mult": 1.0,
         "range_mult": 1.0,
@@ -737,9 +794,9 @@ def reset_run_state():
         "maxhp": 0,
         "crit": 0.0
     })
-    globals()["_carry_player_state"] = None  # 不带上一次的等级/经验
-    globals()["_pending_shop"] = False  # 不从商店续开
-    globals().pop("_last_spoils", None)  # 清掉关末结算缓存
+    globals()["_carry_player_state"] = None
+    globals()["_pending_shop"] = False
+    globals().pop("_last_spoils", None)
 
 
 def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
@@ -848,37 +905,6 @@ THREAT_WEIGHTS = {
     "splinter": 10,
 
 }
-
-# --- combat tuning (Brotato-like) ---
-FIRE_RATE = None  # shots per second; if None, derive from BULLET_SPACING_PX
-# Fire-rate balance caps
-MAX_FIRERATE_MULT = 2.0  # hard cap on multiplier (≈2x base)
-MIN_FIRE_COOLDOWN = 0.12  # never shoot faster than once every 0.12s (~8.3/s)
-BULLET_SPEED = 1000.0  # pixels per second (controls travel speed)
-BULLET_SPACING_PX = 260.0  # desired spacing between bullets along their path
-BULLET_RADIUS = 4
-BULLET_DAMAGE_ZOMBIE = 12
-BULLET_DAMAGE_BLOCK = 10
-ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
-MAX_FIRE_RANGE = 800.0  # pixels
-# --- targeting / auto-aim (new) ---
-PLAYER_TARGET_RANGE = MAX_FIRE_RANGE  # 射程内才会当候选（默认=子弹射程）
-PLAYER_BLOCK_FORCE_RANGE_TILES = 2  # 玩家两格内遇到可破坏物 → 强制优先
-# --- CRIT & damage text ---
-CRIT_CHANCE_BASE = 0.05  # 基础暴击率=5%
-CRIT_MULT_BASE = 1.8  # 暴击伤害倍数，后续可以做商店项
-DMG_TEXT_TTL = 0.8  # 飘字存活时长（秒）
-DMG_TEXT_RISE = 42.0  # 垂直上升速度（像素/秒）
-DMG_TEXT_FADE = 0.25  # 尾段淡出比例（最后 25% 时间开始透明）
-DMG_TEXT_SIZE_NORMAL = 28
-DMG_TEXT_SIZE_CRIT = 38
-
-# --- survival mode & player health ---
-LEVEL_TIME_LIMIT = 45.0  # seconds per run
-BOSS_TIME_LIMIT = 60.0  # seconds for boss levels
-PLAYER_MAX_HP = 40  # player total health
-ZOMBIE_CONTACT_DAMAGE = 20  # damage per contact tick
-PLAYER_HIT_COOLDOWN = 0.6  # seconds of i-frames after taking contact damage
 
 # derive cooldown from either explicit FIRE_RATE or SPACING
 if FIRE_RATE:
@@ -1194,6 +1220,23 @@ def draw_button(screen, label, pos, size=(180, 56), bg=(40, 40, 40), fg=(240, 24
     return rect
 
 
+def compute_player_dps(p: "Player" | None) -> float:
+    if p is None:
+        # 兜底：用 META 粗估
+        base_dmg = BULLET_DAMAGE_ZOMBIE + float(META.get("dmg", 0))
+        # 使用玩家默认冷却推导攻速
+        dummy = 1.0 / max(1e-6, FIRE_COOLDOWN / max(0.1, float(META.get("firerate_mult", 1.0))))
+        cc = float(META.get("crit", 0.0))
+        cm = float(CRIT_MULT_BASE)
+        return base_dmg * dummy * (1.0 + max(0.0, min(1.0, cc)) * (cm - 1.0))
+
+    dmg = float(getattr(p, "bullet_damage", BULLET_DAMAGE_ZOMBIE + META.get("dmg", 0)))
+    sps = 1.0 / max(1e-6, p.fire_cooldown())  # 用 Player 的实际冷却（含攻速加成）
+    cc = max(0.0, min(1.0, float(getattr(p, "crit_chance", 0.0))))
+    cm = float(getattr(p, "crit_mult", CRIT_MULT_BASE))
+    return dmg * sps * (1.0 + cc * (cm - 1.0))
+
+
 def door_transition(screen, color=(0, 0, 0), duration=500):
     door_width = VIEW_W // 2
     left_rect = pygame.Rect(0, 0, 0, VIEW_H)
@@ -1503,6 +1546,13 @@ def show_pause_menu(screen, background_surf):
     crit_pct = int((CRIT_CHANCE_BASE + META.get("crit", 0.0)) * 100)
     crit_text = font_tiny.render(f"Crit Chance: {crit_pct}%", True, (255, 220, 120))
     screen.blit(crit_text, (left_margin, y_offset));
+    y_offset += 30
+
+    # DPS
+    player_ref = globals().get("_pause_player_ref", None)
+    dps_val = compute_player_dps(player_ref)
+    dps_text = font_tiny.render(f"DPS: {dps_val:.2f}", True, (230, 230, 230))
+    screen.blit(dps_text, (left_margin, y_offset))
     y_offset += 30
 
     # 右上角显示收集的卡牌
@@ -2261,8 +2311,9 @@ class Player:
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.max_hp = int(PLAYER_MAX_HP)
         self.hp = int(PLAYER_MAX_HP)
-        # --- crit stats ---
-        self.crit_chance = max(0.0, min(0.95, CRIT_CHANCE_BASE + float(META.get("crit", 0.0))))
+        # 暴击：base + 附加
+        self.crit_chance = max(0.0,
+                               min(0.95, float(META.get("base_crit", CRIT_CHANCE_BASE)) + float(META.get("crit", 0.0))))
         self.crit_mult = float(CRIT_MULT_BASE)
         self.slow_t = 0.0
         self.slow_mult = 1.0  #
@@ -2276,13 +2327,18 @@ class Player:
         self.xp_to_next = player_xp_required(self.level)
 
         # per-run upgrades from shop (applied on spawn)
-        self.bullet_damage = BULLET_DAMAGE_ZOMBIE + META.get("dmg", 0)
-        self.fire_rate_mult = META.get("firerate_mult", 1.0)
-        self.range_base = float(MAX_FIRE_RANGE)  # 你的原始默认射程（像素）
+        self.bullet_damage = int(META.get("base_dmg", BULLET_DAMAGE_ZOMBIE)) + int(META.get("dmg", 0))
+        self.fire_rate_mult = float(META.get("firerate_mult", 1.0))
+        # 射程：base × mult
+        self.range_base = float(META.get("base_range", MAX_FIRE_RANGE))
         self.range = float(self.range_base * META.get("range_mult", 1.0))
+        spd0 = float(META.get("base_speed", PLAYER_SPEED))
         self.speed = min(PLAYER_SPEED_CAP, max(1.0, self.speed + float(META.get("speed", 0))))
-        self.max_hp += META.get("maxhp", 0)
-        self.hp = min(self.hp + META.get("maxhp", 0), self.max_hp)
+        # 生命：base + 附加
+        hp0 = int(META.get("base_maxhp", PLAYER_MAX_HP))
+        self.max_hp = hp0 + int(META.get("maxhp", 0))
+        self.hp = min(self.max_hp, self.max_hp)  # 刚生成满血
+
         self.acid_dot_timer = 0.0  # 还剩多少秒的DoT
         self.acid_dot_dps = 0.0  # 当前DoT每秒伤害（根据最近踩到的酸池设置）
         self._acid_dmg_accum = 0.0  # 在池中时的“本帧累计伤害”浮点缓存
@@ -4889,81 +4945,108 @@ class GameState:
 
 
 # ==================== 相机 ====================
-def compute_cam_for_center(cx: int, cy: int) -> tuple[int, int]:
-    """给定一个世界像素中心点(cx,cy)，返回摄像机(cam_x, cam_y)并做世界边界夹紧。"""
-    world_w = GRID_SIZE * CELL_SIZE
-    world_h = GRID_SIZE * CELL_SIZE + INFO_BAR_HEIGHT
-    cam_x = int(cx - VIEW_W // 2)
-    cam_y = int(cy - (VIEW_H - INFO_BAR_HEIGHT) // 2)
-
-    if VIEW_W > world_w:
-        pad_x = (VIEW_W - world_w) // 2
-        cam_x = -pad_x
-    else:
-        cam_x = max(0, min(cam_x, world_w - VIEW_W))
-
-    if VIEW_H > world_h:
-        pad_y = (VIEW_H - world_h) // 2
-        cam_y = -pad_y
-    else:
-        cam_y = max(0, min(cam_y, world_h - VIEW_H))
-
+def compute_cam_for_center_iso(cx_px: int, cy_px: int) -> tuple[int, int]:
+    """给定世界像素（含 INFO_BAR_HEIGHT 的 y），返回 iso 渲染用的 (cam_x, cam_y)。"""
+    gx = cx_px / float(CELL_SIZE)
+    gy = (cy_px - INFO_BAR_HEIGHT) / float(CELL_SIZE)
+    sx, sy = iso_world_to_screen(gx, gy, 0, 0, 0)
+    cam_x = int(sx - VIEW_W // 2)
+    cam_y = int(sy - (VIEW_H - INFO_BAR_HEIGHT) // 2)
     return cam_x, cam_y
 
 
-def play_focus_cinematic(screen, game_state, player, zombies, target_xy, label="BOSS ARRIVED!", go_time=0.7,
-                         back_time=0.7):
+def play_focus_cinematic_iso(screen, clock, game_state, player,
+                             focus_px: tuple[int, int],
+                             duration_each: float = 0.7,
+                             label: str | None = None, *,
+    zombies,
+    bullets,
+    enemy_shots,
+    obstacles=None,
+    hazards=None,
+    decorations=None):
     """
-    期间：不处理移动/子弹/敌人/计时，不读按键，单纯渲染若干帧。
-    target_xy 是世界像素中心(含 INFO_BAR_HEIGHT 修正后)。
+    以等距相机为基础的聚焦镜头：
+    - 从“玩家视角”平滑移动到 focus_px（世界像素）为中心的视角，耗时 duration_each 秒；
+    - 再从该处平滑回到“玩家视角”，同样 duration_each 秒；
+    - 期间：暂停一切更新（僵尸/子弹/危害/计时器/输入），只做渲染。
     """
-    clock = pygame.time.Clock()
+    # 冻结：记录当前剩余时间
+    frozen_time = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
 
-    # 起点：玩家脚底中心（像素）
-    px = int(player.x + player.size * 0.5)
-    py = int(player.y + player.size * 0.5 + INFO_BAR_HEIGHT)
+    # 计算“玩家视角”的相机
+    pcx, pcy = calculate_iso_camera(player.rect.centerx, player.rect.centery - INFO_BAR_HEIGHT)
+    player_cam = (pcx, pcy)
 
-    start_cam = compute_cam_for_center(px, py)
-    focus_cam = compute_cam_for_center(int(target_xy[0]), int(target_xy[1]))
+    # 计算“目标点”为中心的相机
+    fx, fy = focus_px
+    # 世界像素 -> 世界格
+    wx = fx / CELL_SIZE
+    wy = (fy - INFO_BAR_HEIGHT) / CELL_SIZE
+    sx, sy = iso_world_to_screen(wx, wy, 0.0, 0.0, 0.0)  # 无相机偏移的等距屏坐标
+    focus_cam = (int(sx - VIEW_W // 2), int(sy - (VIEW_H - INFO_BAR_HEIGHT) // 2))
 
-    def _lerp(a, b, t):
-        return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+    def lerp(a, b, t):
+        return a + (b - a) * t
 
-    # 阶段1：平移去目标
-    t = 0.0
-    while t < go_time:
-        t += clock.tick(60) / 1000.0
-        k = min(1.0, t / go_time)
-        cam = _lerp(start_cam, focus_cam, k)
-        frame = render_game(screen, game_state, player, zombies, bullets=None, enemy_shots=None,
-                            override_cam=(int(cam[0]), int(cam[1])))
-        # 叠一行大字提示（可选）
-        if label:
-            font = pygame.font.SysFont(None, 64)
-            s = font.render(label, True, (255, 215, 0))
-            screen.blit(s, s.get_rect(center=(VIEW_W // 2, INFO_BAR_HEIGHT + 60)))
-        pygame.display.flip()
+    def ease_io(t):  # 平滑（S 型）
+        return 0.5 - 0.5 * math.cos(math.pi * max(0.0, min(1.0, t)))
 
-        # 期间忽略所有事件（禁止操作）
-        for _ in pygame.event.get():
-            pass
+    # 一个小的纯渲染子循环
+    def _do_pan(cam_from, cam_to, seconds):
+        start = pygame.time.get_ticks()
+        while True:
+            now = pygame.time.get_ticks()
+            t = (now - start) / max(1.0, (seconds * 1000.0))
+            if t >= 1.0: t = 1.0
+            tt = ease_io(t)
+            camx = int(lerp(cam_from[0], cam_to[0], tt))
+            camy = int(lerp(cam_from[1], cam_to[1], tt))
 
-    # 阶段2：平移回玩家
-    t = 0.0
-    while t < back_time:
-        t += clock.tick(60) / 1000.0
-        k = min(1.0, t / back_time)
-        cam = _lerp(focus_cam, start_cam, k)
-        frame = render_game(screen, game_state, player, zombies, bullets=None, enemy_shots=None,
-                            override_cam=(int(cam[0]), int(cam[1])))
-        pygame.display.flip()
-        for _ in pygame.event.get():
-            pass
+            # 仅渲染，不更新：场上状态完全静止，HUD 用冻结时间
+            render_game_iso(screen, game_state, player,
+                            zombies=game_state.zombies,
+                            bullets=game_state.bullets,
+                            enemy_shots=getattr(game_state, "enemy_shots", []),
+                            hazards=getattr(game_state, "hazards", []),
+                            decorations=getattr(game_state, "decorations", []),
+                            override_cam=(camx, camy),
+                            freeze_time_left=frozen_time)
+
+            # 可选：屏幕中上加提示字（BANDIT!/BOSS）
+            if label:
+                font = pygame.font.SysFont(None, 52, bold=True)
+                txt = font.render(label, True, (255, 240, 180))
+                shadow = font.render(label, True, (0, 0, 0))
+                screen.blit(shadow, shadow.get_rect(center=(VIEW_W // 2 + 2, INFO_BAR_HEIGHT + 60 + 2)))
+                screen.blit(txt, txt.get_rect(center=(VIEW_W // 2, INFO_BAR_HEIGHT + 60)))
+                pygame.display.flip()
+            else:
+                pygame.display.flip()
+
+            # 只吃掉事件，禁止操控
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    pygame.quit();
+                    sys.exit()
+                # 其它输入直接丢弃
+
+            if t >= 1.0:
+                break
+            clock.tick(60)
+
+    # 先去 → 再回
+    _do_pan(player_cam, focus_cam, duration_each)
+    _do_pan(focus_cam, player_cam, duration_each)
+
+    # 刷新一次 clock，避免下一帧 dt 爆大
+    clock.tick(60)
+    flush_events()
 
 
 # ==================== 游戏渲染函数 ====================
-def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
-                    bullets=None, enemy_shots=None, obstacles=None) -> pygame.Surface:
+def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles,
+                    override_cam: tuple[int, int] | None = None):
     # 1) 计算以“玩家所在格”为中心的相机
     px_grid = (player.x + player.size / 2) / CELL_SIZE
     py_grid = (player.y + player.size / 2) / CELL_SIZE
@@ -4972,6 +5055,8 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
     camx = pxs - VIEW_W // 2
     camy = pys - (VIEW_H - INFO_BAR_HEIGHT) // 2
 
+    if override_cam is not None:
+        camx, camy = override_cam
     screen.fill((22, 22, 22))
 
     # 2) 画“地面网格”（只画视口周围一圈，避免全图遍历）
@@ -5624,7 +5709,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     spawn_timer = 0.0
     wave_index = 0
 
-
     def player_center():
         return player.x + player.size / 2, player.y + player.size / 2 + INFO_BAR_HEIGHT
 
@@ -5761,23 +5845,19 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         dt = clock.tick(60) / 1000.0
         # ==== 消费镜头聚焦请求：完全暂停游戏与计时 ====
         if getattr(game_state, "pending_focus", None):
-            label, (fx, fy) = game_state.pending_focus
-            game_state.pending_focus = None  # 只消费一次
-            saved_time = time_left  # 暂存倒计时，不让它减少
+            tag, (fx, fy) = game_state.pending_focus
+            game_state.pending_focus = None
 
-            # 播放镜头戏：先拉到目标，再回到玩家，期间忽略全部输入与逻辑
-            play_focus_cinematic(
-                pygame.display.get_surface(),
-                game_state, player, zombies,
-                (int(fx), int(fy)),
-                "COIN BANDIT!" if label == "bandit" else "BOSS ARRIVED!",
-                go_time=0.7, back_time=0.7
+            # 标签显示
+            label = "COIN BANDIT!" if tag == "bandit" else ("BOSS" if tag == "boss" else None)
+
+            # 播放等距聚焦镜头（0.7s 去 + 0.7s 回）
+            play_focus_cinematic_iso(
+                screen, clock, game_state, player, (fx, fy),
+                duration_each=0.7, label=label,
+                zombies=zombies, bullets=bullets, enemy_shots=enemy_shots,
+                obstacles=game_state.obstacles  # 如有
             )
-
-            time_left = saved_time  # 恢复倒计时
-            # 可选：渲染一帧，避免黑屏闪烁
-            last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
-            continue  # 直接进入下一帧，不做本帧的移动/攻击/计时
 
         # countdown timer
         time_left -= dt
@@ -5799,8 +5879,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                bg = last_frame or render_game(screen, game_state, player, zombies, bullets, enemy_shots)
-                choice, time_left = pause_game_modal(screen, bg, clock, time_left)
+                bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles=game_state.obstacles)
+                choice, time_left = pause_game_modal(screen, bg, clock, time_left, player)
 
                 if choice == 'continue':
                     pass  # just resume
@@ -5939,7 +6019,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
 
         if USE_ISO:
             last_frame = render_game_iso(pygame.display.get_surface(), game_state, player, zombies, bullets,
-                                         enemy_shots)
+                                         enemy_shots, obstacles)
         else:
             last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
 
@@ -6149,8 +6229,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                bg = last_frame or render_game(screen, game_state, player, zombies, bullets, enemy_shots)
-                choice, time_left = pause_game_modal(screen, bg, clock, time_left)
+                bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
+                                                   obstacles=game_state.obstacles)
+                choice, time_left = pause_game_modal(screen, bg, clock, time_left, player)
                 if choice == 'continue':
                     pass
                 elif choice == 'restart':
