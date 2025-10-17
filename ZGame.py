@@ -4957,11 +4957,12 @@ def compute_cam_for_center_iso(cx_px: int, cy_px: int) -> tuple[int, int]:
 
 def play_focus_cinematic_iso(screen, clock,
                              game_state, player,
-                             focus_world_px: tuple[int, int],
                              zombies, bullets, enemy_shots,
+                             focus_world_px: tuple[int, int],
                              hold_time: float = 0.35,
                              duration_each: float = 0.70,
                              label: str | None = None):
+
     """
     基于 render_game_iso 的等距过场镜头：
     - 冻结时间与世界更新，仅做渲染；
@@ -5005,7 +5006,7 @@ def play_focus_cinematic_iso(screen, clock,
 
             # 只渲染，不更新世界；把 time_left 固定传入
             render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
-                            time_left=frozen_time, override_cam=(camx, camy))
+                            game_state.obstacles, override_cam=(camx, camy))
 
             # 可选提示字样（例如 BANDIT / BOSS）
             if label:
@@ -5034,7 +5035,7 @@ def play_focus_cinematic_iso(screen, clock,
             if ev.type == pygame.QUIT:
                 pygame.quit(); sys.exit()
         render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
-                        time_left=frozen_time, override_cam=focus_cam)
+                        game_state.obstacles, override_cam=focus_cam)
         if label:
             font = pygame.font.SysFont(None, 42)
             txt = font.render(label, True, (255, 230, 120))
@@ -5860,9 +5861,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             play_focus_cinematic_iso(
                 screen, clock,
                 game_state, player,
-                zombies,
-                bullets, enemy_shots,
-                (fx, fy),
+                zombies, bullets, enemy_shots,
+                (fx, fy),  #
                 label=("BANDIT!" if fkind == "bandit" else "BOSS!")
             )
             game_state.pending_focus = None  # 演出结束清空
