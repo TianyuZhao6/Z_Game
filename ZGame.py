@@ -4955,92 +4955,97 @@ def compute_cam_for_center_iso(cx_px: int, cy_px: int) -> tuple[int, int]:
     return cam_x, cam_y
 
 
-def play_focus_cinematic_iso(screen, clock, game_state, player,
-                             focus_px: tuple[int, int],
-                             duration_each: float = 0.7,
-                             label: str | None = None, *,
-    zombies,
-    bullets,
-    enemy_shots,
-    obstacles=None,
-    hazards=None,
-    decorations=None):
+def play_focus_cinematic_iso(screen, clock,
+                             game_state, player,
+                             focus_world_px: tuple[int, int],
+                             zombies, bullets, enemy_shots,
+                             hold_time: float = 0.35,
+                             duration_each: float = 0.70,
+                             label: str | None = None):
     """
-    以等距相机为基础的聚焦镜头：
-    - 从“玩家视角”平滑移动到 focus_px（世界像素）为中心的视角，耗时 duration_each 秒；
-    - 再从该处平滑回到“玩家视角”，同样 duration_each 秒；
-    - 期间：暂停一切更新（僵尸/子弹/危害/计时器/输入），只做渲染。
+    基于 render_game_iso 的等距过场镜头：
+    - 冻结时间与世界更新，仅做渲染；
+    - 相机从玩家 → 焦点 → 玩家，分两段线性插值；
+    - 期间吞键鼠输入，玩家不可操作。
+    focus_world_px: (fx, fy) 为【世界像素坐标】（含 INFO_BAR_HEIGHT 的平移）
     """
-    # 冻结：记录当前剩余时间
-    frozen_time = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
 
-    # 计算“玩家视角”的相机
-    pcx, pcy = calculate_iso_camera(player.rect.centerx, player.rect.centery - INFO_BAR_HEIGHT)
-    player_cam = (pcx, pcy)
+    def _cam_for_world_px(wx: float, wy: float) -> tuple[int, int]:
+        # 世界像素 → 世界格
+        gx = wx / CELL_SIZE
+        gy = (wy - INFO_BAR_HEIGHT) / CELL_SIZE
+        # 不带相机的等距屏幕坐标
+        sx, sy = iso_world_to_screen(gx, gy, 0.0, 0.0, 0.0)
+        # 让该点落在屏幕中心，反推相机偏移
+        camx = int(sx - VIEW_W // 2)
+        camy = int(sy - (VIEW_H - INFO_BAR_HEIGHT) // 2)
+        return camx, camy
 
-    # 计算“目标点”为中心的相机
-    fx, fy = focus_px
-    # 世界像素 -> 世界格
-    wx = fx / CELL_SIZE
-    wy = (fy - INFO_BAR_HEIGHT) / CELL_SIZE
-    sx, sy = iso_world_to_screen(wx, wy, 0.0, 0.0, 0.0)  # 无相机偏移的等距屏坐标
-    focus_cam = (int(sx - VIEW_W // 2), int(sy - (VIEW_H - INFO_BAR_HEIGHT) // 2))
+    def _cam_for_player() -> tuple[int, int]:
+        return calculate_iso_camera(player.x + player.size * 0.5,
+                                    player.y + player.size * 0.5 + INFO_BAR_HEIGHT)
 
-    def lerp(a, b, t):
-        return a + (b - a) * t
+    def _lerp(a: float, b: float, t: float) -> float:
+        return a + (b - a) * max(0.0, min(1.0, t))
 
-    def ease_io(t):  # 平滑（S 型）
-        return 0.5 - 0.5 * math.cos(math.pi * max(0.0, min(1.0, t)))
-
-    # 一个小的纯渲染子循环
-    def _do_pan(cam_from, cam_to, seconds):
+    def _do_pan(cam_a: tuple[int, int], cam_b: tuple[int, int], dur: float):
         start = pygame.time.get_ticks()
+        frozen_time = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
         while True:
-            now = pygame.time.get_ticks()
-            t = (now - start) / max(1.0, (seconds * 1000.0))
-            if t >= 1.0: t = 1.0
-            tt = ease_io(t)
-            camx = int(lerp(cam_from[0], cam_to[0], tt))
-            camy = int(lerp(cam_from[1], cam_to[1], tt))
-
-            # 仅渲染，不更新：场上状态完全静止，HUD 用冻结时间
-            render_game_iso(screen, game_state, player,
-                            zombies=game_state.zombies,
-                            bullets=game_state.bullets,
-                            enemy_shots=getattr(game_state, "enemy_shots", []),
-                            hazards=getattr(game_state, "hazards", []),
-                            decorations=getattr(game_state, "decorations", []),
-                            override_cam=(camx, camy),
-                            freeze_time_left=frozen_time)
-
-            # 可选：屏幕中上加提示字（BANDIT!/BOSS）
-            if label:
-                font = pygame.font.SysFont(None, 52, bold=True)
-                txt = font.render(label, True, (255, 240, 180))
-                shadow = font.render(label, True, (0, 0, 0))
-                screen.blit(shadow, shadow.get_rect(center=(VIEW_W // 2 + 2, INFO_BAR_HEIGHT + 60 + 2)))
-                screen.blit(txt, txt.get_rect(center=(VIEW_W // 2, INFO_BAR_HEIGHT + 60)))
-                pygame.display.flip()
-            else:
-                pygame.display.flip()
-
-            # 只吃掉事件，禁止操控
+            # 吞掉输入，防止操控
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
-                    pygame.quit();
-                    sys.exit()
-                # 其它输入直接丢弃
+                    pygame.quit(); sys.exit()
+                # 其它输入全部忽略
 
+            now = pygame.time.get_ticks()
+            t = min(1.0, (now - start) / max(1.0, dur * 1000.0))
+            camx = int(_lerp(cam_a[0], cam_b[0], t))
+            camy = int(_lerp(cam_a[1], cam_b[1], t))
+
+            # 只渲染，不更新世界；把 time_left 固定传入
+            render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
+                            time_left=frozen_time, override_cam=(camx, camy))
+
+            # 可选提示字样（例如 BANDIT / BOSS）
+            if label:
+                font = pygame.font.SysFont(None, 42)
+                txt = font.render(label, True, (255, 230, 120))
+                screen.blit(txt, txt.get_rect(center=(VIEW_W // 2, INFO_BAR_HEIGHT + 50)))
+                pygame.display.flip()
+
+            clock.tick(60)
             if t >= 1.0:
                 break
-            clock.tick(60)
 
-    # 先去 → 再回
+    # 计算三段相机
+    player_cam = _cam_for_player()
+    fx, fy = focus_world_px
+    focus_cam = _cam_for_world_px(fx, fy)
+
+    # 玩家 → 焦点
     _do_pan(player_cam, focus_cam, duration_each)
+
+    # 焦点停顿
+    frozen_time = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
+    hold_start = pygame.time.get_ticks()
+    while (pygame.time.get_ticks() - hold_start) < int(hold_time * 1000):
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+        render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
+                        time_left=frozen_time, override_cam=focus_cam)
+        if label:
+            font = pygame.font.SysFont(None, 42)
+            txt = font.render(label, True, (255, 230, 120))
+            screen.blit(txt, txt.get_rect(center=(VIEW_W // 2, INFO_BAR_HEIGHT + 50)))
+            pygame.display.flip()
+        clock.tick(60)
+
+    # 焦点 → 玩家
     _do_pan(focus_cam, player_cam, duration_each)
 
-    # 刷新一次 clock，避免下一帧 dt 爆大
-    clock.tick(60)
+    # 结束时清理输入积压
     flush_events()
 
 
@@ -5055,8 +5060,13 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
     camx = pxs - VIEW_W // 2
     camy = pys - (VIEW_H - INFO_BAR_HEIGHT) // 2
 
+    # 改为：
     if override_cam is not None:
         camx, camy = override_cam
+    else:
+        camx, camy = calculate_iso_camera(player.x + player.size * 0.5,
+                                          player.y + player.size * 0.5 + INFO_BAR_HEIGHT)
+
     screen.fill((22, 22, 22))
 
     # 2) 画“地面网格”（只画视口周围一圈，避免全图遍历）
@@ -5844,20 +5854,18 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     while running:
         dt = clock.tick(60) / 1000.0
         # ==== 消费镜头聚焦请求：完全暂停游戏与计时 ====
-        if getattr(game_state, "pending_focus", None):
-            tag, (fx, fy) = game_state.pending_focus
-            game_state.pending_focus = None
-
-            # 标签显示
-            label = "COIN BANDIT!" if tag == "bandit" else ("BOSS" if tag == "boss" else None)
-
-            # 播放等距聚焦镜头（0.7s 去 + 0.7s 回）
+        pf = getattr(game_state, "pending_focus", None)
+        if pf:
+            fkind, (fx, fy) = pf
             play_focus_cinematic_iso(
-                screen, clock, game_state, player, (fx, fy),
-                duration_each=0.7, label=label,
-                zombies=zombies, bullets=bullets, enemy_shots=enemy_shots,
-                obstacles=game_state.obstacles  # 如有
+                screen, clock,
+                game_state, player,
+                zombies,
+                bullets, enemy_shots,
+                (fx, fy),
+                label=("BANDIT!" if fkind == "bandit" else "BOSS!")
             )
+            game_state.pending_focus = None  # 演出结束清空
 
         # countdown timer
         time_left -= dt
