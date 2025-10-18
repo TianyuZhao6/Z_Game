@@ -185,7 +185,7 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
         # 横幅底板尺寸与位置（屏幕中央）
         pad_x = 36
         bar_h = 64
-        top_y = INFO_BAR_HEIGHT + 160
+        top_y = INFO_BAR_HEIGHT + 200
         banner_rect = pygame.Rect(pad_x, top_y, VIEW_W - pad_x * 2, bar_h)
 
         # 半透明底
@@ -3754,8 +3754,9 @@ class Bullet:
                         bonus = (int(stolen * BANDIT_BONUS_RATE) + int(BANDIT_BONUS_FLAT)) if stolen > 0 else 0
                         refund = stolen + bonus
                         # ✨ Bandit 被击杀时给横幅
-                        if z.type == "bandit" and refund > 0:
-                            game_state.flash_banner(f"BANDIT DOWN — COINS +{refund}", sec=1.0)
+                        game_state.flash_banner(f"BANDIT DOWN — COINS +{refund}", sec=1.0)
+                        game_state.add_damage_text(z.rect.centerx, z.rect.centery, f"+{refund}", crit=True,
+                                                       kind="shield")
 
                         if refund > 0:
                             game_state.spawn_spoils(cx, cy, refund)  # 掉一袋钱：玩家自己去捡
