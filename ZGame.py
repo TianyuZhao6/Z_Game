@@ -1221,12 +1221,12 @@ def draw_button(screen, label, pos, size=(180, 56), bg=(40, 40, 40), fg=(240, 24
 
 
 def compute_player_dps(p: "Player" | None) -> float:
-    # DPS shown in the pause menu is wrong, Fix it later
-    # Add visual effect for bandit
+    #TODO
+    # Add visual effect for bandit (growing circle around bandit)
     # Add an eye catching in game display hint of bandit ecscape says: BANDIT ESCAPED, STOLEN (COIN_LOST) COINS
     # Add camera moving for bosses
     # Bandit hp >= player's DPS * 6
-    # Add same jint display for bosses (optional)
+    # Add same hint display for bosses (optional)
     if p is None:
         # 兜底：用 META 粗估
         base_dmg = BULLET_DAMAGE_ZOMBIE + float(META.get("dmg", 0))
@@ -1523,42 +1523,86 @@ def show_pause_menu(screen, background_surf):
     screen.blit(title, (left_margin, y_offset))
     y_offset += 40
 
-    # 伤害加成
-    dmg_text = font_tiny.render(f"Damage: +{META['dmg']}", True, (230, 100, 100))
-    screen.blit(dmg_text, (left_margin, y_offset))
+    # ======= CURRENT + BASED-ON-LV1 READOUT =======
+    p = globals().get("_pause_player_ref", None)
+
+    base_dmg = int(META.get("base_dmg", BULLET_DAMAGE_ZOMBIE))
+    base_cd = float(META.get("base_fire_cd", FIRE_COOLDOWN))
+    base_range = float(META.get("base_range", MAX_FIRE_RANGE))
+    base_speed = float(META.get("base_speed", PLAYER_SPEED))
+    base_hp = int(META.get("base_maxhp", PLAYER_MAX_HP))
+    base_crit = float(META.get("base_crit", CRIT_CHANCE_BASE))
+
+    # --- damage ---
+    cur_dmg = int(getattr(p, "bullet_damage", base_dmg + META.get("dmg", 0)))
+    shop_dmg = int(META.get("dmg", 0))
+    lvl_dmg = max(0, cur_dmg - base_dmg - shop_dmg)
+    dmg_text = font_tiny.render(
+        f"Damage: {cur_dmg}  (Lv1 {base_dmg}, +{shop_dmg} shop, +{lvl_dmg} lvl)",
+        True, (230, 100, 100)
+    )
+    screen.blit(dmg_text, (left_margin, y_offset));
     y_offset += 30
 
-    # 射速加成
-    fr_text = font_tiny.render(f"Fire Rate: {META['firerate_mult']:.2f}x", True, (100, 200, 100))
-    screen.blit(fr_text, (left_margin, y_offset))
+    # --- fire rate ---
+    # effective shots/sec shown plus Lv1 baseline
+    if p:
+        cur_cd = p.fire_cooldown()
+    else:
+        cur_cd = max(MIN_FIRE_COOLDOWN, base_cd / max(1.0, float(META.get('firerate_mult', 1.0))))
+    cur_sps = 1.0 / cur_cd
+    base_sps = 1.0 / max(MIN_FIRE_COOLDOWN, base_cd)
+    fr_mult = float(META.get("firerate_mult", 1.0))
+    fr_text = font_tiny.render(
+        f"Fire Rate: {fr_mult:.2f}x  ({cur_sps:.2f}/s, Lv1 {base_sps:.2f}/s)",
+        True, (100, 200, 100)
+    )
+    screen.blit(fr_text, (left_margin, y_offset));
     y_offset += 30
 
-    # 射程加成
-    rng_text = font_tiny.render(f"Range: {META.get('range_mult', 1.0):.2f}x", True, (200, 200, 100))
-    screen.blit(rng_text, (left_margin, y_offset))
+    # --- range ---
+    cur_range = float(getattr(p, "range", base_range * META.get("range_mult", 1.0)))
+    rng_mult = float(META.get("range_mult", 1.0))
+    rng_text = font_tiny.render(
+        f"Range: {rng_mult:.2f}x  ({int(cur_range)} px, Lv1 {int(base_range)} px)",
+        True, (200, 200, 100)
+    )
+    screen.blit(rng_text, (left_margin, y_offset));
     y_offset += 30
 
-    # 速度加成
-    speed_text = font_tiny.render(f"Speed: +{META['speed']}", True, (100, 100, 230))
-    screen.blit(speed_text, (left_margin, y_offset))
+    # --- speed ---
+    cur_speed = float(getattr(p, "speed", base_speed + META.get("speed", 0)))
+    spd_text = font_tiny.render(
+        f"Speed: {cur_speed:.1f}  (Lv1 {base_speed:.1f}, +{int(META.get('speed', 0))} shop)",
+        True, (100, 100, 230)
+    )
+    screen.blit(spd_text, (left_margin, y_offset));
     y_offset += 30
 
-    # 生命值加成
-    hp_text = font_tiny.render(f"Max HP: +{META['maxhp']}", True, (230, 150, 100))
-    screen.blit(hp_text, (left_margin, y_offset))
+    # --- max hp ---
+    cur_mhp = int(getattr(p, "max_hp", base_hp + META.get("maxhp", 0)))
+    shop_hp = int(META.get("maxhp", 0))
+    lvl_hp = max(0, cur_mhp - base_hp - shop_hp)
+    hp_text = font_tiny.render(
+        f"Max HP: {cur_mhp}  (Lv1 {base_hp}, +{shop_hp} shop, +{lvl_hp} lvl)",
+        True, (230, 150, 100)
+    )
+    screen.blit(hp_text, (left_margin, y_offset));
     y_offset += 30
 
-    # 暴击加成
-    crit_pct = int((CRIT_CHANCE_BASE + META.get("crit", 0.0)) * 100)
-    crit_text = font_tiny.render(f"Crit Chance: {crit_pct}%", True, (255, 220, 120))
+    # --- crit ---
+    cur_crit = float(getattr(p, "crit_chance", base_crit + META.get("crit", 0.0)))
+    crit_text = font_tiny.render(
+        f"Crit Chance: {int(cur_crit * 100)}%  (Lv1 {int(base_crit * 100)}%)",
+        True, (255, 220, 120)
+    )
     screen.blit(crit_text, (left_margin, y_offset));
     y_offset += 30
 
-    # DPS
-    player_ref = globals().get("_pause_player_ref", None)
-    dps_val = compute_player_dps(player_ref)
+    # --- DPS (average, includes current damage/AS/crit) ---
+    dps_val = compute_player_dps(p)
     dps_text = font_tiny.render(f"DPS: {dps_val:.2f}", True, (230, 230, 230))
-    screen.blit(dps_text, (left_margin, y_offset))
+    screen.blit(dps_text, (left_margin, y_offset));
     y_offset += 30
 
     # 右上角显示收集的卡牌
@@ -2099,7 +2143,8 @@ def spawn_wave_with_budget(game_state: "GameState",
         gx, gy = spots.pop()  # 占用一个出生点
         cx = int(gx * CELL_SIZE + CELL_SIZE * 0.5)
         cy = int(gy * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT)
-        bandit = make_coin_bandit((cx, cy), level_idx, wave_index, int(budget))
+        bandit = make_coin_bandit((cx, cy), level_idx, wave_index, int(budget),
+                                  player_dps=compute_player_dps(player))
 
         zombies.append(bandit)
         game_state.bandit_spawned_this_level = True
@@ -3030,6 +3075,9 @@ class Zombie:
 
         # ==== 金币大盗：持续偷钱、计时逃脱 ====
         if getattr(self, "type", "") == "bandit":
+
+            # 光环动画相位（1.2s 一次完整扩散）
+            self._aura_t = (getattr(self, "_aura_t", 0.0) + dt / 1.2) % 1.0
             # 持续闪金光（维持金色淡晕）
             self._gold_glow_t = max(self._gold_glow_t, 0.2)
 
@@ -3253,6 +3301,18 @@ class Zombie:
                     self._dash_cd = getattr(self, "_dash_cd_next", random.uniform(4.5, 6.0))
 
     def draw(self, screen):
+        # --- Bandit: 扩散光环（growing circle）---
+        if getattr(self, "type", "") == "bandit":
+            cx, cy = self.rect.centerx, self.rect.bottom  # 贴地脚底看起来更像地面光圈
+            t = float(getattr(self, "_aura_t", 0.0)) % 1.0  # 0→1
+            # 半径从 0.8r 扩到 1.6r，同时透明度从 180→60
+            base_r = max(10, int(self.radius * 0.8))
+            r = int(base_r + (self.radius * 0.8) * t)
+            alpha = int(180 - 120 * t)
+            s = pygame.Surface((r * 2 + 4, r * 2 + 4), pygame.SRCALPHA)
+            pygame.draw.circle(s, (255, 215, 0, alpha), (r + 2, r + 2), r, width=3)
+            screen.blit(s, (cx - r - 2, cy - r - 2))
+
         color = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         pygame.draw.rect(screen, color, self.rect)
 
@@ -4260,7 +4320,7 @@ def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_i
     return z
 
 
-def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int):
+def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, player_dps: float | None = None):
     # world_xy 是“脚底世界坐标”（包含 INFO_BAR_HEIGHT 偏移的像素）
     wx, wy = world_xy
     gx = max(0, min(int(wx // CELL_SIZE), GRID_SIZE - 1))
@@ -4274,8 +4334,11 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int):
     scale_spd = (max(1.0, budget) ** 0.33) * 0.12 + 0.05 * level_idx
     z.speed = min(ZOMBIE_SPEED_MAX, BANDIT_BASE_SPEED + scale_spd)
 
-    z.max_hp = int(round(BANDIT_BASE_HP * (1.0 + math.log1p(max(0, budget)) * 0.14) * (1.0 + 0.06 * level_idx)))
-    z.hp = z.max_hp
+    # --- 生命值 = max(基础血, 玩家DPS × 4) ---
+    dps = float(player_dps) if player_dps is not None else float(compute_player_dps(None))
+    target_hp = max(int(BANDIT_BASE_HP), int(math.ceil(dps * 12.0)))
+    z.max_hp = target_hp
+    z.hp = target_hp
     z.attack = 1  # 不是用来打人的
     z.is_elite = True  # 精英描边
     # z.ai_mode = "flee"         # 逃离玩家
@@ -4287,7 +4350,8 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int):
     z.steal_per_sec = int(max(BANDIT_STEAL_RATE_MIN, min(BANDIT_STEAL_RATE_MAX, round(steal_raw))))
     esc_raw = BANDIT_ESCAPE_TIME_BASE - 0.004 * max(0, budget) - 0.4 * level_idx
     z.escape_t = max(BANDIT_ESCAPE_TIME_MIN, esc_raw)
-
+    # 用于光环动画的相位
+    z._aura_t = random.random()
     # 跟踪偷取与掉落奖励
     z._stolen_total = 0
     z._steal_accum = 0.0
