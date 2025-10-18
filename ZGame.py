@@ -3301,12 +3301,12 @@ class Zombie:
                     self._dash_cd = getattr(self, "_dash_cd_next", random.uniform(4.5, 6.0))
 
     def draw(self, screen):
-        # --- Bandit: 扩散光环（growing circle）---
+        # # --- Bandit: 扩散光环（growing circle）---
         if getattr(self, "type", "") == "bandit":
             cx, cy = self.rect.centerx, self.rect.bottom  # 贴地脚底看起来更像地面光圈
             t = float(getattr(self, "_aura_t", 0.0)) % 1.0  # 0→1
             # 半径从 0.8r 扩到 1.6r，同时透明度从 180→60
-            base_r = max(10, int(self.radius * 0.8))
+            base_r = max(10, int(self.radius * 4.8))
             r = int(base_r + (self.radius * 0.8) * t)
             alpha = int(180 - 120 * t)
             s = pygame.Surface((r * 2 + 4, r * 2 + 4), pygame.SRCALPHA)
