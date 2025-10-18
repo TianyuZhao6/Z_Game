@@ -157,6 +157,56 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     pygame.draw.circle(screen, (255, 245, 200), (coin_x, coin_y + 8), 8, 1)
     spoils_text = hud_font.render(f"{spoils_total}", True, (255, 255, 255))
     screen.blit(spoils_text, (coin_x + 14, coin_y))
+    # ===== 屏幕中央：一过性横幅 =====
+    bt = float(getattr(game_state, "banner_t", 0.0))
+    if bt > 0.0 and getattr(game_state, "banner_text", None):
+        # 计算经过时间，做 1s 倒计时
+        now = pygame.time.get_ticks()
+        last = getattr(game_state, "_banner_tick_ms", None)
+        if last is None:
+            game_state._banner_tick_ms = now
+        else:
+            dt = (now - last) / 1000.0
+            game_state._banner_tick_ms = now
+            game_state.banner_t = max(0.0, bt - dt)
+            bt = game_state.banner_t
+
+        # 简单淡入淡出（前后各 0.15s）：算一个 0~1 的可见度
+        life = 1.5  # 你也可以把它做成变量
+        t_used = life - bt
+        vis = 1.0
+        fade = 0.15
+        if t_used < fade:
+            vis = t_used / fade
+        elif bt < fade:
+            vis = bt / fade
+        vis = max(0.0, min(1.0, vis))
+
+        # 横幅底板尺寸与位置（屏幕中央）
+        pad_x = 36
+        bar_h = 64
+        top_y = INFO_BAR_HEIGHT + 160
+        banner_rect = pygame.Rect(pad_x, top_y, VIEW_W - pad_x * 2, bar_h)
+
+        # 半透明底
+        s = pygame.Surface(banner_rect.size, pygame.SRCALPHA)
+        base_alpha = int(170 * vis)
+        pygame.draw.rect(s, (20, 20, 20, base_alpha), s.get_rect(), border_radius=12)
+
+        # 文字
+        msg = str(getattr(game_state, "banner_text", ""))
+        font_big = mono_font(34)
+        txt = font_big.render(msg, True, (255, 230, 140))
+        # 轻微描边让它更显眼
+        shadow = font_big.render(msg, True, (0, 0, 0))
+        s.blit(shadow, shadow.get_rect(center=(s.get_width() // 2 + 1, s.get_height() // 2 + 1)))
+        s.blit(txt, txt.get_rect(center=(s.get_width() // 2, s.get_height() // 2)))
+
+        screen.blit(s, banner_rect.topleft)
+
+        # 倒计时结束后清理
+        if game_state.banner_t <= 0.0:
+            game_state.banner_text = None
 
 
 def _find_current_boss(zombies):
@@ -3098,11 +3148,13 @@ class Zombie:
             # 逃跑计时
             self.escape_t = max(0.0, float(getattr(self, "escape_t", BANDIT_ESCAPE_TIME_BASE)) - dt)
             if self.escape_t <= 0.0:
-                # 逃离战场：不掉落，不给经验
-                # 发一个“ESCAPED”提示
                 if game_state is not None:
+                    # 小飘字（保留）
                     game_state.add_damage_text(self.rect.centerx, self.rect.centery, "ESCAPED", crit=False,
                                                kind="shield")
+                    stolen = int(getattr(self, "_stolen_total", 0))
+                    game_state.flash_banner(f"BANDIT ESCAPED — STOLEN {stolen} COINS", sec=1.0)
+
                 try:
                     zombies.remove(self)
                 except Exception:
@@ -3701,6 +3753,10 @@ class Bullet:
                         stolen = int(getattr(z, "_stolen_total", 0))
                         bonus = (int(stolen * BANDIT_BONUS_RATE) + int(BANDIT_BONUS_FLAT)) if stolen > 0 else 0
                         refund = stolen + bonus
+                        # ✨ Bandit 被击杀时给横幅
+                        if z.type == "bandit" and refund > 0:
+                            game_state.flash_banner(f"BANDIT DOWN — COINS +{refund}", sec=1.0)
+
                         if refund > 0:
                             game_state.spawn_spoils(cx, cy, refund)  # 掉一袋钱：玩家自己去捡
                         # bandit 的普通随机掉落就不要叠加了，直接走移除流程
@@ -4668,6 +4724,9 @@ class GameState:
         self.fog_lanterns: list = []  # FogLantern 实例
         self._fog_pulse_t: float = 0.0  # 呼吸脉冲
         self.bandit_spawned_this_level = False  # 本关是否已出现过金币大盗
+        self.banner_text = None  # 当前横幅文字
+        self.banner_t = 0.0  # 横幅剩余时间（秒）
+        self._banner_tick_ms = None  # 用于计时的上一帧时间戳
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -4750,6 +4809,12 @@ class GameState:
                 player.hp = min(player.max_hp, player.hp + h.heal)
                 healed += (player.hp - before)
         return healed
+
+    def flash_banner(self, text: str, sec: float = 1.0):
+        """在屏幕中央显示一条横幅 sec 秒。"""
+        self.banner_text = str(text)
+        self.banner_t = float(max(0.0, sec))
+        self._banner_tick_ms = None  # 让绘制处在下一帧重置基线
 
     # ---- 地面腐蚀池 ----w
     # 在 GameState 内，替换/保留为 ↓ 这个版本
