@@ -1225,7 +1225,8 @@ def compute_player_dps(p: "Player" | None) -> float:
     # Add visual effect for bandit
     # Add a overlay of bandit ecscape says: BANDIT ESCAPED, STOLEN (COIN_LOST) COINS
     # Add camera moving for bosses
-    # Bandit hp >= player's DPS * 6 
+    # Bandit hp >= player's DPS * 6
+    # Add same overlay for bosses (optional)
     if p is None:
         # 兜底：用 META 粗估
         base_dmg = BULLET_DAMAGE_ZOMBIE + float(META.get("dmg", 0))
