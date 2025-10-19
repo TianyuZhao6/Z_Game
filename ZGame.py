@@ -185,7 +185,7 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
         # 横幅底板尺寸与位置（屏幕中央）
         pad_x = 36
         bar_h = 64
-        top_y = INFO_BAR_HEIGHT + 200
+        top_y = INFO_BAR_HEIGHT + 220
         banner_rect = pygame.Rect(pad_x, top_y, VIEW_W - pad_x * 2, bar_h)
 
         # 半透明底
@@ -1271,7 +1271,7 @@ def draw_button(screen, label, pos, size=(180, 56), bg=(40, 40, 40), fg=(240, 24
 
 
 def compute_player_dps(p: "Player" | None) -> float:
-    #TODO
+    # TODO
     # Add visual effect for bandit (growing circle around bandit)
     # Add an eye catching in game display hint of bandit ecscape says: BANDIT ESCAPED, STOLEN (COIN_LOST) COINS
     # Add camera moving for bosses
@@ -3125,7 +3125,6 @@ class Zombie:
 
         # ==== 金币大盗：持续偷钱、计时逃脱 ====
         if getattr(self, "type", "") == "bandit":
-
             # 光环动画相位（1.2s 一次完整扩散）
             self._aura_t = (getattr(self, "_aura_t", 0.0) + dt / 1.2) % 1.0
             # 持续闪金光（维持金色淡晕）
@@ -3136,14 +3135,16 @@ class Zombie:
             steal_units = int(self._steal_accum)
             if steal_units >= 1 and game_state is not None:
                 self._steal_accum -= steal_units
-                # 只扣 META['spoils']，不去动“本关内的临时币/地上币”
-                avail = int(META.get("spoils", 0))
-                got = min(steal_units, avail)
+                # —— 只影响本关临时金币 ——
+                game_state._bandit_stolen = int(getattr(game_state, "_bandit_stolen", 0))
+                avail = int(getattr(game_state, "spoils_gained", 0))
+                got = min(steal_units, max(0, avail))
                 if got > 0:
-                    META["spoils"] = avail - got
+                    game_state.spoils_gained = avail - got  # 只动本关临时
                     self._stolen_total = int(getattr(self, "_stolen_total", 0)) + got
-                    # 飘一个 -数字 的提示
-                    game_state.add_damage_text(self.rect.centerx, self.rect.centery, f"-{got}", crit=False, kind="hp")
+                    game_state._bandit_stolen += got
+                    # 飘字提示（-金币）
+                    game_state.add_damage_text(cx, cy - 18, f"-{got}", crit=True, kind="hp")
 
             # 逃跑计时
             self.escape_t = max(0.0, float(getattr(self, "escape_t", BANDIT_ESCAPE_TIME_BASE)) - dt)
@@ -3756,7 +3757,7 @@ class Bullet:
                         # ✨ Bandit 被击杀时给横幅
                         game_state.flash_banner(f"BANDIT DOWN — COINS +{refund}", sec=1.0)
                         game_state.add_damage_text(z.rect.centerx, z.rect.centery, f"+{refund}", crit=True,
-                                                       kind="shield")
+                                                   kind="shield")
 
                         if refund > 0:
                             game_state.spawn_spoils(cx, cy, refund)  # 掉一袋钱：玩家自己去捡
@@ -5098,7 +5099,6 @@ def play_focus_cinematic_iso(screen, clock,
                              hold_time: float = 0.35,
                              duration_each: float = 0.70,
                              label: str | None = None):
-
     """
     基于 render_game_iso 的等距过场镜头：
     - 冻结时间与世界更新，仅做渲染；
@@ -5132,7 +5132,8 @@ def play_focus_cinematic_iso(screen, clock,
             # 吞掉输入，防止操控
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
-                    pygame.quit(); sys.exit()
+                    pygame.quit();
+                    sys.exit()
                 # 其它输入全部忽略
 
             now = pygame.time.get_ticks()
@@ -5169,7 +5170,8 @@ def play_focus_cinematic_iso(screen, clock,
     while (pygame.time.get_ticks() - hold_start) < int(hold_time * 1000):
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
+                pygame.quit();
+                sys.exit()
         render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
                         game_state.obstacles, override_cam=focus_cam)
         if label:
@@ -6023,7 +6025,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles=game_state.obstacles)
+                bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
+                                                   obstacles=game_state.obstacles)
                 choice, time_left = pause_game_modal(screen, bg, clock, time_left, player)
 
                 if choice == 'continue':
