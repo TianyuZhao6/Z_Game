@@ -4714,7 +4714,6 @@ class GameState:
         # non-colliding visual fillers
         self.decorations = decorations  # list[Tuple[int,int]] grid coords
         self.spoils = []  # List[Spoil]
-        self.spoils_gained = 0
         self.heals = []  # List[HealPickup]
         self.dmg_texts = []  # List[DamageText]
         self.acids = []  # List[AcidPool]
@@ -4726,7 +4725,12 @@ class GameState:
         self.fog_alpha = FOG_OVERLAY_ALPHA
         self.fog_lanterns: list = []  # FogLantern 实例
         self._fog_pulse_t: float = 0.0  # 呼吸脉冲
-        self.bandit_spawned_this_level = False  # 本关是否已出现过金币大盗
+
+        self.spoils_gained = 0  # 本关临时获得
+        self._bandit_stolen = 0  # 本关被盗总额（只用于提示）
+        self._spoils_settled = False  # 本关是否已完成“成功结算”
+        self.bandit_spawned_this_level = False
+
         self.banner_text = None  # 当前横幅文字
         self.banner_t = 0.0  # 横幅剩余时间（秒）
         self._banner_tick_ms = None  # 用于计时的上一帧时间戳
@@ -6700,6 +6704,9 @@ if __name__ == "__main__":
             reward_choices = random.sample(pool, k=min(3, len(pool))) if pool else []
 
             chosen = show_success_screen(screen, bg, reward_choices)
+            # …when opening the shop:
+            META["spoils"] += int(globals().get("_last_spoils", 0))
+            globals()["_last_spoils"] = 0
 
             # 成功界面可能返回三类：1) 选中的卡牌名；2) "home"；3) "restart"；还有可能 None（无卡牌时点确认）
             if chosen == "home":
