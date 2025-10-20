@@ -3144,6 +3144,7 @@ class Zombie:
                     self._stolen_total = int(getattr(self, "_stolen_total", 0)) + got
                     game_state._bandit_stolen += got
                     # 飘字提示（-金币）
+                    cx, cy = self.rect.centerx, self.rect.centery
                     game_state.add_damage_text(cx, cy - 18, f"-{got}", crit=True, kind="hp")
 
             # 逃跑计时
@@ -6173,9 +6174,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         if game_result == "success":
             globals()["_last_spoils"] = getattr(game_state, "spoils_gained", 0)
             globals()["_carry_player_state"] = capture_player_carry(player)
-        elif game_result == "fail":
-            # NEW: save carry on death so 'Retry' keeps your levels/xp
-            globals()["_carry_player_state"] = capture_player_carry(player)
 
     return game_result, config.get("reward", None), last_frame
 
@@ -6364,6 +6362,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         time_left -= dt
         globals()["_time_left_runtime"] = time_left
         if time_left <= 0:
+
             # win on survival
             chosen = show_success_screen(
                 screen,
@@ -6699,6 +6698,7 @@ if __name__ == "__main__":
         elif result == "success":
             pool = [c for c in CARD_POOL if c not in zombie_cards_collected]
             reward_choices = random.sample(pool, k=min(3, len(pool))) if pool else []
+          
             chosen = show_success_screen(screen, bg, reward_choices)
 
             # 成功界面可能返回三类：1) 选中的卡牌名；2) "home"；3) "restart"；还有可能 None（无卡牌时点确认）
@@ -6739,6 +6739,7 @@ if __name__ == "__main__":
                 zombie_cards_collected.append(chosen)
                 # bank spoils from this level, then open the shop
                 META["spoils"] += int(globals().get("_last_spoils", 0))
+                globals()["_last_spoils"] = 0
                 action = show_shop_screen(screen)
                 # React to pause-menu choices made from inside the shop
                 if action == "home":
@@ -6783,6 +6784,7 @@ if __name__ == "__main__":
 
             else:
                 META["spoils"] += int(globals().get("_last_spoils", 0))
+                globals()["_last_spoils"] = 0
                 action = show_shop_screen(screen)
                 if action == "home":
                     save_progress(current_level, zombie_cards_collected, pending_shop=True)
