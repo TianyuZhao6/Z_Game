@@ -847,6 +847,7 @@ def reset_run_state():
     globals()["_carry_player_state"] = None
     globals()["_pending_shop"] = False
     globals().pop("_last_spoils", None)
+    globals().pop("_coins_at_level_start", None)
 
 
 def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
@@ -3135,14 +3136,22 @@ class Zombie:
             steal_units = int(self._steal_accum)
             if steal_units >= 1 and game_state is not None:
                 self._steal_accum -= steal_units
-                # —— 只影响本关临时金币 ——
-                game_state._bandit_stolen = int(getattr(game_state, "_bandit_stolen", 0))
-                avail = int(getattr(game_state, "spoils_gained", 0))
-                got = min(steal_units, max(0, avail))
+                # steal from total (level spoils + bank), prefer draining level spoils first
+                lvl = int(getattr(game_state, "spoils_gained", 0))
+                bank = int(META.get("spoils", 0))
+                total_avail = max(0, lvl + bank)
+
+                got = min(steal_units, total_avail)
                 if got > 0:
-                    game_state.spoils_gained = avail - got  # 只动本关临时
+                    take_lvl = min(lvl, got)
+                    if take_lvl:
+                        game_state.spoils_gained = lvl - take_lvl
+                    rest = got - take_lvl
+                    if rest:
+                        META["spoils"] = max(0, bank - rest)
+
                     self._stolen_total = int(getattr(self, "_stolen_total", 0)) + got
-                    game_state._bandit_stolen += got
+                    game_state._bandit_stolen = int(getattr(game_state, "_bandit_stolen", 0)) + got
                     # 飘字提示（-金币）
                     cx, cy = self.rect.centerx, self.rect.centery
                     game_state.add_damage_text(cx, cy - 18, f"-{got}", crit=True, kind="hp")
@@ -5822,6 +5831,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     level_idx = int(globals().get("current_level", 0))
     time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
     globals()["_time_left_runtime"] = time_left
+    globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
 
     spatial = SpatialHash(SPATIAL_CELL)
 
@@ -6586,11 +6596,15 @@ if __name__ == "__main__":
     while True:
         # If we saved while in the shop last time, reopen the shop first
         if globals().get("_pending_shop", False):
+            META["spoils"] += int(globals().pop("_last_spoils", 0))
             action = show_shop_screen(screen)
+            globals()["_pending_shop"] = False
 
             if action in (None,):  # user clicked NEXT (closed shop normally)
                 globals()["_pending_shop"] = False
                 current_level += 1
+                globals().pop("_coins_at_level_start", None)
+
                 save_progress(current_level, zombie_cards_collected)
                 # fall through to start the next level immediately
 
@@ -6619,8 +6633,10 @@ if __name__ == "__main__":
                 continue  # back to loop top
 
             elif action == "restart":
-                # just re-show the shop again (still pending)
+                META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
+                globals().pop("_last_spoils", None)
                 continue
+
 
             elif action == "exit":
                 save_progress(current_level, zombie_cards_collected, pending_shop=True)
@@ -6629,10 +6645,16 @@ if __name__ == "__main__":
 
         config = get_level_config(current_level)
         chosen_zombie = "basic"
+        # --- snapshot coins at first entry to this level ---
+        if "_coins_at_level_start" not in globals():
+            globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
+
         door_transition(screen)
         result, reward, bg = main_run_level(config, chosen_zombie)
 
         if result == "restart":
+            META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
+            globals().pop("_last_spoils", None)
             flush_events()
             continue
 
@@ -6704,9 +6726,6 @@ if __name__ == "__main__":
             reward_choices = random.sample(pool, k=min(3, len(pool))) if pool else []
 
             chosen = show_success_screen(screen, bg, reward_choices)
-            # …when opening the shop:
-            META["spoils"] += int(globals().get("_last_spoils", 0))
-            globals()["_last_spoils"] = 0
 
             # 成功界面可能返回三类：1) 选中的卡牌名；2) "home"；3) "restart"；还有可能 None（无卡牌时点确认）
             if chosen == "home":
@@ -6779,14 +6798,18 @@ if __name__ == "__main__":
                         globals()["_carry_player_state"] = None
                     continue  # back to the top-level loop
                 if action == "restart":
-                    # replay the current level (do not advance)
+                    META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
+                    globals().pop("_last_spoils", None)
                     continue
+
                 if action == "exit":
                     save_progress(current_level, zombie_cards_collected, pending_shop=True)
                     pygame.quit();
                     sys.exit()
                 # Normal shop close → advance level
                 current_level += 1
+                globals().pop("_coins_at_level_start", None)
+
                 save_progress(current_level, zombie_cards_collected)
 
             else:
@@ -6822,7 +6845,9 @@ if __name__ == "__main__":
                         globals()["_carry_player_state"] = None
                     continue
 
-                if action == "restart":
+                if action == "restart" or action == "retry":
+                    META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
+                    globals().pop("_last_spoils", None)
                     continue
 
                 if action == "exit":
@@ -6831,6 +6856,8 @@ if __name__ == "__main__":
                     sys.exit()
 
                 current_level += 1
+                globals().pop("_coins_at_level_start", None)
+
                 save_progress(current_level, zombie_cards_collected)
 
 
