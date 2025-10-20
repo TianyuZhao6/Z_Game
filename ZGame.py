@@ -6698,7 +6698,7 @@ if __name__ == "__main__":
         elif result == "success":
             pool = [c for c in CARD_POOL if c not in zombie_cards_collected]
             reward_choices = random.sample(pool, k=min(3, len(pool))) if pool else []
-          
+
             chosen = show_success_screen(screen, bg, reward_choices)
 
             # 成功界面可能返回三类：1) 选中的卡牌名；2) "home"；3) "restart"；还有可能 None（无卡牌时点确认）
