@@ -1274,9 +1274,7 @@ def draw_button(screen, label, pos, size=(180, 56), bg=(40, 40, 40), fg=(240, 24
 def compute_player_dps(p: "Player" | None) -> float:
     # TODO
     # Add visual effect for bandit (growing circle around bandit)
-    # Add an eye catching in game display hint of bandit ecscape says: BANDIT ESCAPED, STOLEN (COIN_LOST) COINS
-    # Add camera moving for bosses
-    # Bandit hp >= player's DPS * 6
+    # Restart spoils and player lv bugs
     # Add same hint display for bosses (optional)
     if p is None:
         # 兜底：用 META 粗估
