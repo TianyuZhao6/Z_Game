@@ -2252,6 +2252,18 @@ def spawn_wave_with_budget(game_state: "GameState",
 
                 b1._spawn_wave_tag = wave_index
                 b2._spawn_wave_tag = wave_index
+                # --- NEW: queue boss spawn camera focuses (both bosses)
+                # Prefer rect centers if available; otherwise derive from tiles:
+                try:
+                    c1 = (int(b1.rect.centerx), int(b1.rect.centery))
+                    c2 = (int(b2.rect.centerx), int(b2.rect.centery))
+                except Exception:
+                    c1 = (int((gx0 + 1.0) * CELL_SIZE), int((gy0 + 1.0) * CELL_SIZE + INFO_BAR_HEIGHT))
+                    c2 = (int((gx2 + 1.0) * CELL_SIZE), int((gy2 + 1.0) * CELL_SIZE + INFO_BAR_HEIGHT))
+
+                game_state.focus_queue = getattr(game_state, "focus_queue", [])
+                game_state.focus_queue += [("boss", c1), ("boss", c2)]
+
                 zombies.append(b1);
                 zombies.append(b2)
                 boss_done = True
@@ -2265,6 +2277,11 @@ def spawn_wave_with_budget(game_state: "GameState",
                         del game_state.obstacles[gp]
                 z._spawn_wave_tag = wave_index
                 zombies.append(z)
+                # After zombies.append(mist)
+                cx, cy = (int(z.rect.centerx), int(z.rect.centery))
+                game_state.focus_queue = getattr(game_state, "focus_queue", [])
+                game_state.focus_queue.append(("boss", (cx, cy)))
+
                 boss_done = True
 
                 # 让本关启动雾场（GameState 里会响应）
@@ -2279,6 +2296,15 @@ def spawn_wave_with_budget(game_state: "GameState",
                     if ob.rect.colliderect(r):
                         del game_state.obstacles[gp]
                 z._spawn_wave_tag = wave_index
+                # NEW: queue single boss focus
+                try:
+                    c = (int(z.rect.centerx), int(z.rect.centery))
+                except Exception:
+                    c = (int((gx0 + 1.0) * CELL_SIZE), int((gy0 + 1.0) * CELL_SIZE + INFO_BAR_HEIGHT))
+
+                game_state.focus_queue = getattr(game_state, "focus_queue", [])
+                game_state.focus_queue.append(("boss", c))
+
                 zombies.append(z)
                 boss_done = True
             continue
@@ -4743,6 +4769,7 @@ class GameState:
         self.banner_text = None  # 当前横幅文字
         self.banner_t = 0.0  # 横幅剩余时间（秒）
         self._banner_tick_ms = None  # 用于计时的上一帧时间戳
+        self.focus_queue = []  # NEW: queue of [("boss",(x,y)), ...] for multi-focus
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -6008,6 +6035,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     while running:
         dt = clock.tick(60) / 1000.0
         # ==== 消费镜头聚焦请求：完全暂停游戏与计时 ====
+        # ==== 消费镜头聚焦请求：完全暂停游戏与计时 ====
         pf = getattr(game_state, "pending_focus", None)
         if pf:
             fkind, (fx, fy) = pf
@@ -6015,10 +6043,23 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 screen, clock,
                 game_state, player,
                 zombies, bullets, enemy_shots,
-                (fx, fy),  #
+                (fx, fy),
                 label=("BANDIT!" if fkind == "bandit" else "BOSS!")
             )
             game_state.pending_focus = None  # 演出结束清空
+
+        # NEW: 多Boss聚焦队列（例如 Twin，或后续多个Boss）
+        fq = getattr(game_state, "focus_queue", [])
+        while fq:
+            fkind, (fx, fy) = fq.pop(0)  # 逐个播放；顺序不重要
+            play_focus_cinematic_iso(
+                screen, clock,
+                game_state, player,
+                zombies, bullets, enemy_shots,
+                (fx, fy),
+                label=("BOSS!" if fkind != "bandit" else "BANDIT!")
+            )
+        game_state.focus_queue = fq
 
         # countdown timer
         time_left -= dt
