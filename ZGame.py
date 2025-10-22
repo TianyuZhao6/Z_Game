@@ -1102,6 +1102,53 @@ def load_save() -> Optional[dict]:
     except Exception as e:
         print(f"[Save] Failed to read save file: {e}", file=sys.stderr)
         return None
+    
+def _clear_level_start_baseline():
+    globals().pop("_baseline_for_level", None)
+    globals().pop("_coins_at_level_start", None)
+    globals().pop("_player_level_baseline", None)
+
+def _capture_level_start_baseline(level_idx: int, player: "Player"):
+    """Record the exact state the first time we enter this level in this run."""
+    globals()["_baseline_for_level"] = int(level_idx)
+    globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
+    globals()["_player_level_baseline"] = {
+        "level": int(getattr(player, "level", 1)),
+        "xp": int(getattr(player, "xp", 0)),
+        "xp_to_next": int(getattr(player, "xp_to_next", player_xp_required(1))),
+        # keep these so level-ups during a failed attempt don't carry into restart
+        "bullet_damage": int(getattr(player, "bullet_damage", META.get("base_dmg", 0) + META.get("dmg", 0))),
+        "max_hp": int(getattr(player, "max_hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
+        "hp": int(getattr(player, "hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
+    }
+
+def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: "GameState"):
+    """Re-entering the same level: restore bank & player progression to the first-entry baseline."""
+    if int(globals().get("_baseline_for_level", -999)) != int(level_idx):
+        return  # entering a different level → nothing to restore
+
+    # 1) Restore META bank to exactly what it was at level entry.
+    if "_coins_at_level_start" in globals():
+        META["spoils"] = int(globals()["_coins_at_level_start"])
+
+    # 2) Clear run-local spoils gained this level (so we truly restart from scratch)
+    if hasattr(game_state, "spoils_gained"):
+        game_state.spoils_gained = 0
+    # 3) Clear any bandit bookkeeping from the previous failed attempt
+    if hasattr(game_state, "_bandit_stolen"):
+        game_state._bandit_stolen = 0
+    if hasattr(game_state, "bandit_spawned_this_level"):
+        game_state.bandit_spawned_this_level = False
+
+    # 4) Restore the player's progression snapshot
+    b = globals().get("_player_level_baseline", None)
+    if isinstance(b, dict):
+        player.level = int(b.get("level", 1))
+        player.xp = int(b.get("xp", 0))
+        player.xp_to_next = int(b.get("xp_to_next", player_xp_required(player.level)))
+        player.bullet_damage = int(b.get("bullet_damage", player.bullet_damage))
+        player.max_hp = int(b.get("max_hp", player.max_hp))
+        player.hp = min(player.max_hp, int(b.get("hp", player.max_hp)))
 
 
 def has_save() -> bool:
