@@ -5132,30 +5132,34 @@ def compute_cam_for_center_iso(cx_px: int, cy_px: int) -> tuple[int, int]:
     cam_y = int(sy - (VIEW_H - INFO_BAR_HEIGHT) // 2)
     return cam_x, cam_y
 
+
 # --- Chained boss focus: pan through many targets, then back to player once ---
 def play_focus_chain_iso(screen, clock, game_state, player, zombies, bullets, enemy_shots, targets,
                          hold_time=0.9, label="BOSS"):
     """
-    targets: list of (x,y) screen/world centers for each boss (like rect.centerx, rect.centery).
-    Runs boss→boss→… then one final return to the player.
+    targets: list of (x_px, y_px) world-pixel centers (e.g., rect.centerx, rect.centery).
+    Plays boss → boss → … → player (once).
     """
-    # Show each boss; do NOT return to the player in between
+    last_cam = None
     for i, pos in enumerate(targets):
-        # First boss can show a label; others can be silent if you prefer
-        show_label = (label if i == 0 else None)
-        # IMPORTANT: we rely on play_focus_cinematic_iso supporting 'return_to_player'
-        # If your local helper uses a different kw, adjust below accordingly.
+        fx, fy = pos
+        focus_cam = compute_cam_for_center_iso(int(fx), int(fy))
+        show_label = label if i == 0 else None
         play_focus_cinematic_iso(
             screen, clock, game_state, player, zombies, bullets, enemy_shots,
-            pos, label=show_label, return_to_player=False, hold_time=hold_time
+            (int(fx), int(fy)), label=show_label, hold_time=hold_time,
+            return_to_player=False, start_cam=last_cam
         )
+        last_cam = focus_cam
 
-    # Finally: one clean glide back to the player
+    # final glide back to player (one time)
+    pcenter = (int(player.rect.centerx), int(player.rect.centery))
     play_focus_cinematic_iso(
         screen, clock, game_state, player, zombies, bullets, enemy_shots,
-        (int(player.rect.centerx), int(player.rect.centery)),
-        label=None, return_to_player=True, hold_time=0.0
+        pcenter, label=None, hold_time=0.0,
+        return_to_player=False, start_cam=last_cam
     )
+
 
 def play_focus_cinematic_iso(screen, clock,
                              game_state, player,
@@ -5163,22 +5167,19 @@ def play_focus_cinematic_iso(screen, clock,
                              focus_world_px: tuple[int, int],
                              hold_time: float = 0.35,
                              duration_each: float = 0.70,
-                             label: str | None = None):
+                             label: str | None = None,
+                             return_to_player: bool = True,
+                             start_cam: tuple[int, int] | None = None):
     """
-    基于 render_game_iso 的等距过场镜头：
-    - 冻结时间与世界更新，仅做渲染；
-    - 相机从玩家 → 焦点 → 玩家，分两段线性插值；
-    - 期间吞键鼠输入，玩家不可操作。
-    focus_world_px: (fx, fy) 为【世界像素坐标】（含 INFO_BAR_HEIGHT 的平移）
+    等距过场镜头：
+    - 相机从 start_cam(若无则玩家) → 焦点；可选 焦点 → 玩家。
+    - 冻结时间与世界更新，仅渲染。
     """
 
     def _cam_for_world_px(wx: float, wy: float) -> tuple[int, int]:
-        # 世界像素 → 世界格
         gx = wx / CELL_SIZE
         gy = (wy - INFO_BAR_HEIGHT) / CELL_SIZE
-        # 不带相机的等距屏幕坐标
         sx, sy = iso_world_to_screen(gx, gy, 0.0, 0.0, 0.0)
-        # 让该点落在屏幕中心，反推相机偏移
         camx = int(sx - VIEW_W // 2)
         camy = int(sy - (VIEW_H - INFO_BAR_HEIGHT) // 2)
         return camx, camy
@@ -5194,42 +5195,35 @@ def play_focus_cinematic_iso(screen, clock,
         start = pygame.time.get_ticks()
         frozen_time = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
         while True:
-            # 吞掉输入，防止操控
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
                     pygame.quit();
                     sys.exit()
-                # 其它输入全部忽略
-
             now = pygame.time.get_ticks()
             t = min(1.0, (now - start) / max(1.0, dur * 1000.0))
             camx = int(_lerp(cam_a[0], cam_b[0], t))
             camy = int(_lerp(cam_a[1], cam_b[1], t))
-
-            # 只渲染，不更新世界；把 time_left 固定传入
             render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
                             game_state.obstacles, override_cam=(camx, camy))
-
-            # 可选提示字样（例如 BANDIT / BOSS）
             if label:
                 font = pygame.font.SysFont(None, 42)
                 txt = font.render(label, True, (255, 230, 120))
                 screen.blit(txt, txt.get_rect(center=(VIEW_W // 2, INFO_BAR_HEIGHT + 50)))
                 pygame.display.flip()
-
             clock.tick(60)
             if t >= 1.0:
                 break
 
-    # 计算三段相机
+    # cams
     player_cam = _cam_for_player()
     fx, fy = focus_world_px
     focus_cam = _cam_for_world_px(fx, fy)
+    start_from = start_cam if start_cam is not None else player_cam
 
-    # 玩家 → 焦点
-    _do_pan(player_cam, focus_cam, duration_each)
+    # start → focus
+    _do_pan(start_from, focus_cam, duration_each)
 
-    # 焦点停顿
+    # hold on focus
     frozen_time = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
     hold_start = pygame.time.get_ticks()
     while (pygame.time.get_ticks() - hold_start) < int(hold_time * 1000):
@@ -5246,10 +5240,10 @@ def play_focus_cinematic_iso(screen, clock,
             pygame.display.flip()
         clock.tick(60)
 
-    # 焦点 → 玩家
-    _do_pan(focus_cam, player_cam, duration_each)
+    # optional focus → player
+    if return_to_player:
+        _do_pan(focus_cam, player_cam, duration_each)
 
-    # 结束时清理输入积压
     flush_events()
 
 
@@ -6072,18 +6066,24 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             )
             game_state.pending_focus = None  # 演出结束清空
 
-        # NEW: 多Boss聚焦队列（例如 Twin，或后续多个Boss）
-        fq = getattr(game_state, "focus_queue", [])
-        while fq:
-            fkind, (fx, fy) = fq.pop(0)  # 逐个播放；顺序不重要
-            play_focus_cinematic_iso(
-                screen, clock,
-                game_state, player,
-                zombies, bullets, enemy_shots,
-                (fx, fy),
-                label=("BOSS!" if fkind != "bandit" else "BANDIT!")
-            )
-        game_state.focus_queue = fq
+        # --- Consume camera focus queue (bandit & bosses) ---
+        fq = getattr(game_state, "focus_queue", None)
+        if fq:
+            # Batch all leading BOSSES: boss → boss → … → player (once)
+            if fq[0][0] == "boss":
+                boss_targets = []
+                while fq and fq[0][0] == "boss":
+                    _, pos = fq.pop(0)
+                    boss_targets.append(pos)
+                play_focus_chain_iso(screen, clock, game_state, player, zombies, bullets, enemy_shots, boss_targets)
+            else:
+                # Non-boss singletons (e.g., bandit) keep existing one-shot behavior
+                tag, pos = fq.pop(0)
+                lbl = "COIN BANDIT!" if tag == "bandit" else None
+                play_focus_cinematic_iso(
+                    screen, clock, game_state, player, zombies, bullets, enemy_shots,
+                    pos, label=lbl, return_to_player=True
+                )
 
         # countdown timer
         time_left -= dt
@@ -6441,7 +6441,6 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         time_left -= dt
         globals()["_time_left_runtime"] = time_left
         if time_left <= 0:
-
             # win on survival
             chosen = show_success_screen(
                 screen,
