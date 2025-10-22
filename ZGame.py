@@ -5132,6 +5132,30 @@ def compute_cam_for_center_iso(cx_px: int, cy_px: int) -> tuple[int, int]:
     cam_y = int(sy - (VIEW_H - INFO_BAR_HEIGHT) // 2)
     return cam_x, cam_y
 
+# --- Chained boss focus: pan through many targets, then back to player once ---
+def play_focus_chain_iso(screen, clock, game_state, player, zombies, bullets, enemy_shots, targets,
+                         hold_time=0.9, label="BOSS"):
+    """
+    targets: list of (x,y) screen/world centers for each boss (like rect.centerx, rect.centery).
+    Runs boss→boss→… then one final return to the player.
+    """
+    # Show each boss; do NOT return to the player in between
+    for i, pos in enumerate(targets):
+        # First boss can show a label; others can be silent if you prefer
+        show_label = (label if i == 0 else None)
+        # IMPORTANT: we rely on play_focus_cinematic_iso supporting 'return_to_player'
+        # If your local helper uses a different kw, adjust below accordingly.
+        play_focus_cinematic_iso(
+            screen, clock, game_state, player, zombies, bullets, enemy_shots,
+            pos, label=show_label, return_to_player=False, hold_time=hold_time
+        )
+
+    # Finally: one clean glide back to the player
+    play_focus_cinematic_iso(
+        screen, clock, game_state, player, zombies, bullets, enemy_shots,
+        (int(player.rect.centerx), int(player.rect.centery)),
+        label=None, return_to_player=True, hold_time=0.0
+    )
 
 def play_focus_cinematic_iso(screen, clock,
                              game_state, player,
