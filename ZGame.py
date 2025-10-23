@@ -529,8 +529,8 @@ BOSS_DASH_GO_TIME = 0.60  # 冲刺持续时间（原来 0.28 太短）
 BOSS_DASH_SPEED_MULT = 4.2  # 冲刺速度倍数（原来 3.5 偏保守）
 BOSS_DASH_SPEED_MULT_ENRAGED = 4.8  # 激怒版可更高一点
 
-AFTERIMAGE_INTERVAL = 0.03  # 约每 1/50 秒一个（轨迹更连续）
-AFTERIMAGE_TTL = 0.22  # ~6 帧消失（60fps）
+AFTERIMAGE_INTERVAL = 0.02  # 约每 1/50 秒一个（轨迹更连续）
+AFTERIMAGE_TTL = 0.40  # ~6 帧消失（60fps）
 AFTERIMAGE_LIGHTEN = 1.20  # 轻微提亮，保持“浅色块”而不是荧光
 
 # coin bounce feel
@@ -5422,13 +5422,15 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
         drawables.append(("item", sy, {"cx": sx, "cy": sy, "r": it.radius, "main": it.is_main}))
 
-    # 3.3 僵尸 & 玩家（以脚底点排序）
+    # 3.3 僵尸 & 玩家（以“脚底点”排序/投影；与残影一致）
     for z in zombies:
-        wx, wy = (z.x + z.size / 2) / CELL_SIZE, (z.y + z.size / 2) / CELL_SIZE
+        wx = z.rect.centerx / CELL_SIZE
+        wy = (z.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
         drawables.append(("zombie", sy, {"cx": sx, "cy": sy, "z": z}))
 
-    wx, wy = (player.x + player.size / 2) / CELL_SIZE, (player.y + player.size / 2) / CELL_SIZE
+    wx = player.rect.centerx / CELL_SIZE
+    wy = (player.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
     psx, psy = iso_world_to_screen(wx, wy, 0, camx, camy)
     drawables.append(("player", psy, {"cx": psx, "cy": psy, "p": player}))
 
