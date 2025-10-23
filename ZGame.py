@@ -1323,6 +1323,7 @@ def compute_player_dps(p: "Player" | None) -> float:
     # Add visual effect for bandit (growing circle around bandit)
     # Restart spoils and player lv bugs
     # Add same hint display for bosses (optional)
+    # Make more roguelike record the play hp in one whole run game
     if p is None:
         # 兜底：用 META 粗估
         base_dmg = BULLET_DAMAGE_ZOMBIE + float(META.get("dmg", 0))
