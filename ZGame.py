@@ -849,6 +849,8 @@ def reset_run_state():
     globals().pop("_last_spoils", None)
     globals().pop("_coins_at_level_start", None)
 
+    _clear_level_start_baseline()
+
 
 def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
     """
@@ -995,17 +997,47 @@ def save_progress(current_level: int,
                   zombie_cards_collected: list,
                   max_wave_reached: int | None = None,
                   pending_shop: bool = False):
-    """Persist minimal progress plus META upgrades and player carry."""
+    """Persist minimal progress plus META upgrades and player carry.
+       If we're mid-level and a baseline exists for this same level,
+       save META['spoils'] as the baseline coins (pre-bandit), and
+       persist the baseline so CONTINUE can restore it."""
+    # 1) Build a META copy; if baseline for this level exists, save baseline coins
+    meta_for_save = dict(META)
+    try:
+        if int(globals().get("_baseline_for_level", -999)) == int(current_level):
+            if "_coins_at_level_start" in globals():
+                meta_for_save["spoils"] = int(globals()["_coins_at_level_start"])
+    except Exception:
+        pass
+
+    # 2) Persist the baseline bundle if present
+    baseline_bundle = {}
+    if "_baseline_for_level" in globals():
+        try:
+            baseline_bundle["level"] = int(globals()["_baseline_for_level"])
+        except Exception:
+            pass
+    if "_coins_at_level_start" in globals():
+        try:
+            baseline_bundle["coins"] = int(globals()["_coins_at_level_start"])
+        except Exception:
+            pass
+    if "_player_level_baseline" in globals() and isinstance(globals()["_player_level_baseline"], dict):
+        baseline_bundle["player"] = dict(globals()["_player_level_baseline"])
+
     data = {
         "mode": "progress",
         "current_level": int(current_level),
         "zombie_cards_collected": list(zombie_cards_collected),
-        "meta": dict(META),  # dmg, firerate_mult, speed, maxhp, spoils
+        "meta": meta_for_save,  # ← uses baseline spoils when appropriate
         "carry_player": globals().get("_carry_player_state", None),
-        "pending_shop": bool(pending_shop)  # <<< NEW
+        "pending_shop": bool(pending_shop)
     }
     if max_wave_reached is not None:
         data["max_wave_reached"] = int(max_wave_reached)
+    if baseline_bundle:
+        data["baseline"] = baseline_bundle  # ← survive across Save & Quit
+
     try:
         with open(SAVE_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -1098,6 +1130,19 @@ def load_save() -> Optional[dict]:
             data["meta"].setdefault("zombie_cards_collected", [])
             data["meta"].setdefault("chosen_zombie_type", "basic")
             data.setdefault("snapshot", {})
+        # --- Hydrate baseline globals so CONTINUE can restore on level entry ---
+        try:
+            b = data.get("baseline")
+            if isinstance(b, dict):
+                if "level" in b:
+                    globals()["_baseline_for_level"] = int(b["level"])
+                if "coins" in b:
+                    globals()["_coins_at_level_start"] = int(b["coins"])
+                if isinstance(b.get("player"), dict):
+                    globals()["_player_level_baseline"] = dict(b["player"])
+        except Exception as e:
+            print(f"[Save] Baseline hydrate failed: {e}", file=sys.stderr)
+
         return data
     except Exception as e:
         print(f"[Save] Failed to read save file: {e}", file=sys.stderr)
@@ -6084,6 +6129,14 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
 
         kind, gp_or_none, obj, cx, cy, d2 = best
         return (kind, gp_or_none, obj, cx, cy), (d2 ** 0.5)
+
+    # Assume current_level is the 0-based level index used everywhere else
+    if int(globals().get("_baseline_for_level", -999)) != int(current_level):
+        # First time entering this level in this run → capture
+        _capture_level_start_baseline(current_level, player)
+    else:
+        # We had already entered this same level earlier in this run → restore for a clean restart
+        _restore_level_start_baseline(current_level, player, game_state)
 
     # Initial spawn: use threat budget once
     spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
