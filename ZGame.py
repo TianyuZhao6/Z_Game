@@ -848,6 +848,7 @@ def reset_run_state():
     globals()["_pending_shop"] = False
     globals().pop("_last_spoils", None)
     globals().pop("_coins_at_level_start", None)
+    globals().pop("_coins_at_shop_entry", None)
 
     _clear_level_start_baseline()
 
@@ -969,7 +970,6 @@ else:
 FX_VOLUME = 70  # 0-100
 BGM_VOLUME = 60  # 0-100
 
-
 LEVELS = [
     {"obstacle_count": 15, "item_count": 3, "zombie_count": 1, "block_hp": 10, "zombie_types": ["basic"],
      "reward": "zombie_fast"},
@@ -1002,9 +1002,14 @@ def save_progress(current_level: int,
     # 1) Build a META copy; if baseline for this level exists, save baseline coins
     meta_for_save = dict(META)
     try:
-        if int(globals().get("_baseline_for_level", -999)) == int(current_level):
-            if "_coins_at_level_start" in globals():
-                meta_for_save["spoils"] = int(globals()["_coins_at_level_start"])
+        if bool(pending_shop) or bool(globals().get("_in_shop_ui", False)):
+            # In/at the shop → keep current bank as-is
+            meta_for_save["spoils"] = int(META.get("spoils", 0))
+        else:
+            # Mid-level → save the level-start baseline as before
+            if int(globals().get("_baseline_for_level", -999)) == int(current_level):
+                if "_coins_at_level_start" in globals():
+                    meta_for_save["spoils"] = int(globals()["_coins_at_level_start"])
     except Exception:
         pass
 
@@ -1141,11 +1146,15 @@ def load_save() -> Optional[dict]:
     except Exception as e:
         print(f"[Save] Failed to read save file: {e}", file=sys.stderr)
         return None
-    
+
+
 def _clear_level_start_baseline():
     globals().pop("_baseline_for_level", None)
     globals().pop("_coins_at_level_start", None)
+    globals().pop("_coins_at_shop_entry", None)
     globals().pop("_player_level_baseline", None)
+    globals().pop("_restart_from_shop", None)
+
 
 def _capture_level_start_baseline(level_idx: int, player: "Player"):
     """Record the exact state the first time we enter this level in this run."""
@@ -1161,25 +1170,31 @@ def _capture_level_start_baseline(level_idx: int, player: "Player"):
         "hp": int(getattr(player, "hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
     }
 
+
 def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: "GameState"):
-    """Re-entering the same level: restore bank & player progression to the first-entry baseline."""
+    """Re-entering the same level: restore bank & player progression.
+       If the restart originated from the shop, restore coins to the shop-entry snapshot;
+       otherwise restore to the level-start snapshot as before.
+    """
     if int(globals().get("_baseline_for_level", -999)) != int(level_idx):
         return  # entering a different level → nothing to restore
 
-    # 1) Restore META bank to exactly what it was at level entry.
-    if "_coins_at_level_start" in globals():
+    # 1) Coins: prefer shop-entry baseline if we just restarted from the shop
+    from_shop = bool(globals().pop("_restart_from_shop", False))
+    if from_shop and "_coins_at_shop_entry" in globals():
+        META["spoils"] = int(globals()["_coins_at_shop_entry"])
+    elif "_coins_at_level_start" in globals():
         META["spoils"] = int(globals()["_coins_at_level_start"])
 
-    # 2) Clear run-local spoils gained this level (so we truly restart from scratch)
+    # 2) Clear per-level counters/state (same as before)
     if hasattr(game_state, "spoils_gained"):
         game_state.spoils_gained = 0
-    # 3) Clear any bandit bookkeeping from the previous failed attempt
     if hasattr(game_state, "_bandit_stolen"):
         game_state._bandit_stolen = 0
     if hasattr(game_state, "bandit_spawned_this_level"):
         game_state.bandit_spawned_this_level = False
 
-    # 4) Restore the player's progression snapshot
+    # 3) Restore the player's baseline snapshot (unchanged logic)
     b = globals().get("_player_level_baseline", None)
     if isinstance(b, dict):
         player.level = int(b.get("level", 1))
@@ -1751,8 +1766,6 @@ def show_pause_menu(screen, background_surf):
     screen.blit(title, title_rect)
     y_offset += 40
 
-
-
     # 保持原有暂停菜单面板和按钮布局不变
     panel_w, panel_h = min(520, VIEW_W - 80), min(500, VIEW_H - 160)
     panel = pygame.Rect(0, 0, panel_w, panel_h)
@@ -1929,25 +1942,32 @@ def show_settings_popup(screen, background_surf):
 
 def show_shop_screen(screen) -> Optional[str]:
     """Spend META['spoils'] on small upgrades. ESC opens Pause; return action or None when closed."""
-    clock = pygame.time.Clock()
-    font = pygame.font.SysFont(None, 30)
-    title_font = pygame.font.SysFont(None, 56)
-    btn_font = pygame.font.SysFont(None, 32)
+    # snapshot coins at shop entry (post-bank, pre-purchase)
+    globals()["_coins_at_shop_entry"] = int(META.get("spoils", 0))
 
-    # pseudo-random offers
-    catalog = [
-        {"name": "+1 Damage", "key": "dmg", "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
-        {"name": "+5% Fire Rate", "key": "firerate", "cost": 7,
-         "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.05)},
-        {"name": "+10% Range", "key": "range", "cost": 7,
-         "apply": lambda: META.update(range_mult=META.get("range_mult", 1.0) * 1.10)},
-        {"name": "+1 Speed", "key": "speed", "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
-        {"name": "+5 Max HP", "key": "maxhp", "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
-        {"name": "+5% Crit", "key": "crit", "cost": 9,
-         "apply": lambda: META.update(crit=min(0.75, META.get("crit", 0.0) + 0.05))},
+    globals()["_in_shop_ui"] = True
+    try:
+        clock = pygame.time.Clock()
+        font = pygame.font.SysFont(None, 30)
+        title_font = pygame.font.SysFont(None, 56)
+        btn_font = pygame.font.SysFont(None, 32)
 
-        {"name": "Reroll Offers", "key": "reroll", "cost": 3, "apply": "reroll"},
-    ]
+        # pseudo-random offers
+        catalog = [
+            {"name": "+1 Damage", "key": "dmg", "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
+            {"name": "+5% Fire Rate", "key": "firerate", "cost": 7,
+             "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.05)},
+            {"name": "+10% Range", "key": "range", "cost": 7,
+             "apply": lambda: META.update(range_mult=META.get("range_mult", 1.0) * 1.10)},
+            {"name": "+1 Speed", "key": "speed", "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
+            {"name": "+5 Max HP", "key": "maxhp", "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
+            {"name": "+5% Crit", "key": "crit", "cost": 9,
+             "apply": lambda: META.update(crit=min(0.75, META.get("crit", 0.0) + 0.05))},
+
+            {"name": "Reroll Offers", "key": "reroll", "cost": 3, "apply": "reroll"},
+        ]
+    finally:
+        globals().pop("_in_shop_ui", None)
 
     def roll_offers():
         pool = [c for c in catalog if c["name"] != "Reroll Offers"]
@@ -2019,6 +2039,8 @@ def show_shop_screen(screen) -> Optional[str]:
                 if choice in (None, "continue", "settings"):
                     flush_events()
                     break
+                if choice == "restart":
+                    globals()["_restart_from_shop"] = True
                 flush_events()
                 return choice  # home / restart / exit
 
@@ -2029,6 +2051,8 @@ def show_shop_screen(screen) -> Optional[str]:
                     chosen_biome = show_biome_picker_in_shop(screen)
                     # 识别从翻卡界面透传出来的暂停菜单选择
                     if chosen_biome in ("__HOME__", "__RESTART__", "__EXIT__"):
+                        if chosen_biome == "__RESTART__":
+                            globals()["_restart_from_shop"] = True
                         return {"__HOME__": "home", "__RESTART__": "restart", "__EXIT__": "exit"}[chosen_biome]
 
                     globals()["_next_biome"] = chosen_biome  # 正常选择到场景名
@@ -6739,6 +6763,7 @@ if __name__ == "__main__":
         # If we saved while in the shop last time, reopen the shop first
         if globals().get("_pending_shop", False):
             META["spoils"] += int(globals().pop("_last_spoils", 0))
+            globals()["_coins_at_shop_entry"] = int(META.get("spoils", 0))
             action = show_shop_screen(screen)
             globals()["_pending_shop"] = False
 
@@ -6746,6 +6771,7 @@ if __name__ == "__main__":
                 globals()["_pending_shop"] = False
                 current_level += 1
                 globals().pop("_coins_at_level_start", None)
+                globals().pop("_coins_at_shop_entry", None)
 
                 save_progress(current_level)
                 # fall through to start the next level immediately
@@ -6773,7 +6799,7 @@ if __name__ == "__main__":
                 continue  # back to loop top
 
             elif action == "restart":
-                META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
+                META["spoils"] = int(globals().get("_coins_at_shop_entry", META.get("spoils", 0)))
                 globals().pop("_last_spoils", None)
                 continue
 
@@ -6793,7 +6819,7 @@ if __name__ == "__main__":
         result, reward, bg = main_run_level(config, chosen_zombie)
 
         if result == "restart":
-            META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
+            META["spoils"] = int(globals().get("_coins_at_shop_entry", META.get("spoils", 0)))
             globals().pop("_last_spoils", None)
             flush_events()
             continue
@@ -6857,12 +6883,13 @@ if __name__ == "__main__":
                 continue
 
         elif result == "success":
-        # bank coins from this level
+            # bank coins from this level
             META["spoils"] += int(globals().get("_last_spoils", 0))
             globals()["_last_spoils"] = 0
             action = show_success_screen(screen, bg, [])
+            globals()["_coins_at_shop_entry"] = int(META.get("spoils", 0))
             action = show_shop_screen(screen)
-              # React to pause-menu choices made from inside the shop
+            # React to pause-menu choices made from inside the shop
             if action == "home":
                 save_progress(current_level, pending_shop=True)
                 flush_events()
@@ -6871,7 +6898,7 @@ if __name__ == "__main__":
                 mode, save_data = selection
                 # keep your existing homepage handling logic
                 if mode == "continue" and save_data:
-                # restore shop upgrades and carry for a fresh run at the stored level
+                    # restore shop upgrades and carry for a fresh run at the stored level
                     if save_data:
                         META.update(save_data.get("meta", META))
                         globals()["_carry_player_state"] = save_data.get("carry_player", None)
@@ -6892,7 +6919,7 @@ if __name__ == "__main__":
 
             elif action in ("restart", "retry"):
                 # restart this level as a fresh run
-                META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
+                META["spoils"] = int(globals().get("_coins_at_shop_entry", META.get("spoils", 0)))
                 globals().pop("_last_spoils", None)
                 continue
 
@@ -6906,6 +6933,7 @@ if __name__ == "__main__":
                 # user clicked NEXT (closed shop normally) -> go to next level
                 current_level += 1
                 globals().pop("_coins_at_level_start", None)
+                globals().pop("_coins_at_shop_entry", None)
                 save_progress(current_level)
 
         else:
