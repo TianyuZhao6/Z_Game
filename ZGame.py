@@ -399,6 +399,62 @@ def ensure_passage_budget(obstacles: dict, grid_size: int, player_spawn: tuple, 
         destructibles.remove(pos)
         obstacles.pop(pos, None)
 
+# --- Domain/Biome helpers (one-level-only effects) ---
+def apply_domain_buffs_for_level(game_state, player):
+    """
+    Read globals()['_next_biome'] and arm per-level flags/multipliers.
+    All effects are temporary for THIS level only.
+    """
+    b = globals().get("_next_biome", None)
+    game_state.biome_active = b
+
+    # Reset per-level knobs
+    game_state.biome_zombie_contact_mult = 1.0
+    game_state.biome_boss_contact_mult   = 1.0
+    game_state.biome_zombie_hp_mult      = 1.0
+    game_state.biome_boss_hp_mult        = 1.0
+    game_state.biome_bandit_hp_mult      = 1.0
+    game_state._fog_biome_forced         = False
+
+    if b == "Misty Forest":
+        # Same fog feel as Lv10
+        game_state.request_fog_field(player)
+        game_state._fog_biome_forced = True
+
+    elif b == "Scorched Hell":
+        # Player ×2; zombies ×2; bosses ×1.5
+        player.bullet_damage = int(player.bullet_damage * 2)
+        game_state.biome_zombie_contact_mult = 2.0
+        game_state.biome_boss_contact_mult   = 1.5
+
+    elif b == "Bastion of Stone":
+        # Player +50% MaxHP (heal that chunk too)
+        extra = int(math.ceil(player.max_hp * 0.5))
+        player.max_hp += extra
+        player.hp = min(player.hp + extra, player.max_hp)
+        # New spawns get more HP (see apply_biome_on_zombie_spawn)
+        game_state.biome_zombie_hp_mult = 1.50
+        game_state.biome_boss_hp_mult   = 1.25
+        game_state.biome_bandit_hp_mult = 1.25
+
+    elif b == "Domain of Wind":
+        # placeholder: no effect for now
+        pass
+
+
+def apply_biome_on_zombie_spawn(z, game_state):
+    """
+    Called right after a zombie (or bandit/boss) is created & appended.
+    Only affects Bastion of Stone HP bump for now.
+    """
+    if getattr(game_state, "biome_active", None) == "Bastion of Stone":
+        if getattr(z, "is_boss", False) or getattr(z, "type", "") == "bandit":
+            m = getattr(game_state, "biome_boss_hp_mult", 1.0)
+        else:
+            m = getattr(game_state, "biome_zombie_hp_mult", 1.0)
+        if m != 1.0:
+            z.max_hp = int(z.max_hp * m)
+            z.hp     = int(z.hp * m)
 
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
@@ -2309,6 +2365,7 @@ def spawn_wave_with_budget(game_state: "GameState",
         if hasattr(game_state, "telegraphs"):
             game_state.telegraphs.append(
                 TelegraphCircle(cx, cy, int(CELL_SIZE * 1.1), 0.9, kind="bandit", color=(255, 215, 0)))
+        apply_biome_on_zombie_spawn(bandit, game_state)
 
     # spend budget until no type fits or cap/positions exhausted
     i = 0
@@ -2427,6 +2484,7 @@ def spawn_wave_with_budget(game_state: "GameState",
         # mark which wave inserted this zombie (used above to compute remaining)
         z._spawn_wave_tag = wave_index
 
+        apply_biome_on_zombie_spawn(z, game_state)
         zombies.append(z)
         spawned += 1
 
@@ -2906,6 +2964,10 @@ class Zombie:
         self._foot_prev = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))
         # ---- BUFF/生成延迟/速度上限：与原逻辑一致 ----
         base_attack = self.attack
+        # Hell Domain: generic attack scaler for melee/block hits/skill uses
+        if getattr(game_state, "biome_active", None) == "Scorched Hell":
+            base_attack = int(base_attack * (1.5 if getattr(self, "is_boss", False) else 2.0))
+
         base_speed = float(self.speed)
         if getattr(self, "buff_t", 0.0) > 0.0:
             base_attack = int(base_attack * getattr(self, "buff_atk_mult", 1.0))
@@ -3326,6 +3388,7 @@ class Zombie:
         if getattr(self, "is_boss", False) and getattr(self, "type", "") == "boss_mem":
             hp_pct = max(0.0, self.hp / max(1, self.max_hp))
 
+
             # 阶段切换
             if hp_pct > 0.70:
                 self.phase = 1
@@ -3624,6 +3687,7 @@ class MistweaverBoss(Zombie):
         self._ring_cd = random.uniform(2.0, 3.5)
         self._ring_bursts_left = 0
         self._ring_burst_t = 0.0
+        self.is_boss_shot = True
 
     def _has_clones(self, zombies):
         n = 0
@@ -4126,6 +4190,12 @@ class EnemyShot:
                 if player.hp < 0:
                     player.hp = 0
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
+                # Hell Domain scaling: normals ×2, bosses ×1.5
+                mult = (getattr(game_state, "biome_boss_contact_mult", 1.0)
+                        if getattr(self, "is_boss_shot", False)
+                        else getattr(game_state, "biome_zombie_contact_mult", 1.0))
+                dmg = int(self.dmg * mult)
+                player.hp -= dmg
             # 显示玩家受伤数字（红色，大号），敌人攻击不参与暴击
             game_state.add_damage_text(player.rect.centerx, player.rect.centery, self.dmg, crit=False, kind="hp")
             self.alive = False
@@ -6005,6 +6075,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     player = Player(player_start, speed=PLAYER_SPEED)
     player.fire_cd = 0.0
     apply_player_carry(player, globals().get("_carry_player_state"))
+    apply_domain_buffs_for_level(game_state, player)
 
     ztype_map = {
         "zombie_fast": "fast",
