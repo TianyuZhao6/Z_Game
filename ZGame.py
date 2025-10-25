@@ -5671,7 +5671,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
 
     game_state.draw_hazards_iso(screen, camx, camy)
 
-    if getattr(game_state, "fog_on", False):
+    if getattr(game_state, "fog_enabled", False):
         game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)
     if USE_ISO:
         game_state.draw_lanterns_iso(screen, camx, camy)
@@ -6076,6 +6076,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     player.fire_cd = 0.0
     apply_player_carry(player, globals().get("_carry_player_state"))
     apply_domain_buffs_for_level(game_state, player)
+    globals()["_next_biome"] = None
 
     ztype_map = {
         "zombie_fast": "fast",
