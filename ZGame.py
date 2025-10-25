@@ -1176,15 +1176,19 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
        If the restart originated from the shop, restore coins to the shop-entry snapshot;
        otherwise restore to the level-start snapshot as before.
     """
-    if int(globals().get("_baseline_for_level", -999)) != int(level_idx):
+    if int(globals().get("_baseline_for_level", -999999)) != int(level_idx):
         return  # entering a different level → nothing to restore
 
-    # 1) Coins: prefer shop-entry baseline if we just restarted from the shop
-    from_shop = bool(globals().pop("_restart_from_shop", False))
-    if from_shop and "_coins_at_shop_entry" in globals():
-        META["spoils"] = int(globals()["_coins_at_shop_entry"])
-    elif "_coins_at_level_start" in globals():
+    # 1) Coins: prefer shop-entry baseline if we just continue from  the shop
+    # Always restore coins to the LEVEL-START snapshot on any restart.
+    # If it's missing (shouldn't happen), fall back to shop-entry or 0.
+    _ = bool(globals().pop("_restart_from_shop", False))  # still clear the flag
+    if "_coins_at_level_start" in globals():
         META["spoils"] = int(globals()["_coins_at_level_start"])
+    elif "_coins_at_shop_entry" in globals():
+        META["spoils"] = int(globals()["_coins_at_shop_entry"])
+    else:
+        META["spoils"] = 0
 
     # 2) Clear per-level counters/state (same as before)
     if hasattr(game_state, "spoils_gained"):
@@ -6799,8 +6803,9 @@ if __name__ == "__main__":
                 continue  # back to loop top
 
             elif action == "restart":
-                META["spoils"] = int(globals().get("_coins_at_shop_entry", META.get("spoils", 0)))
+                META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
                 globals().pop("_last_spoils", None)
+                flush_events()
                 continue
 
 
@@ -6819,7 +6824,7 @@ if __name__ == "__main__":
         result, reward, bg = main_run_level(config, chosen_zombie)
 
         if result == "restart":
-            META["spoils"] = int(globals().get("_coins_at_shop_entry", META.get("spoils", 0)))
+            META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
             globals().pop("_last_spoils", None)
             flush_events()
             continue
@@ -6886,7 +6891,15 @@ if __name__ == "__main__":
             # bank coins from this level
             META["spoils"] += int(globals().get("_last_spoils", 0))
             globals()["_last_spoils"] = 0
+
             action = show_success_screen(screen, bg, [])
+            # if player pressed Restart on the success page, do NOT enter the shop.
+            if action in ("restart", "retry"):
+                META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
+                globals().pop("_last_spoils", None)
+                flush_events()
+                continue
+            # Only when actually entering the shop do we snapshot shop-entry coins:
             globals()["_coins_at_shop_entry"] = int(META.get("spoils", 0))
             action = show_shop_screen(screen)
             # React to pause-menu choices made from inside the shop
