@@ -428,14 +428,10 @@ def apply_domain_buffs_for_level(game_state, player):
         game_state.biome_boss_contact_mult   = 1.5
 
     elif b == "Bastion of Stone":
-        # Player +50% MaxHP (heal that chunk too)
-        extra = int(math.ceil(player.max_hp * 0.5))
-        player.max_hp += extra
-        player.hp = min(player.hp + extra, player.max_hp)
-        # New spawns get more HP (see apply_biome_on_zombie_spawn)
-        game_state.biome_zombie_hp_mult = 1.50
-        game_state.biome_boss_hp_mult   = 1.25
-        game_state.biome_bandit_hp_mult = 1.25
+        player.shield_hp = int(round(player.max_hp * 0.50))
+
+        # New spawns this level: mark Stone so we add shields on spawn
+        game_state.biome_active = b
 
     elif b == "Domain of Wind":
         # placeholder: no effect for now
@@ -447,14 +443,12 @@ def apply_biome_on_zombie_spawn(z, game_state):
     Called right after a zombie (or bandit/boss) is created & appended.
     Only affects Bastion of Stone HP bump for now.
     """
-    if getattr(game_state, "biome_active", None) == "Bastion of Stone":
-        if getattr(z, "is_boss", False) or getattr(z, "type", "") == "bandit":
-            m = getattr(game_state, "biome_boss_hp_mult", 1.0)
+    b = getattr(game_state, "biome_active", None)
+    if b == "Bastion of Stone":
+        if getattr(z, "type", "") in ("bandit",) or getattr(z, "is_boss", False):
+            z.shield_hp = int(round(z.max_hp * 0.25))  # 25% for bosses/bandit
         else:
-            m = getattr(game_state, "biome_zombie_hp_mult", 1.0)
-        if m != 1.0:
-            z.max_hp = int(z.max_hp * m)
-            z.hp     = int(z.hp * m)
+            z.shield_hp = int(round(z.max_hp * 0.50))  # 50% for regular zombies
 
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
@@ -5098,6 +5092,22 @@ class GameState:
             player.acid_dot_timer = ACID_DOT_DURATION
             player.acid_dot_dps = max_dps * ACID_DOT_MULT
         # 不在池里：不做直接伤害；离开后的 DoT 由主循环统一结算
+
+    def damage_player(self, player, dmg):
+        dmg = int(max(0, dmg))
+        if dmg <= 0:
+            return 0
+        # Stone (or any) shield first
+        sh = int(getattr(player, "shield_hp", 0))
+        if sh > 0:
+            blocked = min(dmg, sh)
+            player.shield_hp = sh - blocked
+            self.add_damage_text(player.rect.centerx, player.rect.top - 10, blocked, crit=False, kind="shield")
+            dmg -= blocked
+        if dmg > 0:
+            player.hp = max(0, player.hp - dmg)
+            self.add_damage_text(player.rect.centerx, player.rect.centery, dmg, crit=False, kind="hp")
+        return dmg
 
     # ---- 攻击前的提示圈（到时后生成酸池等）----
     def spawn_telegraph(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
