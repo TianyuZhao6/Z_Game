@@ -4180,18 +4180,10 @@ class EnemyShot:
         # 2) 再判玩家
         if r.colliderect(player.rect):
             if getattr(player, "hit_cd", 0.0) <= 0.0:
-                player.hp -= self.dmg
-                if player.hp < 0:
-                    player.hp = 0
+                mult = getattr(game_state, "biome_zombie_contact_mult", 1.0)
+                dmg = int(round(self.dmg * max(1.0, mult)))
+                game_state.damage_player(player, dmg)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
-                # Hell Domain scaling: normals ×2, bosses ×1.5
-                mult = (getattr(game_state, "biome_boss_contact_mult", 1.0)
-                        if getattr(self, "is_boss_shot", False)
-                        else getattr(game_state, "biome_zombie_contact_mult", 1.0))
-                dmg = int(self.dmg * mult)
-                player.hp -= dmg
-            # 显示玩家受伤数字（红色，大号），敌人攻击不参与暴击
-            game_state.add_damage_text(player.rect.centerx, player.rect.centery, self.dmg, crit=False, kind="hp")
             self.alive = False
 
     def draw_topdown(self, screen, camx, camy):
@@ -6379,10 +6371,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         for zombie in list(zombies):
             zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
             if player.hit_cd <= 0.0 and circle_touch(zombie, player):
-                player.hp -= int(ZOMBIE_CONTACT_DAMAGE)
+                mult = getattr(game_state, "biome_zombie_contact_mult", 1.0)
+                dmg = int(round(ZOMBIE_CONTACT_DAMAGE * max(1.0, mult)))
+                game_state.damage_player(player, dmg)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
-                game_state.add_damage_text(player.rect.centerx, player.rect.centery, ZOMBIE_CONTACT_DAMAGE, crit=False,
-                                           kind="hp")
 
                 if player.hp <= 0:
                     game_result = "fail"
@@ -6716,10 +6708,10 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         for zombie in list(zombies):
             zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
             if player.hit_cd <= 0.0 and circle_touch(zombie, player):
-                player.hp -= int(ZOMBIE_CONTACT_DAMAGE)
+                mult = getattr(game_state, "biome_zombie_contact_mult", 1.0)
+                dmg = int(round(ZOMBIE_CONTACT_DAMAGE * max(1.0, mult)))
+                game_state.damage_player(player, dmg)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
-                game_state.add_damage_text(player.rect.centerx, player.rect.centery, ZOMBIE_CONTACT_DAMAGE, crit=False,
-                                           kind="hp")
 
                 if player.hp <= 0:
                     clear_save()
