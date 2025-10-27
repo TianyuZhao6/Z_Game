@@ -122,6 +122,22 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     pygame.draw.rect(screen, (60, 60, 60), (bx - 2, by - 2, bar_w + 4, bar_h + 4), border_radius=4)
     pygame.draw.rect(screen, (40, 40, 40), (bx, by, bar_w, bar_h), border_radius=3)
     pygame.draw.rect(screen, (0, 200, 80), (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
+    # --- Shield overlay (extends to the right of current HP) ---
+    sh = int(getattr(player, "shield_hp", 0))
+    if sh > 0:
+        # how much of the full bar the shield represents (Stone = 50% of max_hp)
+        sh_ratio = max(0.0, min(1.0, float(sh) / float(max(1, player.max_hp))))
+        hp_w = int(bar_w * ratio)
+        sh_w = min(int(bar_w * sh_ratio), max(0, bar_w - hp_w))
+        if sh_w > 0:
+            # translucent cyan overlay on top of the HP bar, starting at right edge of current HP
+            overlay = pygame.Surface((sh_w, bar_h), pygame.SRCALPHA)
+            # slight pulse so it feels alive
+            pulse = 120 + int(40 * math.sin(pygame.time.get_ticks() * 0.004))
+            overlay.fill((60, 180, 255, pulse))
+            screen.blit(overlay, (bx + hp_w, by))
+            # subtle border hint to indicate an active shield
+            pygame.draw.rect(screen, (90, 200, 255), (bx, by, bar_w, bar_h), 1, border_radius=3)
     # 数字覆盖在进度条中间
     hp_text = f"{int(getattr(player, 'hp', 0))}/{int(getattr(player, 'max_hp', 0))}"
     hp_img = font_hp.render(hp_text, True, (20, 20, 20))
@@ -434,7 +450,11 @@ def apply_domain_buffs_for_level(game_state, player):
         game_state.biome_active = b
 
     elif b == "Domain of Wind":
-        # placeholder: no effect for now
+        # placeholder: no effect for now for testing
+        player.shield_hp = int(round(player.max_hp * 0.50))
+
+        # New spawns this level: mark Stone so we add shields on spawn
+        game_state.biome_active = b
         pass
 
 
@@ -3366,8 +3386,9 @@ class Zombie:
                 pr = player.rect
                 if (pr.centerx - cx) ** 2 + (pr.centery - cy) ** 2 <= (MISTLING_BLAST_RADIUS ** 2):
                     if player.hit_cd <= 0.0:
-                        player.hp = max(0, player.hp - MISTLING_BLAST_DAMAGE)
+                        game_state.damage_player(player, MISTLING_BLAST_DAMAGE)
                         player.hit_cd = float(PLAYER_HIT_COOLDOWN)
+
                 self._boom_done = True
                 # 允许主循环正常移除
 
@@ -5074,9 +5095,8 @@ class GameState:
             player._acid_dmg_accum += max_dps * dt
             ticks = int(player._acid_dmg_accum)  # 每满1点血扣一次
             if ticks > 0:
-                player.hp -= ticks
+                self.damage_player(player, ticks)
                 player._acid_dmg_accum -= ticks
-                self.add_damage_text(px, player.rect.top - 10, ticks, crit=False, kind="hp")
 
             # 施加减速（刷新时长，让它留存一点点）
             player.slow_t = max(player.slow_t, 0.40)  # 可调：0.3~0.5
@@ -6341,9 +6361,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             player._acid_dot_accum += player.acid_dot_dps * dt
             whole = int(player._acid_dot_accum)
             if whole > 0:
-                player.hp -= whole
-                game_state.add_damage_text(player.rect.centerx, player.rect.top - 8, whole, crit=False,
-                                           kind="hp_player")
+                game_state.damage_player(player, whole)
                 player._acid_dot_accum -= whole
             # （可选）当计时走完，清空 DoT dps
             if player.acid_dot_timer <= 0.0:
