@@ -257,6 +257,18 @@ def draw_boss_hp_bar(screen, boss):
     fill_w = int(bar_w * ratio)
     if fill_w > 0:
         pygame.draw.rect(screen, (210, 64, 64), (bx, by, fill_w, bar_h), border_radius=6)
+    # --- Boss shield overlay ---
+    sh = int(getattr(boss, "shield_hp", 0))
+    if sh > 0:
+        sh_ratio = max(0.0, min(1.0, float(sh) / float(max(1, mhp))))
+        hp_w = int(bar_w * ratio)
+        sh_w = min(int(bar_w * sh_ratio), max(0, bar_w - hp_w))
+        if sh_w > 0:
+            surf = pygame.Surface((sh_w, bar_h), pygame.SRCALPHA)
+            pulse = 110 + int(35 * math.sin(pygame.time.get_ticks() * 0.004))
+            surf.fill((60, 180, 255, pulse))
+            screen.blit(surf, (bx + hp_w, by))
+            pygame.draw.rect(screen, (90, 200, 255), (bx, by, bar_w, bar_h), 1)
 
     # 分段刻度（70%/40% 阶段线，方便读阶段）
     for t in (0.7, 0.4):
@@ -5898,12 +5910,19 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         except Exception:
             pass
 
-        # 护盾条（画在 HP 条上面）
-        if getattr(zombie, "shield_hp", 0) > 0 and getattr(zombie, "shield_t", 0.0) > 0:
-            sh_ratio = max(0.0, min(1.0, zombie.shield_hp / float(SHIELD_AMOUNT)))
-            sby = by - (bar_h + 2)
-            pygame.draw.rect(screen, (30, 30, 50), (bx, sby, bar_w, bar_h))
-            pygame.draw.rect(screen, (60, 180, 255), (bx, sby, int(bar_w * sh_ratio), bar_h))
+        # Shield overlay ON the HP bar
+        sh = int(getattr(zombie, "shield_hp", 0))
+        if sh > 0:
+            mhp = getattr(zombie, 'max_hp', None) or getattr(zombie, 'hp', 1)
+            sh_ratio = max(0.0, min(1.0, float(sh) / float(max(1, mhp))))
+            hp_w = int(bar_w * ratio)
+            sh_w = min(int(bar_w * sh_ratio), max(0, bar_w - hp_w))
+            if sh_w > 0:
+                surf = pygame.Surface((sh_w, bar_h), pygame.SRCALPHA)
+                pulse = 110 + int(35 * math.sin(pygame.time.get_ticks() * 0.004))
+                surf.fill((60, 180, 255, pulse))
+                screen.blit(surf, (bx + hp_w, by))
+                pygame.draw.rect(screen, (90, 200, 255), (bx, by, bar_w, bar_h), 1)
 
     # bullets
     if bullets:
