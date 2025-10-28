@@ -122,22 +122,17 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     pygame.draw.rect(screen, (60, 60, 60), (bx - 2, by - 2, bar_w + 4, bar_h + 4), border_radius=4)
     pygame.draw.rect(screen, (40, 40, 40), (bx, by, bar_w, bar_h), border_radius=3)
     pygame.draw.rect(screen, (0, 200, 80), (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
-    # --- Shield overlay (extends to the right of current HP) ---
-    sh = int(getattr(player, "shield_hp", 0))
+    # === SHIELD overlay (covers from current HP to effective HP) ===
+    sh = max(0, int(getattr(player, "shield_hp", 0)))
     if sh > 0:
-        # how much of the full bar the shield represents (Stone = 50% of max_hp)
-        sh_ratio = max(0.0, min(1.0, float(sh) / float(max(1, player.max_hp))))
-        hp_w = int(bar_w * ratio)
-        sh_w = min(int(bar_w * sh_ratio), max(0, bar_w - hp_w))
-        if sh_w > 0:
-            # translucent cyan overlay on top of the HP bar, starting at right edge of current HP
-            overlay = pygame.Surface((sh_w, bar_h), pygame.SRCALPHA)
-            # slight pulse so it feels alive
-            pulse = 120 + int(40 * math.sin(pygame.time.get_ticks() * 0.004))
-            overlay.fill((60, 180, 255, pulse))
-            screen.blit(overlay, (bx + hp_w, by))
-            # subtle border hint to indicate an active shield
-            pygame.draw.rect(screen, (90, 200, 255), (bx, by, bar_w, bar_h), 1, border_radius=3)
+        mhp = max(1, int(getattr(player, "max_hp", 1)))
+        hp = max(0, int(getattr(player, "hp", 0)))
+        eff_ratio = min(1.0, (hp + sh) / float(mhp))
+        add_ratio = max(0.0, eff_ratio - ratio)
+        if add_ratio > 0.0:
+            overlay = pygame.Surface((int(bar_w * add_ratio), bar_h), pygame.SRCALPHA)
+            overlay.fill((60, 180, 255, 150))
+            screen.blit(overlay, (bx + int(bar_w * ratio), by))
     # 数字覆盖在进度条中间
     hp_text = f"{int(getattr(player, 'hp', 0))}/{int(getattr(player, 'max_hp', 0))}"
     hp_img = font_hp.render(hp_text, True, (20, 20, 20))
@@ -257,18 +252,22 @@ def draw_boss_hp_bar(screen, boss):
     fill_w = int(bar_w * ratio)
     if fill_w > 0:
         pygame.draw.rect(screen, (210, 64, 64), (bx, by, fill_w, bar_h), border_radius=6)
-    # --- Boss shield overlay ---
-    sh = int(getattr(boss, "shield_hp", 0))
+    fill_w = int(bar_w * ratio)
+    if fill_w > 0:
+        pygame.draw.rect(screen, (210, 64, 64), (bx, by, fill_w, bar_h), border_radius=6)
+
+    # === Boss shield overlay ===
+    sh = max(0, int(getattr(boss, "shield_hp", 0)))
     if sh > 0:
-        sh_ratio = max(0.0, min(1.0, float(sh) / float(max(1, mhp))))
-        hp_w = int(bar_w * ratio)
-        sh_w = min(int(bar_w * sh_ratio), max(0, bar_w - hp_w))
-        if sh_w > 0:
-            surf = pygame.Surface((sh_w, bar_h), pygame.SRCALPHA)
-            pulse = 110 + int(35 * math.sin(pygame.time.get_ticks() * 0.004))
-            surf.fill((60, 180, 255, pulse))
-            screen.blit(surf, (bx + hp_w, by))
-            pygame.draw.rect(screen, (90, 200, 255), (bx, by, bar_w, bar_h), 1)
+        mhp = max(1, int(getattr(boss, "max_hp", 1)))
+        cur = max(0, int(getattr(boss, "hp", 0)))
+        base_ratio = max(0.0, min(1.0, cur / float(mhp)))
+        eff_ratio = min(1.0, (cur + sh) / float(mhp))
+        add_ratio = max(0.0, eff_ratio - base_ratio)
+        if add_ratio > 0.0:
+            srf = pygame.Surface((int(bar_w * add_ratio), bar_h), pygame.SRCALPHA)
+            srf.fill((60, 180, 255, 140))
+            screen.blit(srf, (bx + int(bar_w * base_ratio), by))
 
     # 分段刻度（70%/40% 阶段线，方便读阶段）
     for t in (0.7, 0.4):
@@ -457,14 +456,14 @@ def apply_domain_buffs_for_level(game_state, player):
 
     elif b == "Bastion of Stone":
         player.shield_hp = int(round(player.max_hp * 0.50))
-
+        player.shield_max = player.shield_hp
         # New spawns this level: mark Stone so we add shields on spawn
         game_state.biome_active = b
 
     elif b == "Domain of Wind":
         # placeholder: no effect for now for testing
         player.shield_hp = int(round(player.max_hp * 0.50))
-
+        player.shield_max = player.shield_hp
         # New spawns this level: mark Stone so we add shields on spawn
         game_state.biome_active = b
         pass
@@ -478,9 +477,11 @@ def apply_biome_on_zombie_spawn(z, game_state):
     b = getattr(game_state, "biome_active", None)
     if b == "Bastion of Stone":
         if getattr(z, "type", "") in ("bandit",) or getattr(z, "is_boss", False):
-            z.shield_hp = int(round(z.max_hp * 0.25))  # 25% for bosses/bandit
+            z.shield_hp = int(round(z.max_hp * 0.25))
+            z.shield_max = z.shield_hp
         else:
-            z.shield_hp = int(round(z.max_hp * 0.50))  # 50% for regular zombies
+            z.shield_hp = int(round(z.max_hp * 0.50))
+            z.shield_max = z.shield_hp
 
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
@@ -5910,19 +5911,18 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         except Exception:
             pass
 
-        # Shield overlay ON the HP bar
-        sh = int(getattr(zombie, "shield_hp", 0))
-        if sh > 0:
-            mhp = getattr(zombie, 'max_hp', None) or getattr(zombie, 'hp', 1)
-            sh_ratio = max(0.0, min(1.0, float(sh) / float(max(1, mhp))))
-            hp_w = int(bar_w * ratio)
-            sh_w = min(int(bar_w * sh_ratio), max(0, bar_w - hp_w))
-            if sh_w > 0:
-                surf = pygame.Surface((sh_w, bar_h), pygame.SRCALPHA)
-                pulse = 110 + int(35 * math.sin(pygame.time.get_ticks() * 0.004))
-                surf.fill((60, 180, 255, pulse))
-                screen.blit(surf, (bx + hp_w, by))
-                pygame.draw.rect(screen, (90, 200, 255), (bx, by, bar_w, bar_h), 1)
+        # 护盾覆盖在 HP 条（石头关 & 护盾光环）
+        sh_hp = max(0, int(getattr(zombie, "shield_hp", 0)))
+        if sh_hp > 0:
+            z_mhp = max(1, int(getattr(zombie, "max_hp", 1)))
+            hp_now = max(0, int(getattr(zombie, "hp", 0)))
+            hp_ratio = max(0.0, min(1.0, hp_now / float(z_mhp)))
+            eff_ratio = min(1.0, (hp_now + sh_hp) / float(z_mhp))
+            add_ratio = max(0.0, eff_ratio - hp_ratio)
+            if add_ratio > 0.0:
+                srf = pygame.Surface((int(bar_w * add_ratio), bar_h), pygame.SRCALPHA)
+                srf.fill((60, 180, 255, 150))
+                screen.blit(srf, (bx + int(bar_w * hp_ratio), by))
 
     # bullets
     if bullets:
