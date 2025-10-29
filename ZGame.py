@@ -434,6 +434,7 @@ def apply_domain_buffs_for_level(game_state, player):
     """
     b = globals().get("_next_biome", None)
     game_state.biome_active = b
+    globals()["_last_biome"] = b
 
     # Reset per-level knobs
     game_state.biome_zombie_contact_mult = 1.0
@@ -482,6 +483,16 @@ def apply_biome_on_zombie_spawn(z, game_state):
         else:
             z.shield_hp = int(round(z.max_hp * 0.50))
             z.shield_max = z.shield_hp
+
+def draw_shield_outline(screen, rect):
+    # pulsing alpha for visibility
+    t = pygame.time.get_ticks() * 0.006
+    a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
+    # draw a rounded rectangle outline on a small alpha surface
+    pad = 6
+    s = pygame.Surface((rect.width + pad*2, rect.height + pad*2), pygame.SRCALPHA)
+    pygame.draw.rect(s, (90, 180, 255, a), s.get_rect(), width=4, border_radius=6)
+    screen.blit(s, s.get_rect(center=rect.center))
 
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
@@ -1116,7 +1127,8 @@ def save_progress(current_level: int,
         "current_level": int(current_level),
         "meta": meta_for_save,  # ← uses baseline spoils when appropriate
         "carry_player": globals().get("_carry_player_state", None),
-        "pending_shop": bool(pending_shop)
+        "pending_shop": bool(pending_shop),
+        "biome": globals().get("_next_biome") or globals().get("_last_biome")
     }
     if max_wave_reached is not None:
         data["max_wave_reached"] = int(max_wave_reached)
@@ -1139,6 +1151,8 @@ def capture_snapshot(game_state, player, zombies, current_level: int,
         "meta": {
             "current_level": int(current_level),
             "chosen_zombie_type": str(chosen_zombie_type or "basic"),
+            "biome": getattr(game_state, "biome_active", globals().get("_next_biome"))
+
         },
         "snapshot": {
             "player": {"x": float(player.x), "y": float(player.y),
@@ -5652,6 +5666,8 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             body.midbottom = (cx, cy)
             col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
             pygame.draw.rect(screen, col, body)
+            if getattr(z, "shield_hp", 0) > 0:
+                draw_shield_outline(screen, body)
 
             # 强化视觉：持币较多时加金色外轮廓
             coins = int(getattr(z, "spoils", 0))
@@ -5669,6 +5685,8 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
             if z.is_boss: pygame.draw.rect(screen, (255, 215, 0), body.inflate(4, 4), 3)
             pygame.draw.rect(screen, col, body)
+            if getattr(z, "shield_hp", 0) > 0:
+                draw_shield_outline(screen, body)
         elif kind == "player":
             p, cx, cy = data["p"], data["cx"], data["cy"]
             sh = pygame.Surface((ISO_CELL_W // 2, ISO_CELL_H // 2), pygame.SRCALPHA)
@@ -5679,6 +5697,8 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             rect.midbottom = (cx, cy)
             col = (240, 80, 80) if (p.hit_cd > 0 and (pygame.time.get_ticks() // 80) % 2 == 0) else (0, 255, 0)
             pygame.draw.rect(screen, col, rect)
+            if getattr(p, "shield_hp", 0) > 0:
+                draw_shield_outline(screen, rect)
 
     # --- damage numbers (iso) ---
     for d in getattr(game_state, "dmg_texts", []):
@@ -5845,6 +5865,9 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     player_draw = player.rect.copy()
     player_draw.x -= cam_x
     player_draw.y -= cam_y
+    if getattr(player, "shield_hp", 0) > 0:
+        draw_shield_outline(screen, player_draw)  # 'rect' is the player rect you just drew
+
     if player.hit_cd > 0 and ((pygame.time.get_ticks() // 80) % 2 == 0):
         pygame.draw.rect(screen, (240, 80, 80), player_draw)  # flicker color
     else:
@@ -5866,6 +5889,9 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
                 color = (255, 220, 100)
 
         pygame.draw.rect(screen, color, zr)
+        if getattr(zombie, "shield_hp", 0) > 0:
+            draw_shield_outline(screen, zr)  # 'zr' is the screen-space rect you drew
+
         # Elite/Boss outline
         if getattr(zombie, "is_boss", False):
             pygame.draw.rect(screen, (255, 215, 0), zr, 3)  # gold outline
@@ -6856,12 +6882,15 @@ if __name__ == "__main__":
             META.update(save_data.get("meta", META))
             globals()["_carry_player_state"] = save_data.get("carry_player", None)
             globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
+            globals()["_next_biome"] = save_data.get("biome")
+
         else:
             globals()["_carry_player_state"] = None
         if save_data.get("mode") == "snapshot":
             # pull meta
             meta = save_data.get("meta", {})
             current_level = int(meta.get("current_level", 0))
+            globals()["_next_biome"] = save_data.get("biome")
 
         else:
             current_level = int(save_data.get("current_level", 0))
