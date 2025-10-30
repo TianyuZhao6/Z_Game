@@ -99,10 +99,6 @@ def _draw_rect_perimeter_progress(surf: "pygame.Surface",
             pygame.draw.line(surf, color, (sx, sy), (sx + dirx * seg, sy), width)
         remain -= seg
 
-    # subtle halo for readability
-    halo = pygame.Surface((w + 12, h + 12), pygame.SRCALPHA)
-    pygame.draw.rect(halo, (*color, 24), halo.get_rect(), width=width+4)
-    surf.blit(halo, (x - 6, y - 6), special_flags=pygame.BLEND_PREMULTIPLIED)
 
 
 def feet_center(ent):
@@ -180,8 +176,8 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
 
     # --- Shield wrap around HP frame (smoothed) ---
     sleft = int(max(0, getattr(player, "shield_hp", 0)))
-    smax = int(getattr(player, "shield_max", 0)) or int(max(1, getattr(player, "max_hp", 1)))
-    target = 0.0 if smax <= 0 else max(0.0, min(1.0, sleft / float(smax)))
+    mhp = int(max(1, getattr(player, "max_hp", 1)))
+    target = 0.0 if mhp <= 0 else max(0.0, min(1.0, sleft / float(mhp)))  # <<< against max_hp
 
     # Exponential smoothing so it decreases bit by bit instead of snapping
     vis = float(getattr(player, "_hud_shield_vis", target))
@@ -190,8 +186,7 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
 
     if vis > 0.001:
         frame_rect = pygame.Rect(bx - 2, by - 2, bar_w + 4, bar_h + 4)
-        # thinner cyan line
-        _draw_rect_perimeter_progress(screen, frame_rect, vis, (60, 180, 255), width=2)
+        _draw_rect_perimeter_progress(screen, frame_rect, vis, (40, 160, 210), width=5)  # darker cyan
 
     # ===== XP 条（紧贴 HP 条下方）=====
     xp_bar_w, xp_bar_h = bar_w, 6
@@ -6016,6 +6011,13 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
                 srf = pygame.Surface((int(bar_w * add_ratio), bar_h), pygame.SRCALPHA)
                 srf.fill((60, 180, 255, 150))
                 screen.blit(srf, (bx + int(bar_w * hp_ratio), by))
+
+    # Boss shield wrap on mini HP bar
+    if getattr(zombie, "is_boss", False) and int(getattr(zombie, "shield_hp", 0)) > 0:
+        mhp = int(getattr(zombie, "max_hp", getattr(zombie, "hp", 1)))
+        wrap = min(1.0, float(getattr(zombie, "shield_hp", 0)) / float(max(1, mhp)))
+        mini_frame = pygame.Rect(bx - 1, by - 1, bar_w + 2, bar_h + 2)
+        _draw_rect_perimeter_progress(screen, mini_frame, wrap, (40, 160, 210), width=1)
 
     # bullets
     if bullets:
