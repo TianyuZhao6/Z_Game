@@ -99,6 +99,47 @@ def _draw_rect_perimeter_progress(surf: "pygame.Surface",
             pygame.draw.line(surf, color, (sx, sy), (sx + dirx * seg, sy), width)
         remain -= seg
 
+# === Shield HUD style (tweak as you like) ===
+SHIELD_EDGE_COLOR  = (30, 140, 190)      # dark cyan
+SHIELD_FILL_COLOR  = (60, 180, 255, 60)  # translucent inner tint (RGBA with alpha)
+SHIELD_EDGE_WIDTH  = 3                   # shell stroke thickness
+SHIELD_EXPAND_PX   = 4                   # how much wider than the HP bar
+
+def _draw_shield_shell(surf: "pygame.Surface",
+                       bar_rect: "pygame.Rect",
+                       start_ratio: float,
+                       length_ratio: float,
+                       *,
+                       expand: int = SHIELD_EXPAND_PX,
+                       edge_width: int = SHIELD_EDGE_WIDTH,
+                       edge_color: tuple[int,int,int] = SHIELD_EDGE_COLOR,
+                       fill_color: tuple[int,int,int,int] = SHIELD_FILL_COLOR) -> None:
+    """
+    Draw a slightly larger, hollow rounded-rect over a portion of the HP bar.
+    start_ratio: where the shield starts (0..1), usually at current HP ratio
+    length_ratio: how much of the bar is covered by shield (0..1), clamped to not overflow
+    """
+    # clamp
+    s = max(0.0, min(1.0, float(start_ratio)))
+    L = max(0.0, min(1.0 - s, float(length_ratio)))
+    if L <= 0.0:
+        return
+
+    # expanded rect that "wraps" the HP bar
+    x = bar_rect.x + int(bar_rect.w * s) - expand
+    w = max(1, int(bar_rect.w * L)) + expand * 2
+    h = bar_rect.h + expand * 2
+    y = bar_rect.y - expand
+    rr = max(4, min(10, (bar_rect.h + expand) // 2 + 2))  # nice corners
+
+    # translucent inner tint (optional, very light)
+    if fill_color and len(fill_color) == 4 and fill_color[3] > 0:
+        srf = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(srf, fill_color, pygame.Rect(0, 0, w, h), border_radius=rr)
+        surf.blit(srf, (x, y))
+
+    # dark-cyan edge (hollow look)
+    pygame.draw.rect(surf, edge_color, pygame.Rect(x, y, w, h), width=edge_width, border_radius=rr)
 
 
 def feet_center(ent):
@@ -518,6 +559,7 @@ def apply_domain_buffs_for_level(game_state, player):
     elif b == "Bastion of Stone":
         player.shield_hp = int(round(player.max_hp * 0.50))
         player.shield_max = player.shield_hp
+        player._hud_shield_vis = player.shield_hp / float(max(1, player.max_hp))
         # New spawns this level: mark Stone so we add shields on spawn
         game_state.biome_active = b
 
