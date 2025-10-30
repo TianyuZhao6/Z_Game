@@ -203,31 +203,28 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     pygame.draw.rect(screen, (40, 40, 40), (bx, by, bar_w, bar_h), border_radius=3)
     pygame.draw.rect(screen, (0, 200, 80), (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
 
-    # === SHIELD overlay (covers from current HP to effective HP) ===
-    sh = max(0, int(getattr(player, "shield_hp", 0)))
-    if sh > 0:
-        mhp = max(1, int(getattr(player, "max_hp", 1)))
-        hp = max(0, int(getattr(player, "hp", 0)))
-        eff_ratio = min(1.0, (hp + sh) / float(mhp))
-        add_ratio = max(0.0, eff_ratio - ratio)
-        if add_ratio > 0.0:
-            overlay = pygame.Surface((int(bar_w * add_ratio), bar_h), pygame.SRCALPHA)
-            overlay.fill((60, 180, 255, 150))
-            screen.blit(overlay, (bx + int(bar_w * ratio), by))
-
-    # --- Shield wrap around HP frame (smoothed) ---
+    # --- Shield shell overlay (smoothed, slightly wider & hollow) ---
     sleft = int(max(0, getattr(player, "shield_hp", 0)))
     mhp = int(max(1, getattr(player, "max_hp", 1)))
-    target = 0.0 if mhp <= 0 else max(0.0, min(1.0, sleft / float(mhp)))  # <<< against max_hp
 
-    # Exponential smoothing so it decreases bit by bit instead of snapping
+    # Smooth the visible fraction so it drains bit-by-bit
+    target = 0.0 if mhp <= 0 else max(0.0, min(1.0, sleft / float(mhp)))
     vis = float(getattr(player, "_hud_shield_vis", target))
     vis += (target - vis) * 0.18
     player._hud_shield_vis = vis
 
-    if vis > 0.001:
-        frame_rect = pygame.Rect(bx - 2, by - 2, bar_w + 4, bar_h + 4)
-        _draw_rect_perimeter_progress(screen, frame_rect, vis, (40, 160, 210), width=5)  # darker cyan
+    if vis > 0.002:
+        bar_rect = pygame.Rect(bx, by, bar_w, bar_h)
+        # Anchor at the LEFT of the HP bar so it’s visible even at full HP
+        _draw_shield_shell(
+            screen, bar_rect,
+            start_ratio=0.0,  # <— was ratio
+            length_ratio=vis,  # <— was add_vis
+            expand=SHIELD_EXPAND_PX,
+            edge_width=SHIELD_EDGE_WIDTH,
+            edge_color=SHIELD_EDGE_COLOR,
+            fill_color=SHIELD_FILL_COLOR
+        )
 
     # ===== XP 条（紧贴 HP 条下方）=====
     xp_bar_w, xp_bar_h = bar_w, 6
@@ -360,8 +357,16 @@ def draw_boss_hp_bar(screen, boss):
     boss._hud_shield_vis = bvis
 
     if bvis > 0.001:
-        frame_rect = pygame.Rect(bx - 2, by - 2, bar_w + 4, bar_h + 4)
-        _draw_rect_perimeter_progress(screen, frame_rect, bvis, (60, 180, 255), width=2)
+        bar_rect = pygame.Rect(bx, by, bar_w, bar_h)
+        _draw_shield_shell(
+            screen, bar_rect,
+            start_ratio=0.0,
+            length_ratio=bvis,  # fraction of max HP the shield represents
+            expand=SHIELD_EXPAND_PX,
+            edge_width=SHIELD_EDGE_WIDTH,
+            edge_color=SHIELD_EDGE_COLOR,
+            fill_color=SHIELD_FILL_COLOR
+        )
 
     # 分段刻度（70%/40% 阶段线，方便读阶段）
     for t in (0.7, 0.4):
@@ -406,11 +411,18 @@ def draw_boss_hp_bars_twin(screen, bosses):
         cur = max(0, int(getattr(boss, "hp", 0)))
         ratio = max(0.0, min(1.0, cur / float(mhp)))
         # make shield obvious even at full HP
-        if getattr(boss, "shield_hp", 0) > 0:
-            pygame.draw.rect(
-                screen, (120, 190, 255),
-                pygame.Rect(bx - 3, by - 3, bar_w + 6, bar_h + 6),
-                width=2, border_radius=6
+        sh = max(0, int(getattr(boss, "shield_hp", 0)))
+        if sh > 0:
+            frac = min(1.0, sh / float(mhp))
+            _draw_shield_shell(
+                screen,
+                pygame.Rect(bx, y, bar_w, bar_h),
+                start_ratio=0.0,  # always wrap from the left
+                length_ratio=frac,  # shield as fraction of max HP
+                expand=SHIELD_EXPAND_PX,
+                edge_width=SHIELD_EDGE_WIDTH,
+                edge_color=SHIELD_EDGE_COLOR,
+                fill_color=SHIELD_FILL_COLOR
             )
 
         # 背板/描边
@@ -2543,6 +2555,14 @@ def spawn_wave_with_budget(game_state: "GameState",
 
                 _clear_footprint(b1)
                 _clear_footprint(b2)
+                # domain spawn effects (Stone shields, etc.)
+                apply_biome_on_zombie_spawn(b1, game_state)
+                apply_biome_on_zombie_spawn(b2, game_state)
+
+                # (optional) start the HUD smoothing at the current fraction
+                for _b in (b1, b2):
+                    if getattr(_b, "shield_hp", 0) > 0 and getattr(_b, "max_hp", 0) > 0:
+                        _b._hud_shield_vis = _b.shield_hp / float(max(1, _b.max_hp))
 
                 if hasattr(b1, "bind_twin"):
                     b1.bind_twin(b2, twin_id)
@@ -2577,6 +2597,10 @@ def spawn_wave_with_budget(game_state: "GameState",
                 for gp, ob in list(game_state.obstacles.items()):
                     if ob.rect.colliderect(r):
                         del game_state.obstacles[gp]
+
+                apply_biome_on_zombie_spawn(z, game_state)
+                z._hud_shield_vis = (z.shield_hp / float(max(1, z.max_hp))) if getattr(z, "shield_hp", 0) > 0 else 0.0
+
                 z._spawn_wave_tag = wave_index
                 zombies.append(z)
                 # After zombies.append(mist)
@@ -2597,6 +2621,10 @@ def spawn_wave_with_budget(game_state: "GameState",
                 for gp, ob in list(game_state.obstacles.items()):
                     if ob.rect.colliderect(r):
                         del game_state.obstacles[gp]
+
+                apply_biome_on_zombie_spawn(z, game_state)
+                z._hud_shield_vis = (z.shield_hp / float(max(1, z.max_hp))) if getattr(z, "shield_hp", 0) > 0 else 0.0
+
                 z._spawn_wave_tag = wave_index
                 # NEW: queue single boss focus
                 try:
@@ -2611,7 +2639,7 @@ def spawn_wave_with_budget(game_state: "GameState",
                 boss_done = True
             continue
 
-            # choose a type that fits remaining budget
+        # choose a type that fits remaining budget
         remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in zombies if
                                  getattr(z, "_spawn_wave_tag", -1) == wave_index)
         t = _pick_type_by_budget(max(1, remaining), current_level)
@@ -6041,25 +6069,26 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         except Exception:
             pass
 
-        # 护盾覆盖在 HP 条（石头关 & 护盾光环）
+        # 护盾覆盖在 HP 条（空心包裹样式）
         sh_hp = max(0, int(getattr(zombie, "shield_hp", 0)))
         if sh_hp > 0:
             z_mhp = max(1, int(getattr(zombie, "max_hp", 1)))
             hp_now = max(0, int(getattr(zombie, "hp", 0)))
-            hp_ratio = max(0.0, min(1.0, hp_now / float(z_mhp)))
-            eff_ratio = min(1.0, (hp_now + sh_hp) / float(z_mhp))
-            add_ratio = max(0.0, eff_ratio - hp_ratio)
-            if add_ratio > 0.0:
-                srf = pygame.Surface((int(bar_w * add_ratio), bar_h), pygame.SRCALPHA)
-                srf.fill((60, 180, 255, 150))
-                screen.blit(srf, (bx + int(bar_w * hp_ratio), by))
 
-    # Boss shield wrap on mini HP bar
-    if getattr(zombie, "is_boss", False) and int(getattr(zombie, "shield_hp", 0)) > 0:
-        mhp = int(getattr(zombie, "max_hp", getattr(zombie, "hp", 1)))
-        wrap = min(1.0, float(getattr(zombie, "shield_hp", 0)) / float(max(1, mhp)))
-        mini_frame = pygame.Rect(bx - 1, by - 1, bar_w + 2, bar_h + 2)
-        _draw_rect_perimeter_progress(screen, mini_frame, wrap, (40, 160, 210), width=1)
+            hp_ratio = max(0.0, min(1.0, hp_now / float(z_mhp)))
+            add = max(0.0, min(1.0, sh_hp / float(z_mhp)))
+            add = min(add, 1.0 - hp_ratio)  # don't overflow past the bar
+
+            _draw_shield_shell(
+                screen,
+                pygame.Rect(bx, by, bar_w, bar_h),
+                start_ratio=hp_ratio,
+                length_ratio=add,
+                expand=3,  # mini bars look better with a tad smaller expand
+                edge_width=2,  # thinner for enemies
+                edge_color=SHIELD_EDGE_COLOR,
+                fill_color=(60, 180, 255, 50)
+            )
 
     # bullets
     if bullets:
