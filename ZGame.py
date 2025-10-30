@@ -122,6 +122,7 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     pygame.draw.rect(screen, (60, 60, 60), (bx - 2, by - 2, bar_w + 4, bar_h + 4), border_radius=4)
     pygame.draw.rect(screen, (40, 40, 40), (bx, by, bar_w, bar_h), border_radius=3)
     pygame.draw.rect(screen, (0, 200, 80), (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
+
     # === SHIELD overlay (covers from current HP to effective HP) ===
     sh = max(0, int(getattr(player, "shield_hp", 0)))
     if sh > 0:
@@ -133,14 +134,50 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
             overlay = pygame.Surface((int(bar_w * add_ratio), bar_h), pygame.SRCALPHA)
             overlay.fill((60, 180, 255, 150))
             screen.blit(overlay, (bx + int(bar_w * ratio), by))
-    # 数字覆盖在进度条中间
-    hp_text = f"{int(getattr(player, 'hp', 0))}/{int(getattr(player, 'max_hp', 0))}"
-    hp_img = font_hp.render(hp_text, True, (20, 20, 20))
-    screen.blit(hp_img, hp_img.get_rect(center=(bx + bar_w // 2, by + bar_h // 2 + 1)))
+    if getattr(player, "shield_hp", 0) > 0:
+        # cyan outline around the whole HP bar to indicate active shield even at full HP
+        pygame.draw.rect(
+            screen, (60, 180, 255),
+            pygame.Rect(bx - 2, by - 2, bar_w + 4, bar_h + 4),
+            width=2, border_radius=4
+        )
+    # ===== SHIELD BAR (below HP; independent capacity like HP) =====
+    sleft = int(max(0, getattr(player, "shield_hp", 0)))
+    # Use tracked shield_max if present; otherwise stabilize to max of current shield or HP
+    smax  = int(getattr(player, "shield_max", 0))
+    if smax <= 0:
+        smax = max(sleft, int(getattr(player, "max_hp", 1)))
+
+    # When shield exists, show a dedicated, thick bar
+    if sleft > 0 and smax > 0:
+        sh_ratio = max(0.0, min(1.0, float(sleft) / float(smax)))
+        sh_bar_h = 10
+        sh_y     = by + bar_h + 6  # sit directly under HP
+
+        # frame + bg + fill
+        pygame.draw.rect(screen, (60, 60, 60), (bx - 2, sh_y - 2, bar_w + 4, sh_bar_h + 4), border_radius=4)
+        pygame.draw.rect(screen, (32, 32, 40), (bx, sh_y, bar_w, sh_bar_h), border_radius=3)
+        pygame.draw.rect(screen, (90, 180, 255), (bx, sh_y, int(bar_w * sh_ratio), sh_bar_h), border_radius=3)
+
+        # Label (small)
+        cap_txt = font_hp.render(f"SH {sleft}/{smax}", True, (200, 220, 255))
+        screen.blit(cap_txt, (bx + 6, sh_y - cap_txt.get_height() - 2))
+
+        # If shield is up, thicken the HP frame outline too (visual link)
+        pygame.draw.rect(
+            screen, (60, 180, 255),
+            pygame.Rect(bx - 2, by - 2, bar_w + 4, bar_h + 4),
+            width=3, border_radius=4
+        )
+
+        # Push the XP bar further down to avoid overlap
+        xp_offset_y = sh_bar_h + 8
+    else:
+        xp_offset_y = 0
 
     # ===== XP 条（紧贴 HP 条下方）=====
     xp_bar_w, xp_bar_h = bar_w, 6
-    xp_bx, xp_by = bx, by + bar_h + 6
+    xp_bx, xp_by = bx, by + bar_h + 6 + xp_offset_y
     xp_to_next = int(getattr(player, "xp_to_next", 0))
     xp_have = int(getattr(player, "xp", 0))
     xp_ratio = max(0.0, min(1.0, float(xp_have) / float(xp_to_next))) if xp_to_next > 0 else 0.0
@@ -150,6 +187,10 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     # 小标签（在条右侧显示等级）
     xp_label = mono_small.render(f"Lv {int(getattr(player, 'level', 1))}", True, (210, 210, 230))
     screen.blit(xp_label, (xp_bx + xp_bar_w + 8, xp_by - 6))
+    # 数字覆盖在进度条中间
+    hp_text = f"{int(getattr(player, 'hp', 0))}/{int(getattr(player, 'max_hp', 0))}"
+    hp_img = font_hp.render(hp_text, True, (20, 20, 20))
+    screen.blit(hp_img, hp_img.get_rect(center=(bx + bar_w // 2, by + bar_h // 2 + 1)))
 
     # ===== 右上角：物品 & 金币 =====
     hud_font = font_timer  # 统一字号
@@ -311,6 +352,13 @@ def draw_boss_hp_bars_twin(screen, bosses):
         mhp = max(1, int(getattr(boss, "max_hp", getattr(boss, "hp", 1))))
         cur = max(0, int(getattr(boss, "hp", 0)))
         ratio = max(0.0, min(1.0, cur / float(mhp)))
+        # make shield obvious even at full HP
+        if getattr(boss, "shield_hp", 0) > 0:
+            pygame.draw.rect(
+                screen, (120, 190, 255),
+                pygame.Rect(bx - 3, by - 3, bar_w + 6, bar_h + 6),
+                width=2, border_radius=6
+            )
 
         # 背板/描边
         pygame.draw.rect(screen, (28, 28, 32), (bx - 2, y - 2, bar_w + 4, bar_h + 4), border_radius=8)
@@ -5890,7 +5938,9 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
 
         pygame.draw.rect(screen, color, zr)
         if getattr(zombie, "shield_hp", 0) > 0:
-            draw_shield_outline(screen, zr)  # 'zr' is the screen-space rect you drew
+            is_boss = bool(getattr(zombie, "is_boss", False))
+            shield_col = (120, 190, 255) if is_boss else (165, 120, 255)  # boss vs normal zombie
+            draw_shield_outline(screen, zr, color=shield_col)
 
         # Elite/Boss outline
         if getattr(zombie, "is_boss", False):
