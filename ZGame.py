@@ -61,6 +61,49 @@ def mono_font(size: int) -> "pygame.font.Font":
         pass
     return pygame.font.SysFont("monospace", size)
 
+def _draw_rect_perimeter_progress(surf: "pygame.Surface",
+                                  rect: "pygame.Rect",
+                                  progress: float,
+                                  color: tuple[int,int,int],
+                                  width: int = 4) -> None:
+    """
+    Draw a single stroke that wraps the rect's perimeter from top-left clockwise.
+    The stroke length is progress * perimeter. No fill, just contour.
+    """
+    p = max(0.0, min(1.0, float(progress)))
+    if p <= 0:
+        return
+
+    x, y, w, h = rect.x, rect.y, rect.w, rect.h
+    perimeter = 2 * (w + h)
+    remain = int(perimeter * p)
+
+    edges = [  # ((sx,sy),(ex,ey), length)
+        ((x, y), (x + w, y), w),           # top: left -> right
+        ((x + w, y), (x + w, y + h), h),   # right: top -> bottom
+        ((x + w, y + h), (x, y + h), w),   # bottom: right -> left
+        ((x, y + h), (x, y), h),           # left: bottom -> top
+    ]
+
+    for (sx, sy), (ex, ey), L in edges:
+        if remain <= 0:
+            break
+        seg = min(remain, L)
+        if sx == ex:
+            # vertical
+            diry = 1 if ey > sy else -1
+            pygame.draw.line(surf, color, (sx, sy), (sx, sy + diry * seg), width)
+        else:
+            # horizontal
+            dirx = 1 if ex > sx else -1
+            pygame.draw.line(surf, color, (sx, sy), (sx + dirx * seg, sy), width)
+        remain -= seg
+
+    # subtle halo for readability
+    halo = pygame.Surface((w + 12, h + 12), pygame.SRCALPHA)
+    pygame.draw.rect(halo, (*color, 24), halo.get_rect(), width=width+4)
+    surf.blit(halo, (x - 6, y - 6), special_flags=pygame.BLEND_PREMULTIPLIED)
+
 
 def feet_center(ent):
     # 世界坐标（含 INFO_BAR_HEIGHT 的平移）
@@ -134,50 +177,25 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
             overlay = pygame.Surface((int(bar_w * add_ratio), bar_h), pygame.SRCALPHA)
             overlay.fill((60, 180, 255, 150))
             screen.blit(overlay, (bx + int(bar_w * ratio), by))
-    if getattr(player, "shield_hp", 0) > 0:
-        # cyan outline around the whole HP bar to indicate active shield even at full HP
-        pygame.draw.rect(
-            screen, (60, 180, 255),
-            pygame.Rect(bx - 2, by - 2, bar_w + 4, bar_h + 4),
-            width=2, border_radius=4
-        )
-    # ===== SHIELD BAR (below HP; independent capacity like HP) =====
+
+    # --- Shield wrap around HP frame (smoothed) ---
     sleft = int(max(0, getattr(player, "shield_hp", 0)))
-    # Use tracked shield_max if present; otherwise stabilize to max of current shield or HP
-    smax  = int(getattr(player, "shield_max", 0))
-    if smax <= 0:
-        smax = max(sleft, int(getattr(player, "max_hp", 1)))
+    smax = int(getattr(player, "shield_max", 0)) or int(max(1, getattr(player, "max_hp", 1)))
+    target = 0.0 if smax <= 0 else max(0.0, min(1.0, sleft / float(smax)))
 
-    # When shield exists, show a dedicated, thick bar
-    if sleft > 0 and smax > 0:
-        sh_ratio = max(0.0, min(1.0, float(sleft) / float(smax)))
-        sh_bar_h = 10
-        sh_y     = by + bar_h + 6  # sit directly under HP
+    # Exponential smoothing so it decreases bit by bit instead of snapping
+    vis = float(getattr(player, "_hud_shield_vis", target))
+    vis += (target - vis) * 0.18
+    player._hud_shield_vis = vis
 
-        # frame + bg + fill
-        pygame.draw.rect(screen, (60, 60, 60), (bx - 2, sh_y - 2, bar_w + 4, sh_bar_h + 4), border_radius=4)
-        pygame.draw.rect(screen, (32, 32, 40), (bx, sh_y, bar_w, sh_bar_h), border_radius=3)
-        pygame.draw.rect(screen, (90, 180, 255), (bx, sh_y, int(bar_w * sh_ratio), sh_bar_h), border_radius=3)
-
-        # Label (small)
-        cap_txt = font_hp.render(f"SH {sleft}/{smax}", True, (200, 220, 255))
-        screen.blit(cap_txt, (bx + 6, sh_y - cap_txt.get_height() - 2))
-
-        # If shield is up, thicken the HP frame outline too (visual link)
-        pygame.draw.rect(
-            screen, (60, 180, 255),
-            pygame.Rect(bx - 2, by - 2, bar_w + 4, bar_h + 4),
-            width=3, border_radius=4
-        )
-
-        # Push the XP bar further down to avoid overlap
-        xp_offset_y = sh_bar_h + 8
-    else:
-        xp_offset_y = 0
+    if vis > 0.001:
+        frame_rect = pygame.Rect(bx - 2, by - 2, bar_w + 4, bar_h + 4)
+        # thinner cyan line
+        _draw_rect_perimeter_progress(screen, frame_rect, vis, (60, 180, 255), width=2)
 
     # ===== XP 条（紧贴 HP 条下方）=====
     xp_bar_w, xp_bar_h = bar_w, 6
-    xp_bx, xp_by = bx, by + bar_h + 6 + xp_offset_y
+    xp_bx, xp_by = bx, by + bar_h + 6
     xp_to_next = int(getattr(player, "xp_to_next", 0))
     xp_have = int(getattr(player, "xp", 0))
     xp_ratio = max(0.0, min(1.0, float(xp_have) / float(xp_to_next))) if xp_to_next > 0 else 0.0
@@ -297,18 +315,17 @@ def draw_boss_hp_bar(screen, boss):
     if fill_w > 0:
         pygame.draw.rect(screen, (210, 64, 64), (bx, by, fill_w, bar_h), border_radius=6)
 
-    # === Boss shield overlay ===
-    sh = max(0, int(getattr(boss, "shield_hp", 0)))
-    if sh > 0:
-        mhp = max(1, int(getattr(boss, "max_hp", 1)))
-        cur = max(0, int(getattr(boss, "hp", 0)))
-        base_ratio = max(0.0, min(1.0, cur / float(mhp)))
-        eff_ratio = min(1.0, (cur + sh) / float(mhp))
-        add_ratio = max(0.0, eff_ratio - base_ratio)
-        if add_ratio > 0.0:
-            srf = pygame.Surface((int(bar_w * add_ratio), bar_h), pygame.SRCALPHA)
-            srf.fill((60, 180, 255, 140))
-            screen.blit(srf, (bx + int(bar_w * base_ratio), by))
+    # --- Boss shield wrap (smoothed cyan) ---
+    sh = int(max(0, getattr(boss, "shield_hp", 0)))
+    target = 0.0 if mhp <= 0 else max(0.0, min(1.0, sh / float(mhp)))
+
+    bvis = float(getattr(boss, "_hud_shield_vis", target))
+    bvis += (target - bvis) * 0.20
+    boss._hud_shield_vis = bvis
+
+    if bvis > 0.001:
+        frame_rect = pygame.Rect(bx - 2, by - 2, bar_w + 4, bar_h + 4)
+        _draw_rect_perimeter_progress(screen, frame_rect, bvis, (60, 180, 255), width=2)
 
     # 分段刻度（70%/40% 阶段线，方便读阶段）
     for t in (0.7, 0.4):
