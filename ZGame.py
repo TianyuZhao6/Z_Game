@@ -1124,6 +1124,7 @@ SUICIDE_FUSE = 4.0  # 自爆怪引信时长（生成后计时）
 SUICIDE_FLICKER = 0.8  # 引信末端闪烁时长
 SUICIDE_RADIUS = 90  # 自爆半径（像素）
 SUICIDE_DAMAGE = 35  # 对玩家伤害
+SUICIDE_ARM_DIST = int(2.2 * CELL_SIZE)
 
 BUFF_RADIUS = 220  # 增益怪范围
 BUFF_DURATION = 4.0
@@ -2994,7 +2995,10 @@ class Zombie:
         self.type = ztype
         self.color = ZOMBIE_COLORS.get(self.type, (255, 60, 60))
         # === special type state ===
-        self.fuse = SUICIDE_FUSE if ztype in ("suicide", "bomber") else None
+        # Suicide types start unarmed; fuse begins when near the player
+        self.fuse = None
+        self.suicide_armed = False
+
         self.buff_cd = 0.0 if ztype == "buffer" else None
         self.shield_cd = 0.0 if ztype == "shielder" else None
         self.shield_hp = 0  # 当前护盾值
@@ -3434,24 +3438,30 @@ class Zombie:
                 enemy_shots.append(EnemyShot(cx, cy, vx, vy, RANGED_PROJ_DAMAGE))
                 self.ranged_cd = RANGED_COOLDOWN
 
-        # 自爆怪：引信倒计时，到时爆炸
+        # 自爆怪：接近玩家后才启动引信；到时爆炸
         if self.type in ("suicide", "bomber"):
-            if self.fuse is None: self.fuse = SUICIDE_FUSE
-            self.fuse -= dt
-            if self.fuse <= 0.0:
-                # 结算爆炸
-                cx, cy = self.rect.centerx, self.rect.centery
-                pr = player.rect
-                dx = pr.centerx - cx
-                dy = pr.centery - cy
-                if (dx * dx + dy * dy) ** 0.5 <= SUICIDE_RADIUS:
-                    if player.hit_cd <= 0.0:
+            cx, cy = self.rect.centerx, self.rect.centery
+            pr = player.rect
+            dx, dy = pr.centerx - cx, pr.centery - cy
+            dist = (dx * dx + dy * dy) ** 0.5
+
+            # Arm when close enough
+            if (not getattr(self, "suicide_armed", False)) and dist <= SUICIDE_ARM_DIST:
+                self.suicide_armed = True
+                self.fuse = float(SUICIDE_FUSE)
+
+            # Ticking fuse
+            if getattr(self, "suicide_armed", False) and (self.fuse is not None):
+                self.fuse -= dt
+                if self.fuse <= 0.0:
+                    # explode
+                    if dist <= SUICIDE_RADIUS and player.hit_cd <= 0.0:
                         player.hp -= SUICIDE_DAMAGE
                         player.hit_cd = float(PLAYER_HIT_COOLDOWN)
-                        game_state.add_damage_text(player.rect.centerx, player.rect.centery, SUICIDE_DAMAGE, crit=False,
-                                                   kind="hp")
-                # （可选）对其它僵尸/可破坏障碍造成伤害，这里省略
-                self.hp = 0  # 自身消失
+                        game_state.add_damage_text(player.rect.centerx, player.rect.centery,
+                                                   SUICIDE_DAMAGE, crit=False, kind="hp")
+                    self.hp = 0  # remove self
+
         if getattr(self, "is_boss", False) and getattr(self, "hp", 0) <= 0:
             trigger_twin_enrage(self, zombies, game_state)
 
