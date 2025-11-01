@@ -4584,6 +4584,8 @@ def capture_player_carry(player) -> dict:
     return {
         "level": int(getattr(player, "level", 1)),
         "xp": int(getattr(player, "xp", 0)),  # leftover XP toward next level
+        "hp": int(max(0, min(getattr(player, "hp", 0),
+                             getattr(player, "max_hp", 0))))
     }
 
 
@@ -4596,6 +4598,7 @@ def apply_player_carry(player, carry: dict | None):
 
     target_level = max(1, int(carry.get("level", 1)))
     leftover_xp = max(0, int(carry.get("xp", 0)))
+    carry_hp = carry.get("hp", None)
 
     # reset to level 1 baseline, then feed XP for target_level + leftover
     player.level = 1
@@ -4609,8 +4612,10 @@ def apply_player_carry(player, carry: dict | None):
     if total_xp > 0:
         player.add_xp(total_xp)
 
-    # ALWAYS start a new level at full HP
-    player.hp = player.max_hp
+    if carry_hp is not None:
+        player.hp = max(1, min(player.max_hp, int(carry_hp)))
+    else:
+        player.hp = min(player.hp, player.max_hp)
 
 
 def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | float]:
