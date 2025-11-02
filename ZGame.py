@@ -5044,6 +5044,55 @@ def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> G
                 graph.add_edge(current_pos, neighbor_pos, weight)
     return graph
 
+# --- Simple grid Dijkstra from goal -> all cells (shared flow field) ---
+def build_flow_field(grid_size, obstacles, goal_xy):
+    import heapq
+    INF = 10**9
+    gx, gy = goal_xy
+    # dist[x][y] and next_step[x][y] store where to go next from (x,y)
+    dist = [[INF]*grid_size for _ in range(grid_size)]
+    next_step = [[None]*grid_size for _ in range(grid_size)]
+
+    def passable(nx, ny):
+        ob = obstacles.get((nx, ny))
+        if not ob: return True
+        if getattr(ob, "nonblocking", False): return True
+        t = getattr(ob, "type", "")
+        return t != "Indestructible"
+
+    def cell_cost(nx, ny):
+        ob = obstacles.get((nx, ny))
+        if not ob: return 1
+        if getattr(ob, "nonblocking", False): return 1
+        return 10 if getattr(ob, "type", "") == "Destructible" else INF
+
+    if not (0 <= gx < grid_size and 0 <= gy < grid_size):
+        return None, None
+
+    pq = []
+    if passable(gx, gy):
+        dist[gx][gy] = 0
+        heapq.heappush(pq, (0, gx, gy))
+
+    while pq:
+        d, x, y = heapq.heappop(pq)
+        if d != dist[x][y]:
+            continue
+        for dx, dy in ((1,0),(-1,0),(0,1),(0,-1)):
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < grid_size and 0 <= ny < grid_size):
+                continue
+            c = cell_cost(nx, ny)
+            if c >= INF:
+                continue
+            nd = d + c
+            if nd < dist[nx][ny]:
+                dist[nx][ny] = nd
+                # from (nx,ny) go to (x,y) next (i.e., step along steepest descent)
+                next_step[nx][ny] = (x, y)
+                heapq.heappush(pq, (nd, nx, ny))
+
+    return dist, next_step
 
 # ==================== 新增游戏状态类 ====================
 class SpatialHash:
