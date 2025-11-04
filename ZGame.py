@@ -5170,6 +5170,12 @@ class GameState:
         self._banner_tick_ms = None  # 用于计时的上一帧时间戳
         self.focus_queue = []  # NEW: queue of [("boss",(x,y)), ...] for multi-focus
 
+        self.ff_dist = None
+        self.ff_next = None
+        self._ff_goal = None  # (gx, gy) of player last time
+        self._ff_dirty = True
+        self._ff_timer = 0.0  # cooldown to throttle rebuilds
+
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
 
@@ -5341,6 +5347,18 @@ class GameState:
             player.hp = max(0, player.hp - dmg)
             self.add_damage_text(player.rect.centerx, player.rect.centery, dmg, crit=False, kind="hp")
         return dmg
+
+    def mark_nav_dirty(self):
+        self._ff_dirty = True
+
+    def refresh_flow_field(self, player_tile, dt=0.0):
+        # throttle rebuilds to ~0.3s or on dirty/goal change
+        self._ff_timer = max(0.0, self._ff_timer - dt)
+        if self._ff_dirty or self._ff_timer <= 0.0 or self._ff_goal != player_tile:
+            self.ff_dist, self.ff_next = build_flow_field(GRID_SIZE, self.obstacles, player_tile)
+            self._ff_goal = player_tile
+            self._ff_dirty = False
+            self._ff_timer = 0.30
 
     # ---- 攻击前的提示圈（到时后生成酸池等）----
     def spawn_telegraph(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
