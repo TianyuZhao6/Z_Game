@@ -3232,16 +3232,39 @@ class Zombie:
                 target_cx = nx * CELL_SIZE + CELL_SIZE * 0.5
                 target_cy = ny * CELL_SIZE + CELL_SIZE
 
-        # —— 连续向量追踪（不再用 8 向离散步进）——
-        vx = target_cx - (self.x + self.size * 0.5)
-        vy = target_cy - (self.y + self.size * 0.5 + INFO_BAR_HEIGHT)
-        L = (vx * vx + vy * vy) ** 0.5 or 1.0
-        dx = (vx / L) * speed
-        dy = (vy / L) * speed
-        oldx, oldy = self.x, self.y
+        # === 4) FLOW-FIELD STEER (preferred) ===
+        cx0, cy0 = self.rect.centerx, self.rect.centery
+        gx = int(cx0 // CELL_SIZE)
+        gy = int((cy0 - INFO_BAR_HEIGHT) // CELL_SIZE)
+
+        step = None
+        ff = getattr(game_state, "ff_next", None)
+        if ff is not None and 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE:
+            step = ff[gy][gx]  # (nx, ny) or None
+
+        if step is not None:
+            nx, ny = step
+            # world-pixel center of the recommended next cell
+            next_cx = nx * CELL_SIZE + CELL_SIZE * 0.5
+            next_cy = ny * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
+            dx = next_cx - cx0
+            dy = next_cy - cy0
+            L = (dx * dx + dy * dy) ** 0.5 or 1.0
+            ux, uy = dx / L, dy / L
+            dx, dy = iso_equalized_step(ux, uy, speed)  # <— use speed, and write into dx,dy
+            oldx, oldy = self.x, self.y  # <— needed for stuck check
+
+        else:
+            # Fallback: keep your existing target-point chase (path step / LOS)
+            dx = target_cx - cx0
+            dy = target_cy - cy0
+            L = (dx * dx + dy * dy) ** 0.5 or 1.0
+            ux, uy = dx / L, dy / L
+            dx, dy = iso_equalized_step(ux, uy, speed)  # <— use speed, and write into dx,dy
+            oldx, oldy = self.x, self.y  # <— needed for stuck check
 
         # If target is exactly on us this frame, dodge sideways deterministically
-        if abs(vx) < 1e-3 and abs(vy) < 1e-3:
+        if abs(dx) < 1e-3 and abs(dy) < 1e-3:
             # use twin_slot to pick a perpendicular nudge so twins diverge instead of pinning
             slot = float(getattr(self, "twin_slot", 1.0))
             # a small sideways step (screen-aligned is fine here)
@@ -5134,6 +5157,8 @@ def crush_blocks_in_rect(sweep_rect: pygame.Rect, game_state) -> int:
             # 无视类型，直接移除（包含 Indestructible / MainBlock）
             # 如需震屏/音效/粒子，在这里加
             del game_state.obstacles[gp]
+            if hasattr(game_state, "mark_nav_dirty"): game_state.mark_nav_dirty()
+
             removed += 1
     return removed
 
@@ -6606,6 +6631,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
+        # --- Flow field refresh (rebuild ~each 0.30s or when goal/obstacles changed)
+        ptile = (int(player.rect.centerx // CELL_SIZE),
+                 int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE))
+        game_state.refresh_flow_field(ptile, dt)
+
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt)
         for z in zombies:
@@ -6990,6 +7020,11 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
 
         # Zombies update & contact damage
         player.hit_cd = max(0.0, player.hit_cd - dt)
+        # --- nav refresh (shared Dijkstra flow field) ---
+        pgx = int(player.rect.centerx // CELL_SIZE)
+        pgy = int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE)
+        game_state.refresh_flow_field((pgx, pgy), dt)
+
         for zombie in list(zombies):
             zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
             if player.hit_cd <= 0.0 and circle_touch(zombie, player):
