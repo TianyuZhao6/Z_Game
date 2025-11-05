@@ -3334,15 +3334,26 @@ class Zombie:
             except Exception:
                 pass
 
-        # —— 卡住检测 ——
+        # —— 卡住检测（只有“被挡住”或“无进展”才累计）——
+        blocked = (self._hit_ob is not None)
+
         moved2 = (self.x - oldx) ** 2 + (self.y - oldy) ** 2
-        if moved2 < 0.25:  # 本帧几乎没动
-            self._stuck_t += dt
+        min_move2 = max(0.04, (0.15 * speed) * (0.15 * speed))  # speed-scaled threshold
+
+        # progress to current target (player or focus block) this frame
+        dist2 = (self.rect.centerx - int(target_cx)) ** 2 + (self.rect.centery - int(target_cy)) ** 2
+        prev_d2 = getattr(self, "_prev_d2", float("inf"))
+
+        no_progress = (dist2 > prev_d2 - 1.0)  # allow tiny jitter
+        self._prev_d2 = dist2
+
+        if (blocked and moved2 < min_move2) or (no_progress and moved2 < min_move2):
+            self._stuck_t = getattr(self, "_stuck_t", 0.0) + dt
         else:
             self._stuck_t = 0.0
 
-        # 卡住 0.25s 以上：触发一次侧移，引导绕开凸角/窄门
-        if self._stuck_t > 0.25 and self._avoid_t <= 0.0:
+        # 卡住 0.25s 以上：触发一次侧移（仅在“被挡住”或无进展时）
+        if self._stuck_t > 0.25 and self._avoid_t <= 0.0 and (blocked or no_progress):
             self._avoid_t = random.uniform(0.25, 0.45)
             self._avoid_side = random.choice((-1, 1))
 
