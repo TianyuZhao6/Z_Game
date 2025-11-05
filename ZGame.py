@@ -2990,6 +2990,9 @@ class Zombie:
                  ztype: str = "basic", hp: Optional[int] = None):
         self.x = pos[0] * CELL_SIZE
         self.y = pos[1] * CELL_SIZE
+        self._vx = 0.0
+        self._vy = 0.0
+
         self.attack = attack
         self.speed = speed
         self.type = ztype
