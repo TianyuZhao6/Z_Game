@@ -3254,8 +3254,21 @@ class Zombie:
             dy = next_cy - cy0
             L = (dx * dx + dy * dy) ** 0.5 or 1.0
             ux, uy = dx / L, dy / L
-            dx, dy = iso_equalized_step(ux, uy, speed)  # <— use speed, and write into dx,dy
-            oldx, oldy = self.x, self.y  # <— needed for stuck check
+            # desired velocity this frame
+            vx_des, vy_des = iso_equalized_step(ux, uy, speed)  # or `speed` in your branch
+
+            # light steering smoothing (≈ 120 ms time constant)
+            tau = 0.12
+            alpha = 1.0 - pow(0.001, dt / tau)  # stable, dt-based lerp factor
+            self._vx = (1.0 - alpha) * getattr(self, "_vx", 0.0) + alpha * vx_des
+            self._vy = (1.0 - alpha) * getattr(self, "_vy", 0.0) + alpha * vy_des
+
+            # use smoothed velocity as this frame’s step
+            vx, vy = self._vx, self._vy
+            dx, dy = vx, vy
+            oldx, oldy = self.x, self.y
+
+
 
         else:
             # Fallback: keep your existing target-point chase (path step / LOS)
@@ -3263,8 +3276,19 @@ class Zombie:
             dy = target_cy - cy0
             L = (dx * dx + dy * dy) ** 0.5 or 1.0
             ux, uy = dx / L, dy / L
-            dx, dy = iso_equalized_step(ux, uy, speed)  # <— use speed, and write into dx,dy
-            oldx, oldy = self.x, self.y  # <— needed for stuck check
+            # desired velocity this frame
+            vx_des, vy_des = iso_equalized_step(ux, uy, speed)  # or `speed` in your branch
+
+            # light steering smoothing (≈ 120 ms time constant)
+            tau = 0.12
+            alpha = 1.0 - pow(0.001, dt / tau)  # stable, dt-based lerp factor
+            self._vx = (1.0 - alpha) * getattr(self, "_vx", 0.0) + alpha * vx_des
+            self._vy = (1.0 - alpha) * getattr(self, "_vy", 0.0) + alpha * vy_des
+
+            # use smoothed velocity as this frame’s step
+            vx, vy = self._vx, self._vy
+            dx, dy = vx, vy
+            oldx, oldy = self.x, self.y
 
         # If target is exactly on us this frame, dodge sideways deterministically
         if abs(dx) < 1e-3 and abs(dy) < 1e-3:
@@ -3272,6 +3296,7 @@ class Zombie:
             slot = float(getattr(self, "twin_slot", 1.0))
             # a small sideways step (screen-aligned is fine here)
             dx, dy = 0.0, slot * max(0.6, min(speed, 1.2))
+
 
         # —— 侧移（反卡住）：被卡住一小会儿就沿着法向 90° 滑行 ——
         if self._avoid_t > 0.0:
@@ -3341,6 +3366,7 @@ class Zombie:
         blocked = (self._hit_ob is not None)
 
         moved2 = (self.x - oldx) ** 2 + (self.y - oldy) ** 2
+
         min_move2 = max(0.04, (0.15 * speed) * (0.15 * speed))  # speed-scaled threshold
 
         # progress to current target (player or focus block) this frame
