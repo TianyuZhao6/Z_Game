@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import heapq
 import sys
 import pygame
 import math
@@ -3244,6 +3245,30 @@ class Zombie:
         ff = getattr(game_state, "ff_next", None)
         if ff is not None and 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE:
             step = ff[gy][gx]  # (nx, ny) or None
+            # --- smooth FF steering: commit to one recommended cell briefly to stop jitter ---
+            is_boss_simple = getattr(self, "type", "") in ("boss_mist", "boss_mem")  # bosses: simple-chase
+            if not is_boss_simple and step is not None:
+                prev = getattr(self, "_ff_commit", None)
+                if prev is None:
+                    # first time: lock in
+                    self._ff_commit = step
+                    self._ff_commit_t = 0.25  # seconds we keep this step unless we're very close
+                else:
+                    if step != prev:
+                        # only switch when near old committed center or TTL expired
+                        pcx = prev[0] * CELL_SIZE + CELL_SIZE * 0.5
+                        pcy = prev[1] * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
+                        d2 = (pcx - cx0) ** 2 + (pcy - cy0) ** 2
+                        if d2 <= (CELL_SIZE * 0.35) ** 2 or getattr(self, "_ff_commit_t", 0.0) <= 0.0:
+                            self._ff_commit = step
+                            self._ff_commit_t = 0.25
+                        else:
+                            step = prev  # keep previous recommendation to avoid oscillation
+                    else:
+                        self._ff_commit_t = max(0.0, getattr(self, "_ff_commit_t", 0.0) - dt)
+            else:
+                # bosses take simple-chase path (ignore FF)
+                step = step if not is_boss_simple else None
 
         if step is not None:
             nx, ny = step
@@ -3296,7 +3321,6 @@ class Zombie:
             slot = float(getattr(self, "twin_slot", 1.0))
             # a small sideways step (screen-aligned is fine here)
             dx, dy = 0.0, slot * max(0.6, min(speed, 1.2))
-
 
         # —— 侧移（反卡住）：被卡住一小会儿就沿着法向 90° 滑行 ——
         if self._avoid_t > 0.0:
@@ -3366,8 +3390,18 @@ class Zombie:
         blocked = (self._hit_ob is not None)
 
         moved2 = (self.x - oldx) ** 2 + (self.y - oldy) ** 2
+        min_move2 = max(0.04, (0.15 * speed) * (0.15 * speed))  # speed-scaled
 
-        min_move2 = max(0.04, (0.15 * speed) * (0.15 * speed))  # speed-scaled threshold
+        # 目标距离是否在本帧没有明显下降（允许轻微抖动）
+        dist2 = (self.rect.centerx - int(target_cx)) ** 2 + (self.rect.centery - int(target_cy)) ** 2
+        prev_d2 = getattr(self, "_prev_d2", float("inf"))
+        no_progress = (dist2 > prev_d2 - 1.0)
+        self._prev_d2 = dist2
+
+        if (blocked and moved2 < min_move2) or (no_progress and moved2 < min_move2):
+            self._stuck_t = getattr(self, "_stuck_t", 0.0) + dt
+        else:
+            self._stuck_t = 0.0
 
         # progress to current target (player or focus block) this frame
         dist2 = (self.rect.centerx - int(target_cx)) ** 2 + (self.rect.centery - int(target_cy)) ** 2
@@ -5108,34 +5142,38 @@ def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> G
     return graph
 
 # --- Simple grid Dijkstra from goal -> all cells (shared flow field) ---
-def build_flow_field(grid_size, obstacles, goal_xy):
-    import heapq
+def build_flow_field(grid_size, obstacles, goal_xy, pad=0):
     INF = 10**9
-    gx, gy = goal_xy
-    # dist[x][y] and next_step[x][y] store where to go next from (x,y)
-    dist = [[INF]*grid_size for _ in range(grid_size)]
-    next_step = [[None]*grid_size for _ in range(grid_size)]
+    goal_x, goal_y = goal_xy
 
-    def passable(nx, ny):
-        ob = obstacles.get((nx, ny))
-        if not ob: return True
-        if getattr(ob, "nonblocking", False): return True
-        t = getattr(ob, "type", "")
-        return t != "Indestructible"
+    # Precompute a padded "blocked" set (Indestructible + MainBlock only)
+    hard = {(gx, gy) for (gx, gy), ob in obstacles.items()
+            if getattr(ob, "type", "") in ("Indestructible", "MainBlock")}
+    blocked = set(hard)
+    if pad > 0:
+        for gx, gy in list(hard):
+            for dx in range(-pad, pad + 1):
+                for dy in range(-pad, pad + 1):
+                    nx, ny = gx + dx, gy + dy
+                    if 0 <= nx < grid_size and 0 <= ny < grid_size:
+                        blocked.add((nx, ny))
 
-    def cell_cost(nx, ny):
-        ob = obstacles.get((nx, ny))
-        if not ob: return 1
-        if getattr(ob, "nonblocking", False): return 1
-        return 10 if getattr(ob, "type", "") == "Destructible" else INF
+    def cell_cost(x, y):
+        if (x, y) in blocked:
+            return INF
+        ob = obstacles.get((x, y))
+        # Destructible: passable but slightly expensive, keeps paths from grazing edges
+        if ob and getattr(ob, "type", "") == "Destructible":
+            return 4
+        return 1
 
-    if not (0 <= gx < grid_size and 0 <= gy < grid_size):
-        return None, None
-
+    # Dijkstra from goal (your existing logic, but skip blocked cells)
+    dist = [[INF] * grid_size for _ in range(grid_size)]
+    next_step = [[None] * grid_size for _ in range(grid_size)]
     pq = []
-    if passable(gx, gy):
-        dist[gx][gy] = 0
-        heapq.heappush(pq, (0, gx, gy))
+    if 0 <= goal_x < grid_size and 0 <= goal_y < grid_size and cell_cost(goal_x, goal_y) < INF:
+        dist[goal_x][goal_y] = 0
+        heapq.heappush(pq, (0, goal_x, goal_y))
 
     while pq:
         d, x, y = heapq.heappop(pq)
@@ -5151,11 +5189,10 @@ def build_flow_field(grid_size, obstacles, goal_xy):
             nd = d + c
             if nd < dist[nx][ny]:
                 dist[nx][ny] = nd
-                # from (nx,ny) go to (x,y) next (i.e., step along steepest descent)
                 next_step[nx][ny] = (x, y)
                 heapq.heappush(pq, (nd, nx, ny))
-
     return dist, next_step
+
 
 # ==================== 新增游戏状态类 ====================
 class SpatialHash:
@@ -5240,6 +5277,7 @@ class GameState:
         self._ff_goal = None  # (gx, gy) of player last time
         self._ff_dirty = True
         self._ff_timer = 0.0  # cooldown to throttle rebuilds
+        self._ff_tacc = 0.0
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -5419,11 +5457,19 @@ class GameState:
     def refresh_flow_field(self, player_tile, dt=0.0):
         # throttle rebuilds to ~0.3s or on dirty/goal change
         self._ff_timer = max(0.0, self._ff_timer - dt)
+        self._ff_tacc = min(1.0, float(getattr(self, "_ff_tacc", 0.0)) + float(dt or 0.0))
         if self._ff_dirty or self._ff_timer <= 0.0 or self._ff_goal != player_tile:
             self.ff_dist, self.ff_next = build_flow_field(GRID_SIZE, self.obstacles, player_tile)
             self._ff_goal = player_tile
             self._ff_dirty = False
             self._ff_timer = 0.30
+            self._ff_tacc = 0.0
+        if self._ff_tacc >= 0.30 or self._ff_dirty:
+            goal = self._ff_goal or player_tile
+            # pad=1 uses the optional arg from build_flow_field(...) signature
+            self.ff_dist, self.ff_next = build_flow_field(GRID_SIZE, self.obstacles, goal, pad=1)
+            self._ff_dirty = False
+            self._ff_tacc = 0.0
 
     # ---- 攻击前的提示圈（到时后生成酸池等）----
     def spawn_telegraph(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
