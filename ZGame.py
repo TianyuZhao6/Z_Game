@@ -3144,6 +3144,33 @@ class Zombie:
             if e2 <= dx: err += dx; y0 += sy
         return None
 
+    def _choose_bypass_cell(self, ob_cell, player_cell, obstacles_dict):
+        """Pick a simple side cell next to the blocking obstacle to go around it."""
+        ox, oy = ob_cell
+        px, py = player_cell
+
+        # Prefer going around the obstacle on the side perpendicular
+        # to the main player-obstacle axis (very simple wall-hug).
+        if abs(px - ox) >= abs(py - oy):
+            primary = [(ox, oy - 1), (ox, oy + 1)]
+        else:
+            primary = [(ox - 1, oy), (ox + 1, oy)]
+
+        def free(c):
+            x, y = c
+            return (0 <= x < GRID_SIZE) and (0 <= y < GRID_SIZE) and (c not in obstacles_dict)
+
+        cands = [c for c in primary if free(c)]
+        if not cands:
+            # Fallback: try the four diagonals
+            diag = [(ox + 1, oy + 1), (ox + 1, oy - 1), (ox - 1, oy + 1), (ox - 1, oy - 1)]
+            cands = [c for c in diag if free(c)]
+        if not cands:
+            return None
+
+        # Choose the one closer to the player.
+        return min(cands, key=lambda c: (c[0] - px) ** 2 + (c[1] - py) ** 2)
+
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
         # shift last → prev at frame start
         self._foot_prev = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))
@@ -3162,6 +3189,8 @@ class Zombie:
 
         if not hasattr(self, "attack_timer"): self.attack_timer = 0.0
         self.attack_timer += dt
+        # simple bypass lifetime
+        self._bypass_t = max(0.0, getattr(self, "_bypass_t", 0.0) - dt)
         # wipe last-hit each frame (esp. when we skip collide due to no_clip)
         self._hit_ob = None
 
@@ -3213,16 +3242,26 @@ class Zombie:
             if getattr(self, "can_crush_all_blocks", False) or getattr(self._hit_ob, "type", "") == "Destructible":
                 self._focus_block = self._hit_ob
 
-        # 视线被“可破坏物”先挡住 → 把它当作“门”优先破坏
+        # 视线被障碍挡住：
+        # - 若是红色(Destructible) → 把它当“门”，优先破坏
+        # - 否则：普通僵尸(basic) 尝试一个极简的“旁路”目标格
         if not self._focus_block:
             gz = (int((self.x + self.size * 0.5) // CELL_SIZE), int((self.y + self.size * 0.5) // CELL_SIZE))
             gp = (int((player.x + player.size * 0.5) // CELL_SIZE), int((player.y + player.size * 0.5) // CELL_SIZE))
 
             ob = self.first_obstacle_on_grid_line(gz, gp, game_state.obstacles)
-            if ob and getattr(self, "can_crush_all_blocks", False):
-                self._focus_block = ob
-            else:
-                self._focus_block = None
+            self._focus_block = None
+
+            if ob:
+                if getattr(ob, "type", "") == "Destructible":
+                    # red block: break it
+                    self._focus_block = ob
+                elif not getattr(self, "is_boss", False):
+                    # grey block: pick a side cell and follow it for a short time
+                    bypass = self._choose_bypass_cell(ob.grid_pos, gp, game_state.obstacles)
+                    if bypass:
+                        self._bypass_cell = bypass
+                        self._bypass_t = 0.50  # ~0.5s of commitment to the side cell
 
         if self._focus_block:
             target_cx, target_cy = self._focus_block.rect.centerx, self._focus_block.rect.centery
@@ -3252,7 +3291,7 @@ class Zombie:
         fd = getattr(game_state, "ff_dist", None)
 
         # 1) primary: read next step from the 2-D flow field
-        step = ff[gy][gx] if (ff is not None and 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE) else None
+        step = ff[gx][gy] if (ff is not None and 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE) else None
 
         # 2) fallback: pick the neighbor with the smallest distance (row-major: fd[ny][nx])
         if step is None and fd is not None:
@@ -3297,6 +3336,14 @@ class Zombie:
             else:
                 # bosses take simple-chase path (ignore FF)
                 step = step if not is_boss_simple else None
+        # Simple-bypass override for regular zombies
+        if getattr(self, "_bypass_t", 0.0) > 0.0 and getattr(self, "_bypass_cell", None) is not None:
+            # drop it if we already reached the side cell or LoS is now clear
+            if (gx, gy) == self._bypass_cell or not self.first_obstacle_on_grid_line((gx, gy), gp, game_state.obstacles):
+                self._bypass_t = 0.0
+                self._bypass_cell = None
+            else:
+                step = self._bypass_cell
 
         if step is not None:
             nx, ny = step
