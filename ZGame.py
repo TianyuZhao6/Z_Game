@@ -62,10 +62,11 @@ def mono_font(size: int) -> "pygame.font.Font":
         pass
     return pygame.font.SysFont("monospace", size)
 
+
 def _draw_rect_perimeter_progress(surf: "pygame.Surface",
                                   rect: "pygame.Rect",
                                   progress: float,
-                                  color: tuple[int,int,int],
+                                  color: tuple[int, int, int],
                                   width: int = 4) -> None:
     """
     Draw a single stroke that wraps the rect's perimeter from top-left clockwise.
@@ -80,10 +81,10 @@ def _draw_rect_perimeter_progress(surf: "pygame.Surface",
     remain = int(perimeter * p)
 
     edges = [  # ((sx,sy),(ex,ey), length)
-        ((x, y), (x + w, y), w),           # top: left -> right
-        ((x + w, y), (x + w, y + h), h),   # right: top -> bottom
-        ((x + w, y + h), (x, y + h), w),   # bottom: right -> left
-        ((x, y + h), (x, y), h),           # left: bottom -> top
+        ((x, y), (x + w, y), w),  # top: left -> right
+        ((x + w, y), (x + w, y + h), h),  # right: top -> bottom
+        ((x + w, y + h), (x, y + h), w),  # bottom: right -> left
+        ((x, y + h), (x, y), h),  # left: bottom -> top
     ]
 
     for (sx, sy), (ex, ey), L in edges:
@@ -100,11 +101,13 @@ def _draw_rect_perimeter_progress(surf: "pygame.Surface",
             pygame.draw.line(surf, color, (sx, sy), (sx + dirx * seg, sy), width)
         remain -= seg
 
+
 # === Shield HUD style (tweak as you like) ===
-SHIELD_EDGE_COLOR  = (30, 140, 190)      # dark cyan
-SHIELD_FILL_COLOR  = (60, 180, 255, 60)  # translucent inner tint (RGBA with alpha)
-SHIELD_EDGE_WIDTH  = 3                   # shell stroke thickness
-SHIELD_EXPAND_PX   = 4                   # how much wider than the HP bar
+SHIELD_EDGE_COLOR = (30, 140, 190)  # dark cyan
+SHIELD_FILL_COLOR = (60, 180, 255, 60)  # translucent inner tint (RGBA with alpha)
+SHIELD_EDGE_WIDTH = 3  # shell stroke thickness
+SHIELD_EXPAND_PX = 4  # how much wider than the HP bar
+
 
 def _draw_shield_shell(surf: "pygame.Surface",
                        bar_rect: "pygame.Rect",
@@ -113,8 +116,8 @@ def _draw_shield_shell(surf: "pygame.Surface",
                        *,
                        expand: int = SHIELD_EXPAND_PX,
                        edge_width: int = SHIELD_EDGE_WIDTH,
-                       edge_color: tuple[int,int,int] = SHIELD_EDGE_COLOR,
-                       fill_color: tuple[int,int,int,int] = SHIELD_FILL_COLOR) -> None:
+                       edge_color: tuple[int, int, int] = SHIELD_EDGE_COLOR,
+                       fill_color: tuple[int, int, int, int] = SHIELD_FILL_COLOR) -> None:
     """
     Draw a slightly larger, hollow rounded-rect over a portion of the HP bar.
     start_ratio: where the shield starts (0..1), usually at current HP ratio
@@ -540,6 +543,7 @@ def ensure_passage_budget(obstacles: dict, grid_size: int, player_spawn: tuple, 
         destructibles.remove(pos)
         obstacles.pop(pos, None)
 
+
 # --- Domain/Biome helpers (one-level-only effects) ---
 def apply_domain_buffs_for_level(game_state, player):
     """
@@ -552,11 +556,11 @@ def apply_domain_buffs_for_level(game_state, player):
 
     # Reset per-level knobs
     game_state.biome_zombie_contact_mult = 1.0
-    game_state.biome_boss_contact_mult   = 1.0
-    game_state.biome_zombie_hp_mult      = 1.0
-    game_state.biome_boss_hp_mult        = 1.0
-    game_state.biome_bandit_hp_mult      = 1.0
-    game_state._fog_biome_forced         = False
+    game_state.biome_boss_contact_mult = 1.0
+    game_state.biome_zombie_hp_mult = 1.0
+    game_state.biome_boss_hp_mult = 1.0
+    game_state.biome_bandit_hp_mult = 1.0
+    game_state._fog_biome_forced = False
 
     if b == "Misty Forest":
         # Same fog feel as Lv10
@@ -567,7 +571,7 @@ def apply_domain_buffs_for_level(game_state, player):
         # Player ×2; zombies ×2; bosses ×1.5
         player.bullet_damage = int(player.bullet_damage * 2)
         game_state.biome_zombie_contact_mult = 2.0
-        game_state.biome_boss_contact_mult   = 1.5
+        game_state.biome_boss_contact_mult = 1.5
 
     elif b == "Bastion of Stone":
         player.shield_hp = int(round(player.max_hp * 0.50))
@@ -599,15 +603,17 @@ def apply_biome_on_zombie_spawn(z, game_state):
             z.shield_hp = int(round(z.max_hp * 0.50))
             z.shield_max = z.shield_hp
 
+
 def draw_shield_outline(screen, rect):
     # pulsing alpha for visibility
     t = pygame.time.get_ticks() * 0.006
     a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
     # draw a rounded rectangle outline on a small alpha surface
     pad = 6
-    s = pygame.Surface((rect.width + pad*2, rect.height + pad*2), pygame.SRCALPHA)
+    s = pygame.Surface((rect.width + pad * 2, rect.height + pad * 2), pygame.SRCALPHA)
     pygame.draw.rect(s, (90, 180, 255, a), s.get_rect(), width=4, border_radius=6)
     screen.blit(s, s.get_rect(center=rect.center))
+
 
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
@@ -3167,7 +3173,7 @@ class Zombie:
 
         # 目标（默认追玩家；若锁定了一块挡路的可破坏物，则追它的中心）
         zx, zy = Zombie.feet_xy(self)
-        px, py = Zombie.feet_xy(player)
+        px, py = player.rect.centerx, player.rect.centery
         target_cx, target_cy = px, py
 
         # --- Twin “lane” offset and mild separation so they don’t block each other ---
@@ -3213,8 +3219,10 @@ class Zombie:
             gp = (int((player.x + player.size * 0.5) // CELL_SIZE), int((player.y + player.size * 0.5) // CELL_SIZE))
 
             ob = self.first_obstacle_on_grid_line(gz, gp, game_state.obstacles)
-            if ob and (getattr(self, "can_crush_all_blocks", False) or getattr(ob, "type", "") == "Destructible"):
+            if ob and getattr(self, "can_crush_all_blocks", False):
                 self._focus_block = ob
+            else:
+                self._focus_block = None
 
         if self._focus_block:
             target_cx, target_cy = self._focus_block.rect.centerx, self._focus_block.rect.centery
@@ -3240,11 +3248,31 @@ class Zombie:
         cx0, cy0 = self.rect.centerx, self.rect.centery
         gx = int(cx0 // CELL_SIZE)
         gy = int((cy0 - INFO_BAR_HEIGHT) // CELL_SIZE)
-
-        step = None
         ff = getattr(game_state, "ff_next", None)
-        if ff is not None and 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE:
-            step = ff[gy][gx]  # (nx, ny) or None
+        fd = getattr(game_state, "ff_dist", None)
+
+        # 1) primary: read next step from the 2-D flow field
+        step = ff[gy][gx] if (ff is not None and 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE) else None
+
+        # 2) fallback: pick the neighbor with the smallest distance (row-major: fd[ny][nx])
+        if step is None and fd is not None:
+            best = None
+            bestd = 10 ** 9
+            for nx in (gx - 1, gx, gx + 1):
+                for ny in (gy - 1, gy, gy + 1):
+                    if nx == gx and ny == gy:
+                        continue
+                    if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE:
+                        d = fd[ny][nx]  # <-- index order fixed
+                    else:
+                        d = 10 ** 9
+                    if d < bestd:
+                        # avoid choosing a neighbor hidden behind a corner
+                        if not Zombie.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
+                            bestd = d
+                            best = (nx, ny)
+            step = best
+
             # --- smooth FF steering: commit to one recommended cell briefly to stop jitter ---
             is_boss_simple = getattr(self, "type", "") in ("boss_mist", "boss_mem")  # bosses: simple-chase
             if not is_boss_simple and step is not None:
@@ -3280,7 +3308,7 @@ class Zombie:
             L = (dx * dx + dy * dy) ** 0.5 or 1.0
             ux, uy = dx / L, dy / L
             # desired velocity this frame
-            vx_des, vy_des = iso_equalized_step(ux, uy, speed)  # or `speed` in your branch
+            vx_des, vy_des = chase_step(ux, uy, speed)
 
             # light steering smoothing (≈ 120 ms time constant)
             tau = 0.12
@@ -3302,7 +3330,7 @@ class Zombie:
             L = (dx * dx + dy * dy) ** 0.5 or 1.0
             ux, uy = dx / L, dy / L
             # desired velocity this frame
-            vx_des, vy_des = iso_equalized_step(ux, uy, speed)  # or `speed` in your branch
+            vx_des, vy_des = chase_step(ux, uy, speed)
 
             # light steering smoothing (≈ 120 ms time constant)
             tau = 0.12
@@ -3666,7 +3694,6 @@ class Zombie:
         # 记忆吞噬者（boss_mem）
         if getattr(self, "is_boss", False) and getattr(self, "type", "") == "boss_mem":
             hp_pct = max(0.0, self.hp / max(1, self.max_hp))
-
 
             # 阶段切换
             if hp_pct > 0.70:
@@ -4531,6 +4558,11 @@ class DamageText:
 def sign(v): return 1 if v > 0 else (-1 if v < 0 else 0)
 
 
+# simple movement helper: use iso equalization only when using ISO view
+def chase_step(ux: float, uy: float, speed: float):
+    return iso_equalized_step(ux, uy, speed) if USE_ISO else (ux * speed, uy * speed)
+
+
 def heuristic(a, b): return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
@@ -5141,9 +5173,10 @@ def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> G
                 graph.add_edge(current_pos, neighbor_pos, weight)
     return graph
 
+
 # --- Simple grid Dijkstra from goal -> all cells (shared flow field) ---
 def build_flow_field(grid_size, obstacles, goal_xy, pad=0):
-    INF = 10**9
+    INF = 10 ** 9
     goal_x, goal_y = goal_xy
 
     # Precompute a padded "blocked" set (Indestructible + MainBlock only)
@@ -5179,7 +5212,7 @@ def build_flow_field(grid_size, obstacles, goal_xy, pad=0):
         d, x, y = heapq.heappop(pq)
         if d != dist[x][y]:
             continue
-        for dx, dy in ((1,0),(-1,0),(0,1),(0,-1)):
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             nx, ny = x + dx, y + dy
             if not (0 <= nx < grid_size and 0 <= ny < grid_size):
                 continue
