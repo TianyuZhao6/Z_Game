@@ -3303,22 +3303,25 @@ class Zombie:
 
         # 2) fallback: pick the neighbor with the smallest distance (row-major: fd[ny][nx])
         if step is None and fd is not None and not boss_simple:
-
             best = None
             bestd = 10 ** 9
             for nx in (gx - 1, gx, gx + 1):
                 for ny in (gy - 1, gy, gy + 1):
                     if nx == gx and ny == gy:
                         continue
-                    if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE:
-                        d = fd[ny][nx]  # <-- index order fixed
-                    else:
-                        d = 10 ** 9
+                    if not (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE):
+                        continue
+                    # 1) skip blocked target cells
+                    if (nx, ny) in game_state.obstacles:
+                        continue
+                    # 2) forbid cutting corners on diagonals
+                    if nx != gx and ny != gy:
+                        if (gx, ny) in game_state.obstacles or (nx, gy) in game_state.obstacles:
+                            continue
+                    d = fd[ny][nx]
                     if d < bestd:
-                        # avoid choosing a neighbor hidden behind a corner
-                        if not Zombie.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
-                            bestd = d
-                            best = (nx, ny)
+                        bestd = d
+                        best = (nx, ny)
             step = best
 
             # --- smooth FF steering: commit briefly to avoid oscillation (applies to all) ---
