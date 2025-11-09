@@ -3293,8 +3293,17 @@ class Zombie:
         # 1) primary: read next step from the 2-D flow field
         step = ff[gx][gy] if (ff is not None and 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE) else None
 
+        boss_simple = (getattr(self, "is_boss", False)
+                       or getattr(self, "type", "") in ("boss_mist", "boss_mem"))
+        if boss_simple:
+            step = None  # stay on simple-chase
+            self._ff_commit = None  # <-- critical: use None, not 0.0
+            self._ff_commit_t = 0.0
+            self._avoid_t = 0.0
+
         # 2) fallback: pick the neighbor with the smallest distance (row-major: fd[ny][nx])
-        if step is None and fd is not None:
+        if step is None and fd is not None and not boss_simple:
+
             best = None
             bestd = 10 ** 9
             for nx in (gx - 1, gx, gx + 1):
@@ -3312,17 +3321,17 @@ class Zombie:
                             best = (nx, ny)
             step = best
 
-            # --- smooth FF steering: commit to one recommended cell briefly to stop jitter ---
-            is_boss_simple = getattr(self, "type", "") in ("boss_mist", "boss_mem")  # bosses: simple-chase
-            if not is_boss_simple and step is not None:
+            # --- smooth FF steering: commit briefly to avoid oscillation (applies to all) ---
+            if step is not None:
                 prev = getattr(self, "_ff_commit", None)
+                # Make sure prev is a (x,y) cell, otherwise treat as no commit
+                if not (isinstance(prev, (tuple, list)) and len(prev) == 2):
+                    prev = None
                 if prev is None:
-                    # first time: lock in
                     self._ff_commit = step
-                    self._ff_commit_t = 0.25  # seconds we keep this step unless we're very close
+                    self._ff_commit_t = 0.25
                 else:
                     if step != prev:
-                        # only switch when near old committed center or TTL expired
                         pcx = prev[0] * CELL_SIZE + CELL_SIZE * 0.5
                         pcy = prev[1] * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
                         d2 = (pcx - cx0) ** 2 + (pcy - cy0) ** 2
@@ -3330,12 +3339,13 @@ class Zombie:
                             self._ff_commit = step
                             self._ff_commit_t = 0.25
                         else:
-                            step = prev  # keep previous recommendation to avoid oscillation
+                            step = prev
                     else:
                         self._ff_commit_t = max(0.0, getattr(self, "_ff_commit_t", 0.0) - dt)
-            else:
-                # bosses take simple-chase path (ignore FF)
-                step = step if not is_boss_simple else None
+
+            # else:
+            #     # bosses take simple-chase path (ignore FF)
+            #     step = step if not is_boss_simple else None
         # Simple-bypass override for regular zombies
         if getattr(self, "_bypass_t", 0.0) > 0.0 and getattr(self, "_bypass_cell", None) is not None:
             # drop it if we already reached the side cell or LoS is now clear
@@ -3391,11 +3401,10 @@ class Zombie:
             oldx, oldy = self.x, self.y
 
         # If target is exactly on us this frame, dodge sideways deterministically
-        if abs(dx) < 1e-3 and abs(dy) < 1e-3:
-            # use twin_slot to pick a perpendicular nudge so twins diverge instead of pinning
-            slot = float(getattr(self, "twin_slot", 1.0))
-            # a small sideways step (screen-aligned is fine here)
-            dx, dy = 0.0, slot * max(0.6, min(speed, 1.2))
+        if not getattr(self, "is_boss", False):
+            if abs(dx) < 1e-3 and abs(dy) < 1e-3:
+                slot = float(getattr(self, "twin_slot", 1.0))
+                dx, dy = 0.0, slot * max(0.6, min(speed, 1.2))
 
         # —— 侧移（反卡住）：被卡住一小会儿就沿着法向 90° 滑行 ——
         if self._avoid_t > 0.0:
@@ -3406,6 +3415,15 @@ class Zombie:
                 ax, ay = dy, -dx  # 向右
             dx, dy = ax, ay
             self._avoid_t = max(0.0, self._avoid_t - dt)
+        # Bosses: no side-slip shimmy
+        if (not getattr(self, "is_boss", False)) and self._avoid_t > 0.0:
+            if self._avoid_side > 0:
+                ax, ay = -dy, dx
+            else:
+                ax, ay = dy, -dx
+            dx, dy = ax, ay
+            self._avoid_t = max(0.0, self._avoid_t - dt)
+
         # --- no-clip phase: skip collision resolution for a few frames after bulldozing
         if getattr(self, "no_clip_t", 0.0) > 0.0:
             self.no_clip_t = max(0.0, self.no_clip_t - dt)
