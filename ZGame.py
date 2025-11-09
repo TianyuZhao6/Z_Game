@@ -3164,6 +3164,13 @@ class Zombie:
         if not cands:
             # Fallback: try the four diagonals
             diag = [(ox + 1, oy + 1), (ox + 1, oy - 1), (ox - 1, oy + 1), (ox - 1, oy - 1)]
+
+            def diag_valid(c):
+                cx, cy = c
+                # NEW: reject diagonal if both side-adjacents are blocked (corner)
+                side1 = (ox, cy) in obstacles_dict
+                side2 = (cx, oy) in obstacles_dict
+                return free(c) and not (side1 and side2)
             cands = [c for c in diag if free(c)]
         if not cands:
             return None
@@ -3246,9 +3253,10 @@ class Zombie:
         # - 若是红色(Destructible) → 把它当“门”，优先破坏
         # - 否则：普通僵尸(basic) 尝试一个极简的“旁路”目标格
         if not self._focus_block:
-            gz = (int((self.x + self.size * 0.5) // CELL_SIZE), int((self.y + self.size * 0.5) // CELL_SIZE))
-            gp = (int((player.x + player.size * 0.5) // CELL_SIZE), int((player.y + player.size * 0.5) // CELL_SIZE))
-
+            gz = (int((self.x + self.size * 0.5) // CELL_SIZE),
+                  int((self.y + self.size * 0.5) // CELL_SIZE))
+            gp = (int(player.rect.centerx // CELL_SIZE),
+                  int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE))  # <- use rect center
             ob = self.first_obstacle_on_grid_line(gz, gp, game_state.obstacles)
             self._focus_block = None
 
@@ -3320,8 +3328,13 @@ class Zombie:
                             continue
                     d = fd[ny][nx]
                     if d < bestd:
-                        bestd = d
-                        best = (nx, ny)
+                        if nx != gx and ny != gy:
+                            if ((gx, ny) in game_state.obstacles) and ((nx, gy) in game_state.obstacles):
+                                continue
+                            # existing “no-hidden-corner” / LoS check
+                        if not Zombie.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
+                            bestd = d
+                            best = (nx, ny)
             step = best
 
             # --- smooth FF steering: commit briefly to avoid oscillation (applies to all) ---
