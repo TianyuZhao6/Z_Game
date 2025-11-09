@@ -1004,6 +1004,7 @@ MIN_FIRE_COOLDOWN = 0.12  # never shoot faster than once every 0.12s (~8.3/s)
 BULLET_SPEED = 1000.0  # pixels per second (controls travel speed)
 BULLET_SPACING_PX = 260.0  # desired spacing between bullets along their path
 BULLET_RADIUS = 4
+BULLET_RADIUS_MAX = 16
 BULLET_DAMAGE_ZOMBIE = 12
 BULLET_DAMAGE_BLOCK = 10
 ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
@@ -1458,6 +1459,38 @@ def iso_equalized_step(dx: float, dy: float, speed: float) -> tuple[float, float
     scale = float(speed) * float(ISO_EQ_GAIN) / screen_mag
     return dx * scale, dy * scale
 
+
+def bullet_radius_for_damage(dmg: int) -> int:
+    """
+    Sub-linear growth by damage percentage, with a smooth cap.
+    Base damage -> BULLET_RADIUS. As damage rises, the bonus eases in and
+    asymptotically approaches BULLET_RADIUS_MAX.
+    """
+    base = float(META.get("base_dmg", BULLET_DAMAGE_ZOMBIE)) or 1.0
+    ratio = max(0.0, float(dmg) / base)
+
+    if ratio <= 1.0:
+        r = BULLET_RADIUS
+    else:
+        gain = ratio - 1.0  # % over base
+        slow = gain / (1.0 + 0.75 * gain)  # slows early growth, < 1.0
+        r = BULLET_RADIUS + (BULLET_RADIUS_MAX - BULLET_RADIUS) * slow
+
+    return max(2, min(BULLET_RADIUS_MAX, int(round(r))))
+
+def enemy_shot_radius_for_damage(dmg: int,
+                                 base_radius: int = 4,
+                                 cap: int = int(CELL_SIZE * 0.26),
+                                 k: float = 0.035) -> int:
+    """
+    Smoothly map enemy shot damage → on-screen radius.
+    - base_radius: default tiny shot
+    - cap: max size (kept below player bullet cap to preserve readability)
+    - k: growth rate (lower = slower growth)
+    """
+    dmg = max(0, int(dmg))
+    r = base_radius + int((cap - base_radius) * (1.0 - math.exp(-k * dmg)))
+    return max(base_radius, min(cap, r))
 
 def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     """
@@ -3171,6 +3204,7 @@ class Zombie:
                 side1 = (ox, cy) in obstacles_dict
                 side2 = (cx, oy) in obstacles_dict
                 return free(c) and not (side1 and side2)
+
             cands = [c for c in diag if free(c)]
         if not cands:
             return None
@@ -3365,7 +3399,8 @@ class Zombie:
         # Simple-bypass override for regular zombies
         if getattr(self, "_bypass_t", 0.0) > 0.0 and getattr(self, "_bypass_cell", None) is not None:
             # drop it if we already reached the side cell or LoS is now clear
-            if (gx, gy) == self._bypass_cell or not self.first_obstacle_on_grid_line((gx, gy), gp, game_state.obstacles):
+            if (gx, gy) == self._bypass_cell or not self.first_obstacle_on_grid_line((gx, gy), gp,
+                                                                                     game_state.obstacles):
                 self._bypass_t = 0.0
                 self._bypass_cell = None
             else:
@@ -4254,6 +4289,7 @@ class Bullet:
         self.traveled = 0.0
         self.max_dist = max_dist
         self.damage = int(damage)
+        self.r = bullet_radius_for_damage(self.damage)
 
     def update(self, dt: float, game_state: 'GameState', zombies: List['Zombie'], player: 'Player' = None):
         if not self.alive:
@@ -4266,7 +4302,8 @@ class Bullet:
             self.alive = False
             return
 
-        r = pygame.Rect(int(self.x - BULLET_RADIUS), int(self.y - BULLET_RADIUS), BULLET_RADIUS * 2, BULLET_RADIUS * 2)
+        _rr = int(getattr(self, "r", BULLET_RADIUS))
+        r = pygame.Rect(int(self.x - _rr), int(self.y - _rr), _rr * 2, _rr * 2)
 
         # 1) zombies
         for z in list(zombies):
@@ -4409,7 +4446,9 @@ class Bullet:
                 return
 
     def draw(self, screen, cam_x, cam_y):
-        pygame.draw.circle(screen, (255, 255, 255), (int(self.x - cam_x), int(self.y - cam_y)), BULLET_RADIUS)
+        pygame.draw.circle(screen, (255, 255, 255),
+                           (int(self.x - cam_x), int(self.y - cam_y)),
+                           int(getattr(self, "r", BULLET_RADIUS)))
 
 
 class Spoil:
@@ -4518,6 +4557,13 @@ class EnemyShot:
         if self.traveled >= self.max_dist:
             self.alive = False
             return
+        
+        # Hell-only: scale enemy-shot radius from its damage
+        if getattr(game_state, "biome_active", None) == "Scorched Hell":
+            self.r = enemy_shot_radius_for_damage(int(self.dmg))
+        else:
+            # keep whatever radius it was created with (default small)
+            self.r = int(getattr(self, "r", BULLET_RADIUS))
 
         # 本帧碰撞 AABB
         # 本帧碰撞 AABB（优先用自身半径）
@@ -6005,7 +6051,9 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         for b in bullets:
             wx, wy = b.x / CELL_SIZE, (b.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-            drawables.append(("bullet", sy, {"cx": sx, "cy": sy}))
+            drawables.append(("bullet", sy, {"cx": sx, "cy": sy, "r": int(getattr(b, "r", BULLET_RADIUS))}))
+
+
     if enemy_shots:
         for es in enemy_shots:
             wx, wy = es.x / CELL_SIZE, (es.y - INFO_BAR_HEIGHT) / CELL_SIZE
@@ -6013,10 +6061,17 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             if isinstance(es, MistShot):
                 drawables.append(("mistshot", sy, {"cx": sx, "cy": sy, "obj": es}))
             else:
-                drawables.append(("eshot", sy, {"cx": sx, "cy": sy}))
+                drawables.append(("eshot", sy, {
+                    "cx": sx, "cy": sy,
+                    "r": int(getattr(es, "r", BULLET_RADIUS))
+                }))
 
     # 4) 排序后统一绘制（只保留这一段循环）
     drawables.sort(key=lambda x: x[1])
+    hell = (getattr(game_state, "biome_active", "") == "Scorched Hell")
+    COL_PLAYER_BULLET = (90, 200, 255) if hell else (255, 255, 255)  # cyan in Hell, white elsewhere
+    COL_ENEMY_SHOT = (255, 80, 80) if hell else (255, 120, 50)  # hot red in Hell, orange elsewhere
+
     for kind, _, data in drawables:
         if kind == "wall":
             gx, gy, col = data["gx"], data["gy"], data["color"]
@@ -6068,9 +6123,12 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             pygame.draw.circle(screen, (255, 255, 180), (cx, cy), r, 2)
 
         elif kind == "bullet":
-            pygame.draw.circle(screen, (255, 255, 255), (data["cx"], data["cy"]), BULLET_RADIUS)
+            cx, cy = data["cx"], data["cy"]
+            rad = int(data.get("r", BULLET_RADIUS))
+            pygame.draw.circle(screen, COL_PLAYER_BULLET, (cx, cy), rad)
         elif kind == "eshot":
-            pygame.draw.circle(screen, (255, 120, 50), (data["cx"], data["cy"]), BULLET_RADIUS)
+            rad = int(data.get("r", BULLET_RADIUS))
+            pygame.draw.circle(screen, COL_ENEMY_SHOT, (data["cx"], data["cy"]), rad)
         elif kind == "mistshot":
             es = data.get("obj")
             rad = int(getattr(es, "r", BULLET_RADIUS))
