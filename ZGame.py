@@ -786,7 +786,7 @@ XP_PER_ZOMBIE_TYPE = {
 XP_ZLEVEL_BONUS = 2  # bonus XP per zombie level above 1
 
 ZOMBIE_XP_TO_LEVEL = 15  # per level step for monsters
-PLAYER_XP_TO_LEVEL = 20  # base; scales by +20%
+PLAYER_XP_TO_LEVEL = 40  # base; scales by +20%
 # --- zombie spoils empowerment ---
 Z_SPOIL_HP_PER = 1  # 每 1 金币：+1 MaxHP & +1 当期HP
 Z_SPOIL_ATK_STEP = 5  # 每 5 金币：+1 攻击
@@ -2825,6 +2825,8 @@ class Player:
         self.level = 1
         self.xp = 0
         self.xp_to_next = player_xp_required(self.level)
+        self.xp_to_next = player_xp_required(self.level)
+        self.levelup_pending = 0  # NEW: # of level-up selections to show
 
         # per-run upgrades from shop (applied on spawn)
         self.bullet_damage = int(META.get("base_dmg", BULLET_DAMAGE_ZOMBIE)) + int(META.get("dmg", 0))
