@@ -4557,7 +4557,7 @@ class EnemyShot:
         if self.traveled >= self.max_dist:
             self.alive = False
             return
-        
+
         # Hell-only: scale enemy-shot radius from its damage
         if getattr(game_state, "biome_active", None) == "Scorched Hell":
             self.r = enemy_shot_radius_for_damage(int(self.dmg))
@@ -6069,7 +6069,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
     # 4) 排序后统一绘制（只保留这一段循环）
     drawables.sort(key=lambda x: x[1])
     hell = (getattr(game_state, "biome_active", "") == "Scorched Hell")
-    COL_PLAYER_BULLET = (90, 200, 255) if hell else (255, 255, 255)  # cyan in Hell, white elsewhere
+    COL_PLAYER_BULLET = (199, 68, 12) if hell else (120, 204, 121)  # color in Hell, white elsewhere
     COL_ENEMY_SHOT = (255, 80, 80) if hell else (255, 120, 50)  # hot red in Hell, orange elsewhere
 
     for kind, _, data in drawables:
