@@ -2925,7 +2925,9 @@ class Player:
         while self.xp >= self.xp_to_next:
             self.xp -= self.xp_to_next
             self.level += 1
-
+            # queue a free pick & immediately set next threshold
+            self.levelup_pending = getattr(self, "levelup_pending", 0) + 1
+            self.xp_to_next = player_xp_required(self.level)
             # small, reasonable level-up benefits
             self.bullet_damage += 1  # steady firepower growth
             self.max_hp += 2  # tiny durability growth
@@ -6610,6 +6612,95 @@ class GameSound:
                 pygame.mixer.music.set_volume(self.volume)
             except Exception as e:
                 print(f"[Audio] set_volume failed: {e}")
+
+def show_levelup_pick(screen, player):
+    clock = pygame.time.Clock()
+    overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 160))  # dim background
+
+    title_font = pygame.font.SysFont(None, 48, bold=True)
+    small = pygame.font.SysFont(None, 24)
+    large = pygame.font.SysFont(None, 28, bold=True)
+
+    # Define picks: name, key, desc, live_apply
+    def grant(player, key):
+        if key == "dmg":
+            META["dmg"] = META.get("dmg", 0) + 1
+            player.bullet_damage += 1
+        elif key == "firerate":
+            # multiplicative
+            META["firerate_mult"] = round(META.get("firerate_mult", 1.0) * 1.05, 3)
+            player.fire_rate_mult = META["firerate_mult"]
+        elif key == "range":
+            META["range_mult"] = round(META.get("range_mult", 1.0) * 1.10, 3)
+            # clamp to weapon cap
+            player.range = min(MAX_FIRE_RANGE, player.range * 1.10)
+        elif key == "speed":
+            META["speed"] = META.get("speed", 0) + 1
+            player.speed += 1
+        elif key == "maxhp":
+            META["maxhp"] = META.get("maxhp", 0) + 10
+            player.max_hp += 10
+            player.hp = min(player.hp + 10, player.max_hp)
+
+    picks = [
+        { "name": "+1 Damage",   "key": "dmg",      "desc": "Increase your bullet damage by 1." },
+        { "name": "+5% Fire Rate","key": "firerate","desc": "Shoot slightly faster (multiplicative)." },
+        { "name": "+10% Range",  "key": "range",    "desc": "Longer effective range for shots." },
+        { "name": "+1 Speed",    "key": "speed",    "desc": "Move faster." },
+        { "name": "+10 Max HP",  "key": "maxhp",    "desc": "Increase max HP and heal 10." },
+    ]
+
+    # layout
+    cols = 3
+    card_w, card_h = 360, 120
+    gap = 28
+    total_w = cols*card_w + (cols-1)*gap
+    start_x = (VIEW_W - total_w)//2
+    start_y = VIEW_H//2 - ((len(picks)+cols-1)//cols* (card_h+gap) - gap)//2
+
+    # Precompute card rects
+    cards = []
+    for i, it in enumerate(picks):
+        r = i // cols
+        c = i % cols
+        rx = start_x + c*(card_w+gap)
+        ry = start_y + r*(card_h+gap)
+        cards.append((pygame.Rect(rx, ry, card_w, card_h), it))
+
+    while True:
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+                # Esc does nothing here; force a pick to continue
+                pass
+            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                mx, my = e.pos
+                for rect, it in cards:
+                    if rect.collidepoint(mx, my):
+                        grant(player, it["key"])
+                        return  # one pick, then resume
+
+        # draw overlay
+        screen.blit(overlay, (0, 0))
+        title = title_font.render("LEVEL UP — CHOOSE ONE", True, (235, 235, 235))
+        screen.blit(title, title.get_rect(center=(VIEW_W//2, VIEW_H//2 - 180)))
+
+        mouse = pygame.mouse.get_pos()
+        for rect, it in cards:
+            hover = rect.collidepoint(*mouse)
+            pygame.draw.rect(screen, (245, 245, 245) if hover else (220, 220, 220), rect, border_radius=12)
+            inner = rect.inflate(-10, -10)
+            pygame.draw.rect(screen, (24, 24, 24), inner, border_radius=10)
+
+            name = large.render(it["name"], True, (240, 240, 240))
+            desc = small.render(it["desc"], True, (200, 200, 200))
+            screen.blit(name, (inner.x+14, inner.y+10))
+            screen.blit(desc, (inner.x+14, inner.y+50))
+
+        pygame.display.flip()
+        clock.tick(60)
 
 
 # ==================== 游戏主循环 ====================
