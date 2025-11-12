@@ -1478,6 +1478,7 @@ def bullet_radius_for_damage(dmg: int) -> int:
 
     return max(2, min(BULLET_RADIUS_MAX, int(round(r))))
 
+
 def enemy_shot_radius_for_damage(dmg: int,
                                  base_radius: int = 4,
                                  cap: int = int(CELL_SIZE * 0.26),
@@ -1491,6 +1492,7 @@ def enemy_shot_radius_for_damage(dmg: int,
     dmg = max(0, int(dmg))
     r = base_radius + int((cap - base_radius) * (1.0 - math.exp(-k * dmg)))
     return max(base_radius, min(cap, r))
+
 
 def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     """
@@ -2072,6 +2074,7 @@ def show_pause_menu(screen, background_surf):
                         flush_events()
                         return tag
 
+
 def _apply_levelup_choice(player, key: str):
     """Apply the chosen buff immediately AND persist in META so it carries over."""
     if key == "dmg":
@@ -2092,85 +2095,113 @@ def _apply_levelup_choice(player, key: str):
         player.max_hp += 5
         player.hp = min(player.max_hp, player.hp + 10)  # small heal like the mock
 
+
 def show_levelup_overlay(screen, background_surf, player):
     """
-    Dimmed-background, centered cards – same style as Pause.
-    Blocks until the player picks one. ESC opens Pause, then returns here.
+    Paused overlay: dim the current frame and show 4 random perk cards (2x2 grid) in the center.
+    Returns the chosen perk key (e.g., "dmg", "firerate", "range", "speed", "maxhp").
     """
+    import random
+    import pygame
+
+    W, H = screen.get_size()
     clock = pygame.time.Clock()
-    font = pygame.font.SysFont(None, 26)
-    title_font = pygame.font.SysFont(None, 56)
 
-    # five simple choices (no reroll)
-    cards = [
-        {"title": "+1 Damage",     "desc": "Increase your bullet damage by 1.",               "key": "dmg"},
-        {"title": "+5% Fire Rate", "desc": "Shoot slightly faster (multiplicative).",         "key": "firerate"},
-        {"title": "+10% Range",    "desc": "Longer effective range for shots.",               "key": "range"},
-        {"title": "+1 Speed",      "desc": "Move faster.",                                    "key": "speed"},
-        {"title": "+5 Max HP",     "desc": "Increase max HP and heal 10.",                    "key": "maxhp"},
+    # --- Perk pool (keys must match _apply_levelup_choice) ---
+    pool = [
+        {"key": "dmg", "title": "+1 Damage", "desc": "Increase your bullet damage by 1."},
+        {"key": "firerate", "title": "+5% Fire Rate", "desc": "Shoot slightly faster (multiplicative)."},
+        {"key": "range", "title": "+10% Range", "desc": "Longer effective range for shots."},
+        {"key": "speed", "title": "+1 Speed", "desc": "Move faster."},
+        {"key": "maxhp", "title": "+5 Max HP", "desc": "Increase max HP and heal 10."},
     ]
+    cards = random.sample(pool, k=min(4, len(pool)))
 
-    # layout: 3 on top row, 2 on bottom row – centered
-    card_w, card_h, gap = 320, 120, 28
-    rows = [
-        (3, VIEW_W // 2, 220),
-        (2, VIEW_W // 2, 220 + card_h + 40),
-    ]
+    # --- Fonts ---
+    title_font = pygame.font.SysFont(None, 64)
+    head_font = pygame.font.SysFont(None, 30)
+    body_font = pygame.font.SysFont(None, 24)
+
+    # --- Layout (2×2 grid) ---
+    card_w, card_h = 420, 140
+    gap_x, gap_y = 32, 28
+    total_w = 2 * card_w + gap_x
+    total_h = 2 * card_h + gap_y
+    base_x = (W - total_w) // 2
+    base_y = (H - total_h) // 2 + 10
+
     rects = []
-    idx = 0
-    for count, cx, y in rows:
-        total = count * card_w + (count - 1) * gap
-        x0 = cx - total // 2
-        for i in range(count):
-            rects.append(pygame.Rect(x0 + i * (card_w + gap), y, card_w, card_h))
-            idx += 1
+    for i in range(len(cards)):
+        cx = base_x + (i % 2) * (card_w + gap_x)
+        cy = base_y + (i // 2) * (card_h + gap_y)
+        rects.append(pygame.Rect(cx, cy, card_w, card_h))
+
+    # --- Prebuild dim mask ---
+    dim = pygame.Surface((W, H), pygame.SRCALPHA)
+    dim.fill((0, 0, 0, 140))  # similar to pause overlay darkness
+
+    title = title_font.render("LEVEL UP — CHOOSE ONE", True, (235, 235, 235))
+    title_rect = title.get_rect(center=(W // 2, base_y - 48))
 
     hover = -1
     while True:
-        # background (like Pause)
-        bg_scaled = pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H))
-        screen.blit(bg_scaled, (0, 0))
-        dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 170))
-        screen.blit(dim, (0, 0))
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                return None
+            if e.type == pygame.KEYDOWN:
+                # allow quick pick via 1..4
+                if e.key in (pygame.K_1, pygame.K_KP_1) and len(cards) >= 1: return cards[0]["key"]
+                if e.key in (pygame.K_2, pygame.K_KP_2) and len(cards) >= 2: return cards[1]["key"]
+                if e.key in (pygame.K_3, pygame.K_KP_3) and len(cards) >= 3: return cards[2]["key"]
+                if e.key in (pygame.K_4, pygame.K_KP_4) and len(cards) >= 4: return cards[3]["key"]
+                # Esc -> open your pause modal from overlay if desired
+                if e.key == pygame.K_ESCAPE:
+                    try:
+                        pause_from_overlay(screen, background_surf)
+                    except Exception:
+                        pass  # keep overlay alive after closing pause
+            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and hover != -1:
+                return cards[hover]["key"]
 
-        # title
-        title = title_font.render("LEVEL UP — CHOOSE ONE", True, (235, 235, 235))
-        screen.blit(title, title.get_rect(center=(VIEW_W // 2, 110)))
-
-        # cards
         mx, my = pygame.mouse.get_pos()
         hover = -1
         for i, r in enumerate(rects):
             if r.collidepoint(mx, my):
                 hover = i
-            # panel
-            pygame.draw.rect(screen, (35, 35, 37), r, border_radius=14)
-            brd = 3 if i == hover else 2
-            col = (220, 220, 230) if i == hover else (160, 160, 170)
-            pygame.draw.rect(screen, col, r, brd, border_radius=14)
+                break
 
-            c = cards[i]
-            t = font.render(c["title"], True, (235, 235, 235))
-            d = font.render(c["desc"], True, (200, 200, 205))
-            screen.blit(t, (r.x + 18, r.y + 14))
-            screen.blit(d, (r.x + 18, r.y + 58))
+        # --- draw ---
+        screen.blit(background_surf, (0, 0))
+        screen.blit(dim, (0, 0))
+        screen.blit(title, title_rect)
+
+        for i, (r, c) in enumerate(zip(rects, cards)):
+            # soft shadow
+            shadow = r.inflate(18, 18)
+            pygame.draw.rect(screen, (0, 0, 0, 90), shadow, border_radius=18)
+
+            # panel
+            pygame.draw.rect(screen, (35, 36, 38), r, border_radius=14)
+            # border: brighter on hover
+            border_col = (200, 200, 200) if i == hover else (120, 120, 120)
+            pygame.draw.rect(screen, border_col, r, width=2, border_radius=14)
+
+            # little index tag (1–4)
+            idx_lbl = head_font.render(str(i + 1), True, (210, 210, 210))
+            screen.blit(idx_lbl, idx_lbl.get_rect(midleft=(r.left + 14, r.top + 18)))
+
+            # title
+            title_surf = head_font.render(c["title"], True, (230, 230, 230))
+            screen.blit(title_surf, title_surf.get_rect(topleft=(r.left + 44, r.top + 12)))
+
+            # description (wrap lightly)
+            desc = c["desc"]
+            d_surf = body_font.render(desc, True, (195, 195, 195))
+            screen.blit(d_surf, d_surf.get_rect(topleft=(r.left + 20, r.top + 56)))
 
         pygame.display.flip()
-
-        for ev in pygame.event.get():
-            if ev.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
-            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
-                # same Pause while frozen; then come back to picker
-                pick = pause_from_overlay(screen, background_surf)
-                # just continue to re-render this picker afterwards
-            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1 and hover != -1:
-                # apply and leave
-                _apply_levelup_choice(player, cards[hover]["key"])
-                return
-
         clock.tick(60)
+
 
 def levelup_modal(screen, bg_surface, clock, time_left, player):
     """
@@ -2182,6 +2213,7 @@ def levelup_modal(screen, bg_surface, clock, time_left, player):
     clock.tick(60)  # reset the dt baseline so next frame doesn't include picker time
     flush_events()
     return time_left
+
 
 def show_settings_popup(screen, background_surf):
     """Volume settings with LIVE BGM updates and proper slider dragging/visual refresh."""
@@ -3036,13 +3068,11 @@ class Player:
             self.xp -= self.xp_to_next
             self.level += 1
 
-            # keep the small auto benefits you already had
-            self.bullet_damage += 1
-            self.max_hp += 2
             self.hp = min(self.max_hp, self.hp + 3)
 
             self.xp_to_next = player_xp_required(self.level)
             gained += 1
+            self.levelup_pending = getattr(self, "levelup_pending", 0) + 1
 
         if gained:
             # open that many level-up pickers (handled in main loop)
@@ -6169,7 +6199,6 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             wx, wy = b.x / CELL_SIZE, (b.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             drawables.append(("bullet", sy, {"cx": sx, "cy": sy, "r": int(getattr(b, "r", BULLET_RADIUS))}))
-
 
     if enemy_shots:
         for es in enemy_shots:
