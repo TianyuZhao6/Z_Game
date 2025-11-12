@@ -7014,6 +7014,14 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             # （可选）当计时走完，清空 DoT dps
             if player.acid_dot_timer <= 0.0:
                 player.acid_dot_dps = 0.0
+                
+        # === Level-up modal (pause like pause menu) ===
+        if getattr(player, "levelup_pending", 0) > 0:
+            show_levelup_pick(screen, player)
+            player.levelup_pending -= 1
+            # force a fresh draw after the choice; then continue loop
+            last_frame = None
+            continue
 
         # Autofire handling
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
