@@ -2072,6 +2072,116 @@ def show_pause_menu(screen, background_surf):
                         flush_events()
                         return tag
 
+def _apply_levelup_choice(player, key: str):
+    """Apply the chosen buff immediately AND persist in META so it carries over."""
+    if key == "dmg":
+        META["dmg"] = META.get("dmg", 0) + 1
+        player.bullet_damage += 1
+    elif key == "firerate":
+        META["firerate_mult"] = float(META.get("firerate_mult", 1.0)) * 1.05
+        player.fire_rate_mult *= 1.05
+    elif key == "range":
+        META["range_mult"] = float(META.get("range_mult", 1.0)) * 1.10
+        # player.range is base * mult
+        player.range = float(player.range_base) * float(META["range_mult"])
+    elif key == "speed":
+        META["speed"] = int(META.get("speed", 0)) + 1
+        player.speed = min(PLAYER_SPEED_CAP, player.speed + 1.0)
+    elif key == "maxhp":
+        META["maxhp"] = int(META.get("maxhp", 0)) + 5
+        player.max_hp += 5
+        player.hp = min(player.max_hp, player.hp + 10)  # small heal like the mock
+
+def show_levelup_overlay(screen, background_surf, player):
+    """
+    Dimmed-background, centered cards – same style as Pause.
+    Blocks until the player picks one. ESC opens Pause, then returns here.
+    """
+    clock = pygame.time.Clock()
+    font = pygame.font.SysFont(None, 26)
+    title_font = pygame.font.SysFont(None, 56)
+
+    # five simple choices (no reroll)
+    cards = [
+        {"title": "+1 Damage",     "desc": "Increase your bullet damage by 1.",               "key": "dmg"},
+        {"title": "+5% Fire Rate", "desc": "Shoot slightly faster (multiplicative).",         "key": "firerate"},
+        {"title": "+10% Range",    "desc": "Longer effective range for shots.",               "key": "range"},
+        {"title": "+1 Speed",      "desc": "Move faster.",                                    "key": "speed"},
+        {"title": "+5 Max HP",     "desc": "Increase max HP and heal 10.",                    "key": "maxhp"},
+    ]
+
+    # layout: 3 on top row, 2 on bottom row – centered
+    card_w, card_h, gap = 320, 120, 28
+    rows = [
+        (3, VIEW_W // 2, 220),
+        (2, VIEW_W // 2, 220 + card_h + 40),
+    ]
+    rects = []
+    idx = 0
+    for count, cx, y in rows:
+        total = count * card_w + (count - 1) * gap
+        x0 = cx - total // 2
+        for i in range(count):
+            rects.append(pygame.Rect(x0 + i * (card_w + gap), y, card_w, card_h))
+            idx += 1
+
+    hover = -1
+    while True:
+        # background (like Pause)
+        bg_scaled = pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H))
+        screen.blit(bg_scaled, (0, 0))
+        dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 170))
+        screen.blit(dim, (0, 0))
+
+        # title
+        title = title_font.render("LEVEL UP — CHOOSE ONE", True, (235, 235, 235))
+        screen.blit(title, title.get_rect(center=(VIEW_W // 2, 110)))
+
+        # cards
+        mx, my = pygame.mouse.get_pos()
+        hover = -1
+        for i, r in enumerate(rects):
+            if r.collidepoint(mx, my):
+                hover = i
+            # panel
+            pygame.draw.rect(screen, (35, 35, 37), r, border_radius=14)
+            brd = 3 if i == hover else 2
+            col = (220, 220, 230) if i == hover else (160, 160, 170)
+            pygame.draw.rect(screen, col, r, brd, border_radius=14)
+
+            c = cards[i]
+            t = font.render(c["title"], True, (235, 235, 235))
+            d = font.render(c["desc"], True, (200, 200, 205))
+            screen.blit(t, (r.x + 18, r.y + 14))
+            screen.blit(d, (r.x + 18, r.y + 58))
+
+        pygame.display.flip()
+
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                # same Pause while frozen; then come back to picker
+                pick = pause_from_overlay(screen, background_surf)
+                # just continue to re-render this picker afterwards
+            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1 and hover != -1:
+                # apply and leave
+                _apply_levelup_choice(player, cards[hover]["key"])
+                return
+
+        clock.tick(60)
+
+def levelup_modal(screen, bg_surface, clock, time_left, player):
+    """
+    Wrapper that shows the picker, keeps the timer frozen, and
+    resets the main clock baseline so dt won't include the pause time.
+    """
+    show_levelup_overlay(screen, bg_surface, player)
+    globals()["_time_left_runtime"] = time_left  # keep HUD's timer display
+    clock.tick(60)  # reset the dt baseline so next frame doesn't include picker time
+    flush_events()
+    return time_left
 
 def show_settings_popup(screen, background_surf):
     """Volume settings with LIVE BGM updates and proper slider dragging/visual refresh."""
@@ -2921,20 +3031,23 @@ class Player:
 
     def add_xp(self, amount: int):
         self.xp += int(max(0, amount))
-        # multiple level-ups if a big XP spike arrives
+        gained = 0
         while self.xp >= self.xp_to_next:
             self.xp -= self.xp_to_next
             self.level += 1
-            # queue a free pick & immediately set next threshold
-            self.levelup_pending = getattr(self, "levelup_pending", 0) + 1
-            self.xp_to_next = player_xp_required(self.level)
-            # small, reasonable level-up benefits
-            self.bullet_damage += 1  # steady firepower growth
-            self.max_hp += 2  # tiny durability growth
-            self.hp = min(self.max_hp, self.hp + 3)  # low heal on level-up
 
-            # recompute requirement from the curve for the NEW level
+            # keep the small auto benefits you already had
+            self.bullet_damage += 1
+            self.max_hp += 2
+            self.hp = min(self.max_hp, self.hp + 3)
+
             self.xp_to_next = player_xp_required(self.level)
+            gained += 1
+
+        if gained:
+            # open that many level-up pickers (handled in main loop)
+            self.levelup_pending += gained
+        return gained
 
     def draw(self, screen):
         pygame.draw.rect(screen, (0, 255, 0), self.rect)
@@ -6516,8 +6629,6 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
 
 # ==================== GAMESOUND ====================
 
-# ==================== GAMESOUND ====================
-
 class GameSound:
     """
     Background BGM loader/controller.
@@ -6613,98 +6724,8 @@ class GameSound:
             except Exception as e:
                 print(f"[Audio] set_volume failed: {e}")
 
-def show_levelup_pick(screen, player):
-    clock = pygame.time.Clock()
-    overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 160))  # dim background
-
-    title_font = pygame.font.SysFont(None, 48, bold=True)
-    small = pygame.font.SysFont(None, 24)
-    large = pygame.font.SysFont(None, 28, bold=True)
-
-    # Define picks: name, key, desc, live_apply
-    def grant(player, key):
-        if key == "dmg":
-            META["dmg"] = META.get("dmg", 0) + 1
-            player.bullet_damage += 1
-        elif key == "firerate":
-            # multiplicative
-            META["firerate_mult"] = round(META.get("firerate_mult", 1.0) * 1.05, 3)
-            player.fire_rate_mult = META["firerate_mult"]
-        elif key == "range":
-            META["range_mult"] = round(META.get("range_mult", 1.0) * 1.10, 3)
-            # clamp to weapon cap
-            player.range = min(MAX_FIRE_RANGE, player.range * 1.10)
-        elif key == "speed":
-            META["speed"] = META.get("speed", 0) + 1
-            player.speed += 1
-        elif key == "maxhp":
-            META["maxhp"] = META.get("maxhp", 0) + 10
-            player.max_hp += 10
-            player.hp = min(player.hp + 10, player.max_hp)
-
-    picks = [
-        { "name": "+1 Damage",   "key": "dmg",      "desc": "Increase your bullet damage by 1." },
-        { "name": "+5% Fire Rate","key": "firerate","desc": "Shoot slightly faster (multiplicative)." },
-        { "name": "+10% Range",  "key": "range",    "desc": "Longer effective range for shots." },
-        { "name": "+1 Speed",    "key": "speed",    "desc": "Move faster." },
-        { "name": "+10 Max HP",  "key": "maxhp",    "desc": "Increase max HP and heal 10." },
-    ]
-
-    # layout
-    cols = 3
-    card_w, card_h = 360, 120
-    gap = 28
-    total_w = cols*card_w + (cols-1)*gap
-    start_x = (VIEW_W - total_w)//2
-    start_y = VIEW_H//2 - ((len(picks)+cols-1)//cols* (card_h+gap) - gap)//2
-
-    # Precompute card rects
-    cards = []
-    for i, it in enumerate(picks):
-        r = i // cols
-        c = i % cols
-        rx = start_x + c*(card_w+gap)
-        ry = start_y + r*(card_h+gap)
-        cards.append((pygame.Rect(rx, ry, card_w, card_h), it))
-
-    while True:
-        for e in pygame.event.get():
-            if e.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
-            if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
-                # Esc does nothing here; force a pick to continue
-                pass
-            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-                mx, my = e.pos
-                for rect, it in cards:
-                    if rect.collidepoint(mx, my):
-                        grant(player, it["key"])
-                        return  # one pick, then resume
-
-        # draw overlay
-        screen.blit(overlay, (0, 0))
-        title = title_font.render("LEVEL UP — CHOOSE ONE", True, (235, 235, 235))
-        screen.blit(title, title.get_rect(center=(VIEW_W//2, VIEW_H//2 - 180)))
-
-        mouse = pygame.mouse.get_pos()
-        for rect, it in cards:
-            hover = rect.collidepoint(*mouse)
-            pygame.draw.rect(screen, (245, 245, 245) if hover else (220, 220, 220), rect, border_radius=12)
-            inner = rect.inflate(-10, -10)
-            pygame.draw.rect(screen, (24, 24, 24), inner, border_radius=10)
-
-            name = large.render(it["name"], True, (240, 240, 240))
-            desc = small.render(it["desc"], True, (200, 200, 200))
-            screen.blit(name, (inner.x+14, inner.y+10))
-            screen.blit(desc, (inner.x+14, inner.y+50))
-
-        pygame.display.flip()
-        clock.tick(60)
-
 
 # ==================== 游戏主循环 ====================
-
 
 def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
     pygame.display.set_caption("Zombie Card Game – Level")
@@ -6934,8 +6955,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 )
 
         # countdown timer
-        time_left -= dt
-        globals()["_time_left_runtime"] = time_left
+        # do not tick down while modal is open
+        if getattr(player, "levelup_pending", 0) == 0:
+            time_left -= dt
+            globals()["_time_left_runtime"] = time_left
+
         if time_left <= 0:
             game_result = "success" if 'game_result' in locals() else "success"
             running = False
@@ -7014,16 +7038,16 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             # （可选）当计时走完，清空 DoT dps
             if player.acid_dot_timer <= 0.0:
                 player.acid_dot_dps = 0.0
-                
-        # === Level-up modal (pause like pause menu) ===
-        if getattr(player, "levelup_pending", 0) > 0:
-            show_levelup_pick(screen, player)
-            player.levelup_pending -= 1
-            # force a fresh draw after the choice; then continue loop
-            last_frame = None
-            continue
 
-        # Autofire handling
+        # ===== Level-up picker (freeze gameplay & timer like Pause) =====
+        while getattr(player, "levelup_pending", 0) > 0:
+            bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles)
+            time_left = levelup_modal(screen, bg, clock, time_left, player)
+            player.levelup_pending -= 1
+            # redraw a fresh gameplay frame behind us for a seamless return
+            last_frame = render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles)
+
+        # Autofire handlingddddddd
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
         target, dist = find_target()
         if target and player.fire_cd <= 0 and (dist is None or dist <= player.range):
