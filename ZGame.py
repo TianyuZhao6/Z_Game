@@ -2154,12 +2154,10 @@ def show_levelup_overlay(screen, background_surf, player):
                 if e.key in (pygame.K_2, pygame.K_KP_2) and len(cards) >= 2: return cards[1]["key"]
                 if e.key in (pygame.K_3, pygame.K_KP_3) and len(cards) >= 3: return cards[2]["key"]
                 if e.key in (pygame.K_4, pygame.K_KP_4) and len(cards) >= 4: return cards[3]["key"]
-                # Esc -> open your pause modal from overlay if desired
+                # Esc
                 if e.key == pygame.K_ESCAPE:
-                    try:
-                        pause_from_overlay(screen, background_surf)
-                    except Exception:
-                        pass  # keep overlay alive after closing pause
+                    # Ignore Esc while level-up menu is open
+                    continue
             if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and hover != -1:
                 return cards[hover]["key"]
 
@@ -3063,7 +3061,7 @@ class Player:
 
     def add_xp(self, amount: int):
         self.xp += int(max(0, amount))
-        gained = 0
+        leveled = 0
         while self.xp >= self.xp_to_next:
             self.xp -= self.xp_to_next
             self.level += 1
@@ -3071,13 +3069,9 @@ class Player:
             self.hp = min(self.max_hp, self.hp + 3)
 
             self.xp_to_next = player_xp_required(self.level)
-            gained += 1
-            self.levelup_pending = getattr(self, "levelup_pending", 0) + 1
-
-        if gained:
-            # open that many level-up pickers (handled in main loop)
-            self.levelup_pending += gained
-        return gained
+            leveled += 1
+        # queue that many picker opens (consumed in the main loop)
+        self.levelup_pending = getattr(self, "levelup_pending", 0) + leveled
 
     def draw(self, screen):
         pygame.draw.rect(screen, (0, 255, 0), self.rect)
@@ -4538,6 +4532,7 @@ class Bullet:
                         if player:
                             base_xp = XP_PER_ZOMBIE_TYPE.get("bandit", XP_PLAYER_KILL)
                             player.add_xp(base_xp)
+                            setattr(z, "_xp_awarded", True)
                         transfer_xp_to_neighbors(z, zombies)
                         zombies.remove(z)
                         self.alive = False
@@ -4557,6 +4552,7 @@ class Bullet:
                         if getattr(z, "is_elite", False):  base_xp = int(base_xp * 1.5)
                         if getattr(z, "is_boss", False):   base_xp = int(base_xp * 3.0)
                         player.add_xp(base_xp + bonus + extra_by_spoils)
+                        setattr(z, "_xp_awarded", True)
                         if getattr(z, "is_boss", False):
                             trigger_twin_enrage(z, zombies, game_state)
 
@@ -6984,10 +6980,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 )
 
         # countdown timer
-        # do not tick down while modal is open
-        if getattr(player, "levelup_pending", 0) == 0:
-            time_left -= dt
-            globals()["_time_left_runtime"] = time_left
+        time_left -= dt
+        globals()["_time_left_runtime"] = time_left
 
         if time_left <= 0:
             game_result = "success" if 'game_result' in locals() else "success"
@@ -7120,10 +7114,12 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
 
                 # 额外经验（非子弹击杀时）
-                try:
-                    player.add_xp(int(getattr(z, "spoils", 0)) * int(Z_SPOIL_XP_BONUS_PER))
-                except Exception:
-                    pass
+                if not getattr(z, "_xp_awarded", False):  # <-- add this guard
+                    try:
+                        player.add_xp(int(getattr(z, "spoils", 0)) * int(Z_SPOIL_XP_BONUS_PER))
+                        setattr(z, "_xp_awarded", True)  # <-- mark as paid
+                    except Exception:
+                        pass
 
                 transfer_xp_to_neighbors(z, zombies)
                 zombies.remove(z)
