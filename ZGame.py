@@ -2206,9 +2206,11 @@ def levelup_modal(screen, bg_surface, clock, time_left, player):
     Wrapper that shows the picker, keeps the timer frozen, and
     resets the main clock baseline so dt won't include the pause time.
     """
-    show_levelup_overlay(screen, bg_surface, player)
-    globals()["_time_left_runtime"] = time_left  # keep HUD's timer display
-    clock.tick(60)  # reset the dt baseline so next frame doesn't include picker time
+    key = show_levelup_overlay(screen, bg_surface, player)
+    if key:
+        _apply_levelup_choice(player, key)  # <-- APPLY the chosen buff to LIVE player + META
+    globals()["_time_left_runtime"] = time_left
+    clock.tick(60)  # reset dt baseline so gameplay doesn't jump after modal
     flush_events()
     return time_left
 
@@ -5020,6 +5022,7 @@ def apply_player_carry(player, carry: dict | None):
     total_xp += leftover_xp
     if total_xp > 0:
         player.add_xp(total_xp)
+        player.levelup_pending = 0
 
     if carry_hp is not None:
         player.hp = max(1, min(player.max_hp, int(carry_hp)))
