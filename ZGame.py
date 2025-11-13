@@ -2167,7 +2167,6 @@ def show_levelup_overlay(screen, background_surf, player):
             if r.collidepoint(mx, my):
                 hover = i
                 break
-
         # --- draw ---
         screen.blit(background_surf, (0, 0))
         screen.blit(dim, (0, 0))
@@ -2218,7 +2217,6 @@ def levelup_modal(screen, bg_surface, clock, time_left, player):
 def show_settings_popup(screen, background_surf):
     """Volume settings with LIVE BGM updates and proper slider dragging/visual refresh."""
     global FX_VOLUME, BGM_VOLUME
-
     clock = pygame.time.Clock()
 
     # background overlay
