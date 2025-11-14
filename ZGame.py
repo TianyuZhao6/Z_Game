@@ -1037,8 +1037,10 @@ META = {
     "dmg": 0,  # 伤害 +X
     "firerate_mult": 1.0,  # 攻速 ×mult
     "range_mult": 1.0,  # 射程 ×mult
+    "speed_mult": 1.0,  # 速度 ×mult
     "speed": 0,  # 速度 +X
     "maxhp": 0,  # 最大生命 +X
+
     "crit": 0.0  # 暴击率 +X（0~1）
 }
 
@@ -1056,6 +1058,7 @@ def reset_run_state():
         "dmg": 0,
         "firerate_mult": 1.0,
         "range_mult": 1.0,
+        "speed_mult": 1.0,
         "speed": 0,
         "maxhp": 0,
         "crit": 0.0
@@ -2395,7 +2398,8 @@ def show_shop_screen(screen) -> Optional[str]:
              "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.05)},
             {"name": "+10% Range", "key": "range", "cost": 7,
              "apply": lambda: META.update(range_mult=META.get("range_mult", 1.0) * 1.10)},
-            {"name": "+1 Speed", "key": "speed", "cost": 8, "apply": lambda: META.update(speed=META["speed"] + 1)},
+            {"name": "+5% Speed", "key": "speed", "cost": 8,
+             "apply": lambda: META.update(speed_mult=float(META.get("speed_mult", 1.0)) * 1.05)},
             {"name": "+5 Max HP", "key": "maxhp", "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
             {"name": "+5% Crit", "key": "crit", "cost": 9,
              "apply": lambda: META.update(crit=min(0.75, META.get("crit", 0.0) + 0.05))},
@@ -3015,7 +3019,10 @@ class Player:
         self.range_base = float(META.get("base_range", MAX_FIRE_RANGE))
         self.range = float(self.range_base * META.get("range_mult", 1.0))
         spd0 = float(META.get("base_speed", PLAYER_SPEED))
-        self.speed = min(PLAYER_SPEED_CAP, max(1.0, self.speed + float(META.get("speed", 0))))
+        spd_mult = float(META.get("speed_mult", 1.0))
+        spd_add = float(META.get("speed", 0))
+        self.speed = min(PLAYER_SPEED_CAP, max(1.0, spd0 * spd_mult + spd_add))
+
         # 生命：base + 附加
         hp0 = int(META.get("base_maxhp", PLAYER_MAX_HP))
         self.max_hp = hp0 + int(META.get("maxhp", 0))
@@ -5218,6 +5225,8 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, playe
     z.z_level = max(1, int(1 + level_idx * 0.25))
     scale_spd = (max(1.0, budget) ** 0.33) * 0.12 + 0.05 * level_idx
     z.speed = min(ZOMBIE_SPEED_MAX, BANDIT_BASE_SPEED + scale_spd)
+    # 专用圆形碰撞体（用于与玩家的接触判定 & 光环半径）
+    z.radius = int(z.size * 0.55)
 
     # --- 生命值 = max(基础血, 玩家DPS × 4) ---
     dps = float(player_dps) if player_dps is not None else float(compute_player_dps(None))
