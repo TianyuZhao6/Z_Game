@@ -7869,11 +7869,8 @@ if __name__ == "__main__":
 # Main loop / Main entry
 
 # Add new type of boss: BOSS Ⅱ：「雾织母巫 · Mistweaver」
-#
 # 主题：大雾支配者，靠分身与迷雾错位压迫。
-#
 # 基本数值（以第10关为基准）
-#
 # HP：6500（成长系数≈ +12%/关）
 #
 # 接触伤害：28
@@ -7908,11 +7905,30 @@ if __name__ == "__main__":
 #
 # 核心机制
 # 随机出现：在非BOSS关卡中随机刷新，出现时有特殊音效和视觉提示
-#
 # 金币窃取：每秒存在就会偷取玩家会一定量的金币（2-10）
-#
 # 敏捷逃避：高移动速度，会优先躲避玩家而不是直接对抗
-#
 # 财富返还：被击败后掉落一个钱袋，包含所有偷取的金币加上额外奖励
-#
 # 逃脱机制：如果在特定时间内未被击败，会带着金币逃离关卡
+#============PROPS==========================
+#1.1. Piercing Rounds
+#1.2. Ricochet Scope
+#1.3. Bleeding Edge
+#1.4. Shrapnel Shells
+#1.5. Mark of Vulnerability
+
+#2.1. Bone Plating
+#2.2. Guardian Charm
+#2.3. Blood Pact
+#2.4. Retaliation Thorns
+
+#3.1. Lockbox
+#3.2. Wanted Poster
+#3.3. Coin Magnet
+#3.4. Golden Interest
+#3.5. Bandit Radar
+
+#4.1. Time Dilation Boots
+#
+#
+#
+

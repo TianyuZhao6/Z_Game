@@ -1,0 +1,151 @@
+1. Core Offense Props
+
+1.1. Piercing Rounds
+Effect: Bullets can pass through N enemies, each hit deals full or slightly reduced damage.
+Synergy:
+Strong with range (bullets travel farther, hit more).
+Strong with firerate (more bullets → more multi-hits).
+Good vs swarms, slightly weaker vs single bosses.
+
+1.2. Ricochet Scope
+Effect: When a bullet hits an enemy or wall, it can bounce once toward the nearest enemy.
+Synergy:
+Works nicely with your obstacles (walls turn into combo tools).
+Great with crit (ricochets can crit too).
+Encourages fighting near obstacles instead of open fields.
+
+1.3. Bleeding Edge
+Effect: Your hits apply a “Bleed” that deals X% of damage over 3s, stacking up to Y times.
+Synergy:
+High firerate builds become DoT machines.
+Good vs high-HP bosses (persistent damage even while kiting).
+Can interact with other props: e.g., “Hemorrhage” that increases damage to bleeding targets.
+
+1.4. Shrapnel Shells
+Effect: On enemy death, there is a chance to spawn 3–4 small projectiles in random directions.
+Synergy:
+Insane in big waves (chain-kill feeling).
+More effective with crit (shrapnel can crit).
+You can add a prop later that upgrades shrapnel size or count.
+
+1.5. Mark of Vulnerability
+Effect: Every X seconds, randomly “mark” an enemy; marked enemies take +20% damage from all sources.
+Synergy:
+Good vs elite / boss enemies.
+Pairs well with range and pierce so you can focus the marked target while hitting others.
+
+2. Defense & Survival Props
+
+Not just raw HP—give them interesting defensive patterns.
+2.1. Bone Plating
+Effect: Every Y seconds, gain 1 stack of plating that negates the next hit (or reduces it heavily). Max 3–4 stacks.
+Synergy:
+Strong for beginners / melee risk-takers.
+Combos with high speed playstyles (you can dash in to grab coins safely).
+2.2. Guardian Charm
+Effect: When your HP drops below 30%, gain a temporary shield and +X% speed for 3 seconds. Long cooldown.
+Synergy:
+Helps “glass cannon” builds survive mistakes.
+Synergizes with speed / positioning to escape on low HP.
+
+2.3. Blood Pact
+Effect: +X% damage, but max HP reduced by Y%.
+Synergy:
+Obvious synergy with max HP props and heal mechanics.
+Encourages high skill players to take risks.
+
+2.4. Retaliation Thorns
+Effect: Enemies that hit you take a flat damage or % of their max HP.
+Synergy:
+Works well with Bone Plating (you can “intentionally” take occasional hits).
+Encourages tanky, lower-mobility builds.
+
+3. Economy & Bandit Interaction Props
+
+These are great for your Bandit mechanic and the shop fantasy.
+
+3.1. Lockbox
+Effect: A percentage of your coins becomes “protected” and cannot be stolen by bandits.
+Synergy:
+Great early if bandits are frequent.
+Can open up “greedy” builds where you hoard coins instead of spending immediately.
+
+3.2. Wanted Poster
+Effect: Bandits take extra damage and drop bonus coins when killed.
+Synergy:
+Converts the “punishment” enemy into a high-reward target.
+Combos with high speed (easier to chase them down) and burst damage.
+
+3.3. Coin Magnet !!!!!
+Effect: Increases coin pickup radius.
+Synergy:
+Super good with high movement speed, kiting builds.
+Makes dangerous coin chasing much safer; good for wave-end cleanup.
+
+3.4. Golden Interest
+Effect: At the start of each level, gain +X% of your unspent coins as bonus.
+Synergy:
+Encourages the player to save coins and forgo instant power.
+Works nicely with Lockbox (protect your savings from bandits).
+
+3.5. Bandit Radar
+Effect: When a bandit spawns, highlight them and slow them slightly for a short duration.
+Synergy:
+Combined with Wanted Poster → “Bandit hunter” build.
+Fits your current collision volume and aura design (you can show a glowing outline).
+
+4. Utility / Control Props
+These change the way the player moves or controls space.
+
+4.1. Time Dilation Boots
+Effect: When you stop moving for ≥ 0.5s, enemies in a radius are slightly slowed.
+Synergy:
+Encourages a “turret” playstyle: stand and shoot.
+Good with high firerate and range.
+Interesting opposite to normal “run and gun” speed builds.
+
+4.2. Phantom Dash (if you ever add dash / evade)
+Effect: Dashing through enemies deals damage and briefly slows them.
+Synergy:
+Obvious with speed and any dash cooldown reduction.
+Very fun for aggressive play around obstacles.
+
+4.3. Sticky Tar Flask
+Effect: Occasionally drops a slowing puddle where you stand for a second; enemies in it are slowed and take minor DoT.
+Synergy:
+Strong near obstacles, choke points.
+Works with knockback / push effects if you add them later.
+
+4.4. Auto-Turret Backpack !!!!
+Effect: Deploys a small turret that follows or stays near you and fires weak bullets at nearest enemy.
+Synergy:
+Scales with damage buffs if turret uses your damage.
+Good with any prop that boosts “all sources” damage (e.g., Mark of Vulnerability).
+
+5. Crit, Element, and Synergy Props
+
+These give crit & status builds more identity, especially since you already have crit chance.
+
+5.1. Razor Focus
+Effect: +Crit chance, but -Fire rate.
+Synergy:
+Works on builds that already stacked firerate from level-ups.
+High synergy with crit damage multiplier if you add that stat later.
+
+5.2. Explosive Crits
+Effect: Critical hits cause a small explosion around the target, dealing splash damage.
+Synergy:
+Ties together crit + crowd control.
+Combos insanely with ricochet / pierce / shrapnel.
+
+5.3. Frost Brand
+Effect: Hits have a small chance to “chill” enemies, slowing them briefly. If you hit a chilled enemy again, extra damage.
+Synergy:
+Strong with high firerate (you can proc chill frequently).
+Gives non-speed builds some safety through slows.
+
+5.4. Shock Relay
+Effect: Every N-th hit chains lightning to nearby enemy for bonus damage.
+Synergy:
+Rewards sustained fire (auto-fire weapons).
+Great vs clustered waves; weaker vs single boss, so still somewhat balanced.
