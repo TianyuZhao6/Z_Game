@@ -2088,12 +2088,19 @@ def _apply_levelup_choice(player, key: str):
         # player.range is base * mult
         player.range = float(player.range_base) * float(META["range_mult"])
     elif key == "speed":
-        META["speed"] = int(META.get("speed", 0)) + 1
-        player.speed = min(PLAYER_SPEED_CAP, player.speed + 1.0)
+        META["speed_mult"] = float(META.get("speed_mult", 1.0)) * 1.05
+        base_spd = float(META.get("base_speed", 2.6))
+        # live-apply to player
+        if player is not None:
+            player.speed = min(PLAYER_SPEED_CAP, max(1.0, base_spd * META["speed_mult"]))
     elif key == "maxhp":
         META["maxhp"] = int(META.get("maxhp", 0)) + 5
         player.max_hp += 5
         player.hp = min(player.max_hp, player.hp + 10)  # small heal like the mock
+    elif key == "crit":
+        META["crit"] = min(0.75, float(META.get("crit", 0.0)) + 0.02)
+        if player is not None:
+            player.crit_chance = min(0.75, float(getattr(player, "crit_chance", 0.0)) + 0.02)
 
 
 def show_levelup_overlay(screen, background_surf, player):
@@ -2112,10 +2119,43 @@ def show_levelup_overlay(screen, background_surf, player):
         {"key": "dmg", "title": "+1 Damage", "desc": "Increase your bullet damage by 1."},
         {"key": "firerate", "title": "+5% Fire Rate", "desc": "Shoot slightly faster (multiplicative)."},
         {"key": "range", "title": "+10% Range", "desc": "Longer effective range for shots."},
-        {"key": "speed", "title": "+1 Speed", "desc": "Move faster."},
+        {"key": "speed", "title": "+5% Speed", "desc": "Move faster."},
         {"key": "maxhp", "title": "+5 Max HP", "desc": "Increase max HP and heal 10."},
+        {"key": "crit", "title": "+2% Crit", "desc": "Increase critical hit chance slightly"},
     ]
+
     cards = random.sample(pool, k=min(4, len(pool)))
+    # Apply stat caps: once at or above caps, stop offering those perks
+    speed_cap = globals().get("PLAYER_SPEED_CAP", None)
+    if speed_cap is not None and player is not None:
+        try:
+            cur_spd = float(getattr(player, "speed", 0.0))
+            if cur_spd >= float(speed_cap) - 1e-6:
+                pool = [p for p in pool if p.get("key") != "speed"]
+        except Exception:
+            pass
+
+    # Crit cap: use the same hard cap as level-up logic (75%)
+    crit_cap = 0.75
+    if player is not None:
+        try:
+            cur_crit = float(getattr(player, "crit_chance", 0.0))
+            if cur_crit >= crit_cap - 1e-6:
+                pool = [p for p in pool if p.get("key") != "crit"]
+        except Exception:
+            pass
+
+    if not pool:
+        # Fallback safety: always keep at least damage & max HP
+        pool = [
+            {"key": "dmg", "title": "+1 Damage", "desc": "Increase your bullet damage by 1."},
+            {"key": "maxhp", "title": "+5 Max HP", "desc": "Increase max HP and heal 10."},
+            {"key": "firerate", "title": "+5% Fire Rate", "desc": "Shoot slightly faster (multiplicative)."},
+            {"key": "range", "title": "+10% Range", "desc": "Longer effective range for shots."},
+        ]
+
+    cards = random.sample(pool, k=min(4, len(pool)))
+
 
     # --- Fonts ---
     title_font = pygame.font.SysFont(None, 64)
