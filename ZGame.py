@@ -1014,7 +1014,7 @@ AUTO_TURRET_BASE_DAMAGE = max(1, BULLET_DAMAGE_ZOMBIE // 3)  # weak-ish bullets
 AUTO_TURRET_FIRE_INTERVAL = 0.9  # seconds between shots
 AUTO_TURRET_RANGE_MULT = 0.8     # fraction of player range
 AUTO_TURRET_OFFSET_RADIUS = 40.0 # distance from player center
-
+AUTO_TURRET_ORBIT_SPEED = 2.0  # radians per second
 # --- targeting / auto-aim (new) ---
 PLAYER_TARGET_RANGE = MAX_FIRE_RANGE  # 射程内才会当候选（默认=子弹射程）
 PLAYER_BLOCK_FORCE_RANGE_TILES = 2  # 玩家两格内遇到可破坏物 → 强制优先
@@ -4661,6 +4661,8 @@ class AutoTurret:
         self.damage = int(damage)
         self.range_mult = float(range_mult)
 
+        self.angle = math.atan2(self.offset_y, self.offset_x) if (self.offset_x or self.offset_y) else 0.0
+        self.orbit_radius = (self.offset_x ** 2 + self.offset_y ** 2) ** 0.5 or AUTO_TURRET_OFFSET_RADIUS
         # world position (px)
         cx, cy = owner.rect.center
         self.x = float(cx + self.offset_x)
@@ -4669,15 +4671,18 @@ class AutoTurret:
         # desync a bit so multiple turrets don't fire in perfect sync
         self.cd = random.random() * self.fire_interval
 
-    def _follow_owner(self):
+    def _follow_owner(self, dt: float):
+        # advance orbit angle
+        self.angle += AUTO_TURRET_ORBIT_SPEED * dt
+
         cx, cy = self.owner.rect.center
-        self.x = float(cx + self.offset_x)
-        self.y = float(cy + self.offset_y)
+        self.x = float(cx + math.cos(self.angle) * self.orbit_radius)
+        self.y = float(cy + math.sin(self.angle) * self.orbit_radius)
 
     def update(self, dt: float, game_state: "GameState",
                zombies: List["Zombie"], bullets: List["Bullet"]):
         # Stick near the player
-        self._follow_owner()
+        self._follow_owner(dt)
 
         # Cooldown
         self.cd -= dt
