@@ -1009,6 +1009,12 @@ BULLET_DAMAGE_ZOMBIE = 12
 BULLET_DAMAGE_BLOCK = 10
 ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
 MAX_FIRE_RANGE = 800.0  # pixels
+# --- Auto-turret tuning ---
+AUTO_TURRET_BASE_DAMAGE = max(1, BULLET_DAMAGE_ZOMBIE // 3)  # weak-ish bullets
+AUTO_TURRET_FIRE_INTERVAL = 0.9  # seconds between shots
+AUTO_TURRET_RANGE_MULT = 0.8     # fraction of player range
+AUTO_TURRET_OFFSET_RADIUS = 40.0 # distance from player center
+
 # --- targeting / auto-aim (new) ---
 PLAYER_TARGET_RANGE = MAX_FIRE_RANGE  # 射程内才会当候选（默认=子弹射程）
 PLAYER_BLOCK_FORCE_RANGE_TILES = 2  # 玩家两格内遇到可破坏物 → 强制优先
@@ -1042,6 +1048,7 @@ META = {
     "maxhp": 0,  # 最大生命 +X
     "crit": 0.0,  # 暴击率 +X（0~1）
     "coin_magnet_radius": 0,  # 磁吸金币的额外拾取半径（像素）
+    "auto_turret_level": 0,   # 自动炮台等级（每级多一个炮台）
 }
 
 
@@ -1063,6 +1070,7 @@ def reset_run_state():
         "maxhp": 0,
         "crit": 0.0,
         "coin_magnet_radius": 0,
+        "auto_turret_level": 0,
     })
     globals()["_carry_player_state"] = None
     globals()["_pending_shop"] = False
@@ -2396,6 +2404,10 @@ def show_shop_screen(screen) -> Optional[str]:
         catalog = [
             {"name": "Coin Magnet", "key": "magnet", "cost": 10,
              "apply": lambda: META.update(coin_magnet_radius=META.get("coin_magnet_radius", 0) + 60)},
+            {"name": "Auto-Turret", "key": "auto_turret", "cost": 12,
+             "apply": lambda: META.update(
+                 auto_turret_level=min(3, META.get("auto_turret_level", 0) + 1)
+             )},
 
             {"name": "Reroll Offers", "key": "reroll", "cost": 3, "apply": "reroll"},
         ]
@@ -4633,6 +4645,80 @@ class Bullet:
                            (int(self.x - cam_x), int(self.y - cam_y)),
                            int(getattr(self, "r", BULLET_RADIUS)))
 
+class AutoTurret:
+    """
+    Simple auto-turret that orbits near the player and fires weak bullets
+    at the nearest zombie within range.
+    """
+
+    def __init__(self, owner: "Player", offset: Tuple[float, float],
+                 fire_interval: float = AUTO_TURRET_FIRE_INTERVAL,
+                 damage: int = AUTO_TURRET_BASE_DAMAGE,
+                 range_mult: float = AUTO_TURRET_RANGE_MULT):
+        self.owner = owner
+        self.offset_x, self.offset_y = offset
+        self.fire_interval = float(fire_interval)
+        self.damage = int(damage)
+        self.range_mult = float(range_mult)
+
+        # world position (px)
+        cx, cy = owner.rect.center
+        self.x = float(cx + self.offset_x)
+        self.y = float(cy + self.offset_y)
+
+        # desync a bit so multiple turrets don't fire in perfect sync
+        self.cd = random.random() * self.fire_interval
+
+    def _follow_owner(self):
+        cx, cy = self.owner.rect.center
+        self.x = float(cx + self.offset_x)
+        self.y = float(cy + self.offset_y)
+
+    def update(self, dt: float, game_state: "GameState",
+               zombies: List["Zombie"], bullets: List["Bullet"]):
+        # Stick near the player
+        self._follow_owner()
+
+        # Cooldown
+        self.cd -= dt
+        if self.cd > 0.0:
+            return
+
+        # Turret firing range based on player's range
+        max_range = float(getattr(self.owner, "range", MAX_FIRE_RANGE)) * self.range_mult
+        max_r2 = max_range * max_range
+
+        # Find nearest zombie in range
+        best = None
+        best_d2 = max_r2
+        tx, ty = self.x, self.y
+        for z in zombies:
+            cx, cy = z.rect.centerx, z.rect.centery
+            dx, dy = cx - tx, cy - ty
+            d2 = dx * dx + dy * dy
+            if d2 <= best_d2:
+                best_d2 = d2
+                best = (dx, dy)
+
+        if best is None:
+            # nothing to shoot at
+            return
+
+        dx, dy = best
+        dist = (dx * dx + dy * dy) ** 0.5 or 1.0
+        speed = BULLET_SPEED * 0.8  # a bit slower than player shots
+        vx = (dx / dist) * speed
+        vy = (dy / dist) * speed
+
+        bullets.append(
+            Bullet(
+                tx, ty,
+                vx, vy,
+                max_dist=max_range,
+                damage=self.damage,
+            )
+        )
+        self.cd = self.fire_interval
 
 class Spoil:
     """A coin-like pickup that pops up and bounces in place."""
@@ -6247,6 +6333,12 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
         drawables.append(("coin", sy, {"cx": sx, "cy": sy, "r": s.r}))
 
+    # auto-turrets (iso)
+    for t in getattr(game_state, "turrets", []):
+        wx, wy = t.x / CELL_SIZE, (t.y - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+        drawables.append(("turret", sy, {"cx": sx, "cy": sy}))
+
     for h in getattr(game_state, "heals", []):
         wx, wy = h.base_x / CELL_SIZE, (h.base_y - h.h - INFO_BAR_HEIGHT) / CELL_SIZE
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
@@ -6344,6 +6436,11 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             # 本体：明黄色
             pygame.draw.circle(screen, (255, 224, 0), (cx, cy), r)
             pygame.draw.circle(screen, (255, 255, 180), (cx, cy), r, 2)
+        elif kind == "turret":
+            cx, cy = data["cx"], data["cy"]
+            base_r = 10
+            pygame.draw.circle(screen, (80, 180, 255), (cx, cy), base_r)
+            pygame.draw.circle(screen, (250, 250, 255), (cx, cy), base_r - 4, 2)
 
         elif kind == "bullet":
             cx, cy = data["cx"], data["cy"]
@@ -6567,6 +6664,14 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         # coin
         pygame.draw.circle(screen, (255, 215, 80), (sx, sy), s.r)
         pygame.draw.circle(screen, (255, 245, 200), (sx, sy), s.r, 1)
+
+    # auto-turrets (top-down)
+    for t in getattr(game_state, "turrets", []):
+        tx = int(t.x - cam_x)
+        ty = int(t.y - cam_y)
+        base_r = 10
+        pygame.draw.circle(screen, (80, 180, 255), (tx, ty), base_r)      # body
+        pygame.draw.circle(screen, (250, 250, 255), (tx, ty), base_r - 4, 2)  # ring
 
     # healing potions (heals) on the ground
     for h in getattr(game_state, "heals", []):
@@ -6870,6 +6975,19 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     apply_domain_buffs_for_level(game_state, player)
     globals()["_next_biome"] = None
 
+    # --- Auto-turrets from META ---
+    turret_level = int(META.get("auto_turret_level", 0))
+    turrets: List[AutoTurret] = []
+    if turret_level > 0:
+        # place N turrets evenly around the player
+        for i in range(turret_level):
+            angle = 2.0 * math.pi * i / max(1, turret_level)
+            off_x = math.cos(angle) * AUTO_TURRET_OFFSET_RADIUS
+            off_y = math.sin(angle) * AUTO_TURRET_OFFSET_RADIUS
+            turrets.append(AutoTurret(player, (off_x, off_y)))
+    game_state.turrets = turrets
+
+
     ztype_map = {
         "zombie_fast": "fast",
         "zombie_tank": "tank",
@@ -7151,7 +7269,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             # redraw a fresh gameplay frame behind us for a seamless return
             last_frame = render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles)
 
-        # Autofire handlingddddddd
+        # Autofire handling
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
         target, dist = find_target()
         if target and player.fire_cd <= 0 and (dist is None or dist <= player.range):
@@ -7162,6 +7280,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             vx, vy = (dx / length) * BULLET_SPEED, (dy / length) * BULLET_SPEED
             bullets.append(Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage))
             player.fire_cd += player.fire_cooldown()
+
+        # Auto-turrets firing
+        for t in getattr(game_state, "turrets", []):
+            t.update(dt, game_state, zombies, bullets)
 
         # Update bullets
         for b in list(bullets):
@@ -7290,6 +7412,18 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     player.xp_to_next = player_xp_required(player.level)
 
     if not hasattr(player, 'fire_cd'): player.fire_cd = 0.0
+
+    # Auto-turrets when resuming (use saved meta if present, else global META)
+    turret_level = int(meta.get("auto_turret_level", META.get("auto_turret_level", 0)))
+    turrets: List[AutoTurret] = []
+    if turret_level > 0:
+        for i in range(turret_level):
+            angle = 2.0 * math.pi * i / max(1, turret_level)
+            off_x = math.cos(angle) * AUTO_TURRET_OFFSET_RADIUS
+            off_y = math.sin(angle) * AUTO_TURRET_OFFSET_RADIUS
+            turrets.append(AutoTurret(player, (off_x, off_y)))
+    game_state.turrets = turrets
+
 
     # Zombies
     zombies: List[Zombie] = []
@@ -7490,6 +7624,10 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             vx, vy = (dx / L) * BULLET_SPEED, (dy / L) * BULLET_SPEED
             bullets.append(Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage))
             player.fire_cd += player.fire_cooldown()
+
+        # Auto-turrets firing
+        for t in getattr(game_state, "turrets", []):
+            t.update(dt, game_state, zombies, bullets)
 
         # Update bullets
         for b in list(bullets):
