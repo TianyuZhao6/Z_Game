@@ -5635,9 +5635,43 @@ class GameState:
             jy = random.uniform(-6, 6)
             self.spoils.append(Spoil(x_px + jx, y_px + jy, 1))
 
-    def update_spoils(self, dt: float):
+    def update_spoils(self, dt: float, player: "Player"):
+        """
+        Update coin bounce, and if Coin Magnet is bought, gently pull coins toward the player.
+        Actual pickup still happens in collect_spoils when a coin overlaps the player.
+        """
+        # 1) basic vertical bounce
         for s in self.spoils:
             s.update(dt)
+
+        # 2) magnet attraction — only if the shop item has added a radius
+        magnet_radius = int(META.get("coin_magnet_radius", 0) or 0)
+        if magnet_radius <= 0:
+            return
+
+        px, py = player.rect.center
+        pull_speed = 480.0  # px/s, tweak for feel
+        r2 = float(magnet_radius * magnet_radius)
+
+        for s in self.spoils:
+            cx, cy = s.rect.center
+            dx = px - cx
+            dy = py - cy
+            dist2 = dx * dx + dy * dy
+            if dist2 > r2:
+                continue
+
+            # Move a small step toward the player; collect_spoils will finish pickup
+            dist = max(1.0, dist2 ** 0.5)
+            step = min(pull_speed * dt, dist)
+
+            nx = cx + dx / dist * step
+            ny = cy + dy / dist * step
+
+            # translate base_x/base_y by the same delta as the rect center movement
+            s.base_x += (nx - cx)
+            s.base_y += (ny - cy)
+            s._update_rect()
 
     def collect_item(self, player_rect: pygame.Rect) -> bool:
         """Collect one item if the player overlaps it. Returns True if collected."""
@@ -5648,21 +5682,16 @@ class GameState:
         return False
 
     def collect_spoils(self, player_rect: pygame.Rect) -> int:
-        """Collect spoils around the player; supports coin magnet radius via META."""
+        """Collect spoils that actually touch the player."""
         gained = 0
-
-        # Coin magnet: enlarge the pickup rectangle around the player.
-        magnet_radius = int(META.get("coin_magnet_radius", 0) or 0)
-        if magnet_radius > 0:
-            pickup_rect = player_rect.inflate(magnet_radius * 2, magnet_radius * 2)
-        else:
-            pickup_rect = player_rect
+        pickup_rect = player_rect
 
         for s in list(self.spoils):
             if pickup_rect.colliderect(s.rect):
                 self.spoils.remove(s)
                 self.spoils_gained += s.value
                 gained += s.value
+
         return gained
 
     def collect_spoils_for_zombie(self, zombie: "Zombie") -> int:
@@ -7087,7 +7116,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.refresh_flow_field(ptile, dt)
 
         game_state.collect_item(player.rect)
-        game_state.update_spoils(dt)
+        game_state.update_spoils(dt, player)
         for z in zombies:
             got = game_state.collect_spoils_for_zombie(z)
             if got > 0:
@@ -7443,7 +7472,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
         game_state.collect_item(player.rect)
-        game_state.update_spoils(dt)
+        game_state.update_spoils(dt, player)
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
         game_state.update_damage_texts(dt)
