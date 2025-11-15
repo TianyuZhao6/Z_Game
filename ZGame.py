@@ -2409,6 +2409,17 @@ def show_shop_screen(screen) -> Optional[str]:
              "apply": lambda: META.update(
                  auto_turret_level=min(3, META.get("auto_turret_level", 0) + 1)
              )},
+            {
+                "id": "stationary_turret",
+                "name": "Stationary Turret",
+                "desc": "Adds a stationary turret that spawns at a random clear spot on the map each level.",
+                "cost": 14,  # tweak as you like
+                "rarity": 3,  # slightly rarer than basic stuff
+                "max_level": 99,  # effectively unlimited copies
+                "apply": lambda: META.update(
+                    stationary_turret_count=int(META.get("stationary_turret_count", 0)) + 1
+                ),
+            },
 
             {"name": "Reroll Offers", "key": "reroll", "cost": 3, "apply": "reroll"},
         ]
@@ -7054,6 +7065,24 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             off_x = math.cos(angle) * AUTO_TURRET_OFFSET_RADIUS
             off_y = math.sin(angle) * AUTO_TURRET_OFFSET_RADIUS
             turrets.append(AutoTurret(player, (off_x, off_y)))
+    # --- Stationary turrets from META ---
+    stationary_count = int(META.get("stationary_turret_count", 0))
+    if stationary_count > 0:
+        for _ in range(stationary_count):
+            # try a few times to find a clear tile (no obstacle)
+            for _attempt in range(40):
+                gx = random.randrange(GRID_SIZE)
+                gy = random.randrange(GRID_SIZE)
+                if (gx, gy) in game_state.obstacles:
+                    continue  # tile blocked by obstacle, retry
+
+                # center of the tile in world coords (respect INFO_BAR_HEIGHT)
+                wx = gx * CELL_SIZE + CELL_SIZE // 2
+                wy = gy * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT
+
+                turrets.append(StationaryTurret(wx, wy))
+                break
+
     game_state.turrets = turrets
 
 
@@ -7491,6 +7520,19 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             off_x = math.cos(angle) * AUTO_TURRET_OFFSET_RADIUS
             off_y = math.sin(angle) * AUTO_TURRET_OFFSET_RADIUS
             turrets.append(AutoTurret(player, (off_x, off_y)))
+    # Stationary turrets from META on resume
+    stationary_count = int(meta.get("stationary_turret_count", 0))
+    if stationary_count > 0:
+        for _ in range(stationary_count):
+            for _attempt in range(40):
+                gx = random.randrange(GRID_SIZE)
+                gy = random.randrange(GRID_SIZE)
+                if (gx, gy) in game_state.obstacles:
+                    continue
+                wx = gx * CELL_SIZE + CELL_SIZE // 2
+                wy = gy * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT
+                turrets.append(StationaryTurret(wx, wy))
+                break
     game_state.turrets = turrets
 
 
