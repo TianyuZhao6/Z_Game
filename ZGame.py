@@ -1040,8 +1040,8 @@ META = {
     "speed_mult": 1.0,  # 速度 ×mult
     "speed": 0,  # 速度 +X
     "maxhp": 0,  # 最大生命 +X
-
-    "crit": 0.0  # 暴击率 +X（0~1）
+    "crit": 0.0,  # 暴击率 +X（0~1）
+    "coin_magnet_radius": 0,  # 磁吸金币的额外拾取半径（像素）
 }
 
 
@@ -1061,7 +1061,8 @@ def reset_run_state():
         "speed_mult": 1.0,
         "speed": 0,
         "maxhp": 0,
-        "crit": 0.0
+        "crit": 0.0,
+        "coin_magnet_radius": 0,
     })
     globals()["_carry_player_state"] = None
     globals()["_pending_shop"] = False
@@ -2393,16 +2394,8 @@ def show_shop_screen(screen) -> Optional[str]:
 
         # pseudo-random offers
         catalog = [
-            {"name": "+1 Damage", "key": "dmg", "cost": 6, "apply": lambda: META.update(dmg=META["dmg"] + 1)},
-            {"name": "+5% Fire Rate", "key": "firerate", "cost": 7,
-             "apply": lambda: META.update(firerate_mult=META["firerate_mult"] * 1.05)},
-            {"name": "+10% Range", "key": "range", "cost": 7,
-             "apply": lambda: META.update(range_mult=META.get("range_mult", 1.0) * 1.10)},
-            {"name": "+5% Speed", "key": "speed", "cost": 8,
-             "apply": lambda: META.update(speed_mult=float(META.get("speed_mult", 1.0)) * 1.05)},
-            {"name": "+5 Max HP", "key": "maxhp", "cost": 8, "apply": lambda: META.update(maxhp=META["maxhp"] + 5)},
-            {"name": "+5% Crit", "key": "crit", "cost": 9,
-             "apply": lambda: META.update(crit=min(0.75, META.get("crit", 0.0) + 0.05))},
+            {"name": "Coin Magnet", "key": "magnet", "cost": 10,
+             "apply": lambda: META.update(coin_magnet_radius=META.get("coin_magnet_radius", 0) + 60)},
 
             {"name": "Reroll Offers", "key": "reroll", "cost": 3, "apply": "reroll"},
         ]
@@ -5655,9 +5648,18 @@ class GameState:
         return False
 
     def collect_spoils(self, player_rect: pygame.Rect) -> int:
+        """Collect spoils around the player; supports coin magnet radius via META."""
         gained = 0
+
+        # Coin magnet: enlarge the pickup rectangle around the player.
+        magnet_radius = int(META.get("coin_magnet_radius", 0) or 0)
+        if magnet_radius > 0:
+            pickup_rect = player_rect.inflate(magnet_radius * 2, magnet_radius * 2)
+        else:
+            pickup_rect = player_rect
+
         for s in list(self.spoils):
-            if player_rect.colliderect(s.rect):
+            if pickup_rect.colliderect(s.rect):
                 self.spoils.remove(s)
                 self.spoils_gained += s.value
                 gained += s.value
