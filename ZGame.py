@@ -1049,6 +1049,7 @@ META = {
     "crit": 0.0,  # 暴击率 +X（0~1）
     "coin_magnet_radius": 0,  # 磁吸金币的额外拾取半径（像素）
     "auto_turret_level": 0,   # 自动炮台等级（每级多一个炮台）
+    "stationary_turret_count": 0,
 }
 
 
@@ -4720,6 +4721,69 @@ class AutoTurret:
                 tx, ty,
                 vx, vy,
                 max_dist=max_range,
+                damage=self.damage,
+            )
+        )
+        self.cd = self.fire_interval
+
+class StationaryTurret:
+    """
+    Stationary turret placed on the map.
+    Fires weak bullets (same default damage as AutoTurret)
+    at the nearest zombie within range every level.
+    """
+
+    def __init__(self, x: float, y: float,
+                 fire_interval: float = AUTO_TURRET_FIRE_INTERVAL,
+                 damage: int = AUTO_TURRET_BASE_DAMAGE,
+                 range_mult: float = AUTO_TURRET_RANGE_MULT):
+        self.x = float(x)
+        self.y = float(y)
+        self.fire_interval = float(fire_interval)
+        self.damage = int(damage)
+        self.range_mult = float(range_mult)
+
+        # desync cooldown a bit so multiple turrets don't fire in perfect sync
+        self.cd = random.random() * self.fire_interval
+
+    def update(self, dt: float, game_state: "GameState",
+               zombies: List["Zombie"], bullets: List["Bullet"]):
+        # cooldown
+        self.cd -= dt
+        if self.cd > 0.0:
+            return
+
+        # use player's base range + range_mult so it scales with range upgrades
+        base_range = float(META.get("base_range", MAX_FIRE_RANGE))
+        total_range = base_range * float(META.get("range_mult", 1.0)) * self.range_mult
+        max_r2 = total_range * total_range
+
+        # find nearest zombie in range around this turret
+        best = None
+        best_d2 = max_r2
+        tx, ty = self.x, self.y
+        for z in zombies:
+            cx, cy = z.rect.centerx, z.rect.centery
+            dx, dy = cx - tx, cy - ty
+            d2 = dx * dx + dy * dy
+            if d2 <= best_d2:
+                best_d2 = d2
+                best = (dx, dy)
+
+        if best is None:
+            return
+
+        dx, dy = best
+        dist = (dx * dx + dy * dy) ** 0.5 or 1.0
+        speed = BULLET_SPEED * 0.8  # same feel as auto-turret bullets
+        vx = (dx / dist) * speed
+        vy = (dy / dist) * speed
+
+        bullets.append(
+            Bullet(
+                tx, ty,
+                vx, vy,
+                max_dist=total_range,
                 damage=self.damage,
             )
         )
