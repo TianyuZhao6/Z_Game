@@ -887,6 +887,7 @@ BANDIT_STEAL_RATE_MIN = 2  # 每秒最少偷取金币
 BANDIT_STEAL_RATE_MAX = 10  # 每秒最多偷取金币
 BANDIT_BONUS_RATE = 0.25  # 击杀后额外奖励比例（在偷取总额基础上再+25%）
 BANDIT_BONUS_FLAT = 2  # 击杀后额外固定奖励
+BANDIT_FLEE_RADIUS = 5 * CELL_SIZE  # run away when within ~5 tiles
 
 # --- Mistweaver (Boss II) — appears at Lv10 (index 9) ---
 MISTWEAVER_LEVELS = {9}  # 0-based：第10关
@@ -995,7 +996,7 @@ FIRE_RATE = None  # shots per second; if None, derive from BULLET_SPACING_PX
 LEVEL_TIME_LIMIT = 45.0  # seconds per run
 BOSS_TIME_LIMIT = 60.0  # seconds for boss levels
 PLAYER_MAX_HP = 40  # player total health
-ZOMBIE_CONTACT_DAMAGE = 20  # damage per contact tick
+ZOMBIE_CONTACT_DAMAGE = 18  # damage per contact tick
 PLAYER_HIT_COOLDOWN = 0.6  # seconds of i-frames after taking contact damage
 
 # Fire-rate balance caps
@@ -1012,8 +1013,8 @@ MAX_FIRE_RANGE = 800.0  # pixels
 # --- Auto-turret tuning ---
 AUTO_TURRET_BASE_DAMAGE = max(1, BULLET_DAMAGE_ZOMBIE // 3)  # weak-ish bullets
 AUTO_TURRET_FIRE_INTERVAL = 0.9  # seconds between shots
-AUTO_TURRET_RANGE_MULT = 0.8     # fraction of player range
-AUTO_TURRET_OFFSET_RADIUS = 40.0 # distance from player center
+AUTO_TURRET_RANGE_MULT = 0.8  # fraction of player range
+AUTO_TURRET_OFFSET_RADIUS = 40.0  # distance from player center
 AUTO_TURRET_ORBIT_SPEED = 2.0  # radians per second
 # --- targeting / auto-aim (new) ---
 PLAYER_TARGET_RANGE = MAX_FIRE_RANGE  # 射程内才会当候选（默认=子弹射程）
@@ -1048,7 +1049,7 @@ META = {
     "maxhp": 0,  # 最大生命 +X
     "crit": 0.0,  # 暴击率 +X（0~1）
     "coin_magnet_radius": 0,  # 磁吸金币的额外拾取半径（像素）
-    "auto_turret_level": 0,   # 自动炮台等级（每级多一个炮台）
+    "auto_turret_level": 0,  # 自动炮台等级（每级多一个炮台）
     "stationary_turret_count": 0,
 }
 
@@ -2170,7 +2171,6 @@ def show_levelup_overlay(screen, background_surf, player):
 
     cards = random.sample(pool, k=min(4, len(pool)))
 
-
     # --- Fonts ---
     title_font = pygame.font.SysFont(None, 64)
     head_font = pygame.font.SysFont(None, 30)
@@ -2408,7 +2408,7 @@ def show_shop_screen(screen) -> Optional[str]:
              "apply": lambda: META.update(coin_magnet_radius=META.get("coin_magnet_radius", 0) + 60)},
             {"name": "Auto-Turret", "key": "auto_turret", "cost": 12,
              "apply": lambda: META.update(
-                 auto_turret_level=min(3, META.get("auto_turret_level", 0) + 1)
+                 auto_turret_level=min(5, META.get("auto_turret_level", 0) + 1)
              )},
             {
                 "id": "stationary_turret",
@@ -3452,6 +3452,20 @@ class Zombie:
         px, py = player.rect.centerx, player.rect.centery
         target_cx, target_cy = px, py
 
+        # Distance to player (used by bandit flee logic)
+        dxp = px - zx
+        dyp = py - zy
+        dist2_to_player = dxp * dxp + dyp * dyp
+
+        is_bandit = (getattr(self, "type", "") == "bandit")
+        # one-time trigger – once bandit enters flee radius, it stays in flee mode
+        if is_bandit and dist2_to_player <= (BANDIT_FLEE_RADIUS * BANDIT_FLEE_RADIUS):
+            # only set once
+            if not getattr(self, "bandit_triggered", False):
+                self.bandit_triggered = True
+
+        bandit_flee = is_bandit and getattr(self, "bandit_triggered", False)
+
         # --- Twin “lane” offset and mild separation so they don’t block each other ---
         if getattr(self, "is_boss", False) and getattr(self, "twin_id", None) is not None:
             cx0 = self.x + self.size * 0.5
@@ -3543,11 +3557,16 @@ class Zombie:
 
         boss_simple = (getattr(self, "is_boss", False)
                        or getattr(self, "type", "") in ("boss_mist", "boss_mem"))
+
         if boss_simple:
             step = None  # stay on simple-chase
             self._ff_commit = None  # <-- critical: use None, not 0.0
             self._ff_commit_t = 0.0
             self._avoid_t = 0.0
+
+        # If this is a bandit that has triggered flee mode, ignore flow field
+        if bandit_flee:
+            step = None
 
         # 2) fallback: pick the neighbor with the smallest distance (row-major: fd[ny][nx])
         if step is None and fd is not None and not boss_simple:
@@ -3635,14 +3654,17 @@ class Zombie:
             dx, dy = vx, vy
             oldx, oldy = self.x, self.y
 
-
-
         else:
             # Fallback: keep your existing target-point chase (path step / LOS)
             dx = target_cx - cx0
             dy = target_cy - cy0
             L = (dx * dx + dy * dy) ** 0.5 or 1.0
             ux, uy = dx / L, dy / L
+
+            # Bandit logic: once flee has triggered, always run AWAY from the player
+            if bandit_flee:
+                ux, uy = -ux, -uy
+
             # desired velocity this frame
             vx_des, vy_des = chase_step(ux, uy, speed)
 
@@ -4667,6 +4689,7 @@ class Bullet:
             int(getattr(self, "r", BULLET_RADIUS)),
         )
 
+
 class AutoTurret:
     """
     Simple auto-turret that orbits near the player and fires weak bullets
@@ -4748,6 +4771,7 @@ class AutoTurret:
         )
         self.cd = self.fire_interval
 
+
 class StationaryTurret:
     """
     Stationary turret placed on the map.
@@ -4810,6 +4834,7 @@ class StationaryTurret:
             )
         )
         self.cd = self.fire_interval
+
 
 class Spoil:
     """A coin-like pickup that pops up and bounces in place."""
@@ -5391,6 +5416,8 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, playe
     # 用网格坐标创建 Zombie（引擎的 Zombie 构造本来就需要网格）
     z = Zombie((gx, gy), ztype="bandit", speed=BANDIT_BASE_SPEED)
 
+    z.bandit_triggered = False
+
     # ===== 非线性随关卡/预算缩放 =====
     z.z_level = max(1, int(1 + level_idx * 0.25))
     scale_spd = (max(1.0, budget) ** 0.33) * 0.12 + 0.05 * level_idx
@@ -5586,6 +5613,14 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
         player_pos, zombie_pos_list = pick_valid_positions(min_distance=5, count=zombie_count)
     forbidden |= {player_pos}
     forbidden |= set(zombie_pos_list)
+    # Keep a small ring around the player completely free of obstacles
+    SAFE_RADIUS = 1  # 1 tile in each direction = 3x3 area
+    px, py = player_pos
+    for dx in range(-SAFE_RADIUS, SAFE_RADIUS + 1):
+        for dy in range(-SAFE_RADIUS, SAFE_RADIUS + 1):
+            nx, ny = px + dx, py + dy
+            if 0 <= nx < grid_size and 0 <= ny < grid_size:
+                forbidden.add((nx, ny))
 
     # --- obstacle fill with clusters (NO pre-placed main block now) ---
     obstacles: Dict[Tuple[int, int], Obstacle] = {}
@@ -6688,8 +6723,11 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         enemy_shots = []
 
     # Ignore override_cam and just use the main iso renderer
-    return render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots)
-
+    return render_game_iso(
+        screen, game_state, player, zombies, bullets, enemy_shots,
+        obstacles=game_state.obstacles,
+        override_cam=override_cam
+    )
 
 
 # ==================== GAMESOUND ====================
@@ -6858,7 +6896,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 break
 
     game_state.turrets = turrets
-
 
     ztype_map = {
         "zombie_fast": "fast",
@@ -7223,13 +7260,35 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         if player.hp <= 0:
             game_result = "fail"
             running = False
+
+            # Make a final frame so HUD shows 0 HP on the fail screen
+            if USE_ISO:
+                last_frame = render_game_iso(
+                    pygame.display.get_surface(),
+                    game_state, player, zombies, bullets, enemy_shots,
+                    obstacles=obstacles
+                )
+            else:
+                last_frame = render_game(
+                    pygame.display.get_surface(),
+                    game_state, player, zombies, bullets, enemy_shots
+                )
             continue
 
         if USE_ISO:
-            last_frame = render_game_iso(pygame.display.get_surface(), game_state, player, zombies, bullets,
-                                         enemy_shots, obstacles)
+            last_frame = render_game_iso(
+                pygame.display.get_surface(),
+                game_state, player, zombies, bullets, enemy_shots,
+                obstacles
+            )
         else:
-            last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+            last_frame = render_game(
+                pygame.display.get_surface(),
+                game_state, player, zombies, bullets, enemy_shots
+            )
+
+        # else:
+        #     last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
 
         if game_result == "success":
             globals()["_last_spoils"] = getattr(game_state, "spoils_gained", 0)
@@ -7308,7 +7367,6 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 turrets.append(StationaryTurret(wx, wy))
                 break
     game_state.turrets = turrets
-
 
     # Zombies
     zombies: List[Zombie] = []
@@ -7547,9 +7605,16 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
 
                 if player.hp <= 0:
                     clear_save()
-                    action = show_fail_screen(screen,
-                                              last_frame or render_game(screen, game_state, player, zombies, bullets,
-                                                                        enemy_shots))
+
+                    # Fresh frame with HP = 0 for fail background
+                    bg = render_game_iso(
+                        screen, game_state, player, zombies, bullets, enemy_shots,
+                        obstacles=game_state.obstacles
+                    )
+                    last_frame = bg.copy()
+
+                    action = show_fail_screen(screen, bg)
+
                     if action == "home":
                         clear_save();
                         flush_events()
@@ -7963,26 +8028,25 @@ if __name__ == "__main__":
 # 敏捷逃避：高移动速度，会优先躲避玩家而不是直接对抗
 # 财富返还：被击败后掉落一个钱袋，包含所有偷取的金币加上额外奖励
 # 逃脱机制：如果在特定时间内未被击败，会带着金币逃离关卡
-#============PROPS==========================
-#1.1. Piercing Rounds
-#1.2. Ricochet Scope
-#1.3. Bleeding Edge
-#1.4. Shrapnel Shells
-#1.5. Mark of Vulnerability
+# ============PROPS==========================
+# 1.1. Piercing Rounds
+# 1.2. Ricochet Scope
+# 1.3. Bleeding Edge
+# 1.4. Shrapnel Shells
+# 1.5. Mark of Vulnerability
 
-#2.1. Bone Plating
-#2.2. Guardian Charm
-#2.3. Blood Pact
-#2.4. Retaliation Thorns
+# 2.1. Bone Plating
+# 2.2. Guardian Charm
+# 2.3. Blood Pact
+# 2.4. Retaliation Thorns
 
-#3.1. Lockbox
-#3.2. Wanted Poster
-#3.3. Coin Magnet
-#3.4. Golden Interest
-#3.5. Bandit Radar
+# 3.1. Lockbox
+# 3.2. Wanted Poster
+# 3.3. Coin Magnet
+# 3.4. Golden Interest
+# 3.5. Bandit Radar
 
-#4.1. Time Dilation Boots
+# 4.1. Time Dilation Boots
 #
 #
 #
-
