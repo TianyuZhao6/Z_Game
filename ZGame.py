@@ -1072,6 +1072,7 @@ def reset_run_state():
         "crit": 0.0,
         "coin_magnet_radius": 0,
         "auto_turret_level": 0,
+        "stationary_turret_count": 0,
     })
     globals()["_carry_player_state"] = None
     globals()["_pending_shop"] = False
@@ -4485,7 +4486,7 @@ class MistweaverBoss(Zombie):
 
 class Bullet:
     def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE,
-                 damage: int = BULLET_DAMAGE_ZOMBIE):
+                 damage: int = BULLET_DAMAGE_ZOMBIE, source: str = "player"):
         self.x = x
         self.y = y
         self.vx = vx
@@ -4495,6 +4496,7 @@ class Bullet:
         self.max_dist = max_dist
         self.damage = int(damage)
         self.r = bullet_radius_for_damage(self.damage)
+        self.source = source
 
     def update(self, dt: float, game_state: 'GameState', zombies: List['Zombie'], player: 'Player' = None):
         if not self.alive:
@@ -4653,9 +4655,17 @@ class Bullet:
                 return
 
     def draw(self, screen, cam_x, cam_y):
-        pygame.draw.circle(screen, (255, 255, 255),
-                           (int(self.x - cam_x), int(self.y - cam_y)),
-                           int(getattr(self, "r", BULLET_RADIUS)))
+        src = getattr(self, "source", "player")
+        if src == "turret":
+            color = (0, 255, 255)  # cyan for all turret bullets
+        else:
+            color = (255, 255, 255)  # default player bullet color (top-down)
+        pygame.draw.circle(
+            screen,
+            color,
+            (int(self.x - cam_x), int(self.y - cam_y)),
+            int(getattr(self, "r", BULLET_RADIUS)),
+        )
 
 class AutoTurret:
     """
@@ -4733,6 +4743,7 @@ class AutoTurret:
                 vx, vy,
                 max_dist=max_range,
                 damage=self.damage,
+                source="turret",
             )
         )
         self.cd = self.fire_interval
@@ -6447,6 +6458,17 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         for b in bullets:
             wx, wy = b.x / CELL_SIZE, (b.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            drawables.append((
+                "bullet",
+                sy,
+                {
+                    "cx": sx,
+                    "cy": sy,
+                    "r": int(getattr(b, "r", BULLET_RADIUS)),
+                    "src": getattr(b, "source", "player"),
+                },
+            ))
+
             drawables.append(("bullet", sy, {"cx": sx, "cy": sy, "r": int(getattr(b, "r", BULLET_RADIUS))}))
 
     if enemy_shots:
@@ -6525,7 +6547,13 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         elif kind == "bullet":
             cx, cy = data["cx"], data["cy"]
             rad = int(data.get("r", BULLET_RADIUS))
-            pygame.draw.circle(screen, COL_PLAYER_BULLET, (cx, cy), rad)
+            src = data.get("src", "player")
+            if src == "turret":
+                color = (0, 255, 255)  # cyan turret bullets (iso)
+            else:
+                color = COL_PLAYER_BULLET
+            pygame.draw.circle(screen, color, (cx, cy), rad)
+
         elif kind == "eshot":
             rad = int(data.get("r", BULLET_RADIUS))
             pygame.draw.circle(screen, COL_ENEMY_SHOT, (data["cx"], data["cy"]), rad)
