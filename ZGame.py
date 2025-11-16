@@ -786,7 +786,7 @@ XP_PER_ZOMBIE_TYPE = {
 XP_ZLEVEL_BONUS = 2  # bonus XP per zombie level above 1
 
 ZOMBIE_XP_TO_LEVEL = 15  # per level step for monsters
-PLAYER_XP_TO_LEVEL = 40  # base; scales by +20%
+PLAYER_XP_TO_LEVEL = 30  # base; scales by +20%
 # --- zombie spoils empowerment ---
 Z_SPOIL_HP_PER = 1  # 每 1 金币：+1 MaxHP & +1 当期HP
 Z_SPOIL_ATK_STEP = 5  # 每 5 金币：+1 攻击
@@ -1051,6 +1051,8 @@ META = {
     "coin_magnet_radius": 0,  # 磁吸金币的额外拾取半径（像素）
     "auto_turret_level": 0,  # 自动炮台等级（每级多一个炮台）
     "stationary_turret_count": 0,
+    "pierce_level": 0,  # 每发子弹可额外穿透的“击杀次数”
+    "ricochet_level": 0,  # 每发子弹可弹射的次数
 }
 
 
@@ -1074,6 +1076,8 @@ def reset_run_state():
         "coin_magnet_radius": 0,
         "auto_turret_level": 0,
         "stationary_turret_count": 0,
+        "pierce_level": 0,
+        "ricochet_level": 0,
     })
     globals()["_carry_player_state"] = None
     globals()["_pending_shop"] = False
@@ -2411,6 +2415,28 @@ def show_shop_screen(screen) -> Optional[str]:
                  auto_turret_level=min(5, META.get("auto_turret_level", 0) + 1)
              )},
             {
+                "id": "piercing_rounds",
+                "name": "Piercing Rounds",
+                "desc": "Bullets can pierce +1 enemy on kill.",
+                "cost": 14,
+                "rarity": 2,
+                "max_level": 5,
+                "apply": lambda: META.update(
+                    pierce_level=min(5, int(META.get("pierce_level", 0)) + 1)
+                ),
+            },
+            {
+                "id": "ricochet_scope",
+                "name": "Ricochet Scope",
+                "desc": "Bullets that hit walls or enemies can bounce toward the nearest enemy.",
+                "cost": 16,
+                "rarity": 3,
+                "max_level": 3,
+                "apply": lambda: META.update(
+                    ricochet_level=min(3, int(META.get("ricochet_level", 0)) + 1)
+                ),
+            },
+            {
                 "id": "stationary_turret",
                 "name": "Stationary Turret",
                 "desc": "Adds a stationary turret that spawns at a random clear spot on the map each level.",
@@ -3033,6 +3059,10 @@ class Player:
         # per-run upgrades from shop (applied on spawn)
         self.bullet_damage = int(META.get("base_dmg", BULLET_DAMAGE_ZOMBIE)) + int(META.get("dmg", 0))
         self.fire_rate_mult = float(META.get("firerate_mult", 1.0))
+        # bullet behavior
+        self.bullet_pierce = int(META.get("pierce_level", 0))
+        self.bullet_ricochet = int(META.get("ricochet_level", 0))
+
         # 射程：base × mult
         self.range_base = float(META.get("base_range", MAX_FIRE_RANGE))
         self.range = float(self.range_base * META.get("range_mult", 1.0))
@@ -4534,6 +4564,42 @@ class Bullet:
         _rr = int(getattr(self, "r", BULLET_RADIUS))
         r = pygame.Rect(int(self.x - _rr), int(self.y - _rr), _rr * 2, _rr * 2)
 
+        # try ricochet helper (player bullets only)
+        def try_ricochet(hit_x: float, hit_y: float) -> bool:
+            """Try to bounce this bullet toward the nearest enemy. Return True if bounced."""
+            if getattr(self, "source", "player") != "player":
+                return False
+            remaining = int(getattr(self, "ricochet_left", 0))
+            if remaining <= 0:
+                return False
+
+            target = None
+            best_d2 = None
+            for z in zombies:
+                if getattr(z, "hp", 0) <= 0:
+                    continue
+                dx = z.rect.centerx - hit_x
+                dy = z.rect.centery - hit_y
+                d2 = dx * dx + dy * dy
+                if d2 <= 0:
+                    continue
+                if best_d2 is None or d2 < best_d2:
+                    best_d2 = d2
+                    target = (dx, dy)
+
+            if target is None:
+                return False
+
+            dx, dy = target
+            L = (dx * dx + dy * dy) ** 0.5 or 1.0
+            speed = (self.vx * self.vx + self.vy * self.vy) ** 0.5 or BULLET_SPEED
+            self.vx = dx / L * speed
+            self.vy = dy / L * speed
+            self.x = hit_x
+            self.y = hit_y
+            self.ricochet_left = remaining - 1
+            return True
+
         # 1) zombies
         for z in list(zombies):
             if r.colliderect(z.rect):
@@ -4950,7 +5016,6 @@ class EnemyShot:
             # keep whatever radius it was created with (default small)
             self.r = int(getattr(self, "r", BULLET_RADIUS))
 
-        # 本帧碰撞 AABB
         # 本帧碰撞 AABB（优先用自身半径）
         _rr = int(getattr(self, "r", BULLET_RADIUS))
         r = pygame.Rect(int(self.x - _rr), int(self.y - _rr), _rr * 2, _rr * 2)
@@ -7394,6 +7459,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                       float(b.get("vx", 0.0)), float(b.get("vy", 0.0)),
                       getattr(player, "range", MAX_FIRE_RANGE))
         bobj.traveled = float(b.get("traveled", 0.0))
+        # approximate current upgrades
+        bobj.pierce_left = int(getattr(player, "bullet_pierce", 0))
+        bobj.ricochet_left = int(getattr(player, "bullet_ricochet", 0))
         bullets.append(bobj)
 
     enemy_shots: List[EnemyShot] = []
@@ -7565,7 +7633,11 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             L = (dx * dx + dy * dy) ** 2 ** 0.5 if False else ((dx * dx + dy * dy) ** 0.5)  # keep readable
             L = L or 1.0
             vx, vy = (dx / L) * BULLET_SPEED, (dy / L) * BULLET_SPEED
-            bullets.append(Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage))
+            b = Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage)
+            # per-bullet Piercing & Ricochet charges
+            b.pierce_left = int(getattr(player, "bullet_pierce", 0))
+            b.ricochet_left = int(getattr(player, "bullet_ricochet", 0))
+            bullets.append(b)
             player.fire_cd += player.fire_cooldown()
 
         # Auto-turrets firing

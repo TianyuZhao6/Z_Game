@@ -1,7 +1,7 @@
 1. Core Offense Props
 
 1.1. Piercing Rounds
-Effect: Bullets can pass through N enemies, each hit deals full or slightly reduced damage.
+Effect: Player's Bullets can pass through N enemies, each hit deals full or slightly reduced damage.
 Synergy:
 Strong with range (bullets travel farther, hit more).
 Strong with firerate (more bullets → more multi-hits).
@@ -76,7 +76,7 @@ Synergy:
 Converts the “punishment” enemy into a high-reward target.
 Combos with high speed (easier to chase them down) and burst damage.
 
-3.3. Coin Magnet !!!!!
+3.3. Coin Magnet !!!!! √
 Effect: Increases coin pickup radius.
 Synergy:
 Super good with high movement speed, kiting builds.
@@ -116,8 +116,8 @@ Synergy:
 Strong near obstacles, choke points.
 Works with knockback / push effects if you add them later.
 
-4.4. Auto-Turret Backpack !!!!
-Effect: Deploys a small turret that follows or stays near you and fires weak bullets at nearest enemy.
+4.4. Auto-Turret Backpack !!!!  √
+Effect: Deploys a small turret that follows you and fires weak bullets at nearest enemy.
 Synergy:
 Scales with damage buffs if turret uses your damage.
 Good with any prop that boosts “all sources” damage (e.g., Mark of Vulnerability).
