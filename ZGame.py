@@ -4689,49 +4689,77 @@ class Bullet:
                             setattr(z, "_xp_awarded", True)
                         transfer_xp_to_neighbors(z, zombies)
                         zombies.remove(z)
-                        self.alive = False
-                        return
 
-                    # --- normal death (non-splinter or already split) ---
-                    drop_n = roll_spoils_for_zombie(z)
-                    drop_n += int(getattr(z, "spoils", 0))
-                    if drop_n > 0:
-                        game_state.spawn_spoils(cx, cy, drop_n)
-                    if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
-                        game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
-                    if player:
-                        base_xp = XP_PER_ZOMBIE_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
-                        bonus = max(0, z.z_level - 1) * XP_ZLEVEL_BONUS
-                        extra_by_spoils = int(getattr(z, "spoils", 0)) * int(Z_SPOIL_XP_BONUS_PER)
-                        if getattr(z, "is_elite", False):  base_xp = int(base_xp * 1.5)
-                        if getattr(z, "is_boss", False):   base_xp = int(base_xp * 3.0)
-                        player.add_xp(base_xp + bonus + extra_by_spoils)
-                        setattr(z, "_xp_awarded", True)
-                        if getattr(z, "is_boss", False):
-                            trigger_twin_enrage(z, zombies, game_state)
+                    else:
+                        # --- normal death (non-splinter or already split) ---
+                        drop_n = roll_spoils_for_zombie(z)
+                        drop_n += int(getattr(z, "spoils", 0))
+                        if drop_n > 0:
+                            game_state.spawn_spoils(cx, cy, drop_n)
+                        if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                            game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
+                        if player:
+                            base_xp = XP_PER_ZOMBIE_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
+                            bonus = max(0, z.z_level - 1) * XP_ZLEVEL_BONUS
+                            extra_by_spoils = int(getattr(z, "spoils", 0)) * int(Z_SPOIL_XP_BONUS_PER)
+                            if getattr(z, "is_elite", False):
+                                base_xp = int(base_xp * 1.5)
+                            if getattr(z, "is_boss", False):
+                                base_xp = int(base_xp * 3.0)
+                            player.add_xp(base_xp + bonus + extra_by_spoils)
+                            setattr(z, "_xp_awarded", True)
+                            if getattr(z, "is_boss", False):
+                                trigger_twin_enrage(z, zombies, game_state)
 
-                    transfer_xp_to_neighbors(z, zombies)
-                    zombies.remove(z)
+                        transfer_xp_to_neighbors(z, zombies)
+                        zombies.remove(z)
+
+                        # --- Bullet fate after killing this enemy ---
+                    if getattr(self, "source", "player") == "player":
+                        # 1) Piercing Rounds: consume a pierce charge and keep flying
+                        remaining_pierce = int(getattr(self, "pierce_left", 0))
+                        if remaining_pierce > 0:
+                            self.pierce_left = remaining_pierce - 1
+                            # 不再在本帧命中更多敌人，下一帧继续
+                            break
+
+                        # 2) Ricochet Scope: if no pierce left, try to bounce
+                        if try_ricochet(cx, cy):
+                            break
+
+                        # 3) no special effect left → bullet disappears
                     self.alive = False
                     return
 
         # 2) obstacles
         for gp, ob in list(game_state.obstacles.items()):
             if r.colliderect(ob.rect):
+                hit_x, hit_y = self.x, self.y
+
                 if ob.type == "Indestructible":
+                    # Ricochet off walls if possible, otherwise die
+                    if getattr(self, "source", "player") == "player" and try_ricochet(hit_x, hit_y):
+                        break
                     self.alive = False
                     return
+
                 elif ob.type == "Destructible":
                     ob.health = (ob.health or 0) - BULLET_DAMAGE_BLOCK
                     if ob.health <= 0:
                         cx, cy = ob.rect.centerx, ob.rect.centery
                         del game_state.obstacles[gp]
-                        # drop spoils for block destruction
                         if random.random() < SPOILS_BLOCK_DROP_CHANCE:
                             game_state.spawn_spoils(cx, cy, 1)
-                        if player: player.add_xp(XP_PLAYER_BLOCK)
+                        if player:
+                            player.add_xp(XP_PLAYER_BLOCK)
+
+                    # After damaging a block, we can also ricochet once
+                    if getattr(self, "source", "player") == "player" and try_ricochet(hit_x, hit_y):
+                        break
+
                     self.alive = False
                     return
+
         # 命中灯笼
         for gp, ob in list(game_state.obstacles.items()):
             if getattr(ob, "type", "") == "Lantern" and r.colliderect(ob.rect):
