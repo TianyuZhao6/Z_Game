@@ -4716,18 +4716,27 @@ class Bullet:
 
                 # --- Bullet fate after killing this enemy ---
                 if getattr(self, "source", "player") == "player":
-                    # 1) Piercing Rounds: consume a pierce charge and keep flying
+                    used_special = False
+
+                    # 1) Ricochet Scope: try to bounce toward another enemy.
+                    #    This is independent of piercing.
+                    if try_ricochet(cx, cy):
+                        used_special = True
+
+                    # 2) Piercing Rounds: every enemy hit consumes one pierce charge.
+                    #    As long as we still have charges, the bullet stays alive.
                     remaining_pierce = int(getattr(self, "pierce_left", 0))
                     if remaining_pierce > 0:
                         self.pierce_left = remaining_pierce - 1
-                         # 不再在本帧命中更多敌人，下一帧继续
+                        # Keep flying (either straight or along the bounced direction).
                         break
 
-                        # 2) Ricochet Scope: if no pierce left, try to bounce
-                    if try_ricochet(cx, cy):
+                    # 3) If we bounced but have no pierce charges at all,
+                    #    we still keep the bullet alive for the bounced flight.
+                    if used_special:
                         break
 
-                        # 3) no special effect left → bullet disappears
+                # 4) No special effects left → bullet disappears.
                 self.alive = False
                 return
 
