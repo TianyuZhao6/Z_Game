@@ -4714,22 +4714,22 @@ class Bullet:
                         transfer_xp_to_neighbors(z, zombies)
                         zombies.remove(z)
 
-                        # --- Bullet fate after killing this enemy ---
-                    if getattr(self, "source", "player") == "player":
-                        # 1) Piercing Rounds: consume a pierce charge and keep flying
-                        remaining_pierce = int(getattr(self, "pierce_left", 0))
-                        if remaining_pierce > 0:
-                            self.pierce_left = remaining_pierce - 1
-                            # 不再在本帧命中更多敌人，下一帧继续
-                            break
+                # --- Bullet fate after killing this enemy ---
+                if getattr(self, "source", "player") == "player":
+                    # 1) Piercing Rounds: consume a pierce charge and keep flying
+                    remaining_pierce = int(getattr(self, "pierce_left", 0))
+                    if remaining_pierce > 0:
+                        self.pierce_left = remaining_pierce - 1
+                         # 不再在本帧命中更多敌人，下一帧继续
+                        break
 
                         # 2) Ricochet Scope: if no pierce left, try to bounce
-                        if try_ricochet(cx, cy):
-                            break
+                    if try_ricochet(cx, cy):
+                        break
 
                         # 3) no special effect left → bullet disappears
-                    self.alive = False
-                    return
+                self.alive = False
+                return
 
         # 2) obstacles
         for gp, ob in list(game_state.obstacles.items()):
@@ -7278,9 +7278,15 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             _, gp, ob_or_z, cx, cy = target
             px, py = player_center()
             dx, dy = cx - px, cy - py
-            length = (dx * dx + dy * dy) ** 0.5 or 1.0
-            vx, vy = (dx / length) * BULLET_SPEED, (dy / length) * BULLET_SPEED
-            bullets.append(Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage))
+            L = (dx * dx + dy * dy) ** 0.5 or 1.0
+            vx, vy = (dx / L) * BULLET_SPEED, (dy / L) * BULLET_SPEED
+
+            b = Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage)
+            # Give this bullet its own pierce/ricochet charges from current player upgrades
+            b.pierce_left = int(getattr(player, "bullet_pierce", 0))
+            b.ricochet_left = int(getattr(player, "bullet_ricochet", 0))
+            bullets.append(b)
+
             player.fire_cd += player.fire_cooldown()
 
         # Auto-turrets firing
