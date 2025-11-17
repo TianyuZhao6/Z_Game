@@ -4272,6 +4272,12 @@ class MemoryDevourerBoss(Zombie):
         self.color = ZOMBIE_COLORS.get('boss_mem', (170, 40, 200))
         self.is_boss = True
         self.boss_name = "Memory Devourer"
+        # ======================== 放大碰撞盒 ===================================
+        self.size = int(CELL_SIZE * 1.6)
+        self.rect = pygame.Rect(self.x,
+                                self.y + INFO_BAR_HEIGHT,
+                                self.size, self.size)
+        self.radius = int(self.size * 0.55)  # 用于圆形范围（接触/范围判定）
         # —— 可视尺寸 & 脚底圆半径（2×2 占格）——
         # 可视矩形 ≈ 2*CELL_SIZE，略收边
         self.size = int(BOSS_FOOTPRINT_TILES * CELL_SIZE - BOSS_VISUAL_MARGIN)
@@ -4768,16 +4774,6 @@ class Bullet:
 
                     self.alive = False
                     return
-
-        # 命中灯笼
-        for gp, ob in list(game_state.obstacles.items()):
-            if getattr(ob, "type", "") == "Lantern" and r.colliderect(ob.rect):
-                if ob.health is not None:
-                    ob.health -= BULLET_DAMAGE_BLOCK
-                    if ob.health <= 0:
-                        del game_state.obstacles[gp]
-                self.alive = False
-                return
 
     def draw(self, screen, cam_x, cam_y):
         src = getattr(self, "source", "player")
