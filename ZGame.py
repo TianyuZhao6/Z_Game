@@ -2417,7 +2417,7 @@ def show_shop_screen(screen) -> Optional[str]:
             {
                 "id": "piercing_rounds",
                 "name": "Piercing Rounds",
-                "desc": "Bullets can pierce +1 enemy on kill.",
+                "desc": "Bullets can pierce +1 enemy.",
                 "cost": 14,
                 "rarity": 2,
                 "max_level": 5,
@@ -4714,31 +4714,31 @@ class Bullet:
                         transfer_xp_to_neighbors(z, zombies)
                         zombies.remove(z)
 
-                # --- Bullet fate after killing this enemy ---
-                if getattr(self, "source", "player") == "player":
-                    used_special = False
+                        # --- Bullet fate after hitting this enemy (hit, not just kill) ---
+                        if getattr(self, "source", "player") == "player":
+                            used_ricochet = False
 
-                    # 1) Ricochet Scope: try to bounce toward another enemy.
-                    #    This is independent of piercing.
-                    if try_ricochet(cx, cy):
-                        used_special = True
+                            # 1) Ricochet Scope: try to bounce toward another enemy
+                            #    Ricochet is independent of piercing.
+                            if try_ricochet(cx, cy):
+                                used_ricochet = True
 
-                    # 2) Piercing Rounds: every enemy hit consumes one pierce charge.
-                    #    As long as we still have charges, the bullet stays alive.
-                    remaining_pierce = int(getattr(self, "pierce_left", 0))
-                    if remaining_pierce > 0:
-                        self.pierce_left = remaining_pierce - 1
-                        # Keep flying (either straight or along the bounced direction).
-                        break
+                            # 2) Piercing Rounds: every *hit* on a zombie consumes one charge.
+                            remaining_pierce = int(getattr(self, "pierce_left", 0))
+                            if remaining_pierce > 0:
+                                self.pierce_left = remaining_pierce - 1
+                                # Bullet stays alive (continues in whatever direction it now has:
+                                # original or bounced).
+                                break
 
-                    # 3) If we bounced but have no pierce charges at all,
-                    #    we still keep the bullet alive for the bounced flight.
-                    if used_special:
-                        break
+                            # 3) If we bounced but had no pierce_left, still let the bullet fly
+                            #    along the bounced direction.
+                            if used_ricochet:
+                                break
 
-                # 4) No special effects left → bullet disappears.
-                self.alive = False
-                return
+                        # 4) No special effects left → bullet disappears after this hit.
+                        self.alive = False
+                        return
 
         # 2) obstacles
         for gp, ob in list(game_state.obstacles.items()):
