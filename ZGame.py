@@ -2767,7 +2767,12 @@ def spawn_wave_with_budget(game_state: "GameState",
         level_idx = int(globals().get("current_level", 0))
     except Exception:
         level_idx = 0
-    if (level_idx >= BANDIT_MIN_LEVEL_IDX
+
+    # 当前对局剩余时间（秒），没有的话就用默认关卡时长兜底
+    tleft = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
+
+    if (tleft > 20.0  # ★ 剩余时间不足 20 秒，不再刷 Bandit
+            and level_idx >= BANDIT_MIN_LEVEL_IDX
             and not is_boss_level(level_idx)
             and not getattr(game_state, "bandit_spawned_this_level", False)
             and random.random() < BANDIT_SPAWN_CHANCE_PER_WAVE
@@ -4751,7 +4756,16 @@ class Bullet:
             if r.colliderect(ob.rect):
                 hit_x, hit_y = self.x, self.y
 
-                if ob.type == "Indestructible":
+                if ob.type == "Lantern":
+                    # 灯笼：像不可破坏墙一样挡子弹，但不掉血
+                    if getattr(self, "source", "player") == "player" and try_ricochet(hit_x, hit_y):
+                        # 成功弹射后，子弹沿新方向继续飞
+                        break
+                    # 没有弹射或弹射失败：子弹在灯笼处消失
+                    self.alive = False
+                    return
+
+                elif ob.type == "Indestructible":
                     # Ricochet off walls if possible, otherwise die
                     if getattr(self, "source", "player") == "player" and try_ricochet(hit_x, hit_y):
                         break
