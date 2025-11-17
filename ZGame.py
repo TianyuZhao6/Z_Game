@@ -2725,7 +2725,7 @@ def promote_to_boss(z: "Zombie"):
     z.attack = int(z.attack * BOSS_ATK_MULT_EXTRA)
     z.speed += BOSS_SPD_ADD_EXTRA
 
-    # === NEW: enlarge physical footprint ===
+    # === enlarge physical footprint ===
     # 把 BOSS 的 AABB 拉大到 ~1.6 格高（等距里观感是“很占屏”）
     old_cx, old_cy = z.rect.center
     z.size = int(CELL_SIZE * 1.6)  # 占屏与卡位都更像“BOSS”
