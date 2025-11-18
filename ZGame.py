@@ -2508,10 +2508,13 @@ def show_shop_screen(screen) -> Optional[str]:
         return offers
 
     offers = roll_offers()
+    selected_id = None
 
     while True:
         # --- draw ---
         screen.fill((16, 16, 18))
+        mx, my = pygame.mouse.get_pos()
+
 
         # Title (center)
         title_surf = title_font.render("TRADER", True, (235, 235, 235))
