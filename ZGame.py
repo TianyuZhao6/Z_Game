@@ -2588,7 +2588,6 @@ def show_shop_screen(screen) -> Optional[str]:
                 cost_s = font.render(f"{dyn_cost}¥", True, cost_color)
                 screen.blit(cost_s, cost_s.get_rect(midleft=(r.x + 14, r.y + 60)))
 
-
             else:
                 # === BACK SIDE (hover) ===
                 # 1) prepare wrapped description lines using desc_font
