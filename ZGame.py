@@ -2402,33 +2402,37 @@ def show_shop_screen(screen) -> Optional[str]:
     globals()["_in_shop_ui"] = True
     try:
         clock = pygame.time.Clock()
-        font = pygame.font.SysFont(None, 30)  # titles, cost, etc.
+        font = pygame.font.SysFont(None, 30)   # titles, cost, etc.
         desc_font = pygame.font.SysFont(None, 24)  # smaller font just for descriptions
         title_font = pygame.font.SysFont(None, 56)
         btn_font = pygame.font.SysFont(None, 32)
 
-        # pseudo-random offers
+        # --- catalog of shop props ---
         catalog = [
-            {"id": "coin_magnet",
-            "name": "Coin Magnet",
-            "key": "magnet",
-            "cost": 10,
-            "rarity": 1,
-            "max_level": 5,  # 5 steps of radius, purely UI-level cap
-            "desc": "Increase your coin pickup radius.",
-            "apply": lambda: META.update(
-                coin_magnet_radius=META.get("coin_magnet_radius", 0) + 60)},
-
-            {"id": "auto_turret",
-            "name": "Auto-Turret",
-            "key": "auto_turret",
-            "cost": 14,
-            "rarity": 3,
-            "max_level": 5,
-            "desc": "Summons an orbiting auto-turret that fires at nearby enemies.",
-            "apply": lambda: META.update(
-                auto_turret_level=min(5, META.get("auto_turret_level", 0) + 1)
-             )},
+            {
+                "id": "coin_magnet",
+                "name": "Coin Magnet",
+                "key": "magnet",
+                "cost": 10,
+                "rarity": 1,
+                "max_level": 5,  # 5 steps of radius, purely UI-level cap
+                "desc": "Increase your coin pickup radius.",
+                "apply": lambda: META.update(
+                    coin_magnet_radius=META.get("coin_magnet_radius", 0) + 60
+                ),
+            },
+            {
+                "id": "auto_turret",
+                "name": "Auto-Turret",
+                "key": "auto_turret",
+                "cost": 14,
+                "rarity": 3,
+                "max_level": 5,
+                "desc": "Summons an orbiting auto-turret that fires at nearby enemies.",
+                "apply": lambda: META.update(
+                    auto_turret_level=min(5, META.get("auto_turret_level", 0) + 1)
+                ),
+            },
             {
                 "id": "piercing_rounds",
                 "name": "Piercing Rounds",
@@ -2462,22 +2466,28 @@ def show_shop_screen(screen) -> Optional[str]:
                     shrapnel_level=min(3, int(META.get("shrapnel_level", 0)) + 1)
                 ),
             },
-
             {
                 "id": "stationary_turret",
                 "name": "Stationary Turret",
                 "desc": "Adds a stationary turret that spawns at a random clear spot on the map each level.",
-                "cost": 14,  # tweak as you like
+                "cost": 14,   # tweak as you like
                 "rarity": 2,  # slightly rarer than basic stuff
                 "max_level": 99,  # effectively unlimited copies
                 "apply": lambda: META.update(
                     stationary_turret_count=int(META.get("stationary_turret_count", 0)) + 1
                 ),
             },
-
-            {"name": "Reroll Offers", "key": "reroll", "cost": 3, "apply": "reroll"},
+            # reroll is treated specially: no level cap, always appears
+            {
+                "id": "reroll",
+                "name": "Reroll Offers",
+                "key": "reroll",
+                "cost": 3,
+                "apply": "reroll",
+            },
         ]
     finally:
+        # just a guard; we clear this flag once we leave the function
         globals().pop("_in_shop_ui", None)
 
     def _prop_level(it):
@@ -2503,13 +2513,15 @@ def show_shop_screen(screen) -> Optional[str]:
         return it.get("max_level", None)
 
     def roll_offers():
-        pool = [c for c in catalog if c["name"] != "Reroll Offers"]
+        # don't ever remove reroll from the pool
+        pool = [c for c in catalog if c.get("id") != "reroll"]
         offers = random.sample(pool, k=min(4, len(pool)))
-        offers.append(next(c for c in catalog if c["name"] == "Reroll Offers"))
+        # append a dedicated reroll card
+        offers.append(next(c for c in catalog if c.get("id") == "reroll"))
         return offers
 
     offers = roll_offers()
-    selected_id = None
+    hovered_uid: Optional[str] = None  # used to stabilise hover so cards don't blink
 
     while True:
         # --- draw ---
@@ -2525,167 +2537,183 @@ def show_shop_screen(screen) -> Optional[str]:
         screen.blit(money_surf, money_surf.get_rect(center=(VIEW_W // 2, 130)))
 
         # Offers row — centered as a group
-        card_w, card_h = 220, 180  # main cards: bigger and more readable
-        reroll_h = 120  # reroll card: visually smaller
+        card_w, card_h = 220, 180   # main cards
+        reroll_h = 120              # reroll card: shorter
+        reroll_w = card_w // 2      # reroll really uses half width
         gap = 22
-        total_w = len(offers) * card_w + (len(offers) - 1) * gap
+
+        # compute per-card width so reroll uses half the width
+        widths = []
+        for it in offers:
+            is_reroll = (it.get("id") == "reroll"
+                         or it.get("key") == "reroll"
+                         or it.get("name") == "Reroll Offers")
+            widths.append(reroll_w if is_reroll else card_w)
+        total_w = sum(widths) + (len(offers) - 1) * gap
         start_x = (VIEW_W - total_w) // 2
         y = 200
 
-        rects = []
-        for i, it in enumerate(offers):
-            x = start_x + i * (card_w + gap)
-
-            is_reroll = (it.get("id") == "reroll" or it.get("name") == "Reroll Offers")
+        rects = []  # (rect, item, dyn_cost, is_capped, uid)
+        x = start_x
+        for it, w in zip(offers, widths):
+            is_reroll = (it.get("id") == "reroll"
+                         or it.get("key") == "reroll"
+                         or it.get("name") == "Reroll Offers")
             h = reroll_h if is_reroll else card_h
             # vertically center the shorter reroll card in the row
-            r = pygame.Rect(x, y + (card_h - h) // 2, card_w, h)
+            r = pygame.Rect(x, y + (card_h - h) // 2, w, h)
+            x += w + gap
 
             level_idx = int(globals().get("current_level", 0))
-            kind = "reroll" if it.get("apply") == "reroll" else "normal"
+            kind = "reroll" if it.get("apply") == "reroll" or it.get("id") == "reroll" else "normal"
             dyn_cost = shop_price(int(it["cost"]), level_idx, kind=kind)
 
-            # -- capped levels --
+            # capped levels
             cur_lvl = _prop_level(it)
             max_lvl = _prop_max_level(it)
             is_capped = (max_lvl is not None and cur_lvl is not None and cur_lvl >= max_lvl)
 
-            # hover & selection
-            is_hover = r.collidepoint((mx, my))
-            is_selected = (it.get("id") == selected_id)
+            uid = it.get("id") or it.get("name")  # fallback to name for reroll
+            is_hover = (uid == hovered_uid)
 
             # base colors
             bg_col = (40, 40, 42)
             border_col = (80, 80, 84)
 
-            if is_capped and it.get("id") != "reroll":
-                # maxed item: dimmed
+            if is_capped and not is_reroll:
                 bg_col = (24, 24, 26)
                 border_col = (70, 70, 76)
             elif is_hover:
                 bg_col = (60, 62, 70)
-                border_col = (210, 210, 220)
+                border_col = (120, 120, 130)
 
-            pygame.draw.rect(screen, bg_col, r, border_radius=10)
-            pygame.draw.rect(screen, border_col, r, 2, border_radius=10)
+            if is_reroll:
+                # slightly different styling for reroll
+                bg_col = (35, 40, 48)
+                border_col = (130, 160, 210)
 
-            # golden selection outline
-            if is_selected:
-                pygame.draw.rect(screen, (255, 215, 120), r.inflate(6, 6), 3, border_radius=12)
+            pygame.draw.rect(screen, bg_col, r, border_radius=14)
+            pygame.draw.rect(screen, border_col, r, 2, border_radius=14)
 
-            # front/back behavior:
-            # - Not hovered: front side => name + cost + level x/y
-            # - Hovered: back side => name small + description text + level
-            if not is_hover:
-                # === FRONT SIDE ===
-                # title centered horizontally
-                name_s = font.render(it["name"], True, (230, 230, 230))
-                screen.blit(name_s, name_s.get_rect(midtop=(r.centerx, r.y + 18)))
-
-                # cost aligned left, under the title
-                affordable = META["spoils"] >= dyn_cost and not (is_capped and it.get("id") != "reroll")
-                cost_color = (255, 210, 130) if affordable else (130, 120, 100)
-                cost_s = font.render(f"{dyn_cost}¥", True, cost_color)
-                screen.blit(cost_s, cost_s.get_rect(midleft=(r.x + 14, r.y + 60)))
-
-            else:
-                # === BACK SIDE (hover) ===
-                # 1) prepare wrapped description lines using desc_font
-                desc = it.get("desc", "") or ""
-                words = desc.split()
+            # front/back behaviour (no more jittery blinking)
+            if is_hover and not is_reroll:
+                # --- Back side: description-centric layout ---
+                title_s = font.render(it["name"], True, (235, 235, 235))
+                words = it.get("desc", "").split()
                 lines = []
                 if words:
                     max_w = r.width - 28
                     line = ""
-                    for w in words:
-                        test = (line + " " + w).strip()
+                    for w2 in words:
+                        test = (line + " " + w2).strip()
                         test_surf = desc_font.render(test, True, (210, 210, 210))
                         if test_surf.get_width() > max_w and line:
                             lines.append(line)
-                            line = w
+                            line = w2
                         else:
                             line = test
                     if line:
                         lines.append(line)
 
-                # 2) compute vertical block height (title + spacing + desc)
-                title_s = font.render(it["name"], True, (235, 235, 235))
-                title_h = title_s.get_height()
                 line_h = desc_font.get_linesize()
-                desc_block_h = len(lines) * line_h
-                spacing = 8
+                block_h = title_s.get_height() + 4 + len(lines) * line_h
+                top_y = r.centery - block_h // 2
 
-                total_block_h = title_h + (spacing if lines else 0) + desc_block_h
-
-                # 3) center that block vertically in the card
-                top_y = r.centery - total_block_h // 2
-
-                # draw title centered
                 title_rect = title_s.get_rect(midtop=(r.centerx, top_y))
                 screen.blit(title_s, title_rect)
 
-                # draw description lines beneath, centered with equal top/bottom padding
-                yy = title_rect.bottom + spacing
-                for line in lines:
-                    line_surf = desc_font.render(line, True, (210, 210, 210))
-                    screen.blit(line_surf, line_surf.get_rect(midtop=(r.centerx, yy)))
+                yy = title_rect.bottom + 4
+                for ln in lines:
+                    ln_surf = desc_font.render(ln, True, (210, 210, 210))
+                    screen.blit(ln_surf, ln_surf.get_rect(midtop=(r.centerx, yy)))
                     yy += line_h
+            else:
+                # --- Front side: name + cost + rarity ---
+                name_surf = font.render(it["name"], True, (235, 235, 235))
+                screen.blit(name_surf, name_surf.get_rect(midtop=(r.centerx, r.y + 10)))
+
+                col = (255, 230, 120) if META["spoils"] >= dyn_cost else (160, 140, 120)
+                price_txt = f"{dyn_cost} spoils"
+                price_surf = font.render(price_txt, True, col)
+                screen.blit(price_surf, price_surf.get_rect(midbottom=(r.centerx, r.bottom - 10)))
+
+                # rarity dots (simple visual cue, left-bottom)
+                rarity = int(it.get("rarity", 1))
+                dot_r = 4
+                for j in range(rarity):
+                    cx = r.left + 14 + j * (dot_r * 2 + 6)
+                    cy = r.bottom - 18
+                    pygame.draw.circle(screen, (180, 160, 220), (cx, cy), dot_r)
+
+                if is_reroll:
+                    hint = desc_font.render("Refresh shop choices.", True, (210, 210, 210))
+                    screen.blit(hint, hint.get_rect(center=(r.centerx, r.centery)))
 
             # level indicator for capped props: e.g. 1/3, 0/5, etc.
-            if max_lvl is not None and cur_lvl is not None:
+            if max_lvl is not None and cur_lvl is not None and not is_reroll:
                 lvl_text = f"{cur_lvl}/{max_lvl}"
-                lvl_color = (180, 230, 255) if not is_capped or it.get("id") == "reroll" else (140, 150, 160)
+                lvl_color = (180, 230, 255) if not is_capped else (140, 150, 160)
                 lvl_surf = font.render(lvl_text, True, lvl_color)
                 screen.blit(lvl_surf, lvl_surf.get_rect(bottomright=(r.right - 8, r.bottom - 6)))
 
-                rects.append((r, it, dyn_cost, is_capped))
+            # remember this card for input handling
+            rects.append((r, it, dyn_cost, is_capped, uid))
 
-            # --- Owned props panel (bottom-left, in empty space) ---
-            owned = []
-            for it in catalog:
-                lvl = _prop_level(it)
-                max_lvl = _prop_max_level(it)
-                if lvl is not None and lvl > 0 and it.get("id") != "reroll":
-                    owned.append((it["name"], lvl, max_lvl))
+        # --- Owned props panel — use the spare side/bottom space ---
+        owned = []
+        for itm in catalog:
+            lvl = _prop_level(itm)
+            max_lvl = _prop_max_level(itm)
+            if lvl is not None and lvl > 0 and itm.get("id") != "reroll":
+                owned.append((itm["name"], lvl, max_lvl))
 
-            if owned:
-                panel_w = 280
-                line_h = 22
-                panel_h = 32 + line_h * len(owned)
+        if owned:
+            panel_w = 280
+            line_h = 22
+            panel_h = 32 + line_h * len(owned)
 
-                margin_side = 40
-                margin_bottom = 70  # keep clear of window edge
+            margin_side = 40
+            margin_bottom = 70
+
+            # Prefer the right side next to the cards if there's room,
+            # otherwise fall back to bottom-left.
+            right_space = VIEW_W - (start_x + total_w) - margin_side
+            if right_space >= panel_w:
+                panel_x = VIEW_W - panel_w - margin_side
+                panel_y = y
+            else:
                 panel_x = margin_side
                 panel_y = VIEW_H - panel_h - margin_bottom
 
-                panel = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
-                pygame.draw.rect(screen, (24, 24, 28), panel, border_radius=12)
-                pygame.draw.rect(screen, (70, 70, 80), panel, 2, border_radius=12)
+            panel = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+            pygame.draw.rect(screen, (24, 24, 28), panel, border_radius=12)
+            pygame.draw.rect(screen, (70, 70, 80), panel, 2, border_radius=12)
 
-                header = font.render("Owned props", True, (220, 220, 230))
-                screen.blit(header, header.get_rect(left=panel.x + 14, top=panel.y + 6))
+            header = font.render("Owned props", True, (220, 220, 230))
+            screen.blit(header, header.get_rect(left=panel.x + 14, top=panel.y + 6))
 
-                yy = panel.y + 6 + font.get_linesize()
-                for name, lvl, max_lvl in owned:
-                    lvl_str = f"{lvl}/{max_lvl}" if max_lvl is not None else f"x{lvl}"
-                    line_text = f"{name} {lvl_str}"
-                    line_surf = font.render(line_text, True, (210, 210, 210))
-                    screen.blit(line_surf, (panel.x + 14, yy))
-                    yy += line_h
+            yy = panel.y + 6 + font.get_linesize()
+            for name, lvl, max_lvl in owned:
+                name_surf = font.render(name, True, (210, 210, 210))
+                lvl_str = f"{lvl}/{max_lvl}" if max_lvl is not None else f"x{lvl}"
+                lvl_surf = font.render(lvl_str, True, (180, 230, 255))
+                screen.blit(name_surf, (panel.x + 14, yy))
+                screen.blit(lvl_surf, lvl_surf.get_rect(right=panel.right - 14, top=yy))
+                yy += line_h
 
-            # --- NEXT button — centered under cards ---
-            close = pygame.Rect(0, 0, 220, 56)
-            close.center = (VIEW_W // 2, y + card_h + 80)
-            pygame.draw.rect(screen, (50, 50, 50), close, border_radius=10)
-            ctxt = btn_font.render("NEXT", True, (235, 235, 235))
-            screen.blit(ctxt, ctxt.get_rect(center=close.center))
+        # --- NEXT button — centered under cards ---
+        close = pygame.Rect(0, 0, 220, 56)
+        close.center = (VIEW_W // 2, y + card_h + 80)
+        pygame.draw.rect(screen, (50, 50, 50), close, border_radius=10)
+        ctxt = btn_font.render("NEXT", True, (235, 235, 235))
+        screen.blit(ctxt, ctxt.get_rect(center=close.center))
 
-            pygame.display.flip()
+        pygame.display.flip()
 
         # --- input ---
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
-                pygame.quit();
+                pygame.quit()
                 sys.exit()
 
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
@@ -2700,6 +2728,14 @@ def show_shop_screen(screen) -> Optional[str]:
                 flush_events()
                 return choice  # home / restart / exit
 
+            if ev.type == pygame.MOUSEMOTION:
+                # update which card is hovered, so drawing logic can use a stable id
+                hovered_uid = None
+                for r, it, dyn_cost, is_capped, uid in rects:
+                    if r.collidepoint(ev.pos):
+                        hovered_uid = uid
+                        break
+
             if ev.type == pygame.MOUSEBUTTONDOWN:
                 if close.collidepoint(ev.pos):
                     flush_events()
@@ -2709,20 +2745,29 @@ def show_shop_screen(screen) -> Optional[str]:
                     if chosen_biome in ("__HOME__", "__RESTART__", "__EXIT__"):
                         if chosen_biome == "__RESTART__":
                             globals()["_restart_from_shop"] = True
-                        return {"__HOME__": "home", "__RESTART__": "restart", "__EXIT__": "exit"}[chosen_biome]
+                        return {"__HOME__": "home",
+                                "__RESTART__": "restart",
+                                "__EXIT__": "exit"}[chosen_biome]
 
                     globals()["_next_biome"] = chosen_biome  # 正常选择到场景名
                     return None  # 照常结束商店，进入下一关
 
-                for r, it, dyn_cost in rects:
+                for r, it, dyn_cost, is_capped, uid in rects:
+                    # don't allow buying a capped item any further, but reroll is always allowed
+                    is_reroll = (it.get("id") == "reroll"
+                                 or it.get("key") == "reroll"
+                                 or it.get("name") == "Reroll Offers")
+                    if not is_reroll and is_capped:
+                        continue
                     if r.collidepoint(ev.pos) and META["spoils"] >= dyn_cost:
                         META["spoils"] -= dyn_cost
-                        if it["apply"] == "reroll":
+                        if is_reroll or it.get("apply") == "reroll":
                             offers = roll_offers()  # 价格保持原样
                         else:
                             it["apply"]()
 
         clock.tick(60)
+
 
 
 def show_biome_picker_in_shop(screen) -> str:
