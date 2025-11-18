@@ -2408,11 +2408,25 @@ def show_shop_screen(screen) -> Optional[str]:
 
         # pseudo-random offers
         catalog = [
-            {"name": "Coin Magnet", "key": "magnet", "cost": 10,
-             "apply": lambda: META.update(coin_magnet_radius=META.get("coin_magnet_radius", 0) + 60)},
-            {"name": "Auto-Turret", "key": "auto_turret", "cost": 12,
-             "apply": lambda: META.update(
-                 auto_turret_level=min(5, META.get("auto_turret_level", 0) + 1)
+            {"id": "coin_magnet",
+            "name": "Coin Magnet",
+            "key": "magnet",
+            "cost": 10,
+            "rarity": 1,
+            "max_level": 5,  # 5 steps of radius, purely UI-level cap
+            "desc": "Increase your coin pickup radius.",
+            "apply": lambda: META.update(
+                coin_magnet_radius=META.get("coin_magnet_radius", 0) + 60)},
+
+            {"id": "auto_turret",
+            "name": "Auto-Turret",
+            "key": "auto_turret",
+            "cost": 14,
+            "rarity": 3,
+            "max_level": 5,
+            "desc": "Summons an orbiting auto-turret that fires at nearby enemies.",
+            "apply": lambda: META.update(
+                auto_turret_level=min(5, META.get("auto_turret_level", 0) + 1)
              )},
             {
                 "id": "piercing_rounds",
@@ -2453,7 +2467,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 "name": "Stationary Turret",
                 "desc": "Adds a stationary turret that spawns at a random clear spot on the map each level.",
                 "cost": 14,  # tweak as you like
-                "rarity": 3,  # slightly rarer than basic stuff
+                "rarity": 2,  # slightly rarer than basic stuff
                 "max_level": 99,  # effectively unlimited copies
                 "apply": lambda: META.update(
                     stationary_turret_count=int(META.get("stationary_turret_count", 0)) + 1
@@ -2464,6 +2478,28 @@ def show_shop_screen(screen) -> Optional[str]:
         ]
     finally:
         globals().pop("_in_shop_ui", None)
+
+    def _prop_level(it):
+        """Read current level for capped props from META."""
+        iid = it.get("id")
+        if iid == "piercing_rounds":
+            return int(META.get("pierce_level", 0))
+        if iid == "ricochet_scope":
+            return int(META.get("ricochet_level", 0))
+        if iid == "shrapnel_shells":
+            return int(META.get("shrapnel_level", 0))
+        if iid == "stationary_turret":
+            return int(META.get("stationary_turret_count", 0))
+        if iid == "coin_magnet":
+            # radius 0,60,120,... => treat as 0,1,2,...
+            return int(META.get("coin_magnet_radius", 0) // 60)
+        if iid == "auto_turret":
+            return int(META.get("auto_turret_level", 0))
+        # reroll or anything else: no level display
+        return None
+
+    def _prop_max_level(it):
+        return it.get("max_level", None)
 
     def roll_offers():
         pool = [c for c in catalog if c["name"] != "Reroll Offers"]
