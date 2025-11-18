@@ -2480,7 +2480,7 @@ def show_shop_screen(screen) -> Optional[str]:
             # reroll is treated specially: no level cap, always appears
             {
                 "id": "reroll",
-                "name": "Reroll Offers",
+                "name": "Reroll",  # shorter title
                 "key": "reroll",
                 "cost": 3,
                 "apply": "reroll",
@@ -2533,7 +2533,7 @@ def show_shop_screen(screen) -> Optional[str]:
         screen.blit(title_surf, title_surf.get_rect(center=(VIEW_W // 2, 80)))
 
         # Spoils (center under title)
-        money_surf = font.render(f"Spoils: {META['spoils']}", True, (255, 230, 120))
+        money_surf = font.render(f"Coins: {META['spoils']}", True, (255, 230, 120))
         screen.blit(money_surf, money_surf.get_rect(center=(VIEW_W // 2, 130)))
 
         # Offers row — centered as a group
@@ -2645,9 +2645,6 @@ def show_shop_screen(screen) -> Optional[str]:
                     cy = r.bottom - 18
                     pygame.draw.circle(screen, (180, 160, 220), (cx, cy), dot_r)
 
-                if is_reroll:
-                    hint = desc_font.render("Refresh shop choices.", True, (210, 210, 210))
-                    screen.blit(hint, hint.get_rect(center=(r.centerx, r.centery)))
 
             # level indicator for capped props: e.g. 1/3, 0/5, etc.
             if max_lvl is not None and cur_lvl is not None and not is_reroll:
