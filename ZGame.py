@@ -2418,8 +2418,8 @@ def show_shop_screen(screen) -> Optional[str]:
                 "id": "piercing_rounds",
                 "name": "Piercing Rounds",
                 "desc": "Bullets can pierce +1 enemy.",
-                "cost": 14,
-                "rarity": 2,
+                "cost": 12,
+                "rarity": 1,
                 "max_level": 5,
                 "apply": lambda: META.update(
                     pierce_level=min(5, int(META.get("pierce_level", 0)) + 1)
@@ -2429,13 +2429,25 @@ def show_shop_screen(screen) -> Optional[str]:
                 "id": "ricochet_scope",
                 "name": "Ricochet Scope",
                 "desc": "Bullets that hit walls or enemies can bounce toward the nearest enemy.",
-                "cost": 16,
-                "rarity": 3,
+                "cost": 14,
+                "rarity": 2,
                 "max_level": 3,
                 "apply": lambda: META.update(
                     ricochet_level=min(3, int(META.get("ricochet_level", 0)) + 1)
                 ),
             },
+            {
+                "id": "shrapnel_shells",
+                "name": "Shrapnel Shells",
+                "desc": "On enemy death, sometimes spawn 3–4 shrapnel splashes dealing 40% of lethal damage.",
+                "cost": 16,
+                "rarity": 3,
+                "max_level": 3,
+                "apply": lambda: META.update(
+                    shrapnel_level=min(3, int(META.get("shrapnel_level", 0)) + 1)
+                ),
+            },
+
             {
                 "id": "stationary_turret",
                 "name": "Stationary Turret",
@@ -3067,6 +3079,9 @@ class Player:
         # bullet behavior
         self.bullet_pierce = int(META.get("pierce_level", 0))
         self.bullet_ricochet = int(META.get("ricochet_level", 0))
+        # on-kill shrapnel splashes
+        self.shrapnel_level = int(META.get("shrapnel_level", 0))
+
 
         # 射程：base × mult
         self.range_base = float(META.get("base_range", MAX_FIRE_RANGE))
@@ -4648,6 +4663,7 @@ class Bullet:
                         dealt = int(dealt * MIST_RANGED_MULT)
 
                 # --- apply to shield first, overflow to HP ---
+                hp_before = z.hp
                 if getattr(z, "shield_hp", 0) > 0:
                     blocked = min(dealt, z.shield_hp)
                     z.shield_hp -= dealt
@@ -4664,11 +4680,48 @@ class Bullet:
                 else:
                     z.hp -= dealt
                     game_state.add_damage_text(cx, cy, dealt, crit=is_crit, kind="hp")
+                hp_lost = max(0, hp_before - max(z.hp, 0))
 
                 if z.hp <= 0:
                     cx, cy = z.rect.centerx, z.rect.centery
+
+                    # --- Shrapnel Shells: on enemy death, spawn shrapnel splashes ---
+                    shrap_lvl = int(META.get("shrapnel_level", 0))
+                    if (shrap_lvl > 0
+                            and hp_lost > 0
+                            and getattr(self, "source", "player") == "player"):
+                        # chance scaling per level: 25%, 35%, 45% (cap at 80% if you later increase max_level)
+                        base_chance = 0.25
+                        per_level = 0.10
+                        chance = min(0.80, base_chance + per_level * (shrap_lvl - 1))
+                        if random.random() < chance:
+                            count = random.randint(3, 4)
+                            shrap_dmg = max(1, int(round(hp_lost * 0.4)))  # 40% of lethal HP damage
+                            for _ in range(count):
+                                ang = random.uniform(0.0, 2.0 * math.pi)
+                                speed = BULLET_SPEED * 0.85  # a bit slower than main shot
+                                vx = math.cos(ang) * speed
+                                vy = math.sin(ang) * speed
+                                sb = Bullet(
+                                    cx, cy,
+                                    vx, vy,
+                                    max_dist=player.range * 0.5,  # shorter range splashes
+                                    damage=shrap_dmg,
+                                    source="player",
+                                )
+                                # shrapnel itself doesn’t pierce/ricochet (keeps it readable)
+                                sb.pierce_left = 0
+                                sb.ricochet_left = 0
+                                sb.is_shrapnel = True  # optional, for future VFX
+
+                                # queue into GameState; main loop will attach to bullets
+                                if not hasattr(game_state, "pending_bullets"):
+                                    game_state.pending_bullets = []
+                                game_state.pending_bullets.append(sb)
+
                     if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) is not None:
                         trigger_twin_enrage(z, zombies, game_state)
+
                     # --- Splinter: if not yet split, split on death instead of dropping loot now ---
                     if getattr(z, "_can_split", False) and not getattr(z, "_split_done", False) and getattr(z, "type",
                                                                                                             "") == "splinter":
@@ -5948,6 +6001,9 @@ class GameState:
         self._ff_dirty = True
         self._ff_timer = 0.0  # cooldown to throttle rebuilds
         self._ff_tacc = 0.0
+        # bullets spawned during bullet update (e.g. shrapnel from on-kill effects)
+        self.pending_bullets: List["Bullet"] = []
+
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -7319,6 +7375,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 bullets.remove(b)
 
         player.hit_cd = max(0.0, player.hit_cd - dt)
+        # Attach any bullets spawned during updates (e.g., Shrapnel Shells)
+        if getattr(game_state, "pending_bullets", None):
+            bullets.extend(game_state.pending_bullets)
+            game_state.pending_bullets.clear()
+
         for zombie in list(zombies):
             zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
             if player.hit_cd <= 0.0 and circle_touch(zombie, player):
