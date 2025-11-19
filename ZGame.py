@@ -2633,6 +2633,11 @@ def show_shop_screen(screen) -> Optional[str]:
 
             uid = it.get("id") or it.get("name")
             is_hover = (uid == hovered_uid)
+            is_reroll = (
+                it.get("id") == "reroll"
+                or it.get("key") == "reroll"
+                or it.get("name") in ("Reroll Offers", "Reroll")
+            )
 
             # small lock button in the top-right corner of the card
             lock_rect = None
@@ -2882,7 +2887,20 @@ def show_shop_screen(screen) -> Optional[str]:
                     return None  # 照常结束商店，进入下一关
                 # 1) lock toggle check – click on small lock box
                 handled_lock = False
-                for r, it, dyn_cost, is_capped, uid in rects:
+                for r, it, dyn_cost, is_capped, uid, lock_rect in rects:
+                    if lock_rect and lock_rect.collidepoint(ev.pos):
+                        card_id = it.get("id")
+                        if card_id:
+                            if card_id in locked_ids:
+                                locked_ids.remove(card_id)
+                            else:
+                                locked_ids.append(card_id)
+                        handled_lock = True
+                        break
+                if handled_lock:
+                    continue
+
+                for r, it, dyn_cost, is_capped, uid, lock_rect in rects:
                     # don't allow buying a capped item any further, but reroll is always allowed
                     is_reroll = (it.get("id") == "reroll"
                                  or it.get("key") == "reroll"
@@ -2892,9 +2910,10 @@ def show_shop_screen(screen) -> Optional[str]:
                     if r.collidepoint(ev.pos) and META["spoils"] >= dyn_cost:
                         META["spoils"] -= dyn_cost
                         if is_reroll or it.get("apply") == "reroll":
-                            offers = roll_offers()  # 价格保持原样
+                            offers = roll_offers()  # Price stays the same
                         else:
                             it["apply"]()
+
 
         clock.tick(60)
 
