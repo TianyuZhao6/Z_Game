@@ -2038,19 +2038,32 @@ def show_pause_menu(screen, background_surf):
 
     # --- DPS (average, includes current damage/AS/crit) ---
     dps_val = compute_player_dps(p)
-    dps_text = font_tiny.render(f"DPS: {dps_val:.2f}", True, (230, 230, 230))
-    screen.blit(dps_text, (left_margin, y_offset));
-    y_offset += 30
-
-    # --- right column: possessions / inventory summary ---
-    right_margin = VIEW_W - 30
-    y_offset = top_margin
-
-    title = font_small.render("Possessions", True, (230, 230, 230))
-    title_rect = title.get_rect(right=right_margin, top=y_offset)
-    screen.blit(title, title_rect)
-    y_offset += 40
-
+    dps_text = font_tiny.render(f"DPS: {dps_val:.2f}", True, (230, 230, 230))
+
+    screen.blit(dps_text, (left_margin, y_offset));
+
+    y_offset += 30
+
+
+
+    # --- right column: possessions / inventory summary ---
+
+    right_margin = VIEW_W - 30
+
+    y_offset = top_margin
+
+
+
+    title = font_small.render("Possessions", True, (230, 230, 230))
+
+    title_rect = title.get_rect(right=right_margin, top=y_offset)
+
+    screen.blit(title, title_rect)
+
+    y_offset += 40
+
+
+
     pos_font = pygame.font.SysFont(None, 24)
     catalog = globals().get("_pause_shop_catalog")
     if catalog is None:
@@ -2068,7 +2081,7 @@ def show_pause_menu(screen, background_surf):
             {
                 "id": "stationary_turret",
                 "name": "Stationary Turret",
-                "max_level": None,
+                "max_level": 99,
             },
             {
                 "id": "ricochet_scope",
@@ -2127,7 +2140,8 @@ def show_pause_menu(screen, background_surf):
             rect = surf.get_rect(right=right_margin, top=y_offset)
             screen.blit(surf, rect)
             y_offset += 24
-
+
+
     panel_w, panel_h = min(520, VIEW_W - 80), min(500, VIEW_H - 160)
     panel = pygame.Rect(0, 0, panel_w, panel_h)
     panel.center = (VIEW_W // 2, VIEW_H // 2)
@@ -3532,6 +3546,7 @@ class Player:
         self.crit_mult = float(CRIT_MULT_BASE)
         self.slow_t = 0.0
         self.slow_mult = 1.0  #
+        self._slow_frac = 0.0
 
         self.hit_cd = 0.0  # contact invulnerability timer (seconds)
         self.radius = PLAYER_RADIUS
@@ -3597,6 +3612,9 @@ class Player:
     def move(self, keys, obstacles, dt):
         # reset frame-accumulated slow from hazards
         self.apply_slow_extra = 0.0
+        lingering_slow = float(getattr(self, "_slow_frac", 0.0))
+        if lingering_slow > 0.0:
+            self.apply_slow_extra = max(self.apply_slow_extra, lingering_slow)
 
         # tick active DoTs (stackable)
         if self.dot_ticks:
@@ -6641,6 +6659,8 @@ class GameState:
         # 维护一个按秒结算的累计器（避免帧率依赖）
         if not hasattr(player, "_acid_dmg_accum"):
             player._acid_dmg_accum = 0.0
+        if not hasattr(player, "_slow_frac"):
+            player._slow_frac = 0.0
 
         # 只取当前踩到的酸池里“最强”的那个，而不是累加（防止重叠酸池爆表）
         px, py = player.rect.centerx, player.rect.centery
@@ -6673,6 +6693,11 @@ class GameState:
             # 刷新离开后的持续 DoT（占总 dps 的一部分）
             player.acid_dot_timer = ACID_DOT_DURATION
             player.acid_dot_dps = max_dps * ACID_DOT_MULT
+            player._slow_frac = max(float(getattr(player, "_slow_frac", 0.0)), float(max_slow))
+
+        else:
+            if getattr(player, "slow_t", 0.0) <= 0.0:
+                player._slow_frac = 0.0
         # 不在池里：不做直接伤害；离开后的 DoT 由主循环统一结算
 
     def damage_player(self, player, dmg):
