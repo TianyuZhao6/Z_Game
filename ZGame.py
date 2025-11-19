@@ -8489,8 +8489,8 @@ if __name__ == "__main__":
                     META.update(save_data.get("meta", META))
                     globals()["_carry_player_state"] = save_data.get("carry_player", None)
                     globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
+                    globals()["_next_biome"] = save_data.get("biome")
                     current_level = int(save_data.get("current_level", 0))
-
                 else:
                     clear_save()
                     reset_run_state()
@@ -8538,13 +8538,14 @@ if __name__ == "__main__":
                 if save_data:
                     META.update(save_data.get("meta", META))
                     globals()["_carry_player_state"] = save_data.get("carry_player", None)
+                    globals()["_next_biome"] = save_data.get("biome")
                 else:
                     globals()["_carry_player_state"] = None
                 # Update progress trackers
                 if save_data.get("mode") == "snapshot":
                     meta = save_data.get("meta", {})
                     current_level = int(meta.get("current_level", 0))
-
+                    globals()["_next_biome"] = save_data.get("biome")
                 else:
                     current_level = int(save_data.get("current_level", 0))
 
