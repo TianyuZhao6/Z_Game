@@ -208,7 +208,9 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     pygame.draw.rect(screen, (0, 200, 80), (bx, by, int(bar_w * ratio), bar_h), border_radius=3)
 
     # --- Shield shell overlay (smoothed, slightly wider & hollow) ---
-    sleft = int(max(0, getattr(player, "shield_hp", 0)))
+    base_shield = int(max(0, getattr(player, "shield_hp", 0)))
+    carapace_shield = int(max(0, getattr(player, "carapace_hp", 0)))
+    sleft = base_shield + carapace_shield
     mhp = int(max(1, getattr(player, "max_hp", 1)))
 
     # Smooth the visible fraction so it drains bit-by-bit
@@ -576,7 +578,8 @@ def apply_domain_buffs_for_level(game_state, player):
     elif b == "Bastion of Stone":
         player.shield_hp = int(round(player.max_hp * 0.50))
         player.shield_max = player.shield_hp
-        player._hud_shield_vis = player.shield_hp / float(max(1, player.max_hp))
+        total_shield = player.shield_hp + max(0, getattr(player, "carapace_hp", 0))
+        player._hud_shield_vis = total_shield / float(max(1, player.max_hp))
         # New spawns this level: mark Stone so we add shields on spawn
         game_state.biome_active = b
 
@@ -3456,6 +3459,14 @@ class Player:
         hp0 = int(META.get("base_maxhp", PLAYER_MAX_HP))
         self.max_hp = hp0 + int(META.get("maxhp", 0))
         self.hp = min(self.max_hp, self.max_hp)  # 刚生成满血
+        # Shield state: per-level shield plus persistent Carapace
+        self.shield_hp = 0
+        self.shield_max = 0
+        self._hud_shield_vis = 0.0
+        self.carapace_hp = int(META.get("carapace_shield_hp", 0))
+        if self.carapace_hp > 0:
+            self._hud_shield_vis = self.carapace_hp / float(max(1, self.max_hp))
+
 
         self.acid_dot_timer = 0.0  # 还剩多少秒的DoT
         self.acid_dot_dps = 0.0  # 当前DoT每秒伤害（根据最近踩到的酸池设置）
@@ -6585,6 +6596,7 @@ class GameState:
             dmg -= absorbed
             carapace_hp -= absorbed
             META["carapace_shield_hp"] = carapace_hp
+            player.carapace_hp = carapace_hp
             self.add_damage_text(
                 player.rect.centerx,
                 player.rect.top - 10,
