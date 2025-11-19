@@ -2038,21 +2038,96 @@ def show_pause_menu(screen, background_surf):
 
     # --- DPS (average, includes current damage/AS/crit) ---
     dps_val = compute_player_dps(p)
-    dps_text = font_tiny.render(f"DPS: {dps_val:.2f}", True, (230, 230, 230))
-    screen.blit(dps_text, (left_margin, y_offset));
-    y_offset += 30
+    dps_text = font_tiny.render(f"DPS: {dps_val:.2f}", True, (230, 230, 230))
+    screen.blit(dps_text, (left_margin, y_offset));
+    y_offset += 30
+
+    # --- right column: possessions / inventory summary ---
+    right_margin = VIEW_W - 30
+    y_offset = top_margin
+
+    title = font_small.render("Possessions", True, (230, 230, 230))
+    title_rect = title.get_rect(right=right_margin, top=y_offset)
+    screen.blit(title, title_rect)
+    y_offset += 40
+
+    pos_font = pygame.font.SysFont(None, 24)
+    catalog = globals().get("_pause_shop_catalog")
+    if catalog is None:
+        catalog = [
+            {
+                "id": "coin_magnet",
+                "name": "Coin Magnet",
+                "max_level": 5,
+            },
+            {
+                "id": "auto_turret",
+                "name": "Auto-Turret",
+                "max_level": 5,
+            },
+            {
+                "id": "stationary_turret",
+                "name": "Stationary Turret",
+                "max_level": None,
+            },
+            {
+                "id": "ricochet_scope",
+                "name": "Ricochet Scope",
+                "max_level": 3,
+            },
+            {
+                "id": "piercing_rounds",
+                "name": "Piercing Rounds",
+                "max_level": 5,
+            },
+            {
+                "id": "shrapnel_shells",
+                "name": "Shrapnel Shells",
+                "max_level": 3,
+            },
+            {
+                "id": "carapace",
+                "name": "Carapace",
+                "max_level": None,
+            },
+        ]
+        globals()["_pause_shop_catalog"] = catalog
 
-    # 右上角显示收集的卡牌
-    right_margin = VIEW_W - 30
-    y_offset = top_margin
+    def _pause_prop_level(item):
+        iid = item.get("id")
+        if iid == "coin_magnet":
+            return int(META.get("coin_magnet_radius", 0) // 60)
+        if iid == "auto_turret":
+            return int(META.get("auto_turret_level", 0))
+        if iid == "stationary_turret":
+            return int(META.get("stationary_turret_count", 0))
+        if iid == "ricochet_scope":
+            return int(META.get("ricochet_level", 0))
+        if iid == "piercing_rounds":
+            return int(META.get("pierce_level", 0))
+        if iid == "shrapnel_shells":
+            return int(META.get("shrapnel_level", 0))
+        if iid == "carapace":
+            carapace_hp = int(META.get("carapace_shield_hp", 0))
+            return (carapace_hp + 19) // 20
+        return None
 
-    # 标题
-    title = font_small.render("Zombie Cards", True, (230, 230, 230))
-    title_rect = title.get_rect(right=right_margin, top=y_offset)
-    screen.blit(title, title_rect)
-    y_offset += 40
+    owned = []
+    for item in catalog:
+        lvl = _pause_prop_level(item)
+        max_lvl = item.get("max_level")
+        if lvl and lvl > 0:
+            owned.append((item["name"], lvl, max_lvl))
 
-    # 保持原有暂停菜单面板和按钮布局不变
+    if owned:
+        for name, lvl, max_lvl in owned:
+            lvl_str = f"{lvl}/{max_lvl}" if max_lvl else f"x{lvl}"
+            text = f"{name}: {lvl_str}"
+            surf = pos_font.render(text, True, (215, 215, 215))
+            rect = surf.get_rect(right=right_margin, top=y_offset)
+            screen.blit(surf, rect)
+            y_offset += 24
+
     panel_w, panel_h = min(520, VIEW_W - 80), min(500, VIEW_H - 160)
     panel = pygame.Rect(0, 0, panel_w, panel_h)
     panel.center = (VIEW_W // 2, VIEW_H // 2)
