@@ -2537,67 +2537,67 @@ def show_shop_screen(screen) -> Optional[str]:
         screen.blit(money_surf, money_surf.get_rect(center=(VIEW_W // 2, 130)))
 
         # Offers row — centered as a group
-        card_w, card_h = 220, 180   # main cards
-        reroll_h = 120              # reroll card: shorter
-        reroll_w = card_w // 2      # reroll really uses half width
+        # 这一行只放正常道具，Reroll 单独放到底部按钮
+        card_w, card_h = 220, 180
         gap = 22
-
-        # compute per-card width so reroll uses half the width
-        widths = []
-        for it in offers:
-            is_reroll = (it.get("id") == "reroll"
-                         or it.get("key") == "reroll"
-                         or it.get("name") == "Reroll Offers")
-            widths.append(reroll_w if is_reroll else card_w)
-        total_w = sum(widths) + (len(offers) - 1) * gap
-        start_x = (VIEW_W - total_w) // 2
         y = 200
+
+        # 把 offers 拆成：普通道具 + reroll
+        normal_offers = []
+        reroll_offer = None
+        for it in offers:
+            is_reroll_item = (
+                    it.get("id") == "reroll"
+                    or it.get("key") == "reroll"
+                    or it.get("name") in ("Reroll Offers", "Reroll")
+            )
+            if is_reroll_item:
+                reroll_offer = it
+            else:
+                normal_offers.append(it)
+
+        # 用普通道具来算这排卡片的总宽度，使整排居中
+        if normal_offers:
+            total_w = len(normal_offers) * card_w + (len(normal_offers) - 1) * gap
+            start_x = (VIEW_W - total_w) // 2
+        else:
+            total_w = 0
+            start_x = VIEW_W // 2
 
         rects = []  # (rect, item, dyn_cost, is_capped, uid)
         x = start_x
-        for it, w in zip(offers, widths):
-            is_reroll = (it.get("id") == "reroll"
-                         or it.get("key") == "reroll"
-                         or it.get("name") == "Reroll Offers")
-            h = reroll_h if is_reroll else card_h
-            # vertically center the shorter reroll card in the row
-            r = pygame.Rect(x, y + (card_h - h) // 2, w, h)
-            x += w + gap
+        for it in normal_offers:
+            r = pygame.Rect(x, y, card_w, card_h)
+            x += card_w + gap
 
             level_idx = int(globals().get("current_level", 0))
-            kind = "reroll" if it.get("apply") == "reroll" or it.get("id") == "reroll" else "normal"
-            dyn_cost = shop_price(int(it["cost"]), level_idx, kind=kind)
+            dyn_cost = shop_price(int(it["cost"]), level_idx, kind="normal")
 
-            # capped levels
+            # 当前等级 / 上限
             cur_lvl = _prop_level(it)
             max_lvl = _prop_max_level(it)
-            is_capped = (max_lvl is not None and cur_lvl is not None and cur_lvl >= max_lvl)
+            is_capped = (
+                    max_lvl is not None and cur_lvl is not None and cur_lvl >= max_lvl
+            )
 
-            uid = it.get("id") or it.get("name")  # fallback to name for reroll
+            uid = it.get("id") or it.get("name")
             is_hover = (uid == hovered_uid)
 
-            # base colors
+            # 基础颜色
             bg_col = (40, 40, 42)
             border_col = (80, 80, 84)
-
-            if is_capped and not is_reroll:
+            if is_capped:
                 bg_col = (24, 24, 26)
                 border_col = (70, 70, 76)
             elif is_hover:
                 bg_col = (60, 62, 70)
                 border_col = (120, 120, 130)
 
-            if is_reroll:
-                # slightly different styling for reroll
-                bg_col = (35, 40, 48)
-                border_col = (130, 160, 210)
-
             pygame.draw.rect(screen, bg_col, r, border_radius=14)
             pygame.draw.rect(screen, border_col, r, 2, border_radius=14)
 
-            # front/back behaviour (no more jittery blinking)
-            if is_hover and not is_reroll:
-                # --- Back side: description-centric layout ---
+            if is_hover:
+                # --- 背面：描述 ---
                 title_s = font.render(it["name"], True, (235, 235, 235))
                 words = it.get("desc", "").split()
                 lines = []
@@ -2628,16 +2628,27 @@ def show_shop_screen(screen) -> Optional[str]:
                     screen.blit(ln_surf, ln_surf.get_rect(midtop=(r.centerx, yy)))
                     yy += line_h
             else:
-                # --- Front side: name + cost + rarity ---
+                # --- 正面：名称 + 价格 + 稀有度 ---
                 name_surf = font.render(it["name"], True, (235, 235, 235))
-                screen.blit(name_surf, name_surf.get_rect(midtop=(r.centerx, r.y + 10)))
+                screen.blit(
+                    name_surf,
+                    name_surf.get_rect(midtop=(r.centerx, r.y + 10)),
+                )
 
-                col = (255, 230, 120) if META["spoils"] >= dyn_cost else (160, 140, 120)
-                price_txt = f"{dyn_cost} spoils"
+                # 这里改成 $，不再出现 "spoils"
+                col = (
+                    (255, 230, 120)
+                    if META["spoils"] >= dyn_cost
+                    else (160, 140, 120)
+                )
+                price_txt = f"$ {dyn_cost}"
                 price_surf = font.render(price_txt, True, col)
-                screen.blit(price_surf, price_surf.get_rect(midbottom=(r.centerx, r.bottom - 10)))
+                screen.blit(
+                    price_surf,
+                    price_surf.get_rect(midbottom=(r.centerx, r.bottom - 10)),
+                )
 
-                # rarity dots (simple visual cue, left-bottom)
+                # 稀有度小点
                 rarity = int(it.get("rarity", 1))
                 dot_r = 4
                 for j in range(rarity):
@@ -2645,15 +2656,19 @@ def show_shop_screen(screen) -> Optional[str]:
                     cy = r.bottom - 18
                     pygame.draw.circle(screen, (180, 160, 220), (cx, cy), dot_r)
 
-
-            # level indicator for capped props: e.g. 1/3, 0/5, etc.
-            if max_lvl is not None and cur_lvl is not None and not is_reroll:
+            # 右下角等级 2/5
+            if max_lvl is not None and cur_lvl is not None:
                 lvl_text = f"{cur_lvl}/{max_lvl}"
-                lvl_color = (180, 230, 255) if not is_capped else (140, 150, 160)
+                lvl_color = (
+                    (180, 230, 255) if not is_capped else (140, 150, 160)
+                )
                 lvl_surf = font.render(lvl_text, True, lvl_color)
-                screen.blit(lvl_surf, lvl_surf.get_rect(bottomright=(r.right - 8, r.bottom - 6)))
+                screen.blit(
+                    lvl_surf,
+                    lvl_surf.get_rect(bottomright=(r.right - 8, r.bottom - 6)),
+                )
 
-            # remember this card for input handling
+            # 记住这个卡片用于点击判定
             rects.append((r, it, dyn_cost, is_capped, uid))
 
         # --- Owned props panel — use the spare side/bottom space ---
@@ -2665,9 +2680,11 @@ def show_shop_screen(screen) -> Optional[str]:
                 owned.append((itm["name"], lvl, max_lvl))
 
         if owned:
-            panel_w = 280
+            panel_w = 320
             line_h = 22
-            panel_h = 32 + line_h * len(owned)
+            max_lines = 8
+            panel_h = 32 + line_h * min(len(owned), max_lines)
+
 
             margin_side = 40
             margin_bottom = 70
@@ -2686,7 +2703,7 @@ def show_shop_screen(screen) -> Optional[str]:
             pygame.draw.rect(screen, (24, 24, 28), panel, border_radius=12)
             pygame.draw.rect(screen, (70, 70, 80), panel, 2, border_radius=12)
 
-            header = font.render("Owned props", True, (220, 220, 230))
+            header = font.render("Possession", True, (220, 220, 230))
             screen.blit(header, header.get_rect(left=panel.x + 14, top=panel.y + 6))
 
             yy = panel.y + 6 + font.get_linesize()
@@ -2698,12 +2715,51 @@ def show_shop_screen(screen) -> Optional[str]:
                 screen.blit(lvl_surf, lvl_surf.get_rect(right=panel.right - 14, top=yy))
                 yy += line_h
 
-        # --- NEXT button — centered under cards ---
+        # --- Reroll 按钮：在卡片下方单独一行 ---
+        reroll_rect = None
+        if reroll_offer is not None:
+            level_idx = int(globals().get("current_level", 0))
+            reroll_dyn_cost = shop_price(
+                int(reroll_offer["cost"]), level_idx, kind="reroll"
+            )
+
+            reroll_rect = pygame.Rect(0, 0, 220, 52)
+            reroll_rect.center = (VIEW_W // 2, y + card_h + 70)
+
+            can_afford = META.get("spoils", 0) >= reroll_dyn_cost
+            bg = (40, 40, 48) if can_afford else (30, 30, 34)
+            border = (120, 120, 140) if can_afford else (70, 70, 80)
+            if reroll_rect.collidepoint((mx, my)) and can_afford:
+                bg = (60, 60, 72)
+
+            pygame.draw.rect(screen, bg, reroll_rect, border_radius=12)
+            pygame.draw.rect(screen, border, reroll_rect, 2, border_radius=12)
+
+            label = btn_font.render("Reroll", True, (235, 235, 235))
+            label_rect = label.get_rect(center=(reroll_rect.centerx, reroll_rect.centery - 8))
+            screen.blit(label, label_rect)
+
+            cost_col = (255, 230, 120) if can_afford else (160, 140, 120)
+            cost_surf = font.render(f"$ {reroll_dyn_cost}", True, cost_col)
+            cost_rect = cost_surf.get_rect(center=(reroll_rect.centerx, reroll_rect.centery + 12))
+            screen.blit(cost_surf, cost_rect)
+
+            # 也把 reroll 按钮加入 rects，这样原来的点击逻辑可以直接使用
+            uid = reroll_offer.get("id") or reroll_offer.get("name")
+            rects.append((reroll_rect, reroll_offer, reroll_dyn_cost, False, uid))
+
+        # --- NEXT 按钮：在 Reroll 下面单独一行 ---
         close = pygame.Rect(0, 0, 220, 56)
-        close.center = (VIEW_W // 2, y + card_h + 80)
+        if reroll_rect is not None:
+            next_y = reroll_rect.bottom + 40
+        else:
+            next_y = y + card_h + 120
+        close.center = (VIEW_W // 2, next_y)
+
         pygame.draw.rect(screen, (50, 50, 50), close, border_radius=10)
-        ctxt = btn_font.render("NEXT", True, (235, 235, 235))
-        screen.blit(ctxt, ctxt.get_rect(center=close.center))
+        pygame.draw.rect(screen, (120, 120, 120), close, 2, border_radius=10)
+        txt = btn_font.render("NEXT", True, (230, 230, 230))
+        screen.blit(txt, txt.get_rect(center=close.center))
 
         pygame.display.flip()
 
