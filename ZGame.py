@@ -543,6 +543,39 @@ def ensure_passage_budget(obstacles: dict, grid_size: int, player_spawn: tuple, 
         destructibles.remove(pos)
         obstacles.pop(pos, None)
 
+def apply_carapace_shield(player: "Player"):
+    """
+    Extra shield from the Carapace shop prop.
+
+    - Works every level.
+    - Stacks additively with biome shields (Bastion of Stone / Domain of Wind).
+    - Very small and simple: each level = +10% max HP as shield.
+    """
+    lvl = int(META.get("carapace_level", 0))
+    if lvl <= 0:
+        return
+
+    # You can tweak this fraction to balance
+    FRACTION_PER_LEVEL = 0.10
+
+    extra = int(player.max_hp * FRACTION_PER_LEVEL * lvl)
+    if extra <= 0:
+        return
+
+    base_shield = int(getattr(player, "shield_hp", 0))
+    base_max = int(getattr(player, "shield_max", 0))
+
+    player.shield_max = base_max + extra
+    player.shield_hp = base_shield + extra
+
+    # Clamp so HP doesn't exceed max
+    if player.shield_hp > player.shield_max:
+        player.shield_hp = player.shield_max
+
+    # Make sure HUD shield overlay shows up
+    vis = player.shield_hp / float(max(1, player.max_hp))
+    current_vis = float(getattr(player, "_hud_shield_vis", 0.0))
+    player._hud_shield_vis = max(current_vis, vis)
 
 # --- Domain/Biome helpers (one-level-only effects) ---
 def apply_domain_buffs_for_level(game_state, player):
@@ -1053,6 +1086,8 @@ META = {
     "stationary_turret_count": 0,
     "pierce_level": 0,  # 每发子弹可额外穿透的“击杀次数”
     "ricochet_level": 0,  # 每发子弹可弹射的次数
+    "carapace_level": 0,
+
 }
 
 
@@ -1078,6 +1113,8 @@ def reset_run_state():
         "stationary_turret_count": 0,
         "pierce_level": 0,
         "ricochet_level": 0,
+        "carapace_level": 0,
+
     })
     globals()["_carry_player_state"] = None
     globals()["_pending_shop"] = False
@@ -2432,6 +2469,17 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "carapace",
+                "name": "Carapace",
+                "desc": "Gain a small protective shield.",
+                "cost": 8,  # cheap
+                "rarity": 1,  # common
+                "max_level": 3,  # tweak if you want
+                "apply": lambda: META.update(
+                    carapace_level=min(3, int(META.get("carapace_level", 0)) + 1)
+                ),
+            },
+            {
                 "id": "auto_turret",
                 "name": "Auto-Turret",
                 "key": "auto_turret",
@@ -2516,6 +2564,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return int(META.get("coin_magnet_radius", 0) // 60)
         if iid == "auto_turret":
             return int(META.get("auto_turret_level", 0))
+        if iid == "carapace":
+            return int(META.get("carapace_level", 0))
         # reroll or anything else: no level display
         return None
 
@@ -7498,7 +7548,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
 
     while running:
         dt = clock.tick(60) / 1000.0
-        # ==== 消费镜头聚焦请求：完全暂停游戏与计时 ====
         # ==== 消费镜头聚焦请求：完全暂停游戏与计时 ====
         pf = getattr(game_state, "pending_focus", None)
         if pf:
