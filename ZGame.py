@@ -2734,13 +2734,19 @@ def show_shop_screen(screen) -> Optional[str]:
             # lock icon overlay (non-reroll cards only)
             if lock_rect is not None:
                 locked = it.get("id") in locked_ids
-                # small box for the lock icon
-                bg_col = SHOP_BOX_BG if not locked else SHOP_BOX_BG_DISABLED
-                border_col = SHOP_BOX_BORDER if not locked else SHOP_BOX_BORDER_HOVER
+                # invert colors when locked to highlight the state
+                if locked:
+                    bg_col = SHOP_BOX_BORDER_HOVER
+                    border_col = SHOP_BOX_BG
+                    icon_col = (20, 20, 22)
+                else:
+                    bg_col = SHOP_BOX_BG
+                    border_col = SHOP_BOX_BORDER
+                    icon_col = (235, 235, 235)
                 pygame.draw.rect(screen, bg_col, lock_rect, border_radius=6)
-                pygame.draw.rect(screen, border_col, lock_rect, 1, border_radius=6)
+                pygame.draw.rect(screen, border_col, lock_rect, 2, border_radius=6)
                 # simple "L" icon; you can replace with a unicode lock if your font supports it
-                icon = desc_font.render("L", True, (235, 235, 235))
+                icon = desc_font.render("L", True, icon_col)
                 screen.blit(icon, icon.get_rect(center=lock_rect.center))
 
             # 记住这个卡片用于点击判定
@@ -2909,6 +2915,9 @@ def show_shop_screen(screen) -> Optional[str]:
                         continue
                     if r.collidepoint(ev.pos) and META["spoils"] >= dyn_cost:
                         META["spoils"] -= dyn_cost
+                        card_id = it.get("id")
+                        if card_id and card_id in locked_ids:
+                            locked_ids.remove(card_id)
                         if is_reroll or it.get("apply") == "reroll":
                             offers = roll_offers()  # Price stays the same
                         else:
