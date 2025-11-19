@@ -543,39 +543,6 @@ def ensure_passage_budget(obstacles: dict, grid_size: int, player_spawn: tuple, 
         destructibles.remove(pos)
         obstacles.pop(pos, None)
 
-def apply_carapace_shield(player: "Player"):
-    """
-    Extra shield from the Carapace shop prop.
-
-    - Works every level.
-    - Stacks additively with biome shields (Bastion of Stone / Domain of Wind).
-    - Very small and simple: each level = +10% max HP as shield.
-    """
-    lvl = int(META.get("carapace_level", 0))
-    if lvl <= 0:
-        return
-
-    # You can tweak this fraction to balance
-    FRACTION_PER_LEVEL = 0.10
-
-    extra = int(player.max_hp * FRACTION_PER_LEVEL * lvl)
-    if extra <= 0:
-        return
-
-    base_shield = int(getattr(player, "shield_hp", 0))
-    base_max = int(getattr(player, "shield_max", 0))
-
-    player.shield_max = base_max + extra
-    player.shield_hp = base_shield + extra
-
-    # Clamp so HP doesn't exceed max
-    if player.shield_hp > player.shield_max:
-        player.shield_hp = player.shield_max
-
-    # Make sure HUD shield overlay shows up
-    vis = player.shield_hp / float(max(1, player.max_hp))
-    current_vis = float(getattr(player, "_hud_shield_vis", 0.0))
-    player._hud_shield_vis = max(current_vis, vis)
 
 # --- Domain/Biome helpers (one-level-only effects) ---
 def apply_domain_buffs_for_level(game_state, player):
@@ -2439,7 +2406,7 @@ def show_shop_screen(screen) -> Optional[str]:
     globals()["_in_shop_ui"] = True
     try:
         clock = pygame.time.Clock()
-        font = pygame.font.SysFont(None, 30)   # titles, cost, etc.
+        font = pygame.font.SysFont(None, 30)  # titles, cost, etc.
         desc_font = pygame.font.SysFont(None, 24)  # smaller font just for descriptions
         title_font = pygame.font.SysFont(None, 56)
         btn_font = pygame.font.SysFont(None, 32)
@@ -2472,9 +2439,8 @@ def show_shop_screen(screen) -> Optional[str]:
                 "id": "carapace",
                 "name": "Carapace",
                 "desc": "Gain a small protective shield.",
-                "cost": 8,  # cheap
+                "cost": 6,  # cheap
                 "rarity": 1,  # common
-                "max_level": 3,  # tweak if you want
                 "apply": lambda: META.update(
                     carapace_level=min(3, int(META.get("carapace_level", 0)) + 1)
                 ),
@@ -2528,7 +2494,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 "id": "stationary_turret",
                 "name": "Stationary Turret",
                 "desc": "Adds a stationary turret that spawns at a random clear spot on the map each level.",
-                "cost": 14,   # tweak as you like
+                "cost": 14,  # tweak as you like
                 "rarity": 2,  # slightly rarer than basic stuff
                 "max_level": 99,  # effectively unlimited copies
                 "apply": lambda: META.update(
@@ -2746,7 +2712,6 @@ def show_shop_screen(screen) -> Optional[str]:
             max_lines = 8
             panel_h = 32 + line_h * min(len(owned), max_lines)
 
-
             margin_side = 40
             margin_bottom = 70
 
@@ -2888,7 +2853,6 @@ def show_shop_screen(screen) -> Optional[str]:
                             it["apply"]()
 
         clock.tick(60)
-
 
 
 def show_biome_picker_in_shop(screen) -> str:
@@ -3407,7 +3371,6 @@ class Player:
         self.bullet_ricochet = int(META.get("ricochet_level", 0))
         # on-kill shrapnel splashes
         self.shrapnel_level = int(META.get("shrapnel_level", 0))
-
 
         # 射程：base × mult
         self.range_base = float(META.get("base_range", MAX_FIRE_RANGE))
@@ -6330,7 +6293,6 @@ class GameState:
         # bullets spawned during bullet update (e.g. shrapnel from on-kill effects)
         self.pending_bullets: List["Bullet"] = []
 
-
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
 
@@ -6529,16 +6491,44 @@ class GameState:
         dmg = int(max(0, dmg))
         if dmg <= 0:
             return 0
+
         # Stone (or any) shield first
         sh = int(getattr(player, "shield_hp", 0))
         if sh > 0:
             blocked = min(dmg, sh)
             player.shield_hp = sh - blocked
-            self.add_damage_text(player.rect.centerx, player.rect.top - 10, blocked, crit=False, kind="shield")
+            self.add_damage_text(
+                player.rect.centerx,
+                player.rect.top - 10,
+                blocked,
+                crit=False,
+                kind="shield",
+            )
             dmg -= blocked
+
+        # Carapace：一次性护盾（每个 charge 吸收一次完整伤害），在其他盾之后触发
+        charges = int(META.get("carapace_charges", 0))
+        if dmg > 0 and charges > 0:
+            META["carapace_charges"] = charges - 1
+            # 当成护盾吸收来显示伤害数字
+            self.add_damage_text(
+                player.rect.centerx,
+                player.rect.top - 10,
+                dmg,
+                crit=False,
+                kind="shield",
+            )
+            dmg = 0  # 本次伤害被完全吃掉
+
         if dmg > 0:
             player.hp = max(0, player.hp - dmg)
-            self.add_damage_text(player.rect.centerx, player.rect.centery, dmg, crit=False, kind="hp")
+            self.add_damage_text(
+                player.rect.centerx,
+                player.rect.centery,
+                dmg,
+                crit=False,
+                kind="hp",
+            )
         return dmg
 
     def mark_nav_dirty(self):
