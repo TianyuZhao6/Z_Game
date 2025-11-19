@@ -2442,7 +2442,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 "cost": 6,  # cheap
                 "rarity": 1,  # common
                 "apply": lambda: META.update(
-                    carapace_level=min(3, int(META.get("carapace_level", 0)) + 1)
+                    carapace_shield_hp=int(META.get("carapace_shield_hp", 0)) + 20
                 ),
             },
             {
@@ -2514,6 +2514,9 @@ def show_shop_screen(screen) -> Optional[str]:
         # just a guard; we clear this flag once we leave the function
         globals().pop("_in_shop_ui", None)
 
+    # Persistent locked cards between shop screens
+    locked_ids = globals().setdefault("_locked_shop_ids", [])
+
     def _prop_level(it):
         """Read current level for capped props from META."""
         iid = it.get("id")
@@ -2531,7 +2534,8 @@ def show_shop_screen(screen) -> Optional[str]:
         if iid == "auto_turret":
             return int(META.get("auto_turret_level", 0))
         if iid == "carapace":
-            return int(META.get("carapace_level", 0))
+            hp = int(META.get("carapace_shield_hp", 0))
+            return (hp + 19) // 20
         # reroll or anything else: no level display
         return None
 
@@ -2539,14 +2543,35 @@ def show_shop_screen(screen) -> Optional[str]:
         return it.get("max_level", None)
 
     def roll_offers():
-        # don't ever remove reroll from the pool
+        # base pool (no reroll)
         pool = [c for c in catalog if c.get("id") != "reroll"]
-        offers = random.sample(pool, k=min(4, len(pool)))
-        # append a dedicated reroll card
+
+        # start with any locked cards from previous shops
+        locked_cards = []
+        for lid in locked_ids:
+            for c in pool:
+                if c.get("id") == lid:
+                    locked_cards.append(c)
+                    break
+
+        # avoid duplicates in the random pool
+        pool = [c for c in pool if c.get("id") not in locked_ids]
+
+        # fill remaining slots up to 4 cards
+        remaining = max(0, 4 - len(locked_cards))
+        if remaining > 0 and pool:
+            locked_cards.extend(
+                random.sample(pool, k=min(remaining, len(pool)))
+            )
+
+        offers = locked_cards[:4]
+
+        # append dedicated reroll card at the end
         offers.append(next(c for c in catalog if c.get("id") == "reroll"))
         return offers
 
     offers = roll_offers()
+
     hovered_uid: Optional[str] = None  # used to stabilise hover so cards don't blink
 
     while True:
@@ -2608,6 +2633,12 @@ def show_shop_screen(screen) -> Optional[str]:
 
             uid = it.get("id") or it.get("name")
             is_hover = (uid == hovered_uid)
+
+            # small lock button in the top-right corner of the card
+            lock_rect = None
+            if not is_reroll:
+                lock_rect = pygame.Rect(0, 0, 22, 22)
+                lock_rect.topright = (r.right - 8, r.top + 8)
 
             # base colors — unified shop box style
             if is_capped:
@@ -2695,8 +2726,21 @@ def show_shop_screen(screen) -> Optional[str]:
                     lvl_surf.get_rect(bottomright=(r.right - 8, r.bottom - 6)),
                 )
 
+            # lock icon overlay (non-reroll cards only)
+            if lock_rect is not None:
+                locked = it.get("id") in locked_ids
+                # small box for the lock icon
+                bg_col = SHOP_BOX_BG if not locked else SHOP_BOX_BG_DISABLED
+                border_col = SHOP_BOX_BORDER if not locked else SHOP_BOX_BORDER_HOVER
+                pygame.draw.rect(screen, bg_col, lock_rect, border_radius=6)
+                pygame.draw.rect(screen, border_col, lock_rect, 1, border_radius=6)
+                # simple "L" icon; you can replace with a unicode lock if your font supports it
+                icon = desc_font.render("L", True, (235, 235, 235))
+                screen.blit(icon, icon.get_rect(center=lock_rect.center))
+
             # 记住这个卡片用于点击判定
-            rects.append((r, it, dyn_cost, is_capped, uid))
+            rects.append((r, it, dyn_cost, is_capped, uid, lock_rect))
+
 
         # --- Owned props panel — use the spare side/bottom space ---
         owned = []
@@ -2779,7 +2823,7 @@ def show_shop_screen(screen) -> Optional[str]:
 
             # 也把 reroll 按钮加入 rects，这样原来的点击逻辑可以直接使用
             uid = reroll_offer.get("id") or reroll_offer.get("name")
-            rects.append((reroll_rect, reroll_offer, reroll_dyn_cost, False, uid))
+            rects.append((reroll_rect, reroll_offer, reroll_dyn_cost, False, uid, None))
 
         # --- NEXT 按钮：在 Reroll 下面单独一行 ---
         close = pygame.Rect(0, 0, 220, 56)
@@ -2815,9 +2859,8 @@ def show_shop_screen(screen) -> Optional[str]:
                 return choice  # home / restart / exit
 
             if ev.type == pygame.MOUSEMOTION:
-                # update which card is hovered, so drawing logic can use a stable id
                 hovered_uid = None
-                for r, it, dyn_cost, is_capped, uid in rects:
+                for r, it, dyn_cost, is_capped, uid, lock_rect in rects:
                     if r.collidepoint(ev.pos):
                         hovered_uid = uid
                         break
@@ -2837,7 +2880,8 @@ def show_shop_screen(screen) -> Optional[str]:
 
                     globals()["_next_biome"] = chosen_biome  # 正常选择到场景名
                     return None  # 照常结束商店，进入下一关
-
+                # 1) lock toggle check – click on small lock box
+                handled_lock = False
                 for r, it, dyn_cost, is_capped, uid in rects:
                     # don't allow buying a capped item any further, but reroll is always allowed
                     is_reroll = (it.get("id") == "reroll"
@@ -6506,20 +6550,19 @@ class GameState:
             )
             dmg -= blocked
 
-        # Carapace：一次性护盾（每个 charge 吸收一次完整伤害），在其他盾之后触发
-        charges = int(META.get("carapace_charges", 0))
-        if dmg > 0 and charges > 0:
-            META["carapace_charges"] = charges - 1
-            # 当成护盾吸收来显示伤害数字
+        # Carapace: 20 HP chunks stored in META["carapace_shield_hp"]
+        carapace_hp = int(META.get("carapace_shield_hp", 0))
+        if dmg > 0 and carapace_hp > 0:
+            absorbed = min(dmg, carapace_hp)
+            dmg -= absorbed
+            carapace_hp -= absorbed
+            META["carapace_shield_hp"] = carapace_hp
             self.add_damage_text(
                 player.rect.centerx,
                 player.rect.top - 10,
-                dmg,
-                crit=False,
+                "Carapace",
                 kind="shield",
-            )
-            dmg = 0  # 本次伤害被完全吃掉
-
+                )
         if dmg > 0:
             player.hp = max(0, player.hp - dmg)
             self.add_damage_text(
