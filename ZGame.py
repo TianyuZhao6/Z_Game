@@ -587,6 +587,8 @@ def apply_domain_buffs_for_level(game_state, player):
         # placeholder: no effect for now for testing
         player.shield_hp = int(round(player.max_hp * 0.50))
         player.shield_max = player.shield_hp
+        total_shield = player.shield_hp + max(0, getattr(player, "carapace_hp", 0))
+        player._hud_shield_vis = total_shield / float(max(1, player.max_hp))
         # New spawns this level: mark Stone so we add shields on spawn
         game_state.biome_active = b
         pass
@@ -2517,8 +2519,35 @@ def show_shop_screen(screen) -> Optional[str]:
         # just a guard; we clear this flag once we leave the function
         globals().pop("_in_shop_ui", None)
 
-    # Persistent locked cards between shop screens
-    locked_ids = globals().setdefault("_locked_shop_ids", [])
+    # Persistent locked cards between shop screens; mirror to META so saves carry them
+    saved_locked = META.get("locked_shop_ids")
+    if isinstance(saved_locked, list):
+        seen = set()
+        initial_locked = []
+        for lid in saved_locked:
+            if isinstance(lid, str) and lid not in seen:
+                seen.add(lid)
+                initial_locked.append(lid)
+    else:
+        initial_locked = []
+
+    locked_ids = globals().get("_locked_shop_ids")
+    if locked_ids is None:
+        locked_ids = list(initial_locked)
+        globals()["_locked_shop_ids"] = locked_ids
+    else:
+        locked_ids[:] = list(initial_locked)
+
+    def _persist_locked_ids():
+        seen = set()
+        ordered = []
+        for lid in locked_ids:
+            if isinstance(lid, str) and lid not in seen:
+                seen.add(lid)
+                ordered.append(lid)
+        META["locked_shop_ids"] = ordered
+
+    _persist_locked_ids()
 
     def _prop_level(it):
         """Read current level for capped props from META."""
@@ -2904,6 +2933,7 @@ def show_shop_screen(screen) -> Optional[str]:
                                 locked_ids.remove(card_id)
                             else:
                                 locked_ids.append(card_id)
+                            _persist_locked_ids()
                         handled_lock = True
                         break
                 if handled_lock:
@@ -2921,6 +2951,7 @@ def show_shop_screen(screen) -> Optional[str]:
                         card_id = it.get("id")
                         if card_id and card_id in locked_ids:
                             locked_ids.remove(card_id)
+                            _persist_locked_ids()
                         if is_reroll or it.get("apply") == "reroll":
                             offers = roll_offers()  # Price stays the same
                         else:
@@ -2928,7 +2959,6 @@ def show_shop_screen(screen) -> Optional[str]:
 
 
         clock.tick(60)
-
 
 def show_biome_picker_in_shop(screen) -> str:
     """在商店 NEXT 之后弹出的“下关场景”四选一卡面。返回被选择的场景名。"""
@@ -3459,14 +3489,14 @@ class Player:
         hp0 = int(META.get("base_maxhp", PLAYER_MAX_HP))
         self.max_hp = hp0 + int(META.get("maxhp", 0))
         self.hp = min(self.max_hp, self.max_hp)  # 刚生成满血
-        # Shield state: per-level shield plus persistent Carapace
+
+        # Shield state: per-level shield plus persistent Carapace reserve
         self.shield_hp = 0
         self.shield_max = 0
         self._hud_shield_vis = 0.0
         self.carapace_hp = int(META.get("carapace_shield_hp", 0))
         if self.carapace_hp > 0:
             self._hud_shield_vis = self.carapace_hp / float(max(1, self.max_hp))
-
 
         self.acid_dot_timer = 0.0  # 还剩多少秒的DoT
         self.acid_dot_dps = 0.0  # 当前DoT每秒伤害（根据最近踩到的酸池设置）
@@ -7222,8 +7252,18 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             rect.midbottom = (cx, cy)
             col = (240, 80, 80) if (p.hit_cd > 0 and (pygame.time.get_ticks() // 80) % 2 == 0) else (0, 255, 0)
             pygame.draw.rect(screen, col, rect)
-            if getattr(p, "shield_hp", 0) > 0:
+            carapace_hp = int(getattr(p, "carapace_hp", 0))
+            total_shield = int(getattr(p, "shield_hp", 0)) + carapace_hp
+            if total_shield > 0:
                 draw_shield_outline(screen, rect)
+            if carapace_hp > 0:
+                glow_rect = rect.inflate(18, 18)
+                glow = pygame.Surface(glow_rect.size, pygame.SRCALPHA)
+                alpha = min(200, 80 + carapace_hp * 3 // 2)
+                pygame.draw.ellipse(glow, (70, 200, 255, max(60, alpha - 40)), glow.get_rect(), width=4)
+                fill_alpha = max(30, alpha - 100)
+                pygame.draw.ellipse(glow, (40, 140, 255, fill_alpha), glow.get_rect())
+                screen.blit(glow, glow_rect)
 
     # --- damage numbers (iso) ---
     for d in getattr(game_state, "dmg_texts", []):
