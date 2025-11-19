@@ -2407,6 +2407,16 @@ def show_shop_screen(screen) -> Optional[str]:
         title_font = pygame.font.SysFont(None, 56)
         btn_font = pygame.font.SysFont(None, 32)
 
+        # --- shared shop box style  ---
+        SHOP_BOX_BG = (35, 40, 48)  # base background (Reroll style)
+        SHOP_BOX_BORDER = (130, 160, 210)  # base border
+
+        SHOP_BOX_BG_HOVER = (55, 60, 80)  # when hovered
+        SHOP_BOX_BORDER_HOVER = (170, 190, 230)
+
+        SHOP_BOX_BG_DISABLED = (25, 28, 34)  # capped / disabled
+        SHOP_BOX_BORDER_DISABLED = (90, 110, 150)
+
         # --- catalog of shop props ---
         catalog = [
             {
@@ -2583,15 +2593,16 @@ def show_shop_screen(screen) -> Optional[str]:
             uid = it.get("id") or it.get("name")
             is_hover = (uid == hovered_uid)
 
-            # 基础颜色
-            bg_col = (40, 40, 42)
-            border_col = (80, 80, 84)
+            # base colors — unified shop box style
             if is_capped:
-                bg_col = (24, 24, 26)
-                border_col = (70, 70, 76)
+                bg_col = SHOP_BOX_BG_DISABLED
+                border_col = SHOP_BOX_BORDER_DISABLED
             elif is_hover:
-                bg_col = (60, 62, 70)
-                border_col = (120, 120, 130)
+                bg_col = SHOP_BOX_BG_HOVER
+                border_col = SHOP_BOX_BORDER_HOVER
+            else:
+                bg_col = SHOP_BOX_BG
+                border_col = SHOP_BOX_BORDER
 
             pygame.draw.rect(screen, bg_col, r, border_radius=14)
             pygame.draw.rect(screen, border_col, r, 2, border_radius=14)
@@ -2700,10 +2711,11 @@ def show_shop_screen(screen) -> Optional[str]:
                 panel_y = VIEW_H - panel_h - margin_bottom
 
             panel = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
-            pygame.draw.rect(screen, (24, 24, 28), panel, border_radius=12)
-            pygame.draw.rect(screen, (70, 70, 80), panel, 2, border_radius=12)
+            pygame.draw.rect(screen, SHOP_BOX_BG, panel, border_radius=14)
+            pygame.draw.rect(screen, SHOP_BOX_BORDER, panel, 2, border_radius=14)
 
-            header = font.render("Possession", True, (220, 220, 230))
+            header = font.render("Possession", True, (220, 220, 230))  # 或你喜欢的标题
+
             screen.blit(header, header.get_rect(left=panel.x + 14, top=panel.y + 6))
 
             yy = panel.y + 6 + font.get_linesize()
@@ -2727,13 +2739,19 @@ def show_shop_screen(screen) -> Optional[str]:
             reroll_rect.center = (VIEW_W // 2, y + card_h + 70)
 
             can_afford = META.get("spoils", 0) >= reroll_dyn_cost
-            bg = (40, 40, 48) if can_afford else (30, 30, 34)
-            border = (120, 120, 140) if can_afford else (70, 70, 80)
-            if reroll_rect.collidepoint((mx, my)) and can_afford:
-                bg = (60, 60, 72)
 
-            pygame.draw.rect(screen, bg, reroll_rect, border_radius=12)
-            pygame.draw.rect(screen, border, reroll_rect, 2, border_radius=12)
+            if not can_afford:
+                bg = SHOP_BOX_BG_DISABLED
+                border = SHOP_BOX_BORDER_DISABLED
+            elif reroll_rect.collidepoint((mx, my)):
+                bg = SHOP_BOX_BG_HOVER
+                border = SHOP_BOX_BORDER_HOVER
+            else:
+                bg = SHOP_BOX_BG
+                border = SHOP_BOX_BORDER
+
+            pygame.draw.rect(screen, bg, reroll_rect, border_radius=14)
+            pygame.draw.rect(screen, border, reroll_rect, 2, border_radius=14)
 
             label = btn_font.render("Reroll", True, (235, 235, 235))
             label_rect = label.get_rect(center=(reroll_rect.centerx, reroll_rect.centery - 8))
