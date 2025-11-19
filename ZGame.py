@@ -885,14 +885,17 @@ CHARGE_SPEED = 3.0
 BANDIT_MIN_LEVEL_IDX = 2  # 前两关不出现（0基索引：2=第三关）
 BANDIT_SPAWN_CHANCE_PER_WAVE = 0.28  # 每个非Boss波次独立检定（每关最多1只）
 BANDIT_BASE_HP = 150
-BANDIT_BASE_SPEED = 2.1  # 相对普通僵尸更快（再叠加z_level等成长）
+BANDIT_BASE_SPEED = 2.35  # 相对普通僵尸更快（再叠加z_level等成长）
 BANDIT_ESCAPE_TIME_BASE = 18.0  # 逃跑倒计时（秒）
 BANDIT_ESCAPE_TIME_MIN = 10.0  # 下限
 BANDIT_STEAL_RATE_MIN = 2  # 每秒最少偷取金币
 BANDIT_STEAL_RATE_MAX = 10  # 每秒最多偷取金币
 BANDIT_BONUS_RATE = 0.25  # 击杀后额外奖励比例（在偷取总额基础上再+25%）
 BANDIT_BONUS_FLAT = 2  # 击杀后额外固定奖励
-BANDIT_FLEE_RADIUS = 5 * CELL_SIZE  # run away when within ~5 tiles
+BANDIT_FLEE_RADIUS = 4 * CELL_SIZE  # run away when player gets this close
+BANDIT_FLEE_SPEED_MULT = 1.4
+BANDIT_BREAK_SLOW_TIME = 0.6
+BANDIT_BREAK_SLOW_MULT = 0.55
 
 # --- Mistweaver (Boss II) — appears at Lv10 (index 9) ---
 MISTWEAVER_LEVELS = {9}  # 0-based：第10关
@@ -3979,6 +3982,12 @@ class Zombie:
             self.buff_t = max(0.0, self.buff_t - dt)
         speed = float(min(Z_SPOIL_SPD_CAP, max(0.5, base_speed)))
 
+        is_bandit = (getattr(self, "type", "") == "bandit")
+        bandit_break_t = 0.0
+        if is_bandit:
+            bandit_break_t = max(0.0, float(getattr(self, "bandit_break_t", 0.0)) - dt)
+            self.bandit_break_t = bandit_break_t
+
         if not hasattr(self, "attack_timer"): self.attack_timer = 0.0
         self.attack_timer += dt
         # simple bypass lifetime
@@ -4002,7 +4011,6 @@ class Zombie:
         dyp = py - zy
         dist2_to_player = dxp * dxp + dyp * dyp
 
-        is_bandit = (getattr(self, "type", "") == "bandit")
         # one-time trigger – once bandit enters flee radius, it stays in flee mode
         if is_bandit and dist2_to_player <= (BANDIT_FLEE_RADIUS * BANDIT_FLEE_RADIUS):
             # only set once
@@ -4010,6 +4018,10 @@ class Zombie:
                 self.bandit_triggered = True
 
         bandit_flee = is_bandit and getattr(self, "bandit_triggered", False)
+        if bandit_flee:
+            speed *= BANDIT_FLEE_SPEED_MULT
+            if bandit_break_t > 0.0:
+                speed *= BANDIT_BREAK_SLOW_MULT
 
         # --- Twin “lane” offset and mild separation so they don’t block each other ---
         if getattr(self, "is_boss", False) and getattr(self, "twin_id", None) is not None:
@@ -4264,6 +4276,23 @@ class Zombie:
             goto_post_move = False
         if not goto_post_move:
             collide_and_slide_circle(self, obstacles, dx, dy)
+
+        if bandit_flee:
+            ob = getattr(self, "_hit_ob", None)
+            if ob and getattr(ob, "type", "") == "Destructible":
+                gp = getattr(ob, "grid_pos", None)
+                if gp in game_state.obstacles:
+                    del game_state.obstacles[gp]
+                if getattr(ob, "health", None) is not None:
+                    ob.health = 0
+                cx2, cy2 = ob.rect.centerx, ob.rect.centery
+                if random.random() < SPOILS_BLOCK_DROP_CHANCE:
+                    game_state.spawn_spoils(cx2, cy2, 1)
+                self.gain_xp(XP_ZOMBIE_BLOCK)
+                if random.random() < HEAL_DROP_CHANCE_BLOCK:
+                    game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
+                self.bandit_break_t = max(float(getattr(self, "bandit_break_t", 0.0)), BANDIT_BREAK_SLOW_TIME)
+                self._focus_block = None
 
         # Bulldozer cleanup: crush anything we hit during sweep-collision
         if getattr(self, "can_crush_all_blocks", False) and getattr(self, "_crush_queue", None):
@@ -6077,6 +6106,7 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, playe
     z = Zombie((gx, gy), ztype="bandit", speed=BANDIT_BASE_SPEED)
 
     z.bandit_triggered = False
+    z.bandit_break_t = 0.0
 
     # ===== 非线性随关卡/预算缩放 =====
     z.z_level = max(1, int(1 + level_idx * 0.25))
