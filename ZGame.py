@@ -3539,6 +3539,8 @@ class Zombie:
             self.bandit_break_t = bandit_break_t
         if not hasattr(self, "attack_timer"): self.attack_timer = 0.0
         self.attack_timer += dt
+        # Cooldown between applying contact damage to blocking destructible tiles
+        self._block_contact_cd = max(0.0, float(getattr(self, "_block_contact_cd", 0.0)) - dt)
         # simple bypass lifetime
         self._bypass_t = max(0.0, getattr(self, "_bypass_t", 0.0) - dt)
         # wipe last-hit each frame (esp. when we skip collide due to no_clip)
@@ -3904,6 +3906,25 @@ class Zombie:
         self.rect.y = int(self.y) + INFO_BAR_HEIGHT
         # record this frame's foot point
         self._foot_curr = (self.rect.centerx, self.rect.bottom)
+        # Let non-boss contact damage also chew through red blocks so they don't get stuck
+        if not getattr(self, "is_boss", False) and self._block_contact_cd <= 0.0:
+            ob_contact = getattr(self, "_hit_ob", None)
+            if ob_contact and getattr(ob_contact, "type", "") == "Destructible" and getattr(ob_contact, "health", None) is not None:
+                mult = getattr(game_state, "biome_zombie_contact_mult", 1.0)
+                block_dmg = int(round(ZOMBIE_CONTACT_DAMAGE * max(1.0, mult)))
+                ob_contact.health -= block_dmg
+                self._block_contact_cd = float(PLAYER_HIT_COOLDOWN)
+                if ob_contact.health <= 0:
+                    gp = getattr(ob_contact, "grid_pos", None)
+                    if gp in game_state.obstacles:
+                        del game_state.obstacles[gp]
+                    cx2, cy2 = ob_contact.rect.centerx, ob_contact.rect.centery
+                    if random.random() < SPOILS_BLOCK_DROP_CHANCE:
+                        game_state.spawn_spoils(cx2, cy2, 1)
+                    self.gain_xp(XP_ZOMBIE_BLOCK)
+                    if random.random() < HEAL_DROP_CHANCE_BLOCK:
+                        game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
+                    self._focus_block = None
         # 圆心是否触到障碍 → Boss可直接碾碎，否则按原CD打可破坏物
         if self.attack_timer >= attack_interval:
             cx = self.x + self.size * 0.5

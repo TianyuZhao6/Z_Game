@@ -14,7 +14,7 @@ Strong with firerate (more bullets → more multi-hits).
 Good vs swarms, slightly weaker vs single bosses.
 
 1.2. Ricochet Scope   √
-Effect: When a bullet hits an enemy or wall, it can bounce once toward the nearest enemy.
+Effect: When a bullet hits an enemy or wall, it can bounce once toward the nearest enemy if exists.
 Synergy:
 Works nicely with your obstacles (walls turn into combo tools).
 Great with crit (ricochets can crit too).
