@@ -27,7 +27,7 @@ High firerate builds become DoT machines.
 Good vs high-HP bosses (persistent damage even while kiting).
 Can interact with other props: e.g., “Hemorrhage” that increases damage to bleeding targets.
 
-1.4. Shrapnel Shells
+1.4. Shrapnel Shells √
 Effect: On enemy death, there is a chance to spawn 3–4 small projectiles in random directions.
 Synergy:
 Insane in big waves (chain-kill feeling).
@@ -43,8 +43,8 @@ Pairs well with range and pierce so you can focus the marked target while hittin
 2. Defense & Survival Props
 
 Not just raw HP—give them interesting defensive patterns.
-2.1. Bone Plating
-Effect: Every Y seconds, gain 1 stack of plating that negates the next hit (or reduces it heavily). Max 3–4 stacks.
+2.1. Bone Plating rarity: 2
+Effect: Every 6 seconds, gain 2hp plating. Stacks are unlimited (reset each level). Purchase limit 5; once capped, any time you have plating it negates the next hit entirely (consuming one stack even if the damage exceeds the plating).
 Synergy:
 Strong for beginners / melee risk-takers.
 Combos with high speed playstyles (you can dash in to grab coins safely).

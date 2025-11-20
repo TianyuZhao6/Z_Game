@@ -208,6 +208,31 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     # 小标签（在条右侧显示等级）
     xp_label = mono_small.render(f"Lv {int(getattr(player, 'level', 1))}", True, (210, 210, 230))
     screen.blit(xp_label, (xp_bx + xp_bar_w + 8, xp_by - 6))
+    # Bone Plating tracker
+    plating_lvl = int(getattr(player, "bone_plating_level", 0))
+    if plating_lvl > 0:
+        plating_hp = int(max(0, getattr(player, "bone_plating_hp", 0)))
+        plate_bar_w, plate_bar_h = bar_w, 6
+        plate_bx, plate_by = bx, xp_by + xp_bar_h + 8
+        pygame.draw.rect(screen, (60, 60, 60), (plate_bx - 2, plate_by - 2, plate_bar_w + 4, plate_bar_h + 4),
+                         border_radius=4)
+        pygame.draw.rect(screen, (30, 30, 34), (plate_bx, plate_by, plate_bar_w, plate_bar_h), border_radius=3)
+        m_hp = max(1, int(getattr(player, "max_hp", 1)))
+        plate_ratio = max(0.0, min(1.0, plating_hp / float(m_hp)))
+        pygame.draw.rect(screen, BONE_PLATING_COLOR,
+                         (plate_bx, plate_by, int(plate_bar_w * plate_ratio), plate_bar_h), border_radius=3)
+        # regen marker
+        cd = float(getattr(player, "_bone_plating_cd", BONE_PLATING_GAIN_INTERVAL))
+        regen_ratio = 1.0 - max(0.0, min(1.0, cd / float(BONE_PLATING_GAIN_INTERVAL)))
+        marker_x = plate_bx + int(plate_bar_w * regen_ratio)
+        pygame.draw.line(screen, (255, 255, 255), (marker_x, plate_by - 1), (marker_x, plate_by + plate_bar_h + 1), 1)
+        plate_txt = f"Bone {plating_hp}"
+        if plating_lvl >= BONE_PLATING_MAX_LEVEL:
+            plate_txt += " ★"
+        else:
+            plate_txt += f" (Lv {plating_lvl})"
+        plate_img = mono_small.render(plate_txt, True, BONE_PLATING_COLOR)
+        screen.blit(plate_img, (plate_bx, plate_by + plate_bar_h + 2))
     # 数字覆盖在进度条中间
     hp_text = f"{int(getattr(player, 'hp', 0))}/{int(getattr(player, 'max_hp', 0))}"
     hp_img = font_hp.render(hp_text, True, (20, 20, 20))
@@ -892,6 +917,12 @@ DMG_TEXT_RISE = 42.0  # 垂直上升速度（像素/秒）
 DMG_TEXT_FADE = 0.25  # 尾段淡出比例（最后 25% 时间开始透明）
 DMG_TEXT_SIZE_NORMAL = 28
 DMG_TEXT_SIZE_CRIT = 38
+# --- Bone Plating ---
+BONE_PLATING_STACK_HP = 2
+BONE_PLATING_GAIN_INTERVAL = 6.0
+BONE_PLATING_MAX_LEVEL = 5
+BONE_PLATING_COLOR = (210, 235, 255)
+BONE_PLATING_GLOW = (200, 245, 255, 140)
 # persistent (per run) upgrades bought in shop
 META = {
     # —— 本轮累积资源 ——
@@ -917,6 +948,9 @@ META = {
     "pierce_level": 0,  # 每发子弹可额外穿透的“击杀次数”
     "ricochet_level": 0,  # 每发子弹可弹射的次数
     "carapace_level": 0,
+    "bone_plating_level": 0,
+    "shrapnel_level": 0,
+    "carapace_shield_hp": 0,
 }
 def reset_run_state():
     META.update({
@@ -940,6 +974,9 @@ def reset_run_state():
         "pierce_level": 0,
         "ricochet_level": 0,
         "carapace_level": 0,
+        "bone_plating_level": 0,
+        "shrapnel_level": 0,
+        "carapace_shield_hp": 0,
     })
     globals()["_carry_player_state"] = None
     globals()["_pending_shop"] = False
@@ -1139,7 +1176,9 @@ def capture_snapshot(game_state, player, zombies, current_level: int,
                        "max_hp": int(getattr(player, "max_hp", PLAYER_MAX_HP)),
                        "hit_cd": float(getattr(player, "hit_cd", 0.0)),
                        "level": int(getattr(player, "level", 1)),
-                       "xp": int(getattr(player, "xp", 0))},
+                       "xp": int(getattr(player, "xp", 0)),
+                       "bone_plating_hp": int(getattr(player, "bone_plating_hp", 0)),
+                       "bone_plating_cd": float(getattr(player, "_bone_plating_cd", BONE_PLATING_GAIN_INTERVAL))},
             "zombies": [{
                 "x": float(z.x), "y": float(z.y),
                 "attack": int(getattr(z, "attack", 10)),
@@ -1828,6 +1867,11 @@ def show_pause_menu(screen, background_surf):
                 "max_level": 3,
             },
             {
+                "id": "bone_plating",
+                "name": "Bone Plating",
+                "max_level": 5,
+            },
+            {
                 "id": "carapace",
                 "name": "Carapace",
                 "max_level": None,
@@ -1848,6 +1892,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("pierce_level", 0))
         if iid == "shrapnel_shells":
             return int(META.get("shrapnel_level", 0))
+        if iid == "bone_plating":
+            return int(META.get("bone_plating_level", 0))
         if iid == "carapace":
             carapace_hp = int(META.get("carapace_shield_hp", 0))
             return (carapace_hp + 19) // 20
@@ -2203,6 +2249,17 @@ def show_shop_screen(screen) -> Optional[str]:
                 "rarity": 1,  # common
                 "apply": lambda: META.update(
                     carapace_shield_hp=int(META.get("carapace_shield_hp", 0)) + 20
+                ),
+            },
+            {
+                "id": "bone_plating",
+                "name": "Bone Plating",
+                "desc": "Every 6s gain 2 HP plating; max out at 5 buys to unlock full-hit negation.",
+                "cost": 12,
+                "rarity": 2,
+                "max_level": 5,
+                "apply": lambda: META.update(
+                    bone_plating_level=min(5, int(META.get("bone_plating_level", 0)) + 1)
                 ),
             },
             {
@@ -3099,6 +3156,10 @@ class Player:
         self.carapace_hp = int(META.get("carapace_shield_hp", 0))
         if self.carapace_hp > 0:
             self._hud_shield_vis = self.carapace_hp / float(max(1, self.max_hp))
+        self.bone_plating_level = int(META.get("bone_plating_level", 0))
+        self.bone_plating_hp = 0
+        self._bone_plating_cd = float(BONE_PLATING_GAIN_INTERVAL)
+        self._bone_plating_glow = 0.0
         self.acid_dot_timer = 0.0  # 还剩多少秒的DoT
         self.acid_dot_dps = 0.0  # 当前DoT每秒伤害（根据最近踩到的酸池设置）
         self._acid_dmg_accum = 0.0  # 在池中时的“本帧累计伤害”浮点缓存
@@ -3111,6 +3172,31 @@ class Player:
     def apply_dot(self, dps: float, duration: float):
         """Stackable DoT: each new source adds another ticking entry."""
         self.dot_ticks.append((float(dps), float(duration)))
+    def reset_bone_plating(self):
+        self.bone_plating_hp = 0
+        self._bone_plating_cd = float(BONE_PLATING_GAIN_INTERVAL)
+        self._bone_plating_glow = 0.0
+    def on_level_start(self):
+        self.reset_bone_plating()
+    def update_bone_plating(self, dt: float):
+        lvl = int(getattr(self, "bone_plating_level", 0))
+        glow = float(getattr(self, "_bone_plating_glow", 0.0))
+        if lvl <= 0:
+            self._bone_plating_glow = max(0.0, glow - dt * 0.6)
+            return
+        cd = float(getattr(self, "_bone_plating_cd", BONE_PLATING_GAIN_INTERVAL))
+        cd -= dt
+        gained = False
+        while cd <= 0.0:
+            cd += BONE_PLATING_GAIN_INTERVAL
+            self.bone_plating_hp = int(self.bone_plating_hp) + max(1, lvl) * BONE_PLATING_STACK_HP
+            gained = True
+        self._bone_plating_cd = cd
+        if gained:
+            glow = 0.85
+        else:
+            glow = max(0.0, glow - dt * 0.6)
+        self._bone_plating_glow = glow
     def take_damage(self, amount: int):
         """Used by enemy projectiles / hazards that call player.take_damage."""
         if self.hit_cd <= 0.0:
@@ -3902,10 +3988,8 @@ class Zombie:
                 if self.fuse <= 0.0:
                     # explode
                     if dist <= SUICIDE_RADIUS and player.hit_cd <= 0.0:
-                        player.hp -= SUICIDE_DAMAGE
+                        game_state.damage_player(player, SUICIDE_DAMAGE)
                         player.hit_cd = float(PLAYER_HIT_COOLDOWN)
-                        game_state.add_damage_text(player.rect.centerx, player.rect.centery,
-                                                   SUICIDE_DAMAGE, crit=False, kind="hp")
                     self.hp = 0  # remove self
         if getattr(self, "is_boss", False) and getattr(self, "hp", 0) <= 0:
             trigger_twin_enrage(self, zombies, game_state)
@@ -5868,6 +5952,29 @@ class GameState:
                 kind="shield",
             )
             dmg -= blocked
+        plating_lvl = int(getattr(player, "bone_plating_level", 0))
+        plating_hp = int(getattr(player, "bone_plating_hp", 0))
+        if dmg > 0 and plating_lvl > 0 and plating_hp > 0:
+            enhanced = plating_lvl >= BONE_PLATING_MAX_LEVEL
+            if enhanced:
+                consume = BONE_PLATING_STACK_HP if plating_hp >= BONE_PLATING_STACK_HP else plating_hp
+                blocked = dmg
+                player.bone_plating_hp = max(0, plating_hp - consume)
+                dmg = 0
+                text = "Bone"
+            else:
+                blocked = min(dmg, plating_hp)
+                player.bone_plating_hp = max(0, plating_hp - blocked)
+                dmg -= blocked
+                text = blocked
+            if blocked > 0:
+                self.add_damage_text(
+                    player.rect.centerx,
+                    player.rect.top - 24,
+                    text,
+                    kind="shield",
+                )
+                player._bone_plating_glow = max(0.4, float(getattr(player, "_bone_plating_glow", 0.0)))
         # Carapace: 20 HP chunks stored in META["carapace_shield_hp"]
         carapace_hp = int(META.get("carapace_shield_hp", 0))
         if dmg > 0 and carapace_hp > 0:
@@ -6441,6 +6548,36 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
                 fill_alpha = max(30, alpha - 100)
                 pygame.draw.ellipse(glow, (40, 140, 255, fill_alpha), glow.get_rect())
                 screen.blit(glow, glow_rect)
+            plating_hp = int(getattr(p, "bone_plating_hp", 0))
+            if plating_hp > 0:
+                armor_rect = rect.inflate(16, 10)
+                armor = pygame.Surface(armor_rect.size, pygame.SRCALPHA)
+                glow_ratio = max(0.0, min(1.0, float(getattr(p, "_bone_plating_glow", 0.0))))
+                edge_alpha = min(220, 80 + plating_hp // 2)
+                inner_alpha = int((BONE_PLATING_GLOW[3] if len(BONE_PLATING_GLOW) > 3 else 140) * glow_ratio)
+                pygame.draw.rect(
+                    armor,
+                    (BONE_PLATING_COLOR[0], BONE_PLATING_COLOR[1], BONE_PLATING_COLOR[2], edge_alpha),
+                    armor.get_rect(),
+                    width=2,
+                    border_radius=10
+                )
+                pygame.draw.rect(
+                    armor,
+                    (BONE_PLATING_GLOW[0], BONE_PLATING_GLOW[1], BONE_PLATING_GLOW[2], inner_alpha),
+                    armor.get_rect(),
+                    border_radius=10
+                )
+                screen.blit(armor, armor_rect)
+                if int(getattr(p, "bone_plating_level", 0)) >= BONE_PLATING_MAX_LEVEL:
+                    cx, cy = rect.centerx, rect.top - 6
+                    sparkle = [
+                        (cx, cy - 3),
+                        (cx + 3, cy),
+                        (cx, cy + 3),
+                        (cx - 3, cy)
+                    ]
+                    pygame.draw.polygon(screen, BONE_PLATING_COLOR, sparkle, width=1)
     # --- damage numbers (iso) ---
     for d in getattr(game_state, "dmg_texts", []):
         # 世界像素 -> 格 -> 等距投影
@@ -6612,6 +6749,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     player.fire_cd = 0.0
     apply_player_carry(player, globals().get("_carry_player_state"))
     apply_domain_buffs_for_level(game_state, player)
+    if hasattr(player, "on_level_start"):
+        player.on_level_start()
     globals()["_next_biome"] = None
     # --- Auto-turrets from META ---
     turret_level = int(META.get("auto_turret_level", 0))
@@ -6864,6 +7003,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.update_heals(dt)
         game_state.update_damage_texts(dt)
         game_state.collect_heals(player)
+        player.update_bone_plating(dt)
         # --- NEW: Telegraph/Acid 更新 + 减速衰减 ---
         game_state.update_telegraphs(dt)  # 倒计时→到时生成酸池
         game_state.update_acids(dt, player)  # 酸池伤害&施加 slow_t
@@ -6879,6 +7019,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             # （可选）当计时走完，清空 DoT dps
             if player.acid_dot_timer <= 0.0:
                 player.acid_dot_dps = 0.0
+        player.update_bone_plating(dt)
         # ===== Level-up picker (freeze gameplay & timer like Pause) =====
         while getattr(player, "levelup_pending", 0) > 0:
             bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles)
@@ -7035,6 +7176,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     player.level = int(p.get("level", 1))
     player.xp = int(p.get("xp", 0))
     player.xp_to_next = player_xp_required(player.level)
+    player.bone_plating_hp = int(p.get("bone_plating_hp", 0))
+    player._bone_plating_cd = float(p.get("bone_plating_cd", BONE_PLATING_GAIN_INTERVAL))
+    player._bone_plating_glow = 0.0
     if not hasattr(player, 'fire_cd'): player.fire_cd = 0.0
     # Auto-turrets when resuming (use saved meta if present, else global META)
     turret_level = int(meta.get("auto_turret_level", META.get("auto_turret_level", 0)))
