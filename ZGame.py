@@ -228,7 +228,7 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
         pygame.draw.line(screen, (255, 255, 255), (marker_x, plate_by - 1), (marker_x, plate_by + plate_bar_h + 1), 1)
         plate_txt = f"Bone {plating_hp}"
         if plating_lvl >= BONE_PLATING_MAX_LEVEL:
-            plate_txt += " ★"
+            plate_txt += " (MAX)"
         else:
             plate_txt += f" (Lv {plating_lvl})"
         plate_img = mono_small.render(plate_txt, True, BONE_PLATING_COLOR)
@@ -2327,6 +2327,8 @@ def show_shop_screen(screen) -> Optional[str]:
                 "apply": "reroll",
             },
         ]
+        # Mirror the live shop catalog into the pause menu so possessions stay in sync.
+        globals()["_pause_shop_catalog"] = catalog
     finally:
         # just a guard; we clear this flag once we leave the function
         globals().pop("_in_shop_ui", None)
@@ -2375,6 +2377,8 @@ def show_shop_screen(screen) -> Optional[str]:
         if iid == "carapace":
             hp = int(META.get("carapace_shield_hp", 0))
             return (hp + 19) // 20
+        if iid == "bone_plating":
+            return int(META.get("bone_plating_level", 0))
         # reroll or anything else: no level display
         return None
     def _prop_max_level(it):
