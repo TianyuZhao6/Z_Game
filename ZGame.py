@@ -671,6 +671,14 @@ COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
 COIN_GRAVITY = 400.0  # gravity pulling coin back to ground
 COIN_RESTITUTION = 0.45  # energy kept on bounce
 COIN_MIN_BOUNCE = 30.0  # stop bouncing when below this upward speed
+RAVAGER_HP_MULT = 2.5  # Ravager: 2.5x base HP
+RAVAGER_ATK_MULT = 1.5  # 1.5x contact damage
+RAVAGER_SIZE_MULT = 1.25  # bigger than normal, smaller than boss
+RAVAGER_CONTACT_MULT = 1.5  # scales contact damage
+RAVAGER_DASH_CD_RANGE = (3.0, 4.5)
+RAVAGER_DASH_WINDUP = 0.30
+RAVAGER_DASH_TIME = 0.65
+RAVAGER_DASH_SPEED_MULT = 2.0
 XP_PLAYER_KILL = 6
 XP_PLAYER_BLOCK = 2
 XP_ZOMBIE_BLOCK = 3
@@ -951,6 +959,7 @@ META = {
     "bone_plating_level": 0,
     "shrapnel_level": 0,
     "carapace_shield_hp": 0,
+"ravager": (120, 200, 230),  # dash-heavy brute
 }
 def reset_run_state():
     META.update({
@@ -1023,11 +1032,13 @@ ZOMBIE_COLORS.update({
     "boss_mist": (150, 140, 220),  # 冷紫
     "mist_clone": (180, 170, 240),  # 更浅，便于区分
 })
+ZOMBIE_COLORS["ravager"] = (120, 200, 230)  # dash-heavy brute
 # --- XP rewards (add) ---
 XP_PER_ZOMBIE_TYPE.update({
     "boss_mem": 40,  # base 给足奖励；击杀时还有 is_boss 3x 乘区
     "corruptling": 5,
 })
+XP_PER_ZOMBIE_TYPE["ravager"] = 12
 # --- wave spawning ---
 SPAWN_INTERVAL = 8.0
 SPAWN_BASE = 3
@@ -1066,6 +1077,7 @@ THREAT_COSTS = {
     "shielder": 3,
     "strong": 4,
     "tank": 5,
+    "ravager": 6,
     "splinter": 4,
 }
 # (Optional) relative preference if multiple types fit the remaining budget
@@ -1078,6 +1090,7 @@ THREAT_WEIGHTS = {
     "shielder": 10,
     "strong": 8,
     "tank": 6,
+    "ravager": 8,
     "splinter": 10,
 }
 # derive cooldown from either explicit FIRE_RATE or SPACING
@@ -3983,6 +3996,61 @@ class Zombie:
             # 将自己“杀死”以便主循环移除（或者直接把 hp 置 0）
             self.hp = 0
             return
+        if self.type == "ravager":
+            cd_min, cd_max = RAVAGER_DASH_CD_RANGE
+            if not hasattr(self, "_dash_state"):
+                self._dash_state = "idle"
+                self._dash_cd = random.uniform(cd_min, cd_max)
+                self._dash_t = 0.0
+                self._dash_speed_hold = float(self.speed)
+                self._ghost_accum = 0.0
+            if getattr(self, "_dash_state", "") != "go" and getattr(self, "can_crush_all_blocks", False):
+                self.can_crush_all_blocks = False
+            self._dash_cd = max(0.0, (self._dash_cd or 0.0) - dt)
+            if self._dash_state == "idle" and self._dash_cd <= 0.0:
+                vx, vy = px - cx, py - cy
+                L = (vx * vx + vy * vy) ** 0.5 or 1.0
+                self._dash_dir = (vx / L, vy / L)
+                self._dash_state = "wind"
+                self._dash_t = RAVAGER_DASH_WINDUP
+                self._dash_speed_hold = float(self.speed)
+                self._ghost_accum = 0.0
+                self.speed = max(0.2, self._dash_speed_hold * 0.35)
+                if game_state:
+                    game_state.spawn_telegraph(cx, cy, r=int(getattr(self, "radius", self.size * 0.5) * 0.9),
+                                               life=self._dash_t, kind="ravager_dash", payload=None)
+            elif self._dash_state == "wind":
+                self._dash_t -= dt
+                self.speed = max(0.2, self._dash_speed_hold * 0.35)
+                if self._dash_t <= 0.0:
+                    self._dash_state = "go"
+                    self._dash_t = RAVAGER_DASH_TIME
+                    self.speed = self._dash_speed_hold
+                    self.buff_spd_add = float(getattr(self, "buff_spd_add", 0.0)) + float(self._dash_speed_hold) * (RAVAGER_DASH_SPEED_MULT - 1.0)
+                    self.buff_t = max(getattr(self, "buff_t", 0.0), self._dash_t)
+                    self.no_clip_t = max(getattr(self, "no_clip_t", 0.0), self._dash_t + 0.05)
+                    self.can_crush_all_blocks = True
+                    self._dash_cd = random.uniform(cd_min, cd_max)
+            elif self._dash_state == "go":
+                self._dash_t -= dt
+                self.can_crush_all_blocks = True
+                self.no_clip_t = max(getattr(self, "no_clip_t", 0.0), 0.05)
+                self._ghost_accum += dt
+                f0 = getattr(self, "_foot_prev", (self.rect.centerx, self.rect.bottom))
+                f1 = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))
+                n = int(self._ghost_accum // AFTERIMAGE_INTERVAL)
+                if n > 0:
+                    self._ghost_accum -= n * AFTERIMAGE_INTERVAL
+                    for i in range(n):
+                        t = (i + 1) / (n + 1)
+                        gx = f0[0] * (1 - t) + f1[0] * t
+                        gy = f0[1] * (1 - t) + f1[1] * t
+                        game_state.ghosts.append(AfterImageGhost(gx, gy, self.size, self.size, ZOMBIE_COLORS.get("ravager", self.color), ttl=AFTERIMAGE_TTL))
+                if self._dash_t <= 0.0:
+                    self._dash_state = "idle"
+                    self.can_crush_all_blocks = False
+            else:
+                self.can_crush_all_blocks = False
         if getattr(self, "is_boss", False) and getattr(self, "hp", 0) <= 0:
             trigger_twin_enrage(self, zombies, game_state)
         # 远程怪：发射投射物
@@ -4016,6 +4084,61 @@ class Zombie:
                         game_state.damage_player(player, SUICIDE_DAMAGE)
                         player.hit_cd = float(PLAYER_HIT_COOLDOWN)
                     self.hp = 0  # remove self
+        if self.type == "ravager":
+            cd_min, cd_max = RAVAGER_DASH_CD_RANGE
+            if not hasattr(self, "_dash_state"):
+                self._dash_state = "idle"
+                self._dash_cd = random.uniform(cd_min, cd_max)
+                self._dash_t = 0.0
+                self._dash_speed_hold = float(self.speed)
+                self._ghost_accum = 0.0
+            if getattr(self, "_dash_state", "") != "go" and getattr(self, "can_crush_all_blocks", False):
+                self.can_crush_all_blocks = False
+            self._dash_cd = max(0.0, (self._dash_cd or 0.0) - dt)
+            if self._dash_state == "idle" and self._dash_cd <= 0.0:
+                vx, vy = px - cx, py - cy
+                L = (vx * vx + vy * vy) ** 0.5 or 1.0
+                self._dash_dir = (vx / L, vy / L)
+                self._dash_state = "wind"
+                self._dash_t = RAVAGER_DASH_WINDUP
+                self._dash_speed_hold = float(self.speed)
+                self._ghost_accum = 0.0
+                self.speed = max(0.2, self._dash_speed_hold * 0.35)
+                if game_state:
+                    game_state.spawn_telegraph(cx, cy, r=int(getattr(self, "radius", self.size * 0.5) * 0.9),
+                                               life=self._dash_t, kind="ravager_dash", payload=None)
+            elif self._dash_state == "wind":
+                self._dash_t -= dt
+                self.speed = max(0.2, self._dash_speed_hold * 0.35)
+                if self._dash_t <= 0.0:
+                    self._dash_state = "go"
+                    self._dash_t = RAVAGER_DASH_TIME
+                    self.speed = self._dash_speed_hold
+                    self.buff_spd_add = float(getattr(self, "buff_spd_add", 0.0)) + float(self._dash_speed_hold) * (RAVAGER_DASH_SPEED_MULT - 1.0)
+                    self.buff_t = max(getattr(self, "buff_t", 0.0), self._dash_t)
+                    self.no_clip_t = max(getattr(self, "no_clip_t", 0.0), self._dash_t + 0.05)
+                    self.can_crush_all_blocks = True
+                    self._dash_cd = random.uniform(cd_min, cd_max)
+            elif self._dash_state == "go":
+                self._dash_t -= dt
+                self.can_crush_all_blocks = True
+                self.no_clip_t = max(getattr(self, "no_clip_t", 0.0), 0.05)
+                self._ghost_accum += dt
+                f0 = getattr(self, "_foot_prev", (self.rect.centerx, self.rect.bottom))
+                f1 = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))
+                n = int(self._ghost_accum // AFTERIMAGE_INTERVAL)
+                if n > 0:
+                    self._ghost_accum -= n * AFTERIMAGE_INTERVAL
+                    for i in range(n):
+                        t = (i + 1) / (n + 1)
+                        gx = f0[0] * (1 - t) + f1[0] * t
+                        gy = f0[1] * (1 - t) + f1[1] * t
+                        game_state.ghosts.append(AfterImageGhost(gx, gy, self.size, self.size, ZOMBIE_COLORS.get("ravager", self.color), ttl=AFTERIMAGE_TTL))
+                if self._dash_t <= 0.0:
+                    self._dash_state = "idle"
+                    self.can_crush_all_blocks = False
+            else:
+                self.can_crush_all_blocks = False
         if getattr(self, "is_boss", False) and getattr(self, "hp", 0) <= 0:
             trigger_twin_enrage(self, zombies, game_state)
         # 增益怪：周期性为周围友军加 BUFF
@@ -5403,6 +5526,23 @@ def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_i
     aff = roll_affix(game_level)
     apply_affix(z, aff)
     z._affix_name = aff
+    # type-specific overrides
+    if ztype == "ravager":
+        z.attack = max(1, int(z.attack * RAVAGER_ATK_MULT))
+        z.max_hp = max(1, int(z.max_hp * RAVAGER_HP_MULT))
+        z.hp = z.max_hp
+        cx, cy = z.rect.center
+        z.size = int(CELL_SIZE * RAVAGER_SIZE_MULT)
+        z.rect = pygame.Rect(0, 0, z.size, z.size)
+        z.rect.center = (cx, cy)
+        z.x = float(z.rect.x)
+        z.y = float(z.rect.y - INFO_BAR_HEIGHT)
+        z.radius = int(z.size * 0.55)
+        z.contact_damage_mult = RAVAGER_CONTACT_MULT
+        z._display_name = "Ravager"
+        z._foot_prev = (z.rect.centerx, z.rect.bottom)
+        z._foot_curr = (z.rect.centerx, z.rect.bottom)
+        z._current_color = ZOMBIE_COLORS.get("ravager", z.color)
     # ← cap final move speed
     z.speed = min(ZOMBIE_SPEED_MAX, max(1, z.speed))
     return z
@@ -7084,7 +7224,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
             if player.hit_cd <= 0.0 and circle_touch(zombie, player):
                 mult = getattr(game_state, "biome_zombie_contact_mult", 1.0)
-                dmg = int(round(ZOMBIE_CONTACT_DAMAGE * max(1.0, mult)))
+                dmg_mult = getattr(zombie, "contact_damage_mult", 1.0)
+                dmg = int(round(ZOMBIE_CONTACT_DAMAGE * max(1.0, mult) * max(0.1, dmg_mult)))
                 game_state.damage_player(player, dmg)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
                 if player.hp <= 0:
@@ -7435,7 +7576,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
             if player.hit_cd <= 0.0 and circle_touch(zombie, player):
                 mult = getattr(game_state, "biome_zombie_contact_mult", 1.0)
-                dmg = int(round(ZOMBIE_CONTACT_DAMAGE * max(1.0, mult)))
+                dmg_mult = getattr(zombie, "contact_damage_mult", 1.0)
+                dmg = int(round(ZOMBIE_CONTACT_DAMAGE * max(1.0, mult) * max(0.1, dmg_mult)))
                 game_state.damage_player(player, dmg)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
                 if player.hp <= 0:
