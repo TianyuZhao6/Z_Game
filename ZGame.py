@@ -9,16 +9,12 @@ import os
 from queue import PriorityQueue
 from collections import deque
 from typing import Dict, List, Set, Tuple, Optional
-
-
 # --- Event queue helper to prevent ghost clicks ---
 def flush_events():
     try:
         pygame.event.clear()
     except Exception:
         pass
-
-
 # --- UI helper ---
 def pause_settings_only(screen, background_surf):
     """
@@ -34,8 +30,6 @@ def pause_settings_only(screen, background_surf):
         # treat anything else as 'continue'
         break
     flush_events()
-
-
 def pause_from_overlay(screen, bg_surface):
     # Show pause; loop when settings closes so we land back on pause.
     while True:
@@ -47,8 +41,6 @@ def pause_from_overlay(screen, bg_surface):
             flush_events()
             continue  # back to pause
         return choice  # "home" | "exit" | "restart"
-
-
 # --- Font helper ---
 def mono_font(size: int) -> "pygame.font.Font":
     # Try common monospaced fonts; fall back safely
@@ -60,8 +52,6 @@ def mono_font(size: int) -> "pygame.font.Font":
     except Exception:
         pass
     return pygame.font.SysFont("monospace", size)
-
-
 def _draw_rect_perimeter_progress(surf: "pygame.Surface",
                                   rect: "pygame.Rect",
                                   progress: float,
@@ -96,15 +86,11 @@ def _draw_rect_perimeter_progress(surf: "pygame.Surface",
             dirx = 1 if ex > sx else -1
             pygame.draw.line(surf, color, (sx, sy), (sx + dirx * seg, sy), width)
         remain -= seg
-
-
 # === Shield HUD style (tweak as you like) ===
 SHIELD_EDGE_COLOR = (30, 140, 190)  # dark cyan
 SHIELD_FILL_COLOR = (60, 180, 255, 60)  # translucent inner tint (RGBA with alpha)
 SHIELD_EDGE_WIDTH = 3  # shell stroke thickness
 SHIELD_EXPAND_PX = 4  # how much wider than the HP bar
-
-
 def _draw_shield_shell(surf: "pygame.Surface",
                        bar_rect: "pygame.Rect",
                        start_ratio: float,
@@ -137,13 +123,9 @@ def _draw_shield_shell(surf: "pygame.Surface",
         surf.blit(srf, (x, y))
     # dark-cyan edge (hollow look)
     pygame.draw.rect(surf, edge_color, pygame.Rect(x, y, w, h), width=edge_width, border_radius=rr)
-
-
 def feet_center(ent):
     # 世界坐标（含 INFO_BAR_HEIGHT 的平移）
     return (ent.x + ent.size * 0.5, ent.y + ent.size * 0.5 + INFO_BAR_HEIGHT)
-
-
 def circle_touch(a, b, extra=0.0) -> bool:
     ax, ay = feet_center(a)
     bx, by = feet_center(b)
@@ -153,8 +135,6 @@ def circle_touch(a, b, extra=0.0) -> bool:
     dx = ax - bx;
     dy = ay - by
     return (dx * dx + dy * dy) <= (r * r)
-
-
 def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -> None:
     """
     顶栏 HUD（绝对屏幕坐标，不受相机/等距相机影响）
@@ -292,16 +272,12 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
         # 倒计时结束后清理
         if game_state.banner_t <= 0.0:
             game_state.banner_text = None
-
-
 def _find_current_boss(zombies):
     # 约定：任意 is_boss=True 的单位都当作 BOSS
     for z in zombies:
         if getattr(z, "is_boss", False):
             return z
     return None
-
-
 def draw_boss_hp_bar(screen, boss):
     # ---- 尺寸与位置（顶栏下方一条大血条）----
     bar_w = min(720, max(420, int(VIEW_W * 0.55)))
@@ -356,12 +332,8 @@ def draw_boss_hp_bar(screen, boss):
     screen.blit(title_shadow, title_shadow.get_rect(midbottom=(VIEW_W // 2 + 1, by - 3)))
     screen.blit(title, title.get_rect(midbottom=(VIEW_W // 2, by - 4)))
     screen.blit(vals, vals.get_rect(midleft=(bx + 8, by + bar_h + 4)))
-
-
 def _find_all_bosses(zombies):
     return [z for z in zombies if getattr(z, "is_boss", False)]
-
-
 def draw_boss_hp_bars_twin(screen, bosses):
     a, b = bosses[0], bosses[1]
     bar_w = min(720, max(420, int(VIEW_W * 0.55)))
@@ -375,7 +347,6 @@ def draw_boss_hp_bars_twin(screen, bosses):
     title_font = pygame.font.SysFont(None, 26, bold=True)
     title = title_font.render(str(title_name), True, (240, 240, 240))
     screen.blit(title, title.get_rect(midbottom=(VIEW_W // 2, by - 6)))
-
     def draw_one(boss, y, color):
         mhp = max(1, int(getattr(boss, "max_hp", getattr(boss, "hp", 1))))
         cur = max(0, int(getattr(boss, "hp", 0)))
@@ -408,13 +379,10 @@ def draw_boss_hp_bars_twin(screen, bosses):
         small = pygame.font.SysFont(None, 20)
         vals = small.render(f"{cur}/{mhp}", True, (235, 235, 235))
         screen.blit(vals, vals.get_rect(bottomright=(bx + bar_w - 6, y + bar_h + 16)))
-
     y1 = by
     y2 = by + bar_h + 12  # 两条之间 12px 间距
     draw_one(a, y1, (210, 64, 64))
     draw_one(b, y2, (230, 120, 70))
-
-
 def pause_game_modal(screen, bg_surface, clock, time_left, player):
     """
     Show Pause (and Settings) while freezing the survival timer.
@@ -437,8 +405,6 @@ def pause_game_modal(screen, bg_surface, clock, time_left, player):
     clock.tick(60)
     flush_events()
     return choice, time_left
-
-
 def _expanded_block_mask(obstacles: dict, grid_size: int, radius_px: int) -> list:
     """返回经过半径外扩后的阻挡掩码（True=不可走）"""
     # 把像素半径近似成网格曼哈顿半径：半格≈CELL_SIZE*0.5
@@ -461,8 +427,6 @@ def _expanded_block_mask(obstacles: dict, grid_size: int, radius_px: int) -> lis
                             if 0 <= nx < grid_size and 0 <= ny < grid_size:
                                 mask[ny][nx] = True
     return mask
-
-
 def _reachable_to_edge(start: tuple, mask: list) -> bool:
     """只在 mask 为 False 的格子上走，看能否走到外环"""
     n = len(mask)
@@ -481,8 +445,6 @@ def _reachable_to_edge(start: tuple, mask: list) -> bool:
                 seen.add((nx, ny));
                 q.append((nx, ny))
     return False
-
-
 def ensure_passage_budget(obstacles: dict, grid_size: int, player_spawn: tuple, tries: int = 8):
     """
     若玩家出生点到外环不可达：随机移除 1-2 个可破坏障碍（最多 tries 次），保证可走。
@@ -500,8 +462,6 @@ def ensure_passage_budget(obstacles: dict, grid_size: int, player_spawn: tuple, 
         pos = random.choice(destructibles)
         destructibles.remove(pos)
         obstacles.pop(pos, None)
-
-
 # --- Domain/Biome helpers (one-level-only effects) ---
 def apply_domain_buffs_for_level(game_state, player):
     """
@@ -543,8 +503,6 @@ def apply_domain_buffs_for_level(game_state, player):
         # New spawns this level: mark Stone so we add shields on spawn
         game_state.biome_active = b
         pass
-
-
 def apply_biome_on_zombie_spawn(z, game_state):
     """
     Called right after a zombie (or bandit/boss) is created & appended.
@@ -558,8 +516,6 @@ def apply_biome_on_zombie_spawn(z, game_state):
         else:
             z.shield_hp = int(round(z.max_hp * 0.50))
             z.shield_max = z.shield_hp
-
-
 def draw_shield_outline(screen, rect):
     # pulsing alpha for visibility
     t = pygame.time.get_ticks() * 0.006
@@ -569,8 +525,6 @@ def draw_shield_outline(screen, rect):
     s = pygame.Surface((rect.width + pad * 2, rect.height + pad * 2), pygame.SRCALPHA)
     pygame.draw.rect(s, (90, 180, 255, a), s.get_rect(), width=4, border_radius=6)
     screen.blit(s, s.get_rect(center=rect.center))
-
-
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
 # - Card system UI polish (later pass)
@@ -964,8 +918,6 @@ META = {
     "ricochet_level": 0,  # 每发子弹可弹射的次数
     "carapace_level": 0,
 }
-
-
 def reset_run_state():
     META.update({
         "spoils": 0,
@@ -995,8 +947,6 @@ def reset_run_state():
     globals().pop("_coins_at_level_start", None)
     globals().pop("_coins_at_shop_entry", None)
     _clear_level_start_baseline()
-
-
 def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
     """
     同一关内价格固定；进入下一关时按曲线整体上调。
@@ -1009,8 +959,6 @@ def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
     lin = (1.0 + SHOP_PRICE_LINEAR * level_idx)
     price = int(round(base_cost * exp * lin))
     return max(1, price)
-
-
 # resume flags
 _pending_shop = False  # if True, CONTINUE should open the shop first
 # --- zombie type colors (for rendering) ---
@@ -1030,13 +978,14 @@ ZOMBIE_COLORS = {
     "bandit": (255, 215, 0),  # 金币大盗：金色
 }
 # --- colors (add) ---
+BOSS_MEM_ENRAGED_COLOR = (102, 0, 102)
 ZOMBIE_COLORS.update({
-    "boss_mem": (170, 40, 200),  # 紫红色
+    "boss_mem": (210, 120, 255),  # 明亮紫色
+    "boss_mem_enraged": (102, 0, 102),  # 暗紫色
     "corruptling": (120, 220, 120),  # 浅绿
     "boss_mist": (150, 140, 220),  # 冷紫
     "mist_clone": (180, 170, 240),  # 更浅，便于区分
 })
-BOSS_MEM_ENRAGED_COLOR = (102, 0, 102)
 # --- XP rewards (add) ---
 XP_PER_ZOMBIE_TYPE.update({
     "boss_mem": 40,  # base 给足奖励；击杀时还有 is_boss 3x 乘区
@@ -1120,8 +1069,6 @@ BASE_DIR = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
 SAVE_DIR = os.path.join(BASE_DIR, "TEMP")
 os.makedirs(SAVE_DIR, exist_ok=True)
 SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
-
-
 def save_progress(current_level: int,
                   max_wave_reached: int | None = None,
                   pending_shop: bool = False):
@@ -1173,8 +1120,6 @@ def save_progress(current_level: int,
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print("save_progress error:", e)
-
-
 def capture_snapshot(game_state, player, zombies, current_level: int,
                      chosen_zombie_type: str = "basic", bullets: Optional[List['Bullet']] = None) -> dict:
     """Create a full mid-run snapshot of the current game state."""
@@ -1227,8 +1172,6 @@ def capture_snapshot(game_state, player, zombies, current_level: int,
         }
     }
     return snap
-
-
 def save_snapshot(snapshot: dict) -> None:
     """Write a snapshot dict to disk."""
     try:
@@ -1236,8 +1179,6 @@ def save_snapshot(snapshot: dict) -> None:
             json.dump(snapshot, f)
     except Exception as e:
         print(f"[Save] Failed to write snapshot: {e}", file=sys.stderr)
-
-
 def load_save() -> Optional[dict]:
     """Load either meta or snapshot save; returns dict with 'mode' field or None."""
     try:
@@ -1274,16 +1215,12 @@ def load_save() -> Optional[dict]:
     except Exception as e:
         print(f"[Save] Failed to read save file: {e}", file=sys.stderr)
         return None
-
-
 def _clear_level_start_baseline():
     globals().pop("_baseline_for_level", None)
     globals().pop("_coins_at_level_start", None)
     globals().pop("_coins_at_shop_entry", None)
     globals().pop("_player_level_baseline", None)
     globals().pop("_restart_from_shop", None)
-
-
 def _capture_level_start_baseline(level_idx: int, player: "Player"):
     """Record the exact state the first time we enter this level in this run."""
     globals()["_baseline_for_level"] = int(level_idx)
@@ -1297,8 +1234,6 @@ def _capture_level_start_baseline(level_idx: int, player: "Player"):
         "max_hp": int(getattr(player, "max_hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
         "hp": int(getattr(player, "hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
     }
-
-
 def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: "GameState"):
     """Re-entering the same level: restore bank & player progression.
        If the restart originated from the shop, restore coins to the shop-entry snapshot;
@@ -1332,20 +1267,14 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
         player.bullet_damage = int(b.get("bullet_damage", player.bullet_damage))
         player.max_hp = int(b.get("max_hp", player.max_hp))
         player.hp = min(player.max_hp, int(b.get("hp", player.max_hp)))
-
-
 def has_save() -> bool:
     return os.path.exists(SAVE_FILE)
-
-
 def clear_save() -> None:
     try:
         if os.path.exists(SAVE_FILE):
             os.remove(SAVE_FILE)
     except Exception as e:
         print(f"[Save] Failed to delete save file: {e}", file=sys.stderr)
-
-
 # ==================== UI Helpers ====================
 def iso_equalized_step(dx: float, dy: float, speed: float) -> tuple[float, float]:
     """
@@ -1362,8 +1291,6 @@ def iso_equalized_step(dx: float, dy: float, speed: float) -> tuple[float, float
     screen_mag = math.hypot(sx, sy) or 1.0
     scale = float(speed) * float(ISO_EQ_GAIN) / screen_mag
     return dx * scale, dy * scale
-
-
 def bullet_radius_for_damage(dmg: int) -> int:
     """
     Sub-linear growth by damage percentage, with a smooth cap.
@@ -1379,8 +1306,6 @@ def bullet_radius_for_damage(dmg: int) -> int:
         slow = gain / (1.0 + 0.75 * gain)  # slows early growth, < 1.0
         r = BULLET_RADIUS + (BULLET_RADIUS_MAX - BULLET_RADIUS) * slow
     return max(2, min(BULLET_RADIUS_MAX, int(round(r))))
-
-
 def enemy_shot_radius_for_damage(dmg: int,
                                  base_radius: int = 4,
                                  cap: int = int(CELL_SIZE * 0.26),
@@ -1394,8 +1319,6 @@ def enemy_shot_radius_for_damage(dmg: int,
     dmg = max(0, int(dmg))
     r = base_radius + int((cap - base_radius) * (1.0 - math.exp(-k * dmg)))
     return max(base_radius, min(cap, r))
-
-
 def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     """
     以“圆心 + Minkowski 外扩”的方式，做【扫掠式】轴分离碰撞：
@@ -1498,8 +1421,6 @@ def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
     # 同步 AABB（仅用于渲染/命中盒）
     entity.rect.x = int(entity.x)
     entity.rect.y = int(entity.y) + INFO_BAR_HEIGHT
-
-
 # === NEW: 等距相机偏移（基于玩家像素中心 → 网格中心 → 屏幕等距投影） ===
 def calculate_iso_camera(player_x_px: float, player_y_px: float) -> tuple[int, int]:
     px_grid = player_x_px / CELL_SIZE
@@ -1509,8 +1430,6 @@ def calculate_iso_camera(player_x_px: float, player_y_px: float) -> tuple[int, i
     camx = pxs - VIEW_W // 2
     camy = pys - (VIEW_H - INFO_BAR_HEIGHT) // 2
     return int(camx), int(camy)
-
-
 def draw_button(screen, label, pos, size=(180, 56), bg=(40, 40, 40), fg=(240, 240, 240), border=(15, 15, 15)):
     rect = pygame.Rect(pos, size)
     pygame.draw.rect(screen, border, rect.inflate(6, 6))
@@ -1519,8 +1438,6 @@ def draw_button(screen, label, pos, size=(180, 56), bg=(40, 40, 40), fg=(240, 24
     txt = font.render(label, True, fg)
     screen.blit(txt, txt.get_rect(center=rect.center))
     return rect
-
-
 def compute_player_dps(p: "Player" | None) -> float:
     # TODO
     # Add visual effect for bandit (growing circle around bandit)
@@ -1540,8 +1457,6 @@ def compute_player_dps(p: "Player" | None) -> float:
     cc = max(0.0, min(1.0, float(getattr(p, "crit_chance", 0.0))))
     cm = float(getattr(p, "crit_mult", CRIT_MULT_BASE))
     return dmg * sps * (1.0 + cc * (cm - 1.0))
-
-
 def door_transition(screen, color=(0, 0, 0), duration=500):
     door_width = VIEW_W // 2
     left_rect = pygame.Rect(0, 0, 0, VIEW_H)
@@ -1563,8 +1478,6 @@ def door_transition(screen, color=(0, 0, 0), duration=500):
         if progress >= 1: break
         clock.tick(60)
     flush_events()
-
-
 def draw_settings_gear(screen, x, y):
     """Draw a simple gear icon at (x,y) top-left; returns its rect."""
     rect = pygame.Rect(x, y, 32, 24)
@@ -1582,8 +1495,6 @@ def draw_settings_gear(screen, x, y):
         y2 = int(cy + 14 * math.sin(rad))
         pygame.draw.line(screen, (200, 200, 200), (x1, y1), (x2, y2), 2)
     return rect
-
-
 def show_start_menu(screen):
     """Return a tuple ('new', None) or ('continue', save_data) based on player's choice."""
     flush_events()
@@ -1647,8 +1558,6 @@ def show_start_menu(screen):
                     show_help(screen)
                     flush_events()
         clock.tick(60)
-
-
 def show_help(screen):
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 28)
@@ -1680,8 +1589,6 @@ def show_help(screen):
                 flush_events()
                 return
         clock.tick(60)
-
-
 def show_fail_screen(screen, background_surf):
     dim = pygame.Surface((VIEW_W, VIEW_H))
     dim.set_alpha(180)
@@ -1720,8 +1627,6 @@ def show_fail_screen(screen, background_surf):
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if retry.collidepoint(event.pos): door_transition(screen); flush_events(); return "retry"
                 if home.collidepoint(event.pos): door_transition(screen); flush_events(); return "home"
-
-
 def show_success_screen(screen, background_surf, reward_choices):
     dim = pygame.Surface((VIEW_W, VIEW_H))
     dim.set_alpha(150)
@@ -1789,8 +1694,6 @@ def show_success_screen(screen, background_surf, reward_choices):
                     door_transition(screen)
                     flush_events()
                     return chosen
-
-
 def show_pause_menu(screen, background_surf):
     """Draw pause overlay with build info in the dimmed background, keeping buttons centered."""
     # 创建半透明背景
@@ -1931,7 +1834,6 @@ def show_pause_menu(screen, background_surf):
             },
         ]
         globals()["_pause_shop_catalog"] = catalog
-
     def _pause_prop_level(item):
         iid = item.get("id")
         if iid == "coin_magnet":
@@ -1950,7 +1852,6 @@ def show_pause_menu(screen, background_surf):
             carapace_hp = int(META.get("carapace_shield_hp", 0))
             return (carapace_hp + 19) // 20
         return None
-
     owned = []
     for item in catalog:
         lvl = _pause_prop_level(item)
@@ -2008,8 +1909,6 @@ def show_pause_menu(screen, background_surf):
                     if rect.collidepoint(event.pos):
                         flush_events()
                         return tag
-
-
 def _apply_levelup_choice(player, key: str):
     """Apply the chosen buff immediately AND persist in META so it carries over."""
     if key == "dmg":
@@ -2036,8 +1935,6 @@ def _apply_levelup_choice(player, key: str):
         META["crit"] = min(0.75, float(META.get("crit", 0.0)) + 0.02)
         if player is not None:
             player.crit_chance = min(0.75, float(getattr(player, "crit_chance", 0.0)) + 0.02)
-
-
 def show_levelup_overlay(screen, background_surf, player):
     """
     Paused overlay: dim the current frame and show 4 random perk cards (2x2 grid) in the center.
@@ -2153,8 +2050,6 @@ def show_levelup_overlay(screen, background_surf, player):
             screen.blit(d_surf, d_surf.get_rect(topleft=(r.left + 20, r.top + 56)))
         pygame.display.flip()
         clock.tick(60)
-
-
 def levelup_modal(screen, bg_surface, clock, time_left, player):
     """
     Wrapper that shows the picker, keeps the timer frozen, and
@@ -2167,8 +2062,6 @@ def levelup_modal(screen, bg_surface, clock, time_left, player):
     clock.tick(60)  # reset dt baseline so gameplay doesn't jump after modal
     flush_events()
     return time_left
-
-
 def show_settings_popup(screen, background_surf):
     """Volume settings with LIVE BGM updates and proper slider dragging/visual refresh."""
     global FX_VOLUME, BGM_VOLUME
@@ -2187,7 +2080,6 @@ def show_settings_popup(screen, background_surf):
     fx_val = int(FX_VOLUME)
     bgm_val = int(BGM_VOLUME)
     dragging = None  # None | "fx" | "bgm"
-
     def draw_slider(label, value, top_y):
         # label
         screen.blit(font.render(f"{label}: {value}", True, (230, 230, 230)), (panel.left + 40, top_y))
@@ -2197,10 +2089,8 @@ def show_settings_popup(screen, background_surf):
         pygame.draw.rect(screen, (80, 80, 80), bar, border_radius=6)
         pygame.draw.circle(screen, (220, 220, 220), (knob_x, bar.y + 5), 8)
         return bar
-
     def val_from_bar(bar, mx):
         return max(0, min(100, int(((mx - bar.x) / max(1, bar.width)) * 100)))
-
     def draw_ui():
         # background & panel
         screen.blit(bg_scaled, (0, 0))
@@ -2223,7 +2113,6 @@ def show_settings_popup(screen, background_surf):
         ctxt = btn_font.render("CLOSE", True, (235, 235, 235))
         screen.blit(ctxt, ctxt.get_rect(center=close_btn.center))
         pygame.display.flip()
-
     # initial draw
     fx_bar = bgm_bar = close_btn = None
     draw_ui()
@@ -2274,8 +2163,6 @@ def show_settings_popup(screen, background_surf):
         # redraw each frame for smooth knob follow
         draw_ui()
         clock.tick(60)
-
-
 def show_shop_screen(screen) -> Optional[str]:
     """Spend META['spoils'] on small upgrades. ESC opens Pause; return action or None when closed."""
     # snapshot coins at shop entry (post-bank, pre-purchase)
@@ -2403,7 +2290,6 @@ def show_shop_screen(screen) -> Optional[str]:
         globals()["_locked_shop_ids"] = locked_ids
     else:
         locked_ids[:] = list(initial_locked)
-
     def _persist_locked_ids():
         seen = set()
         ordered = []
@@ -2412,9 +2298,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 seen.add(lid)
                 ordered.append(lid)
         META["locked_shop_ids"] = ordered
-
     _persist_locked_ids()
-
     def _prop_level(it):
         """Read current level for capped props from META."""
         iid = it.get("id")
@@ -2436,10 +2320,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return (hp + 19) // 20
         # reroll or anything else: no level display
         return None
-
     def _prop_max_level(it):
         return it.get("max_level", None)
-
     def roll_offers():
         # base pool (no reroll)
         pool = [c for c in catalog if c.get("id") != "reroll"]
@@ -2462,7 +2344,6 @@ def show_shop_screen(screen) -> Optional[str]:
         # append dedicated reroll card at the end
         offers.append(next(c for c in catalog if c.get("id") == "reroll"))
         return offers
-
     offers = roll_offers()
     hovered_uid: Optional[str] = None  # used to stabilise hover so cards don't blink
     while True:
@@ -2769,8 +2650,6 @@ def show_shop_screen(screen) -> Optional[str]:
                         else:
                             it["apply"]()
         clock.tick(60)
-
-
 def show_biome_picker_in_shop(screen) -> str:
     """在商店 NEXT 之后弹出的“下关场景”四选一卡面。返回被选择的场景名。"""
     clock = pygame.time.Clock()
@@ -2796,7 +2675,6 @@ def show_biome_picker_in_shop(screen) -> str:
     # 确认按钮
     confirm = pygame.Rect(0, 0, 240, 56)
     confirm.center = (VIEW_W // 2, y + card_h + 90)
-
     def draw():
         screen.fill((16, 16, 18))
         # 标题
@@ -2836,7 +2714,6 @@ def show_biome_picker_in_shop(screen) -> str:
             txt = pygame.font.SysFont(None, 32).render("CONFIRM", True, (120, 120, 120))
         screen.blit(txt, txt.get_rect(center=confirm.center))
         pygame.display.flip()
-
     while True:
         draw()
         for ev in pygame.event.get():
@@ -2873,25 +2750,18 @@ def show_biome_picker_in_shop(screen) -> str:
                     flush_events()
                     return chosen
         clock.tick(60)
-
-
 def is_boss_level(level_idx_zero_based: int) -> bool:
     # UI shows Lv = level_idx_zero_based + 1
     return ((level_idx_zero_based + 1) % BOSS_EVERY_N_LEVELS) == 0
-
-
 def budget_for_level(level_idx_zero_based: int) -> int:
     # Identical within level; exponential per level (clamped to a sane minimum)
     return max(THREAT_BUDGET_MIN,
                int(round(THREAT_BUDGET_BASE * (THREAT_BUDGET_EXP ** level_idx_zero_based))))
-
-
 def _pick_type_by_budget(rem: int, level_idx_zero_based: int) -> Optional[str]:
     def _unlocked(t: str) -> bool:
         if t == "splinter":
             return level_idx_zero_based >= SPLINTER_UNLOCK_LEVEL
         return True  # others always unlocked
-
     choices = [(t, w) for t, w in THREAT_WEIGHTS.items()
                if THREAT_COSTS.get(t, 999) <= rem and _unlocked(t)]
     if not choices:
@@ -2904,8 +2774,6 @@ def _pick_type_by_budget(rem: int, level_idx_zero_based: int) -> Optional[str]:
         if r <= acc:
             return t
     return choices[-1][0]
-
-
 def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Zombie"], want: int) -> List[
     Tuple[int, int]]:
     """Reuse your existing constraints: not blocked, not too close to player, not overlapping zombies."""
@@ -2924,8 +2792,6 @@ def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Z
         if len(out) >= want:
             break
     return out
-
-
 def promote_to_boss(z: "Zombie"):
     """Promote a single zombie instance to boss (stats on top of current scaling)."""
     z.is_boss = True
@@ -2942,8 +2808,6 @@ def promote_to_boss(z: "Zombie"):
     # 同步世界坐标（你的 move/渲染有用到 x/y）
     z.x = float(z.rect.x)
     z.y = float(z.rect.y - INFO_BAR_HEIGHT)
-
-
 def spawn_wave_with_budget(game_state: "GameState",
                            player: "Player",
                            current_level: int,
@@ -3014,14 +2878,12 @@ def spawn_wave_with_budget(game_state: "GameState",
                 # opposite lanes so they don’t body-block each other
                 b1.twin_slot = +1
                 b2.twin_slot = -1
-
                 # Clear any obstacles inside their initial 2×2 footprints
                 def _clear_footprint(ent):
                     r = pygame.Rect(int(ent.x), int(ent.y + INFO_BAR_HEIGHT), int(ent.size), int(ent.size))
                     for gp, ob in list(game_state.obstacles.items()):
                         if ob.rect.colliderect(r):
                             del game_state.obstacles[gp]
-
                 _clear_footprint(b1)
                 _clear_footprint(b2)
                 # domain spawn effects (Stone shields, etc.)
@@ -3109,8 +2971,6 @@ def spawn_wave_with_budget(game_state: "GameState",
         zombies.append(z)
         spawned += 1
     return spawned
-
-
 def trigger_twin_enrage(dead_boss, zombies, game_state):
     """当一只 Twin Boss 死亡时，令存活的孪生体回满血并进入狂暴。"""
     if not getattr(dead_boss, "is_boss", False):
@@ -3145,23 +3005,16 @@ def trigger_twin_enrage(dead_boss, zombies, game_state):
             game_state.add_damage_text(partner.rect.centerx, partner.rect.centery, "ENRAGED", crit=False, kind="shield")
         except Exception:
             pass
-
-
 # ==================== 数据结构 ====================
 class Graph:
     def __init__(self):
         self.edges: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
         self.weights: Dict[Tuple[Tuple[int, int], Tuple[int, int]], float] = {}
-
     def add_edge(self, a, b, w):
         self.edges.setdefault(a, []).append(b)
         self.weights[(a, b)] = w
-
     def neighbors(self, node): return self.edges.get(node, [])
-
     def cost(self, a, b): return self.weights.get((a, b), float('inf'))
-
-
 class Obstacle:
     def __init__(self, x: int, y: int, obstacle_type: str, health: Optional[int] = None):
         px = x * CELL_SIZE;
@@ -3169,33 +3022,24 @@ class Obstacle:
         self.rect = pygame.Rect(px, py, CELL_SIZE, CELL_SIZE)
         self.type: str = obstacle_type
         self.health: Optional[int] = health
-
     def is_destroyed(self) -> bool:
         return self.type == "Destructible" and self.health <= 0
-
     @property
     def grid_pos(self):
         return self.rect.x // CELL_SIZE, (self.rect.y - INFO_BAR_HEIGHT) // CELL_SIZE
-
-
 class FogLantern(Obstacle):
     def __init__(self, x: int, y: int, hp: int = FOG_LANTERN_HP):
         super().__init__(x, y, "Lantern", health=hp)
         self.nonblocking = False  # 关键：不参与移动碰撞
         # 更明显一点的可视尺寸
         self.rect = pygame.Rect(self.rect.x + 6, self.rect.y + 6, CELL_SIZE - 12, CELL_SIZE - 12)
-
     @property
     def alive(self):
         return self.health is None or self.health > 0
-
-
 class MainBlock(Obstacle):
     def __init__(self, x: int, y: int, health: Optional[int] = MAIN_BLOCK_HEALTH):
         super().__init__(x, y, "Destructible", health)
         self.is_main_block = True
-
-
 class Item:
     def __init__(self, x: int, y: int, is_main=False):
         self.x = x
@@ -3205,8 +3049,6 @@ class Item:
         self.center = (self.x * CELL_SIZE + CELL_SIZE // 2, self.y * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT)
         self.rect = pygame.Rect(self.center[0] - self.radius, self.center[1] - self.radius, self.radius * 2,
                                 self.radius * 2)
-
-
 class Player:
     def __init__(self, pos: Tuple[int, int], speed: int = PLAYER_SPEED):
         self.x = pos[0] * CELL_SIZE
@@ -3263,21 +3105,17 @@ class Player:
         self._acid_dot_accum = 0.0  # 离开池后DoT的累计伤害缓存
         self.dot_ticks = []  # list[(dps, t_left)]
         self.apply_slow_extra = 0.0  # extra slow gathered each frame (hazards add to this)
-
     @property
     def pos(self):
         return int((self.x + self.size // 2) // CELL_SIZE), int((self.y + self.size // 2) // CELL_SIZE)
-
     def apply_dot(self, dps: float, duration: float):
         """Stackable DoT: each new source adds another ticking entry."""
         self.dot_ticks.append((float(dps), float(duration)))
-
     def take_damage(self, amount: int):
         """Used by enemy projectiles / hazards that call player.take_damage."""
         if self.hit_cd <= 0.0:
             self.hp = max(0, self.hp - int(amount))
             self.hit_cd = float(PLAYER_HIT_COOLDOWN)
-
     def move(self, keys, obstacles, dt):
         # reset frame-accumulated slow from hazards
         self.apply_slow_extra = 0.0
@@ -3329,11 +3167,9 @@ class Player:
         # 把“减速后的速度”喂给步进与碰撞
         step_x, step_y = iso_equalized_step(dx, dy, spd)
         collide_and_slide_circle(self, obstacles.values(), step_x, step_y)
-
     def fire_cooldown(self) -> float:
         eff = min(MAX_FIRERATE_MULT, float(self.fire_rate_mult))
         return max(MIN_FIRE_COOLDOWN, FIRE_COOLDOWN / max(1.0, eff))
-
     def add_xp(self, amount: int):
         self.xp += int(max(0, amount))
         leveled = 0
@@ -3345,11 +3181,8 @@ class Player:
             leveled += 1
         # queue that many picker opens (consumed in the main loop)
         self.levelup_pending = getattr(self, "levelup_pending", 0) + leveled
-
     def draw(self, screen):
         pygame.draw.rect(screen, (0, 255, 0), self.rect)
-
-
 # --- module-level helper: split parent into 3 splinterlings ---
 def spawn_splinter_children(parent: "Zombie",
                             zombies: list,
@@ -3386,8 +3219,6 @@ def spawn_splinter_children(parent: "Zombie",
         zombies.append(child)
         spawned += 1
     return spawned
-
-
 class AfterImageGhost:
     def __init__(self, x, y, w, h, base_color, ttl=AFTERIMAGE_TTL):
         self.x = int(x);
@@ -3402,11 +3233,9 @@ class AfterImageGhost:
         self.color = (r, g, b)
         self.ttl = float(ttl);
         self.life0 = float(ttl)
-
     def update(self, dt):
         self.ttl -= dt
         return self.ttl > 0
-
     # —— Top-down：屏幕=世界−相机，按 midbottom 对齐 ——
     def draw_topdown(self, screen, cam_x, cam_y):
         if self.ttl <= 0: return
@@ -3416,7 +3245,6 @@ class AfterImageGhost:
         s = pygame.Surface(rect.size, pygame.SRCALPHA)
         s.fill((*self.color, alpha))
         screen.blit(s, rect.topleft)
-
     # —— ISO：脚底世界像素 → 世界格 → 等距投影坐标（再设 midbottom）——
     def draw_iso(self, screen, camx, camy):
         if self.ttl <= 0: return
@@ -3429,12 +3257,9 @@ class AfterImageGhost:
         s = pygame.Surface(rect.size, pygame.SRCALPHA)
         s.fill((*self.color, alpha))
         screen.blit(s, rect.topleft)
-
     # 兜底（仍有旧调用时，尽量别用它）
     def draw(self, screen):
         pass
-
-
 class Zombie:
     def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED,
                  ztype: str = "basic", hp: Optional[int] = None):
@@ -3498,16 +3323,13 @@ class Zombie:
         self._foot_curr = (self.rect.centerx, self.rect.bottom)
         self.spawn_delay = 0.6
         self._enrage_cd_mult = 1.0
-
     def draw(self, screen):
         color = getattr(self, "_current_color", self.color)
         pygame.draw.rect(screen, color, self.rect)
         self._spawn_elapsed = 0.0
-
     @property
     def pos(self):
         return int((self.x + self.size // 2) // CELL_SIZE), int((self.y + self.size // 2) // CELL_SIZE)
-
     def gain_xp(self, amount: int):
         self.xp += int(max(0, amount))
         while self.xp >= self.xp_to_next:
@@ -3532,7 +3354,6 @@ class Zombie:
                 # 用最终矩形重置残影足点，保证轨迹贴合
                 self._foot_prev = (self.rect.centerx, self.rect.bottom)
                 self._foot_curr = (self.rect.centerx, self.rect.bottom)
-
     def add_spoils(self, n: int):
         """僵尸拾取金币后的即时强化。"""
         n = int(max(0, n))
@@ -3552,7 +3373,6 @@ class Zombie:
                 self.speed = min(Z_SPOIL_SPD_CAP, float(self.speed) + float(Z_SPOIL_SPD_ADD))
         # 触发拾取光晕
         self._gold_glow_t = float(Z_GLOW_TIME)
-
     # ==== 通用：把朝向向量分解到等距基向量（e1=(1,1), e2=(1,-1)）====
     @staticmethod
     def iso_chase_step(from_xy, to_xy, speed):
@@ -3563,12 +3383,10 @@ class Zombie:
         ux, uy = vx / L, vy / L
         # use the same equalized speed you use for the player
         return iso_equalized_step(ux, uy, speed)
-
     @staticmethod
     def feet_xy(entity):
         # “脚底”坐标：用底边中心点（避免因为sprite高度导致距离判断穿帮）
         return (entity.x + entity.size * 0.5, entity.y + entity.size)
-
     @staticmethod
     def first_obstacle_on_grid_line(a_cell, b_cell, obstacles_dict):
         x0, y0 = a_cell;
@@ -3586,7 +3404,6 @@ class Zombie:
             if e2 >= dy: err += dy; x0 += sx
             if e2 <= dx: err += dx; y0 += sy
         return None
-
     def _choose_bypass_cell(self, ob_cell, player_cell, obstacles_dict):
         """Pick a simple side cell next to the blocking obstacle to go around it."""
         ox, oy = ob_cell
@@ -3597,29 +3414,24 @@ class Zombie:
             primary = [(ox, oy - 1), (ox, oy + 1)]
         else:
             primary = [(ox - 1, oy), (ox + 1, oy)]
-
         def free(c):
             x, y = c
             return (0 <= x < GRID_SIZE) and (0 <= y < GRID_SIZE) and (c not in obstacles_dict)
-
         cands = [c for c in primary if free(c)]
         if not cands:
             # Fallback: try the four diagonals
             diag = [(ox + 1, oy + 1), (ox + 1, oy - 1), (ox - 1, oy + 1), (ox - 1, oy - 1)]
-
             def diag_valid(c):
                 cx, cy = c
                 # NEW: reject diagonal if both side-adjacents are blocked (corner)
                 side1 = (ox, cy) in obstacles_dict
                 side2 = (cx, oy) in obstacles_dict
                 return free(c) and not (side1 and side2)
-
             cands = [c for c in diag if free(c)]
         if not cands:
             return None
         # Choose the one closer to the player.
         return min(cands, key=lambda c: (c[0] - px) ** 2 + (c[1] - py) ** 2)
-
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
         # shift last → prev at frame start
         self._foot_prev = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))
@@ -4042,7 +3854,6 @@ class Zombie:
                                 if random.random() < HEAL_DROP_CHANCE_BLOCK:
                                     game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
                     break
-
     def update_special(self, dt: float, player: 'Player', zombies: List['Zombie'],
                        enemy_shots: List['EnemyShot'], game_state: 'GameState' = None):
         # --- frame-local centers (avoid UnboundLocal on cx/cy/px/py) ---
@@ -4347,7 +4158,6 @@ class Zombie:
                         next_cd = random.uniform(4.5, 6.0)
                     self._dash_cd = next_cd * cd_mult
                     self._dash_cd_next = None
-
     def draw(self, screen):
         if getattr(self, "type", "") == "bandit":
             cx, cy = self.rect.centerx, self.rect.bottom
@@ -4361,11 +4171,22 @@ class Zombie:
         fallback = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         color = getattr(self, "_current_color", fallback)
         pygame.draw.rect(screen, color, self.rect)
-
-
+        if getattr(self, "is_enraged", False):
+            pad = 6
+            glow_rect = self.rect.inflate(pad * 2, pad * 2)
+            glow = pygame.Surface(glow_rect.size, pygame.SRCALPHA)
+            pulse = 150 + int(60 * math.sin(pygame.time.get_ticks() * 0.02))
+            pygame.draw.rect(glow,
+                             (min(255, max(0, color[0])),
+                              min(255, max(0, color[1])),
+                              min(255, max(0, color[2])),
+                              min(255, max(80, pulse))),
+                             glow.get_rect(),
+                             width=3,
+                             border_radius=8)
+            screen.blit(glow, glow_rect.topleft)
 class MemoryDevourerBoss(Zombie):
     """独立 Boss：更大体型/更大脚底圆/更高血攻；仍复用 Zombie 的大多数行为。"""
-
     def __init__(self, grid_pos: tuple[int, int], level_idx: int):
         gx, gy = grid_pos
         # 计算血量：沿用你原先“第5关为基准 + 关卡成长”的口径
@@ -4411,14 +4232,12 @@ class MemoryDevourerBoss(Zombie):
         self.y = float(self.rect.y - INFO_BAR_HEIGHT)
         # 出生延迟维持一致
         self.spawn_delay = 0.6
-
     def bind_twin(self, other, twin_id):
         import weakref
         self.twin_id = twin_id
         self._twin_partner_ref = weakref.ref(other)
         other.twin_id = twin_id
         other._twin_partner_ref = weakref.ref(self)
-
     def on_twin_partner_death(self):
         # 已触发过就不再触发
         if getattr(self, "_twin_powered", False) or self.hp <= 0:
@@ -4430,15 +4249,14 @@ class MemoryDevourerBoss(Zombie):
         self._twin_powered = True
         self.is_enraged = True
         self._enrage_cd_mult = 0.65
-        self._current_color = BOSS_MEM_ENRAGED_COLOR
-        self.color = self._current_color
+        enraged_color = ZOMBIE_COLORS.get("boss_mem_enraged", BOSS_MEM_ENRAGED_COLOR)
+        self._current_color = enraged_color
+        self.color = enraged_color
         if hasattr(self, "_dash_cd"):
             self._dash_cd *= self._enrage_cd_mult
         # 可选：改名/标记，方便UI显示
         self.boss_name = (getattr(self, "boss_name", "BOSS") + " [ENRAGED]")
     # （可选）你也可以覆盖 draw，画个大圆/贴图；目前沿用矩形色块就行
-
-
 class MistClone(Zombie):
     def __init__(self, gx: int, gy: int):
         super().__init__((gx, gy), attack=8, speed=int(MIST_SPEED * CELL_SIZE / CELL_SIZE), ztype="mist_clone", hp=1)
@@ -4446,15 +4264,12 @@ class MistClone(Zombie):
         self.size = CELL_SIZE - 6
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.is_illusion = True
-
     def update_special(self, dt, player, zombies, enemy_shots, game_state=None):
         # 命中即散，死亡时留一个小雾爆
         if self.hp <= 0 and not getattr(self, "_mist_boom", False):
             game_state.spawn_acid_pool(self.rect.centerx, self.rect.centery,
                                        r=int(CELL_SIZE * 0.6), life=1.2, dps=8, slow_frac=0.25)
             self._mist_boom = True
-
-
 class MistweaverBoss(Zombie):
     def __init__(self, grid_pos: tuple[int, int], level_idx: int):
         gx, gy = grid_pos
@@ -4486,14 +4301,12 @@ class MistweaverBoss(Zombie):
         self._ring_bursts_left = 0
         self._ring_burst_t = 0.0
         self.is_boss_shot = True
-
     def _has_clones(self, zombies):
         n = 0
         for z in zombies:
             if getattr(z, "is_illusion", False) and getattr(z, "hp", 0) > 0:
                 n += 1
         return n
-
     def _ensure_clones(self, zombies, game_state):
         # 至多 2 个分身存在
         need = max(0, 2 - self._has_clones(zombies))
@@ -4504,7 +4317,6 @@ class MistweaverBoss(Zombie):
             if 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE and (gx, gy) not in game_state.obstacles:
                 zombies.append(MistClone(gx, gy))
                 need -= 1
-
     def _do_blink(self, game_state):
         # 在两处随机门之间闪现一次，并在原地留下 2 秒雾门减速/DoT
         cx, cy = self.rect.centerx, self.rect.centery
@@ -4524,7 +4336,6 @@ class MistweaverBoss(Zombie):
         self.y = ty - self.size * 0.5 - INFO_BAR_HEIGHT
         self.rect.x = int(self.x)
         self.rect.y = int(self.y) + INFO_BAR_HEIGHT
-
     def update_special(self, dt, player, zombies, enemy_shots, game_state=None):
         hp_pct = max(0.0, self.hp / max(1, self.max_hp))
         self.phase = 1 if hp_pct > 0.70 else (2 if hp_pct > 0.35 else 3)
@@ -4640,8 +4451,6 @@ class MistweaverBoss(Zombie):
             # Boss 回血，并在 Boss 中心飘字（白紫色的“护盾/治疗”风格）
             self.hp = min(self.max_hp, self.hp + MISTLING_HEAL)
             game_state.add_damage_text(cx, cy, f"+{MISTLING_HEAL}", crit=False, kind="shield")
-
-
 class Bullet:
     def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE,
                  damage: int = BULLET_DAMAGE_ZOMBIE, source: str = "player"):
@@ -4655,7 +4464,6 @@ class Bullet:
         self.damage = int(damage)
         self.r = bullet_radius_for_damage(self.damage)
         self.source = source
-
     def update(self, dt: float, game_state: 'GameState', zombies: List['Zombie'], player: 'Player' = None):
         if not self.alive:
             return
@@ -4668,7 +4476,6 @@ class Bullet:
             return
         _rr = int(getattr(self, "r", BULLET_RADIUS))
         r = pygame.Rect(int(self.x - _rr), int(self.y - _rr), _rr * 2, _rr * 2)
-
         # try ricochet helper (player bullets only)
         def try_ricochet(hit_x: float, hit_y: float) -> bool:
             """Try to bounce this bullet toward the nearest enemy. Return True if bounced."""
@@ -4701,7 +4508,6 @@ class Bullet:
             self.y = hit_y
             self.ricochet_left = remaining - 1
             return True
-
         # 1) zombies
         for z in list(zombies):
             if r.colliderect(z.rect):
@@ -4894,7 +4700,6 @@ class Bullet:
                         break
                     self.alive = False
                     return
-
     def draw(self, screen, cam_x, cam_y):
         src = getattr(self, "source", "player")
         if src == "turret":
@@ -4907,14 +4712,11 @@ class Bullet:
             (int(self.x - cam_x), int(self.y - cam_y)),
             int(getattr(self, "r", BULLET_RADIUS)),
         )
-
-
 class AutoTurret:
     """
     Simple auto-turret that orbits near the player and fires weak bullets
     at the nearest zombie within range.
     """
-
     def __init__(self, owner: "Player", offset: Tuple[float, float],
                  fire_interval: float = AUTO_TURRET_FIRE_INTERVAL,
                  damage: int = AUTO_TURRET_BASE_DAMAGE,
@@ -4932,14 +4734,12 @@ class AutoTurret:
         self.y = float(cy + self.offset_y)
         # desync a bit so multiple turrets don't fire in perfect sync
         self.cd = random.random() * self.fire_interval
-
     def _follow_owner(self, dt: float):
         # advance orbit angle
         self.angle += AUTO_TURRET_ORBIT_SPEED * dt
         cx, cy = self.owner.rect.center
         self.x = float(cx + math.cos(self.angle) * self.orbit_radius)
         self.y = float(cy + math.sin(self.angle) * self.orbit_radius)
-
     def update(self, dt: float, game_state: "GameState",
                zombies: List["Zombie"], bullets: List["Bullet"]):
         # Stick near the player
@@ -4980,15 +4780,12 @@ class AutoTurret:
             )
         )
         self.cd = self.fire_interval
-
-
 class StationaryTurret:
     """
     Stationary turret placed on the map.
     Fires weak bullets (same default damage as AutoTurret)
     at the nearest zombie within range every level.
     """
-
     def __init__(self, x: float, y: float,
                  fire_interval: float = AUTO_TURRET_FIRE_INTERVAL,
                  damage: int = AUTO_TURRET_BASE_DAMAGE,
@@ -5000,7 +4797,6 @@ class StationaryTurret:
         self.range_mult = float(range_mult)
         # desync cooldown a bit so multiple turrets don't fire in perfect sync
         self.cd = random.random() * self.fire_interval
-
     def update(self, dt: float, game_state: "GameState",
                zombies: List["Zombie"], bullets: List["Bullet"]):
         # cooldown
@@ -5038,11 +4834,8 @@ class StationaryTurret:
             )
         )
         self.cd = self.fire_interval
-
-
 class Spoil:
     """A coin-like pickup that pops up and bounces in place."""
-
     def __init__(self, x_px: float, y_px: float, value: int = 1):
         # ground/world position where the coin lives
         self.base_x = float(x_px)
@@ -5054,13 +4847,11 @@ class Spoil:
         self.r = 6
         self.rect = pygame.Rect(0, 0, self.r * 2, self.r * 2)
         self._update_rect()
-
     def _update_rect(self):
         # draw/world position is base minus height
         cx = int(self.base_x)
         cy = int(self.base_y - self.h)
         self.rect.center = (cx, cy)
-
     def update(self, dt: float):
         # simple vertical bounce around base_y
         self.vh += COIN_GRAVITY * dt
@@ -5073,11 +4864,8 @@ class Spoil:
             else:
                 self.vh = 0.0
         self._update_rect()
-
-
 class HealPickup:
     """A small health potion pickup with the same bounce feel as coins."""
-
     def __init__(self, x_px: float, y_px: float, heal: int = HEAL_POTION_AMOUNT):
         self.base_x = float(x_px)
         self.base_y = float(y_px)
@@ -5087,10 +4875,8 @@ class HealPickup:
         self.r = 7
         self.rect = pygame.Rect(0, 0, self.r * 2, self.r * 2)
         self._update_rect()
-
     def _update_rect(self):
         self.rect.center = (int(self.base_x), int(self.base_y - self.h))
-
     def update(self, dt: float):
         self.vh += COIN_GRAVITY * dt
         self.h += self.vh * dt
@@ -5101,18 +4887,13 @@ class HealPickup:
             else:
                 self.vh = 0.0
         self._update_rect()
-
-
 class AcidPool:
     def __init__(self, x, y, r, dps, slow_frac, life):
         self.x, self.y, self.r = x, y, r
         self.dps, self.slow_frac = dps, slow_frac
         self.t = life  # remaining time
-
     def contains(self, px, py):
         return (px - self.x) ** 2 + (py - self.y) ** 2 <= self.r ** 2
-
-
 class TelegraphCircle:
     def __init__(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
         self.x, self.y, self.r = x, y, r
@@ -5120,8 +4901,6 @@ class TelegraphCircle:
         self.kind = kind
         self.payload = payload or {}
         self.color = color
-
-
 class EnemyShot:
     def __init__(self, x: float, y: float, vx: float, vy: float, dmg: int, max_dist: float = MAX_FIRE_RANGE, radius=4,
                  color=(255, 120, 50)):
@@ -5133,7 +4912,6 @@ class EnemyShot:
         self.max_dist = max_dist
         self.color = tuple(color)
         self.alive = True
-
     def update(self, dt: float, player: 'Player', game_state: 'GameState'):
         if not self.alive:
             return
@@ -5203,30 +4981,22 @@ class EnemyShot:
                 game_state.damage_player(player, dmg)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
             self.alive = False
-
     def draw_topdown(self, screen, camx, camy):
         pygame.draw.circle(screen, self.color,
                            (int(self.x - camx), int(self.y - camy)), self.r)
-
     def draw_iso(self, screen, camx, camy):
         wx = self.x / CELL_SIZE
         wy = (self.y - INFO_BAR_HEIGHT) / CELL_SIZE
         sx, sy = iso_world_to_screen(wx, wy, 0.0, camx, camy)
         pygame.draw.circle(screen, self.color, (int(sx), int(sy)), self.r)
-
-
 class MistShot(EnemyShot):
     """Mistweaver 专用弹幕：自带半径/颜色，不影响普通 EnemyShot。"""
-
     def __init__(self, x, y, vx, vy, damage, radius=10, color=None):
         super().__init__(x, y, vx, vy, damage)
         self.r = int(radius)
         self.color = color or HAZARD_STYLES["mist"]["ring"]
-
-
 class DamageText:
     """世界坐标下的飘字（x,y 为像素，含 INFO_BAR_HEIGHT），按时间上浮并淡出。"""
-
     def __init__(self, x_px: float, y_px: float, amount: int,
                  crit: bool = False, kind: str = "hp"):
         self.x = float(x_px)
@@ -5239,17 +5009,13 @@ class DamageText:
         self.kind = kind  # "hp"|"shield"
         self.t = 0.0
         self.ttl = float(DMG_TEXT_TTL)
-
     def alive(self) -> bool:
         return self.t < self.ttl
-
     def step(self, dt: float):
         self.t += dt
-
     def screen_offset_y(self) -> float:
         # 线性上升
         return -DMG_TEXT_RISE * (self.t / self.ttl)
-
     def alpha(self) -> int:
         # 后段逐渐淡出
         p = self.t / self.ttl
@@ -5257,20 +5023,12 @@ class DamageText:
             return 255
         tail = (p - (1.0 - DMG_TEXT_FADE)) / max(1e-4, DMG_TEXT_FADE)
         return max(0, int(255 * (1.0 - tail)))
-
-
 # ==================== 算法函数 ====================
 def sign(v): return 1 if v > 0 else (-1 if v < 0 else 0)
-
-
 # simple movement helper: use iso equalization only when using ISO view
 def chase_step(ux: float, uy: float, speed: float):
     return iso_equalized_step(ux, uy, speed) if USE_ISO else (ux * speed, uy * speed)
-
-
 def heuristic(a, b): return abs(a[0] - b[0]) + abs(a[1] - b[1])
-
-
 def resize_world_to_view():
     """Expand GRID_SIZE so the simulated world covers the whole visible area."""
     global GRID_SIZE, WINDOW_SIZE, TOTAL_HEIGHT
@@ -5283,8 +5041,6 @@ def resize_world_to_view():
         GRID_SIZE = new_size
         WINDOW_SIZE = GRID_SIZE * CELL_SIZE
         TOTAL_HEIGHT = WINDOW_SIZE + INFO_BAR_HEIGHT
-
-
 def play_bounds_for_circle(radius: float) -> tuple[float, float, float, float]:
     """返回【圆心】在当前关卡内允许的最小/最大坐标 (x_min, y_min, x_max, y_max)。"""
     w = GRID_SIZE * CELL_SIZE  # 地图像素宽
@@ -5294,8 +5050,6 @@ def play_bounds_for_circle(radius: float) -> tuple[float, float, float, float]:
     y_min = INFO_BAR_HEIGHT + radius
     y_max = INFO_BAR_HEIGHT + h - radius
     return x_min, y_min, x_max, y_max
-
-
 def iso_world_to_screen(wx: float, wy: float, wz: float = 0.0,
                         camx: float = 0.0, camy: float = 0.0) -> tuple[int, int]:
     """
@@ -5310,8 +5064,6 @@ def iso_world_to_screen(wx: float, wy: float, wz: float = 0.0,
     sx = (wx - wy) * half_w - camx
     sy = (wx + wy) * half_h - wz - camy + INFO_BAR_HEIGHT
     return int(sx), int(sy)
-
-
 def iso_tile_points(gx: int, gy: int, camx: float, camy: float) -> list[tuple[int, int]]:
     """返回等距地砖菱形四个顶点（上、右、下、左）。"""
     cx, cy = iso_world_to_screen(gx, gy, 0, camx, camy)
@@ -5321,13 +5073,9 @@ def iso_tile_points(gx: int, gy: int, camx: float, camy: float) -> list[tuple[in
         (cx, cy + ISO_CELL_H),
         (cx - ISO_CELL_W // 2, cy + ISO_CELL_H // 2),
     ]
-
-
 def draw_iso_tile(surface, gx, gy, color, camx, camy, border=0):
     pts = iso_tile_points(gx, gy, camx, camy)
     pygame.draw.polygon(surface, color, pts, border)
-
-
 def draw_iso_prism(surface, gx, gy, top_color, camx, camy, wall_h=ISO_WALL_Z):
     """
     画“墙砖”：带顶面和两个侧面（简单着色），用来替代 Destructible/Indestructible 方块。
@@ -5344,8 +5092,6 @@ def draw_iso_prism(surface, gx, gy, top_color, camx, camy, wall_h=ISO_WALL_Z):
     pygame.draw.polygon(surface, c_l, l)
     pygame.draw.polygon(surface, c_r, r)
     pygame.draw.polygon(surface, c_top, top)
-
-
 # === ISO ground ellipse helpers ===
 def iso_circle_radii_screen(r_px: float) -> tuple[int, int]:
     """
@@ -5358,8 +5104,6 @@ def iso_circle_radii_screen(r_px: float) -> tuple[int, int]:
     rx = int(r_px * (ISO_CELL_W / (math.sqrt(2) * CELL_SIZE)))
     ry = int(r_px * (ISO_CELL_H / (math.sqrt(2) * CELL_SIZE)))
     return max(1, rx), max(1, ry)
-
-
 def draw_iso_ground_ellipse(surface: pygame.Surface, x_px: float, y_px: float,
                             r_px: float, color: tuple, alpha: int,
                             camx: float, camy: float,
@@ -5382,8 +5126,6 @@ def draw_iso_ground_ellipse(surface: pygame.Surface, x_px: float, y_px: float,
     else:
         pygame.draw.ellipse(surf, rgba, rect, max(1, int(width)))
     surface.blit(surf, (cx - rx - 1, cy - ry - 1))
-
-
 def roll_spoils_for_zombie(z: "Zombie") -> int:
     """Return number of coins to drop for a killed zombie, applying drop chance."""
     if random.random() > SPOILS_DROP_CHANCE:
@@ -5391,8 +5133,6 @@ def roll_spoils_for_zombie(z: "Zombie") -> int:
     t = getattr(z, "type", "basic")
     lo, hi = SPOILS_PER_TYPE.get(t, (1, 1))
     return random.randint(int(lo), int(hi))
-
-
 def player_xp_required(level: int) -> int:
     """
     XP required to go from `level` -> `level+1`.
@@ -5406,8 +5146,6 @@ def player_xp_required(level: int) -> int:
     if L >= XP_CURVE_SOFTCAP_START:
         softcap_part = (L - XP_CURVE_SOFTCAP_START) ** XP_CURVE_SOFTCAP_POWER
     return int(exp_part + linear_part + softcap_part + 0.5)
-
-
 def _diminish_growth(level: int, per_level: float) -> float:
     """Apply softcap to per-level growth after MON_SOFTCAP_LEVEL."""
     if level <= MON_SOFTCAP_LEVEL:
@@ -5415,8 +5153,6 @@ def _diminish_growth(level: int, per_level: float) -> float:
     base = per_level * MON_SOFTCAP_LEVEL
     extra = (level - MON_SOFTCAP_LEVEL) * per_level * MON_SOFTCAP_FACTOR
     return base + extra
-
-
 # ---- Per-run carry-over of player's growth between levels ----
 # ---- Per-run carry-over of player's growth between levels ----
 def capture_player_carry(player) -> dict:
@@ -5427,8 +5163,6 @@ def capture_player_carry(player) -> dict:
         "hp": int(max(0, min(getattr(player, "hp", 0),
                              getattr(player, "max_hp", 0))))
     }
-
-
 def apply_player_carry(player, carry: dict | None):
     """Rebuild level-based growth, then start the level at FULL HP."""
     if not carry:
@@ -5453,8 +5187,6 @@ def apply_player_carry(player, carry: dict | None):
         player.hp = max(1, min(player.max_hp, int(carry_hp)))
     else:
         player.hp = min(player.hp, player.max_hp)
-
-
 def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | float]:
     """
     Return additive/multipliers for zombie stats based on the current game level & wave.
@@ -5468,10 +5200,10 @@ def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | flo
         pre = min(L, MON_SOFTCAP_LEVEL)
         post = max(0, L - MON_SOFTCAP_LEVEL)
         # 例：每关 8%（HP）/ 9%（ATK），软帽后仅按 40% 的强度继续复利
-        hp_mult_lvl = (1.0 + MON_HP_GROWTH_PER_LEVEL) ** pre \
-                      * (1.0 + MON_HP_GROWTH_PER_LEVEL * MON_SOFTCAP_FACTOR) ** post
-        atk_mult_lvl = (1.0 + MON_ATK_GROWTH_PER_LEVEL) ** pre \
-                       * (1.0 + MON_ATK_GROWTH_PER_LEVEL * MON_SOFTCAP_FACTOR) ** post
+        hp_mult_lvl = ((1.0 + MON_HP_GROWTH_PER_LEVEL) ** pre *
+                      (1.0 + MON_HP_GROWTH_PER_LEVEL * MON_SOFTCAP_FACTOR) ** post)
+        atk_mult_lvl = ((1.0 + MON_ATK_GROWTH_PER_LEVEL) ** pre *
+                       (1.0 + MON_ATK_GROWTH_PER_LEVEL * MON_SOFTCAP_FACTOR) ** post)
         # 波次也改为复利（更平滑），不想动可保留原来的线性乘子
         hp_mult_wave = (1.0 + MON_HP_GROWTH_PER_WAVE) ** W
         atk_mult_wave = (1.0 + MON_ATK_GROWTH_PER_WAVE) ** W
@@ -5498,8 +5230,6 @@ def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | flo
         atk_mult *= BOSS_ATK_MULT_EXTRA
         spd_add += BOSS_SPD_ADD_EXTRA
     return {"hp_mult": hp_mult, "atk_mult": atk_mult, "spd_add": spd_add, "elite": is_elite, "boss": is_boss}
-
-
 def roll_affix(game_level: int) -> Optional[str]:
     """Roll a lightweight affix occasionally; return name or None."""
     p = min(AFFIX_CHANCE_MAX, AFFIX_CHANCE_BASE + game_level * AFFIX_CHANCE_PER_LEVEL)
@@ -5507,8 +5237,6 @@ def roll_affix(game_level: int) -> Optional[str]:
         return None
     # three simple mature affixes
     return random.choice(["frenzied", "armored", "veteran"])
-
-
 def apply_affix(z: "Zombie", affix: Optional[str]):
     """Mutate a zombie with the chosen affix. Small, readable bonuses."""
     if not affix:
@@ -5528,12 +5256,8 @@ def apply_affix(z: "Zombie", affix: Optional[str]):
         z.max_hp = int(z.max_hp * 1.10 + 1)
         z.hp = min(z.max_hp, z.hp + 2)
         z._affix_tag = "V"
-
-
 def create_memory_devourer(grid_xy: Tuple[int, int], level_idx: int) -> "MemoryDevourerBoss":
     return MemoryDevourerBoss(grid_xy, level_idx)
-
-
 def spawn_corruptling_at(x_px: float, y_px: float) -> "Zombie":
     """
     从屏幕像素坐标生成腐蚀幼体（近战小怪）。
@@ -5550,15 +5274,11 @@ def spawn_corruptling_at(x_px: float, y_px: float) -> "Zombie":
     # 幼体更快进入战斗
     z.spawn_delay = 0.25
     return z
-
-
 def spawn_mistling_at(cx, cy, level_idx=0):
     gx = max(0, min(GRID_SIZE - 1, int(cx // CELL_SIZE)))
     gy = max(0, min(GRID_SIZE - 1, int((cy - INFO_BAR_HEIGHT) // CELL_SIZE)))
     z = Zombie((gx, gy), attack=10, speed=3, ztype="mistling", hp=24)
     return z
-
-
 def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_index: int) -> "Zombie":
     """Factory: spawn a zombie already scaled, with elite/boss & affixes applied."""
     z = Zombie(pos, speed=ZOMBIE_SPEED, ztype=ztype)
@@ -5577,8 +5297,6 @@ def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_i
     # ← cap final move speed
     z.speed = min(ZOMBIE_SPEED_MAX, max(1, z.speed))
     return z
-
-
 def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, player_dps: float | None = None):
     # world_xy 是“脚底世界坐标”（包含 INFO_BAR_HEIGHT 偏移的像素）
     wx, wy = world_xy
@@ -5616,8 +5334,6 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, playe
     z._steal_accum = 0.0
     z._bonus_rate = BANDIT_BONUS_RATE
     return z
-
-
 def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
                              ratio: float = XP_TRANSFER_RATIO,
                              radius: int = XP_INHERIT_RADIUS):
@@ -5636,8 +5352,6 @@ def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
     share = max(1, portion // len(near))
     for t in near:
         t.gain_xp(share)
-
-
 def _find_twin_partner(z, zombies):
     partner = None
     ref = getattr(z, "_twin_partner_ref", None)
@@ -5651,8 +5365,6 @@ def _find_twin_partner(z, zombies):
                 partner = cand
                 break
     return partner
-
-
 def trigger_twin_enrage(dead_boss, zombies, game_state):
     """If a bonded twin dies, power up the partner exactly once."""
     # locate partner
@@ -5671,26 +5383,24 @@ def trigger_twin_enrage(dead_boss, zombies, game_state):
                     break
     if not partner or getattr(partner, "hp", 0) <= 0:
         return
-    # already enraged? do nothing
     if getattr(partner, "_twin_powered", False):
         return
-    # heal to full and buff
-    partner.hp = int(getattr(partner, "max_hp", partner.hp))
-    partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
-    partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
-    partner._twin_powered = True
-    # optional: mark name so the UI can show it's angry
-    try:
-        partner.boss_name = (getattr(partner, "boss_name", "BOSS") + " [ENRAGED]")
-    except Exception:
-        pass
+    if hasattr(partner, "on_twin_partner_death"):
+        partner.on_twin_partner_death()
+    else:
+        partner.hp = int(getattr(partner, "max_hp", partner.hp))
+        partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
+        partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
+        partner._twin_powered = True
+        try:
+            partner.boss_name = (getattr(partner, "boss_name", "BOSS") + " [ENRAGED]")
+        except Exception:
+            pass
     # floating label (now safe—accepts strings)
     game_state.add_damage_text(partner.rect.centerx,
                                partner.rect.top - 10,
                                "ENRAGE!",  # string OK after step #1/#2
                                crit=True, kind="hp")
-
-
 def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
                   obstacles: Dict[Tuple[int, int], Obstacle]):
     frontier = PriorityQueue()
@@ -5716,13 +5426,9 @@ def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
                 # came_from[current] = current if current not in came_from else came_from[current]
                 came_from[neighbor] = current
     return came_from, cost_so_far
-
-
 def is_not_edge(pos, grid_size):
     x, y = pos
     return 1 <= x < grid_size - 1 and 1 <= y < grid_size - 1
-
-
 def get_level_config(level: int) -> dict:
     if level < len(LEVELS):
         return LEVELS[level]
@@ -5733,8 +5439,6 @@ def get_level_config(level: int) -> dict:
         "block_hp": int(10 * 1.2 ** (level - len(LEVELS) + 1)),
         "zombie_types": ["basic", "strong", "fire"][level % 3:],
     }
-
-
 def reconstruct_path(came_from: Dict, start: Tuple[int, int], goal: Tuple[int, int]) -> List[Tuple[int, int]]:
     if goal not in came_from: return [start]
     path = []
@@ -5745,8 +5449,6 @@ def reconstruct_path(came_from: Dict, start: Tuple[int, int], goal: Tuple[int, i
     path.append(start)
     path.reverse()
     return path
-
-
 # ==================== 游戏初始化函数 ====================
 def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int, zombie_count: int, main_block_hp: int):
     """
@@ -5756,7 +5458,6 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
     all_positions = [(x, y) for x in range(grid_size) for y in range(grid_size)]
     corners = [(0, 0), (0, grid_size - 1), (grid_size - 1, 0), (grid_size - 1, grid_size - 1)]
     forbidden = set(corners)
-
     def pick_valid_positions(min_distance: int, count: int):
         empty = [p for p in all_positions if p not in forbidden]
         while True:
@@ -5764,7 +5465,6 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
             player_pos, zombies = picks[0], picks[1:]
             if all(abs(player_pos[0] - z[0]) + abs(player_pos[1] - z[1]) >= min_distance for z in zombies):
                 return player_pos, zombies
-
     # center spawn if possible
     center_pos = (grid_size // 2, grid_size // 2)
     if center_pos not in forbidden:
@@ -5834,8 +5534,6 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
     decorations = decor_candidates[:decor_target]
     # keep return shape the same: last “main_item_list” is now empty list
     return obstacles, items, player_pos, zombie_pos_list, [], decorations
-
-
 def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> Graph:
     graph = Graph()
     for x in range(grid_size):
@@ -5851,8 +5549,6 @@ def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> G
                     weight = 10
                 graph.add_edge(current_pos, neighbor_pos, weight)
     return graph
-
-
 # --- Simple grid Dijkstra from goal -> all cells (shared flow field) ---
 def build_flow_field(grid_size, obstacles, goal_xy, pad=0):
     INF = 10 ** 9
@@ -5868,7 +5564,6 @@ def build_flow_field(grid_size, obstacles, goal_xy, pad=0):
                     nx, ny = gx + dx, gy + dy
                     if 0 <= nx < grid_size and 0 <= ny < grid_size:
                         blocked.add((nx, ny))
-
     def cell_cost(x, y):
         if (x, y) in blocked:
             return INF
@@ -5877,7 +5572,6 @@ def build_flow_field(grid_size, obstacles, goal_xy, pad=0):
         if ob and getattr(ob, "type", "") == "Destructible":
             return 4
         return 1
-
     # Dijkstra from goal (your existing logic, but skip blocked cells)
     dist = [[INF] * grid_size for _ in range(grid_size)]
     next_step = [[None] * grid_size for _ in range(grid_size)]
@@ -5902,23 +5596,18 @@ def build_flow_field(grid_size, obstacles, goal_xy, pad=0):
                 next_step[nx][ny] = (x, y)
                 heapq.heappush(pq, (nd, nx, ny))
     return dist, next_step
-
-
 # ==================== 新增游戏状态类 ====================
 class SpatialHash:
     def __init__(self, cell=64):
         self.cell = int(cell)
         self.buckets = {}
-
     def _key(self, x, y):
         return (int(x) // self.cell, int(y) // self.cell)
-
     def rebuild(self, zombies):
         self.buckets.clear()
         for z in zombies:
             k = self._key(z.rect.centerx, z.rect.centery)
             self.buckets.setdefault(k, []).append(z)
-
     def query_circle(self, x, y, r):
         cx, cy = self._key(x, y)
         out = []
@@ -5931,8 +5620,6 @@ class SpatialHash:
                     if dx * dx + dy * dy <= rr * rr:
                         out.append(z)
         return out
-
-
 def crush_blocks_in_rect(sweep_rect: pygame.Rect, game_state) -> int:
     """Remove ANY obstacle cell whose rect intersects sweep_rect. Return removed count."""
     removed = 0
@@ -5947,8 +5634,6 @@ def crush_blocks_in_rect(sweep_rect: pygame.Rect, game_state) -> int:
             if hasattr(game_state, "mark_nav_dirty"): game_state.mark_nav_dirty()
             removed += 1
     return removed
-
-
 class GameState:
     def __init__(self, obstacles: Dict, items: Set, main_item_pos: List[Tuple[int, int]], decorations: list):
         self.obstacles = obstacles
@@ -5986,17 +5671,14 @@ class GameState:
         self._ff_tacc = 0.0
         # bullets spawned during bullet update (e.g. shrapnel from on-kill effects)
         self.pending_bullets: List["Bullet"] = []
-
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
-
     def spawn_spoils(self, x_px: float, y_px: float, count: int = 1):
         for _ in range(int(max(0, count))):
             # tiny jitter so multiple coins don't overlap perfectly
             jx = random.uniform(-6, 6)
             jy = random.uniform(-6, 6)
             self.spoils.append(Spoil(x_px + jx, y_px + jy, 1))
-
     def update_spoils(self, dt: float, player: "Player"):
         """
         Update coin bounce, and if Coin Magnet is bought, gently pull coins toward the player.
@@ -6028,7 +5710,6 @@ class GameState:
             s.base_x += (nx - cx)
             s.base_y += (ny - cy)
             s._update_rect()
-
     def collect_item(self, player_rect: pygame.Rect) -> bool:
         """Collect one item if the player overlaps it. Returns True if collected."""
         for it in list(self.items):
@@ -6036,7 +5717,6 @@ class GameState:
                 self.items.remove(it)
                 return True
         return False
-
     def collect_spoils(self, player_rect: pygame.Rect) -> int:
         """Collect spoils that actually touch the player."""
         gained = 0
@@ -6047,7 +5727,6 @@ class GameState:
                 self.spoils_gained += s.value
                 gained += s.value
         return gained
-
     def collect_spoils_for_zombie(self, zombie: "Zombie") -> int:
         """让某个僵尸收集与其相交的金币，返回本次收集数量。"""
         gained = 0
@@ -6057,7 +5736,6 @@ class GameState:
                 self.spoils.remove(s)
                 gained += s.value
         return gained
-
     def lose_coins(self, amount: int) -> int:
         """从本局临时金币（spoils_gained）优先扣，再从META['spoils']扣；返回实际扣除数。"""
         amt = int(max(0, amount))
@@ -6079,16 +5757,13 @@ class GameState:
         except Exception:
             pass
         return taken
-
     def spawn_heal(self, x_px: float, y_px: float, amount: int = HEAL_POTION_AMOUNT):
         jx = random.uniform(-6, 6);
         jy = random.uniform(-6, 6)
         self.heals.append(HealPickup(x_px + jx, y_px + jy, amount))
-
     def update_heals(self, dt: float):
         for h in self.heals:
             h.update(dt)
-
     def collect_heals(self, player: "Player") -> int:
         healed = 0
         for h in list(self.heals):
@@ -6098,13 +5773,11 @@ class GameState:
                 player.hp = min(player.max_hp, player.hp + h.heal)
                 healed += (player.hp - before)
         return healed
-
     def flash_banner(self, text: str, sec: float = 1.0):
         """在屏幕中央显示一条横幅 sec 秒。"""
         self.banner_text = str(text)
         self.banner_t = float(max(0.0, sec))
         self._banner_tick_ms = None  # 让绘制处在下一帧重置基线
-
     # ---- 地面腐蚀池 ----w
     # 在 GameState 内，替换/保留为 ↓ 这个版本
     # ---- 地面腐蚀池（兼容旧/新参数名）----
@@ -6126,10 +5799,8 @@ class GameState:
         setattr(a, "style", style)
         setattr(a, "life0", float(life))
         self.acids.append(a)
-
     def spawn_projectile(self, proj):
         self.projectiles.append(proj)
-
     def update_acids(self, dt: float, player: "Player"):
         # 衰减 slow / DoT 计时
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
@@ -6172,7 +5843,6 @@ class GameState:
             if getattr(player, "slow_t", 0.0) <= 0.0:
                 player._slow_frac = 0.0
         # 不在池里：不做直接伤害；离开后的 DoT 由主循环统一结算
-
     def damage_player(self, player, dmg):
         dmg = int(max(0, dmg))
         if dmg <= 0:
@@ -6214,10 +5884,8 @@ class GameState:
                 kind="hp",
             )
         return dmg
-
     def mark_nav_dirty(self):
         self._ff_dirty = True
-
     def refresh_flow_field(self, player_tile, dt=0.0):
         # throttle rebuilds to ~0.3s or on dirty/goal change
         self._ff_timer = max(0.0, self._ff_timer - dt)
@@ -6234,11 +5902,9 @@ class GameState:
             self.ff_dist, self.ff_next = build_flow_field(GRID_SIZE, self.obstacles, goal, pad=1)
             self._ff_dirty = False
             self._ff_tacc = 0.0
-
     # ---- 攻击前的提示圈（到时后生成酸池等）----
     def spawn_telegraph(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
         self.telegraphs.append(TelegraphCircle(float(x), float(y), float(r), float(life), kind, payload, color))
-
     def update_telegraphs(self, dt: float):
         for t in list(self.telegraphs):
             t.t -= dt
@@ -6253,7 +5919,6 @@ class GameState:
                                              slow_frac=t.payload.get("slow", ACID_SLOW_FRAC),
                                              life=t.payload.get("life", ACID_LIFETIME))
                 self.telegraphs.remove(t)
-
     def add_damage_text(self, x, y, amount, crit=False, kind="hp"):
         # allow string labels ("ENRAGE!", "IMMUNE", etc.)
         if isinstance(amount, (int, float)):
@@ -6264,13 +5929,11 @@ class GameState:
         else:
             # label path
             self.dmg_texts.append(DamageText(x, y, str(amount), True if crit else False, kind))
-
     def update_damage_texts(self, dt: float):
         for d in list(self.dmg_texts):
             d.step(dt)
             if not d.alive():
                 self.dmg_texts.remove(d)
-
     def enable_fog_field(self):
         if self.fog_on:
             return
@@ -6287,7 +5950,6 @@ class GameState:
             # 避免放在玩家脚下：用主角出生点近似
             self.obstacles[(gx, gy)] = FogLantern(gx, gy)
             spawned += 1
-
     def disable_fog_field(self):
         if not self.fog_on:
             return
@@ -6296,7 +5958,6 @@ class GameState:
         for gp, ob in list(self.obstacles.items()):
             if getattr(ob, "type", "") == "Lantern":
                 del self.obstacles[gp]
-
     # --- GameState ---
     def request_fog_field(self, player=None):
         """首次启动雾场 & 刷新灯笼。player 可选（首次刷 Boss 时可能还没 self.player）。"""
@@ -6307,7 +5968,6 @@ class GameState:
         if not hasattr(self, "fog_lanterns"):
             self.fog_lanterns = []
         self.spawn_fog_lanterns(player)
-
     def spawn_fog_lanterns(self, player=None):
         """把 FOG_LANTERN_COUNT 个灯笼刷在可走格上，尽量离玩家远；无玩家时以地图中心为基准。"""
         if not hasattr(self, "fog_lanterns"):
@@ -6336,7 +5996,6 @@ class GameState:
             lan = FogLantern(gx, gy, hp=FOG_LANTERN_HP)  # ★ 真正创建
             self.fog_lanterns.append(lan)  # ★ 放进列表
             self.obstacles[(gx, gy)] = lan  # ★ 作为障碍注册（有碰撞体积）
-
     def draw_lanterns_iso(self, screen, camx, camy):
         for lan in list(self.fog_lanterns):
             if not lan.alive:
@@ -6352,7 +6011,6 @@ class GameState:
             body.center = (int(sx), int(sy - 4))
             pygame.draw.rect(screen, (255, 230, 120), body, border_radius=6)
             pygame.draw.rect(screen, (120, 80, 20), body, 2, border_radius=6)
-
     def draw_lanterns_topdown(self, screen, camx, camy):
         for lan in list(self.fog_lanterns):
             if not lan.alive:
@@ -6364,7 +6022,6 @@ class GameState:
             body.center = (cx, cy)
             pygame.draw.rect(screen, (255, 230, 120), body, border_radius=6)
             pygame.draw.rect(screen, (120, 80, 20), body, 2, border_radius=6)
-
     def draw_hazards_iso(self, screen, cam_x, cam_y):
         # 1) Telegraph（空心圈）
         for t in list(getattr(self, "telegraphs", [])):
@@ -6385,7 +6042,6 @@ class GameState:
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["fill"], alpha, cam_x, cam_y, fill=True)
             # 细边
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["ring"], 180, cam_x, cam_y, fill=False, width=2)
-
     def draw_fog_overlay(self, screen, camx, camy, player, obstacles):
         """在世界层上方绘制一层‘黑雾’，对玩家与灯笼的范围挖透明洞。"""
         if not self.fog_enabled:
@@ -6417,8 +6073,6 @@ class GameState:
             mask.blit(edge, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
         # 覆盖到屏幕
         screen.blit(mask, (0, 0))
-
-
 # ==================== 相机 ====================
 def compute_cam_for_center_iso(cx_px: int, cy_px: int) -> tuple[int, int]:
     """给定世界像素（含 INFO_BAR_HEIGHT 的 y），返回 iso 渲染用的 (cam_x, cam_y)。"""
@@ -6428,8 +6082,6 @@ def compute_cam_for_center_iso(cx_px: int, cy_px: int) -> tuple[int, int]:
     cam_x = int(sx - VIEW_W // 2)
     cam_y = int(sy - (VIEW_H - INFO_BAR_HEIGHT) // 2)
     return cam_x, cam_y
-
-
 # --- Chained boss focus: pan through many targets, then back to player once ---
 def play_focus_chain_iso(screen, clock, game_state, player, zombies, bullets, enemy_shots, targets,
                          hold_time=0.9, label="BOSS"):
@@ -6455,8 +6107,6 @@ def play_focus_chain_iso(screen, clock, game_state, player, zombies, bullets, en
         pcenter, label=None, hold_time=0.0,
         return_to_player=False, start_cam=last_cam
     )
-
-
 def play_focus_cinematic_iso(screen, clock,
                              game_state, player,
                              zombies, bullets, enemy_shots,
@@ -6471,7 +6121,6 @@ def play_focus_cinematic_iso(screen, clock,
     - 相机从 start_cam(若无则玩家) → 焦点；可选 焦点 → 玩家。
     - 冻结时间与世界更新，仅渲染。
     """
-
     def _cam_for_world_px(wx: float, wy: float) -> tuple[int, int]:
         gx = wx / CELL_SIZE
         gy = (wy - INFO_BAR_HEIGHT) / CELL_SIZE
@@ -6479,14 +6128,11 @@ def play_focus_cinematic_iso(screen, clock,
         camx = int(sx - VIEW_W // 2)
         camy = int(sy - (VIEW_H - INFO_BAR_HEIGHT) // 2)
         return camx, camy
-
     def _cam_for_player() -> tuple[int, int]:
         return calculate_iso_camera(player.x + player.size * 0.5,
                                     player.y + player.size * 0.5 + INFO_BAR_HEIGHT)
-
     def _lerp(a: float, b: float, t: float) -> float:
         return a + (b - a) * max(0.0, min(1.0, t))
-
     def _do_pan(cam_a: tuple[int, int], cam_b: tuple[int, int], dur: float):
         start = pygame.time.get_ticks()
         frozen_time = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
@@ -6509,7 +6155,6 @@ def play_focus_cinematic_iso(screen, clock,
             clock.tick(60)
             if t >= 1.0:
                 break
-
     # cams
     player_cam = _cam_for_player()
     fx, fy = focus_world_px
@@ -6537,8 +6182,6 @@ def play_focus_cinematic_iso(screen, clock,
     if return_to_player:
         _do_pan(focus_cam, player_cam, duration_each)
     flush_events()
-
-
 # ==================== 游戏渲染函数 ====================
 def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles,
                     override_cam: tuple[int, int] | None = None):
@@ -6827,8 +6470,6 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         draw_boss_hp_bar(screen, bosses[0])
     pygame.display.flip()
     return screen.copy()
-
-
 def render_game(screen: pygame.Surface, game_state, player: Player, zombies: List[Zombie],
                 bullets: Optional[List['Bullet']] = None,
                 enemy_shots: Optional[List[EnemyShot]] = None,
@@ -6848,15 +6489,12 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         obstacles=game_state.obstacles,
         override_cam=override_cam
     )
-
-
 # ==================== GAMESOUND ====================
 class GameSound:
     """
     Background BGM loader/controller.
     It probes several likely paths so ZGAME.wav is found regardless of where ZGame.py runs from.
     """
-
     def __init__(self, music_path: str = None, volume: float = 0.6):
         self.volume = max(0.0, min(1.0, float(volume)))
         self._ready = False
@@ -6899,7 +6537,6 @@ class GameSound:
             print(f"[Audio] Loaded BGM: {self.music_path}")
         except Exception as e:
             print(f"[Audio] load music failed: {e} (path tried: {self.music_path})")
-
     def playBackGroundMusic(self, loops: int = -1, fade_ms: int = 500):
         """loops=-1 means infinite loop"""
         if not self._ready:
@@ -6908,7 +6545,6 @@ class GameSound:
             pygame.mixer.music.play(loops=loops, fade_ms=fade_ms)
         except Exception as e:
             print(f"[Audio] play failed: {e}")
-
     def stop(self, fade_ms: int = 300):
         if not self._ready: return
         try:
@@ -6918,21 +6554,18 @@ class GameSound:
                 pygame.mixer.music.stop()
         except Exception as e:
             print(f"[Audio] stop failed: {e}")
-
     def pause(self):
         if self._ready:
             try:
                 pygame.mixer.music.pause()
             except Exception as e:
                 print(f"[Audio] pause failed: {e}")
-
     def resume(self):
         if self._ready:
             try:
                 pygame.mixer.music.unpause()
             except Exception as e:
                 print(f"[Audio] resume failed: {e}")
-
     def set_volume(self, volume: float):
         self.volume = max(0.0, min(1.0, float(volume)))
         if self._ready:
@@ -6940,8 +6573,6 @@ class GameSound:
                 pygame.mixer.music.set_volume(self.volume)
             except Exception as e:
                 print(f"[Audio] set_volume failed: {e}")
-
-
 # ==================== 游戏主循环 ====================
 def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
     pygame.display.set_caption("Zombie Card Game – Level")
@@ -7013,10 +6644,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     # wave spawn state
     spawn_timer = 0.0
     wave_index = 0
-
     def player_center():
         return player.x + player.size / 2, player.y + player.size / 2 + INFO_BAR_HEIGHT
-
     def pick_zombie_type_weighted():
         # 可按关卡/波次调整，这里给一个基础权重
         table = [
@@ -7035,7 +6664,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if r <= acc:
                 return t
         return "basic"
-
     def find_spawn_positions(n: int) -> List[Tuple[int, int]]:
         # 不在阻挡、玩家、主物品位置；尽量远离玩家
         all_pos = [(x, y) for x in range(GRID_SIZE) for y in range(GRID_SIZE)]
@@ -7051,7 +6679,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             out.append(p)
             if len(out) >= n: break
         return out
-
     def find_target():
         # 玩家中心（像素）
         px, py = player.rect.centerx, player.rect.centery
@@ -7121,7 +6748,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             return (None, None)
         kind, gp_or_none, obj, cx, cy, d2 = best
         return (kind, gp_or_none, obj, cx, cy), (d2 ** 0.5)
-
     # Assume current_level is the 0-based level index used everywhere else
     if int(globals().get("_baseline_for_level", -999)) != int(current_level):
         # First time entering this level in this run → capture
@@ -7362,8 +6988,6 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             globals()["_last_spoils"] = getattr(game_state, "spoils_gained", 0)
             globals()["_carry_player_state"] = capture_player_carry(player)
     return game_result, config.get("reward", None), last_frame
-
-
 def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surface]:
     """Resume a game from a snapshot in save_data; same return contract as main_run_level."""
     assert save_data.get("mode") == "snapshot"
@@ -7468,10 +7092,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     # Spawner state
     spawn_timer = 0.0
     wave_index = 0
-
     def player_center():
         return player.x + player.size / 2, player.y + player.size / 2 + INFO_BAR_HEIGHT
-
     def find_target():
         # 玩家中心（像素）
         px, py = player.rect.centerx, player.rect.centery
@@ -7541,7 +7163,6 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             return (None, None)
         kind, gp_or_none, obj, cx, cy, d2 = best
         return (kind, gp_or_none, obj, cx, cy), (d2 ** 0.5)
-
     while running:
         dt = clock.tick(60) / 1000.0
         # survival timer
@@ -7697,8 +7318,6 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         else:
             last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
     return "home", None, last_frame or screen.copy()
-
-
 # ==================== 入口 ====================
 if __name__ == "__main__":
     os.environ['SDL_VIDEO_CENTERED'] = '0'
