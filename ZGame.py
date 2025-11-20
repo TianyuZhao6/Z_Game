@@ -5385,17 +5385,25 @@ def trigger_twin_enrage(dead_boss, zombies, game_state):
         return
     if getattr(partner, "_twin_powered", False):
         return
+    enraged_now = False
     if hasattr(partner, "on_twin_partner_death"):
         partner.on_twin_partner_death()
+        enraged_now = True
     else:
         partner.hp = int(getattr(partner, "max_hp", partner.hp))
         partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
         partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
         partner._twin_powered = True
+        partner.is_enraged = True
+        enraged_now = True
         try:
             partner.boss_name = (getattr(partner, "boss_name", "BOSS") + " [ENRAGED]")
         except Exception:
             pass
+    if enraged_now and getattr(partner, "type", "") == "boss_mem":
+        enraged_color = ZOMBIE_COLORS.get("boss_mem_enraged", BOSS_MEM_ENRAGED_COLOR)
+        partner._current_color = enraged_color
+        partner.color = enraged_color
     # floating label (now safe—accepts strings)
     game_state.add_damage_text(partner.rect.centerx,
                                partner.rect.top - 10,
@@ -6391,7 +6399,8 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             draw_size = base if not getattr(z, "is_boss", False) else max(base, int(z.rect.w))  # use boss rect
             body = pygame.Rect(0, 0, draw_size, draw_size)
             body.midbottom = (cx, cy)
-            col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
+            base_col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
+            col = getattr(z, "_current_color", getattr(z, "color", base_col))
             pygame.draw.rect(screen, col, body)
             if getattr(z, "shield_hp", 0) > 0:
                 draw_shield_outline(screen, body)
@@ -6406,7 +6415,6 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
                 f = pygame.font.SysFont(None, 18)
                 txt = f.render(f"{coins}", True, (255, 225, 120))
                 screen.blit(txt, txt.get_rect(midbottom=(cx, body.top - 4)))
-            col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
             if z.is_boss: pygame.draw.rect(screen, (255, 215, 0), body.inflate(4, 4), 3)
             pygame.draw.rect(screen, col, body)
             if getattr(z, "shield_hp", 0) > 0:
