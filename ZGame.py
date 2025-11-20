@@ -980,7 +980,7 @@ ZOMBIE_COLORS = {
 # --- colors (add) ---
 BOSS_MEM_ENRAGED_COLOR = (102, 0, 102)
 ZOMBIE_COLORS.update({
-    "boss_mem": (210, 120, 255),  # 明亮紫色
+    "boss_mem": (170, 40, 200),  # 明亮紫色
     "boss_mem_enraged": (102, 0, 102),  # 暗紫色
     "corruptling": (120, 220, 120),  # 浅绿
     "boss_mist": (150, 140, 220),  # 冷紫
