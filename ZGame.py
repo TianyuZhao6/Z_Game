@@ -6,6 +6,7 @@ import math
 import random
 import json
 import os
+import copy
 from queue import PriorityQueue
 from collections import deque
 from typing import Dict, List, Set, Tuple, Optional
@@ -2458,8 +2459,22 @@ def show_shop_screen(screen) -> Optional[str]:
         slots = [c for c in current if not _is_reroll_item(c)]
         reroll = next((c for c in current if _is_reroll_item(c)), None)
         return slots, reroll
+    def _save_slots():
+        globals()["_shop_slots_cache"] = copy.deepcopy(normal_slots)
+        globals()["_shop_reroll_cache"] = copy.deepcopy(reroll_offer)
 
-    normal_slots, reroll_offer = _split_offers(offers)
+    # Persist shop offers to prevent free "reroll" by re-entering
+    slots_cache = globals().get("_shop_slots_cache")
+    reroll_cache = globals().get("_shop_reroll_cache")
+    if slots_cache is not None or reroll_cache is not None:
+        normal_slots = copy.deepcopy(slots_cache) if slots_cache is not None else []
+        reroll_offer = copy.deepcopy(reroll_cache)
+        if not normal_slots:
+            offers = roll_offers()
+            normal_slots, reroll_offer = _split_offers(offers)
+    else:
+        normal_slots, reroll_offer = _split_offers(offers)
+        _save_slots()
     hovered_uid: Optional[str] = None  # used to stabilise hover so cards don't blink
     while True:
         # --- draw ---
@@ -2708,6 +2723,7 @@ def show_shop_screen(screen) -> Optional[str]:
                         if is_reroll or it.get("apply") == "reroll":
                             offers = roll_offers()  # Price stays the same
                             normal_slots, reroll_offer = _split_offers(offers)
+                            _save_slots()
                         else:
                             it["apply"]()
                             # Remove the purchased card from its slot (leave blank space)
@@ -2718,6 +2734,9 @@ def show_shop_screen(screen) -> Optional[str]:
                             if all(s is None for s in normal_slots):
                                 offers = roll_offers()
                                 normal_slots, reroll_offer = _split_offers(offers)
+                                _save_slots()
+                            else:
+                                _save_slots()
                 clock.tick(60)
 def show_biome_picker_in_shop(screen) -> str:
     """在商店 NEXT 之后弹出的“下关场景”四选一卡面。返回被选择的场景名。"""
