@@ -1,0 +1,50 @@
+{
+  "mode": "progress",
+  "current_level": 0,
+  "meta": {
+    "spoils": 9,
+    "base_dmg": 12,
+    "base_fire_cd": 0.26,
+    "base_range": 800.0,
+    "base_speed": 4.5,
+    "base_maxhp": 40,
+    "base_crit": 0.05,
+    "dmg": 3,
+    "firerate_mult": 1.1025,
+    "range_mult": 1.0,
+    "speed_mult": 1.0,
+    "speed": 0,
+    "maxhp": 0,
+    "crit": 0.0,
+    "coin_magnet_radius": 0,
+    "auto_turret_level": 0,
+    "stationary_turret_count": 0,
+    "pierce_level": 0,
+    "ricochet_level": 0,
+    "carapace_level": 0,
+    "bone_plating_level": 0,
+    "shrapnel_level": 0,
+    "carapace_shield_hp": 0,
+    "coupon_level": 1,
+    "locked_shop_ids": []
+  },
+  "carry_player": {
+    "level": 6,
+    "xp": 47,
+    "hp": 28
+  },
+  "pending_shop": true,
+  "biome": null,
+  "baseline": {
+    "level": 0,
+    "coins": 0,
+    "player": {
+      "level": 1,
+      "xp": 0,
+      "xp_to_next": 33,
+      "bullet_damage": 12,
+      "max_hp": 40,
+      "hp": 40
+    }
+  }
+}

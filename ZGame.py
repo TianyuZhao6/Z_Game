@@ -672,9 +672,9 @@ COIN_GRAVITY = 400.0  # gravity pulling coin back to ground
 COIN_RESTITUTION = 0.45  # energy kept on bounce
 COIN_MIN_BOUNCE = 30.0  # stop bouncing when below this upward speed
 RAVAGER_HP_MULT = 5.0  # Ravager: 5x base HP
-RAVAGER_ATK_MULT = 2.0  # 2x contact damage
+RAVAGER_ATK_MULT = 2.0  # 2.0x contact damage
 RAVAGER_SIZE_MULT = 1.25  # bigger than normal, smaller than boss
-RAVAGER_CONTACT_MULT = 1.5  # scales contact damage
+RAVAGER_CONTACT_MULT = 2.0  # scales contact damage
 RAVAGER_DASH_CD_RANGE = (3.0, 4.5)
 RAVAGER_DASH_WINDUP = 0.30
 RAVAGER_DASH_TIME = 0.65
@@ -689,6 +689,8 @@ SHOP_PRICE_LINEAR = 0.02  # 每关线性微调（让早期也能感受到一点�
 SHOP_PRICE_STACK = 1.15  # 同一条目多次购买的叠加涨幅
 SHOP_PRICE_REROLL_EXP = 1.06  # Reroll 的涨价更温和
 SHOP_PRICE_REROLL_STACK = 1.25  # 多次 Reroll 叠加更贵（防刷）
+COUPON_DISCOUNT_PER = 0.05  # each Coupon gives 5% off all shop prices this run
+COUPON_MAX_LEVEL = 4
 # ----- healing drop tuning -----
 HEAL_DROP_CHANCE_ZOMBIE = 0.12  # 12% when a zombie dies
 HEAL_DROP_CHANCE_BLOCK = 0.08  # 8% when a destructible block is broken
@@ -959,6 +961,7 @@ META = {
     "bone_plating_level": 0,
     "shrapnel_level": 0,
     "carapace_shield_hp": 0,
+    "coupon_level": 0,
 }
 def reset_run_state():
     META.update({
@@ -985,6 +988,7 @@ def reset_run_state():
         "bone_plating_level": 0,
         "shrapnel_level": 0,
         "carapace_shield_hp": 0,
+        "coupon_level": 0,
     })
     globals()["_carry_player_state"] = None
     globals()["_pending_shop"] = False
@@ -992,17 +996,21 @@ def reset_run_state():
     globals().pop("_coins_at_level_start", None)
     globals().pop("_coins_at_shop_entry", None)
     _clear_level_start_baseline()
+    
 def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
     """
     同一关内价格固定；进入下一关时按曲线整体上调。
-    kind = "reroll" 时保持恒定，不随关卡变化。
+    kind = "reroll" 时保持恒定，不随关卡变化
     """
+    discount_lvl = min(COUPON_MAX_LEVEL, int(META.get("coupon_level", 0)))
+    discount_mult = max(0.0, 1.0 - COUPON_DISCOUNT_PER * discount_lvl)
     if kind == "reroll":
-        return int(base_cost)  # 恒定不变
-    # 只按关卡指数+线性项调整；不再叠加“同一条目已购买次数”的涨幅
-    exp = (SHOP_PRICE_EXP ** level_idx)
-    lin = (1.0 + SHOP_PRICE_LINEAR * level_idx)
-    price = int(round(base_cost * exp * lin))
+        price = int(base_cost)
+    else:
+        exp = (SHOP_PRICE_EXP ** level_idx)
+        lin = (1.0 + SHOP_PRICE_LINEAR * level_idx)
+        price = int(round(base_cost * exp * lin))
+    price = int(round(price * discount_mult))
     return max(1, price)
 # resume flags
 _pending_shop = False  # if True, CONTINUE should open the shop first
@@ -1888,6 +1896,11 @@ def show_pause_menu(screen, background_surf):
                 "name": "Carapace",
                 "max_level": None,
             },
+            {
+                "id": "coupon",
+                "name": "Coupon",
+                "max_level": COUPON_MAX_LEVEL,
+            },
         ]
         globals()["_pause_shop_catalog"] = catalog
     def _pause_prop_level(item):
@@ -1904,6 +1917,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("pierce_level", 0))
         if iid == "shrapnel_shells":
             return int(META.get("shrapnel_level", 0))
+        if iid == "coupon":
+            return int(META.get("coupon_level", 0))
         if iid == "bone_plating":
             return int(META.get("bone_plating_level", 0))
         if iid == "carapace":
@@ -2320,6 +2335,17 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "coupon",
+                "name": "Coupon",
+                "desc": "Permanently reduce all shop prices this run.",
+                "cost": 10,
+                "rarity": 2,
+                "max_level": COUPON_MAX_LEVEL,
+                "apply": lambda: META.update(
+                    coupon_level=min(COUPON_MAX_LEVEL, int(META.get("coupon_level", 0)) + 1)
+                ),
+            },
+            {
                 "id": "stationary_turret",
                 "name": "Stationary Turret",
                 "desc": "Adds a stationary turret that spawns at a random clear spot on the map each level.",
@@ -2389,6 +2415,8 @@ def show_shop_screen(screen) -> Optional[str]:
         if iid == "carapace":
             hp = int(META.get("carapace_shield_hp", 0))
             return (hp + 19) // 20
+        if iid == "coupon":
+            return int(META.get("coupon_level", 0))
         if iid == "bone_plating":
             return int(META.get("bone_plating_level", 0))
         # reroll or anything else: no level display
