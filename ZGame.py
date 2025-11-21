@@ -578,8 +578,8 @@ SPATIAL_CELL = int(CELL_SIZE * 1.25)  # 统一网格大小
 WALL_STYLE = "hybrid"  # "billboard" | "prism" | "hybrid"
 ISO_EQ_GAIN = math.sqrt(2) * (ISO_CELL_W * 0.5)
 # 角色圆形碰撞半径
-PLAYER_RADIUS = int(CELL_SIZE * 0.28)
-ZOMBIE_RADIUS = int(CELL_SIZE * 0.28)
+PLAYER_RADIUS = int(CELL_SIZE * 0.30)  # matches 0.6×CELL_SIZE footprint
+ZOMBIE_RADIUS = int(CELL_SIZE * 0.30)
 # 成长模式：'linear'（当前默认）或 'exp'（推荐）
 MON_SCALE_MODE = "exp"  # "linear" / "exp"
 MON_HP_GROWTH_PER_LEVEL = 0.08  # HP 每关 +8% 复利到软帽
@@ -1199,7 +1199,6 @@ def save_progress(current_level: int,
             "slots": slots_cache,
             "reroll": reroll_cache,
         }
-        globals()["_resume_shop_cache"] = True
     if max_wave_reached is not None:
         data["max_wave_reached"] = int(max_wave_reached)
     if baseline_bundle:
@@ -3211,7 +3210,7 @@ class Player:
         self.x = pos[0] * CELL_SIZE
         self.y = pos[1] * CELL_SIZE
         self.speed = float(speed)
-        self.size = CELL_SIZE - 6
+        self.size = int(CELL_SIZE * 0.6)
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.max_hp = int(PLAYER_MAX_HP)
         self.hp = int(PLAYER_MAX_HP)
@@ -3351,8 +3350,10 @@ class Player:
         if getattr(self, "apply_slow_extra", 0.0) > 0.0:
             spd = max(1, int(spd * (1.0 - min(0.85, float(self.apply_slow_extra)))))
         # 把“减速后的速度”喂给步进与碰撞
+        prev_cx, prev_cy = self.rect.centerx, self.rect.centery
         step_x, step_y = iso_equalized_step(dx, dy, spd)
         collide_and_slide_circle(self, obstacles.values(), step_x, step_y)
+        self._last_move_vec = (self.rect.centerx - prev_cx, self.rect.centery - prev_cy)
     def fire_cooldown(self) -> float:
         eff = min(MAX_FIRERATE_MULT, float(self.fire_rate_mult))
         return max(MIN_FIRE_COOLDOWN, FIRE_COOLDOWN / max(1.0, eff))
@@ -3502,7 +3503,7 @@ class Zombie:
             base_hp = int(base_hp * 1.8)
         self.hp = max(1, base_hp)
         self.max_hp = self.hp
-        self.size = CELL_SIZE - 6
+        self.size = int(CELL_SIZE * 0.6)
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         # track trailing foot points for afterimage
         self._foot_prev = (self.rect.centerx, self.rect.bottom)
@@ -3527,9 +3528,12 @@ class Zombie:
             self.max_hp = int(self.max_hp * 1.10 + 1)
             self.hp = min(self.max_hp, self.hp + 2)
         if not getattr(self, "is_boss", False):
-            # SIZE growth (keep center & clamp)
-            base = CELL_SIZE - 6
-            new_size = min(ZOMBIE_SIZE_MAX, base + (self.z_level - 1) * 2)
+            # Keep regular enemies at player size to avoid path-sticking; Ravager keeps its larger override.
+            if getattr(self, "type", "") == "ravager":
+                base = getattr(self, "_size_override", int(CELL_SIZE * RAVAGER_SIZE_MULT))
+            else:
+                base = int(CELL_SIZE * 0.6)  # match player footprint
+            new_size = base
             if new_size != self.size:
                 cx, cy = self.rect.center
                 self.size = new_size
@@ -3653,6 +3657,7 @@ class Zombie:
         # 目标（默认追玩家；若锁定了一块挡路的可破坏物，则追它的中心）
         zx, zy = Zombie.feet_xy(self)
         px, py = player.rect.centerx, player.rect.centery
+        player_move_dx, player_move_dy = getattr(player, "_last_move_vec", (0.0, 0.0))
         target_cx, target_cy = px, py
         # Distance to player (used by bandit flee logic)
         dxp = px - zx
@@ -3668,6 +3673,9 @@ class Zombie:
             speed *= BANDIT_FLEE_SPEED_MULT
             if bandit_break_t > 0.0:
                 speed *= BANDIT_BREAK_SLOW_MULT
+            # drop any previous chase commitment when fleeing
+            self._ff_commit = None
+            self._ff_commit_t = 0.0
         # --- Twin “lane” offset and mild separation so they don’t block each other ---
         if getattr(self, "is_boss", False) and getattr(self, "twin_id", None) is not None:
             cx0 = self.x + self.size * 0.5
@@ -3752,9 +3760,29 @@ class Zombie:
             self._ff_commit = None  # <-- critical: use None, not 0.0
             self._ff_commit_t = 0.0
             self._avoid_t = 0.0
-        # If this is a bandit that has triggered flee mode, ignore flow field
-        if bandit_flee:
-            step = None
+        # If this is a bandit that has triggered flee mode, invert FF preference to run away
+        bandit_escape_step = None
+        if bandit_flee and fd is not None:
+            best = None
+            bestd = -1
+            for nx in (gx - 1, gx, gx + 1):
+                for ny in (gy - 1, gy, gy + 1):
+                    if nx == gx and ny == gy:
+                        continue
+                    if not (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE):
+                        continue
+                    if (nx, ny) in game_state.obstacles:
+                        continue
+                    if nx != gx and ny != gy:
+                        if (gx, ny) in game_state.obstacles or (nx, gy) in game_state.obstacles:
+                            continue
+                    d = fd[ny][nx]
+                    if d > bestd and not Zombie.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
+                        bestd = d
+                        best = (nx, ny)
+            bandit_escape_step = best
+            if bandit_escape_step is not None:
+                step = bandit_escape_step
         # 2) fallback: pick the neighbor with the smallest distance (row-major: fd[ny][nx])
         if step is None and fd is not None and not boss_simple:
             best = None
@@ -3843,7 +3871,12 @@ class Zombie:
             ux, uy = dx / L, dy / L
             # Bandit logic: once flee has triggered, always run AWAY from the player
             if bandit_flee:
-                ux, uy = -ux, -uy
+                flee_x, flee_y = -ux, -uy
+                # mirror some of the player's movement so we keep backing off as the player chases
+                flee_x += player_move_dx * 0.4
+                flee_y += player_move_dy * 0.4
+                mag = (flee_x * flee_x + flee_y * flee_y) ** 0.5 or 1.0
+                ux, uy = flee_x / mag, flee_y / mag
             # desired velocity this frame
             vx_des, vy_des = chase_step(ux, uy, speed)
             # light steering smoothing (≈ 120 ms time constant)
@@ -4519,17 +4552,12 @@ class MemoryDevourerBoss(Zombie):
         self._current_color = self.color
         self.is_boss = True
         self.boss_name = "Memory Devourer"
-        # ======================== 放大碰撞盒 ===================================
+        # Footprint/radius aligned with Mistweaver so bullets collide with the visible body
         self.size = int(CELL_SIZE * 1.6)
         self.rect = pygame.Rect(self.x,
                                 self.y + INFO_BAR_HEIGHT,
                                 self.size, self.size)
-        self.radius = int(self.size * 0.55)  # 用于圆形范围（接触/范围判定）
-        # —— 可视尺寸 & 脚底圆半径（2×2 占格）——
-        # 可视矩形 ≈ 2*CELL_SIZE，略收边
-        self.size = int(BOSS_FOOTPRINT_TILES * CELL_SIZE - BOSS_VISUAL_MARGIN)
-        # 圆碰撞半径：让直径≈2*CELL_SIZE（正好“堵死”单格通道）
-        self.radius = int(BOSS_FOOTPRINT_TILES * CELL_SIZE * 0.5 * BOSS_RADIUS_SHRINK)
+        self.radius = int(self.size * 0.50)
         # Twin boss bulldozer: can crush any obstacle
         self.can_crush_all_blocks = True
         self.no_clip_t = 0.0  # ghost through collisions for a few frames after crush
@@ -4538,13 +4566,6 @@ class MemoryDevourerBoss(Zombie):
         self._last_pos = (float(self.x), float(self.y))
         self._twin_powered = False
         self.is_enraged = False
-        # 以 2×2 的几何中心为锚点摆放（grid_pos 视为这块 2×2 的“左上角格”）
-        cx = int((gx + 0.5 * BOSS_FOOTPRINT_TILES) * CELL_SIZE)
-        cy = int((gy + 0.5 * BOSS_FOOTPRINT_TILES) * CELL_SIZE) + INFO_BAR_HEIGHT
-        self.rect = pygame.Rect(0, 0, self.size, self.size)
-        self.rect.center = (cx, cy)
-        self.x = float(self.rect.x)
-        self.y = float(self.rect.y - INFO_BAR_HEIGHT)
         # 出生延迟维持一致
         self.spawn_delay = 0.6
     def bind_twin(self, other, twin_id):
@@ -4576,7 +4597,7 @@ class MistClone(Zombie):
     def __init__(self, gx: int, gy: int):
         super().__init__((gx, gy), attack=8, speed=int(MIST_SPEED * CELL_SIZE / CELL_SIZE), ztype="mist_clone", hp=1)
         self.color = ZOMBIE_COLORS["mist_clone"]
-        self.size = CELL_SIZE - 6
+        self.size = int(CELL_SIZE * 0.6)
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.is_illusion = True
     def update_special(self, dt, player, zombies, enemy_shots, game_state=None):
@@ -4599,7 +4620,7 @@ class MistweaverBoss(Zombie):
         # 体型稍大（比普通僵尸更有压迫感）
         self.size = int(CELL_SIZE * 1.6)
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
-        self.radius = int(self.size * 0.55)
+        self.radius = int(self.size * 0.50)
         # 阶段
         self.phase = 1
         self._storm_cd = 2.0
@@ -5620,8 +5641,9 @@ def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_i
         z.rect.center = (cx, cy)
         z.x = float(z.rect.x)
         z.y = float(z.rect.y - INFO_BAR_HEIGHT)
-        z.radius = int(z.size * 0.55)
+        z.radius = int(z.size * 0.50)
         z.contact_damage_mult = RAVAGER_CONTACT_MULT
+        z._size_override = z.size  # keep enlarged footprint even after XP growth
         z._display_name = "Ravager"
         z._foot_prev = (z.rect.centerx, z.rect.bottom)
         z._foot_curr = (z.rect.centerx, z.rect.bottom)
@@ -5643,10 +5665,10 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, playe
     scale_spd = (max(1.0, budget) ** 0.33) * 0.12 + 0.05 * level_idx
     z.speed = min(ZOMBIE_SPEED_MAX, BANDIT_BASE_SPEED + scale_spd)
     # 专用圆形碰撞体（用于与玩家的接触判定 & 光环半径）
-    z.radius = int(z.size * 0.55)
+    z.radius = int(z.size * 0.50)
     # --- 生命值 = max(基础血, 玩家DPS × 4) ---
     dps = float(player_dps) if player_dps is not None else float(compute_player_dps(None))
-    target_hp = max(int(BANDIT_BASE_HP), int(math.ceil(dps * 12.0)))
+    target_hp = int(math.ceil(BANDIT_BASE_HP + dps * 4.0))
     z.max_hp = target_hp
     z.hp = target_hp
     z.attack = 1  # 不是用来打人的
@@ -6736,11 +6758,17 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             pygame.draw.circle(screen, col, (data["cx"], data["cy"]), rad)
         elif kind == "zombie":
             z, cx, cy = data["z"], data["cx"], data["cy"]
-            sh = pygame.Surface((ISO_CELL_W // 2, ISO_CELL_H // 2), pygame.SRCALPHA)
+            player_size = int(CELL_SIZE * 0.6)
+            if getattr(z, "is_boss", False) or getattr(z, "type", "") == "ravager":
+                draw_size = max(player_size, int(z.rect.w))
+            else:
+                draw_size = player_size  # match player footprint to avoid getting stuck
+            # shadow scaled to body size
+            sh_w = max(8, int(draw_size * 0.9))
+            sh_h = max(4, int(draw_size * 0.45))
+            sh = pygame.Surface((sh_w, sh_h), pygame.SRCALPHA)
             pygame.draw.ellipse(sh, (0, 0, 0, ISO_SHADOW_ALPHA), sh.get_rect())
             screen.blit(sh, sh.get_rect(center=(cx, cy + 6)))
-            base = int(CELL_SIZE * 0.6)
-            draw_size = base if not getattr(z, "is_boss", False) else max(base, int(z.rect.w))  # use boss rect
             body = pygame.Rect(0, 0, draw_size, draw_size)
             body.midbottom = (cx, cy)
             # 拾取光晕（金色）
@@ -6750,10 +6778,6 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
                 pygame.draw.ellipse(glow, (255, 220, 90, max(30, alpha)), glow.get_rect())
                 screen.blit(glow, glow.get_rect(center=(cx, cy)))
             # 本体
-            base = int(CELL_SIZE * 0.6)
-            draw_size = base if not getattr(z, "is_boss", False) else max(base, int(z.rect.w))  # use boss rect
-            body = pygame.Rect(0, 0, draw_size, draw_size)
-            body.midbottom = (cx, cy)
             base_col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
             col = getattr(z, "_current_color", getattr(z, "color", base_col))
             pygame.draw.rect(screen, col, body)
@@ -6765,6 +6789,18 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
                 pygame.draw.rect(screen, (255, 215, 0), body, 3)
             elif coins >= Z_SPOIL_ATK_STEP:
                 pygame.draw.rect(screen, (220, 180, 80), body, 2)
+            # Bandit-only HP bar for readability
+            if getattr(z, "type", "") == "bandit":
+                bar_w = draw_size
+                bar_h = 5
+                bar_bg = pygame.Rect(0, 0, bar_w, bar_h)
+                bar_bg.midbottom = (cx, body.top - 6)
+                pygame.draw.rect(screen, (30, 30, 30), bar_bg, border_radius=2)
+                mhp = float(max(1, getattr(z, "max_hp", 1)))
+                hp_ratio = 0.0 if mhp <= 0 else max(0.0, min(1.0, float(getattr(z, "hp", 0)) / mhp))
+                if hp_ratio > 0:
+                    fill = pygame.Rect(bar_bg.left + 1, bar_bg.top + 1, int((bar_w - 2) * hp_ratio), bar_h - 2)
+                    pygame.draw.rect(screen, (210, 70, 70), fill, border_radius=2)
             # 头顶显示金币数量
             if coins > 0:
                 f = pygame.font.SysFont(None, 18)
@@ -6776,11 +6812,13 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
                 draw_shield_outline(screen, body)
         elif kind == "player":
             p, cx, cy = data["p"], data["cx"], data["cy"]
-            sh = pygame.Surface((ISO_CELL_W // 2, ISO_CELL_H // 2), pygame.SRCALPHA)
+            player_size = int(CELL_SIZE * 0.6)  # match footprint used in collisions
+            sh_w = max(8, int(player_size * 0.9))
+            sh_h = max(4, int(player_size * 0.45))
+            sh = pygame.Surface((sh_w, sh_h), pygame.SRCALPHA)
             pygame.draw.ellipse(sh, (0, 0, 0, ISO_SHADOW_ALPHA), sh.get_rect())
             screen.blit(sh, sh.get_rect(center=(cx, cy + 6)))
-            size = int(CELL_SIZE * 0.6)
-            rect = pygame.Rect(0, 0, size, size);
+            rect = pygame.Rect(0, 0, player_size, player_size);
             rect.midbottom = (cx, cy)
             col = (240, 80, 80) if (p.hit_cd > 0 and (pygame.time.get_ticks() // 80) % 2 == 0) else (0, 255, 0)
             pygame.draw.rect(screen, col, rect)
