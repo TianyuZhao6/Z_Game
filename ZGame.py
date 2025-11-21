@@ -3654,6 +3654,11 @@ class Zombie:
             gp = getattr(self._focus_block, "grid_pos", None)
             if (gp is not None) and (gp not in game_state.obstacles):
                 self._focus_block = None
+        if is_bandit and getattr(self, "bandit_triggered", False):
+            # While fleeing, never stick to a focus target or bypass side cell
+            self._focus_block = None
+            self._bypass_t = 0.0
+            self._bypass_cell = None
         # 目标（默认追玩家；若锁定了一块挡路的可破坏物，则追它的中心）
         zx, zy = Zombie.feet_xy(self)
         px, py = player.rect.centerx, player.rect.centery
@@ -3673,6 +3678,13 @@ class Zombie:
             speed *= BANDIT_FLEE_SPEED_MULT
             if bandit_break_t > 0.0:
                 speed *= BANDIT_BREAK_SLOW_MULT
+            # steer toward the farthest corner away from the player
+            pcx = int(player.rect.centerx // CELL_SIZE)
+            pcy = int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE)
+            corners = [(0, 0), (0, GRID_SIZE - 1), (GRID_SIZE - 1, 0), (GRID_SIZE - 1, GRID_SIZE - 1)]
+            tx, ty = max(corners, key=lambda c: (c[0] - pcx) ** 2 + (c[1] - pcy) ** 2)
+            target_cx = tx * CELL_SIZE + CELL_SIZE * 0.5
+            target_cy = ty * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
             # drop any previous chase commitment when fleeing
             self._ff_commit = None
             self._ff_commit_t = 0.0
@@ -3714,12 +3726,27 @@ class Zombie:
         if not self._focus_block:
             gz = (int((self.x + self.size * 0.5) // CELL_SIZE),
                   int((self.y + self.size * 0.5) // CELL_SIZE))
-            gp = (int(player.rect.centerx // CELL_SIZE),
-                  int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE))  # <- use rect center
+            if bandit_flee:
+                gp = (int(target_cx // CELL_SIZE),
+                      int((target_cy - INFO_BAR_HEIGHT) // CELL_SIZE))
+            else:
+                gp = (int(player.rect.centerx // CELL_SIZE),
+                      int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE))  # <- use rect center
             ob = self.first_obstacle_on_grid_line(gz, gp, game_state.obstacles)
             self._focus_block = None
             if ob:
-                if getattr(ob, "type", "") == "Destructible":
+                if bandit_flee:
+                    # pick a neighboring free cell of the blocking obstacle that increases distance to player
+                    ox, oy = ob.grid_pos
+                    free = []
+                    for nx, ny in ((ox + 1, oy), (ox - 1, oy), (ox, oy + 1), (ox, oy - 1)):
+                        if 0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE and (nx, ny) not in game_state.obstacles:
+                            free.append((nx, ny))
+                    if free:
+                        bx, by = max(free, key=lambda c: (c[0] - pcx) ** 2 + (c[1] - pcy) ** 2)
+                        self._bypass_cell = (bx, by)
+                        self._bypass_t = 0.60
+                elif getattr(ob, "type", "") == "Destructible":
                     # red block: break it
                     self._focus_block = ob
                 elif not getattr(self, "is_boss", False):
@@ -3728,7 +3755,7 @@ class Zombie:
                     if bypass:
                         self._bypass_cell = bypass
                         self._bypass_t = 0.50  # ~0.5s of commitment to the side cell
-        if self._focus_block:
+        if self._focus_block and not bandit_flee:
             target_cx, target_cy = self._focus_block.rect.centerx, self._focus_block.rect.centery
         # —— 若已有“临时路径”，把目标切换到下一个路点（脚底中心） ——
         # 当前“脚底”所在格
@@ -3871,10 +3898,10 @@ class Zombie:
             ux, uy = dx / L, dy / L
             # Bandit logic: once flee has triggered, always run AWAY from the player
             if bandit_flee:
-                flee_x, flee_y = -ux, -uy
-                # mirror some of the player's movement so we keep backing off as the player chases
-                flee_x += player_move_dx * 0.4
-                flee_y += player_move_dy * 0.4
+                flee_x, flee_y = -dxp, -dyp  # straight away from player
+                # if still near-zero (standing on the player), pick a perpendicular shove
+                if abs(flee_x) < 1e-4 and abs(flee_y) < 1e-4:
+                    flee_x, flee_y = -dy, dx
                 mag = (flee_x * flee_x + flee_y * flee_y) ** 0.5 or 1.0
                 ux, uy = flee_x / mag, flee_y / mag
             # desired velocity this frame
@@ -3927,6 +3954,12 @@ class Zombie:
         if not goto_post_move:
             collide_and_slide_circle(self, obstacles, dx, dy)
         if bandit_flee:
+            # if barely moved this frame, sidestep perpendicular to player to break jitter
+            moved_x = self.x - oldx
+            moved_y = self.y - oldy
+            if abs(moved_x) < 0.25 and abs(moved_y) < 0.25:
+                self._avoid_side = 1 if dxp >= 0 else -1
+                self._avoid_t = max(self._avoid_t, 0.25)
             ob = getattr(self, "_hit_ob", None)
             if ob and getattr(ob, "type", "") == "Destructible":
                 gp = getattr(ob, "grid_pos", None)
