@@ -1075,8 +1075,8 @@ THREAT_COSTS = {
     "buffer": 3,
     "shielder": 3,
     "strong": 4,
-    "tank": 5,
-    "ravager": 6,
+    "tank": 4,
+    "ravager": 5,
     "splinter": 4,
 }
 # (Optional) relative preference if multiple types fit the remaining budget
