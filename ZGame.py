@@ -2446,6 +2446,20 @@ def show_shop_screen(screen) -> Optional[str]:
         offers.append(next(c for c in catalog if c.get("id") == "reroll"))
         return offers
     offers = roll_offers()
+
+    def _is_reroll_item(it):
+        return (
+                it.get("id") == "reroll"
+                or it.get("key") == "reroll"
+                or it.get("name") in ("Reroll Offers", "Reroll")
+        )
+
+    def _split_offers(current):
+        slots = [c for c in current if not _is_reroll_item(c)]
+        reroll = next((c for c in current if _is_reroll_item(c)), None)
+        return slots, reroll
+
+    normal_slots, reroll_offer = _split_offers(offers)
     hovered_uid: Optional[str] = None  # used to stabilise hover so cards don't blink
     while True:
         # --- draw ---
@@ -2602,7 +2616,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 icon = desc_font.render("L", True, icon_col)
                 screen.blit(icon, icon.get_rect(center=lock_rect.center))
             # 记住这个卡片用于点击判定
-            rects.append((r, it, dyn_cost, is_capped, uid, lock_rect))
+            rects.append((r, it, dyn_cost, is_capped, uid, lock_rect, slot_idx))
         # --- Owned props panel — use the spare side/bottom space ---
         owned = []
         for itm in catalog:
@@ -2700,7 +2714,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 return choice  # home / restart / exit
             if ev.type == pygame.MOUSEMOTION:
                 hovered_uid = None
-                for r, it, dyn_cost, is_capped, uid, lock_rect in rects:
+                for r, it, dyn_cost, is_capped, uid, lock_rect, slot_idx in rects:
                     if r.collidepoint(ev.pos):
                         hovered_uid = uid
                         break
@@ -2720,7 +2734,7 @@ def show_shop_screen(screen) -> Optional[str]:
                     return None  # 照常结束商店，进入下一关
                 # 1) lock toggle check – click on small lock box
                 handled_lock = False
-                for r, it, dyn_cost, is_capped, uid, lock_rect in rects:
+                for r, it, dyn_cost, is_capped, uid, lock_rect, slot_idx in rects:
                     if lock_rect and lock_rect.collidepoint(ev.pos):
                         card_id = it.get("id")
                         if card_id:
@@ -2733,7 +2747,7 @@ def show_shop_screen(screen) -> Optional[str]:
                         break
                 if handled_lock:
                     continue
-                for r, it, dyn_cost, is_capped, uid, lock_rect in rects:
+                for r, it, dyn_cost, is_capped, uid, lock_rect, slot_idx in rects:
                     # don't allow buying a capped item any further, but reroll is always allowed
                     is_reroll = (it.get("id") == "reroll"
                                  or it.get("key") == "reroll"
@@ -2748,9 +2762,18 @@ def show_shop_screen(screen) -> Optional[str]:
                             _persist_locked_ids()
                         if is_reroll or it.get("apply") == "reroll":
                             offers = roll_offers()  # Price stays the same
+                            normal_slots, reroll_offer = _split_offers(offers)
                         else:
                             it["apply"]()
-        clock.tick(60)
+                            # Remove the purchased card from its slot (leave blank space)
+                            if 0 <= slot_idx < len(normal_slots):
+                                normal_slots[slot_idx] = None
+                            hovered_uid = None
+                            # If all slots are empty, auto-reroll a fresh set
+                            if all(s is None for s in normal_slots):
+                                offers = roll_offers()
+                                normal_slots, reroll_offer = _split_offers(offers)
+                clock.tick(60)
 def show_biome_picker_in_shop(screen) -> str:
     """在商店 NEXT 之后弹出的“下关场景”四选一卡面。返回被选择的场景名。"""
     clock = pygame.time.Clock()
