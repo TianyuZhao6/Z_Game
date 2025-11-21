@@ -671,8 +671,8 @@ COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
 COIN_GRAVITY = 400.0  # gravity pulling coin back to ground
 COIN_RESTITUTION = 0.45  # energy kept on bounce
 COIN_MIN_BOUNCE = 30.0  # stop bouncing when below this upward speed
-RAVAGER_HP_MULT = 2.5  # Ravager: 2.5x base HP
-RAVAGER_ATK_MULT = 1.5  # 1.5x contact damage
+RAVAGER_HP_MULT = 5.0  # Ravager: 5x base HP
+RAVAGER_ATK_MULT = 2.0  # 2x contact damage
 RAVAGER_SIZE_MULT = 1.25  # bigger than normal, smaller than boss
 RAVAGER_CONTACT_MULT = 1.5  # scales contact damage
 RAVAGER_DASH_CD_RANGE = (3.0, 4.5)
@@ -959,7 +959,6 @@ META = {
     "bone_plating_level": 0,
     "shrapnel_level": 0,
     "carapace_shield_hp": 0,
-"ravager": (120, 200, 230),  # dash-heavy brute
 }
 def reset_run_state():
     META.update({
