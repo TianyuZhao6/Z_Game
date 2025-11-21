@@ -6,6 +6,7 @@ import math
 import random
 import json
 import os
+import shutil
 import copy
 from queue import PriorityQueue
 from collections import deque
@@ -996,6 +997,11 @@ def reset_run_state():
     globals().pop("_last_spoils", None)
     globals().pop("_coins_at_level_start", None)
     globals().pop("_coins_at_shop_entry", None)
+    globals().pop("_shop_slot_ids_cache", None)
+    globals().pop("_shop_slots_cache", None)
+    globals().pop("_shop_reroll_id_cache", None)
+    globals().pop("_shop_reroll_cache", None)
+    globals().pop("_resume_shop_cache", None)
     _clear_level_start_baseline()
     
 def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
@@ -1127,6 +1133,12 @@ BASE_DIR = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
 SAVE_DIR = os.path.join(BASE_DIR, "TEMP")
 os.makedirs(SAVE_DIR, exist_ok=True)
 SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
+def _clear_shop_cache():
+    globals().pop("_shop_slot_ids_cache", None)
+    globals().pop("_shop_slots_cache", None)
+    globals().pop("_shop_reroll_id_cache", None)
+    globals().pop("_shop_reroll_cache", None)
+    globals().pop("_resume_shop_cache", None)
 def save_progress(current_level: int,
                   max_wave_reached: int | None = None,
                   pending_shop: bool = False):
@@ -1164,11 +1176,30 @@ def save_progress(current_level: int,
     data = {
         "mode": "progress",
         "current_level": int(current_level),
-        "meta": meta_for_save,  # ← uses baseline spoils when appropriate
+        "meta": meta_for_save,  # uses baseline spoils when appropriate
         "carry_player": globals().get("_carry_player_state", None),
         "pending_shop": bool(pending_shop),
         "biome": globals().get("_next_biome") or globals().get("_last_biome")
     }
+    # Persist shop offer cache so exiting to desktop can't reroll for free
+    slots_cache = globals().get("_shop_slot_ids_cache") or globals().get("_shop_slots_cache")
+    if slots_cache and isinstance(slots_cache, list):
+        ids_only = []
+        for s in slots_cache:
+            if isinstance(s, dict):
+                ids_only.append(s.get("id") or s.get("name"))
+            else:
+                ids_only.append(s)
+        slots_cache = ids_only
+    reroll_cache = globals().get("_shop_reroll_id_cache") or globals().get("_shop_reroll_cache")
+    if reroll_cache and isinstance(reroll_cache, dict):
+        reroll_cache = reroll_cache.get("id") or reroll_cache.get("name")
+    if slots_cache is not None or reroll_cache is not None:
+        data["shop_cache"] = {
+            "slots": slots_cache,
+            "reroll": reroll_cache,
+        }
+        globals()["_resume_shop_cache"] = True
     if max_wave_reached is not None:
         data["max_wave_reached"] = int(max_wave_reached)
     if baseline_bundle:
@@ -1244,8 +1275,21 @@ def load_save() -> Optional[dict]:
     try:
         if not os.path.exists(SAVE_FILE):
             return None
-        with open(SAVE_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        try:
+            with open(SAVE_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"[Save] Failed to read save file: {e}", file=sys.stderr)
+            # move the bad save aside so we don't keep failing
+            try:
+                bad_path = SAVE_FILE + ".bak"
+                shutil.move(SAVE_FILE, bad_path)
+            except Exception:
+                try:
+                    os.remove(SAVE_FILE)
+                except Exception:
+                    pass
+            return None
         if not isinstance(data, dict):
             return None
         # v1 compatibility (no mode)
@@ -1271,6 +1315,19 @@ def load_save() -> Optional[dict]:
                     globals()["_player_level_baseline"] = dict(b["player"])
         except Exception as e:
             print(f"[Save] Baseline hydrate failed: {e}", file=sys.stderr)
+        # hydrate shop cache so exiting doesn't reroll offers for free
+        try:
+            cache = data.get("shop_cache")
+            if isinstance(cache, dict):
+                slots = cache.get("slots")
+                reroll = cache.get("reroll")
+                if slots is not None:
+                    globals()["_shop_slot_ids_cache"] = slots
+                if reroll is not None:
+                    globals()["_shop_reroll_id_cache"] = reroll
+                globals()["_resume_shop_cache"] = True
+        except Exception:
+            pass
         return data
     except Exception as e:
         print(f"[Save] Failed to read save file: {e}", file=sys.stderr)
@@ -2239,6 +2296,10 @@ def show_settings_popup(screen, background_surf):
         clock.tick(60)
 def show_shop_screen(screen) -> Optional[str]:
     """Spend META['spoils'] on small upgrades. ESC opens Pause; return action or None when closed."""
+    # If we're opening a fresh shop (not resuming from a saved-in-shop state), clear any cached offers
+    if not globals().get("_resume_shop_cache", False):
+        _clear_shop_cache()
+    globals()["_resume_shop_cache"] = False
     # snapshot coins at shop entry (post-bank, pre-purchase)
     globals()["_coins_at_shop_entry"] = int(META.get("spoils", 0))
     globals()["_in_shop_ui"] = True
@@ -2691,6 +2752,7 @@ def show_shop_screen(screen) -> Optional[str]:
                                 "__RESTART__": "restart",
                                 "__EXIT__": "exit"}[chosen_biome]
                     globals()["_next_biome"] = chosen_biome  # 正常选择到场景名
+                    _clear_shop_cache()
                     return None  # 照常结束商店，进入下一关
                 # 1) lock toggle check – click on small lock box
                 handled_lock = False
@@ -2723,6 +2785,9 @@ def show_shop_screen(screen) -> Optional[str]:
                         if is_reroll or it.get("apply") == "reroll":
                             offers = roll_offers()  # Price stays the same
                             normal_slots, reroll_offer = _split_offers(offers)
+                            # update caches with id lists
+                            globals()["_shop_slot_ids_cache"] = [o.get("id") if o else None for o in normal_slots]
+                            globals()["_shop_reroll_id_cache"] = reroll_offer.get("id") if reroll_offer else None
                             _save_slots()
                         else:
                             it["apply"]()
@@ -2734,8 +2799,12 @@ def show_shop_screen(screen) -> Optional[str]:
                             if all(s is None for s in normal_slots):
                                 offers = roll_offers()
                                 normal_slots, reroll_offer = _split_offers(offers)
+                                globals()["_shop_slot_ids_cache"] = [o.get("id") if o else None for o in normal_slots]
+                                globals()["_shop_reroll_id_cache"] = reroll_offer.get("id") if reroll_offer else None
                                 _save_slots()
                             else:
+                                globals()["_shop_slot_ids_cache"] = [o.get("id") if o else None for o in normal_slots]
+                                globals()["_shop_reroll_id_cache"] = reroll_offer.get("id") if reroll_offer else None
                                 _save_slots()
                 clock.tick(60)
 def show_biome_picker_in_shop(screen) -> str:
