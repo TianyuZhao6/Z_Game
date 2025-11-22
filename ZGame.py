@@ -545,10 +545,13 @@ def apply_domain_buffs_for_level(game_state, player):
     game_state.biome_boss_hp_mult = 1.0
     game_state.biome_bandit_hp_mult = 1.0
     game_state._fog_biome_forced = False
+    player.xp_gain_mult = 1.0
     if b == "Misty Forest":
         # Same fog feel as Lv10
         game_state.request_fog_field(player)
         game_state._fog_biome_forced = True
+        # Tradeoff: foggy vision but +30% XP gains
+        player.xp_gain_mult = 1.3
     elif b == "Scorched Hell":
         # Player ×2; zombies ×2; bosses ×1.5
         player.bullet_damage = int(player.bullet_damage * 2)
@@ -3389,6 +3392,7 @@ class Player:
         self.xp_to_next = player_xp_required(self.level)
         self.xp_to_next = player_xp_required(self.level)
         self.levelup_pending = 0  # NEW: # of level-up selections to show
+        self.xp_gain_mult = 1.0
         # per-run upgrades from shop (applied on spawn)
         self.bullet_damage = int(META.get("base_dmg", BULLET_DAMAGE_ZOMBIE)) + int(META.get("dmg", 0))
         self.fire_rate_mult = float(META.get("firerate_mult", 1.0))
@@ -3527,7 +3531,9 @@ class Player:
         return max(MIN_FIRE_COOLDOWN, FIRE_COOLDOWN / max(1.0, eff))
 
     def add_xp(self, amount: int):
-        self.xp += int(max(0, amount))
+        gain = max(0, amount)
+        gain = int(round(gain * max(0.0, float(getattr(self, "xp_gain_mult", 1.0)))))
+        self.xp += gain
         leveled = 0
         while self.xp >= self.xp_to_next:
             self.xp -= self.xp_to_next
