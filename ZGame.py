@@ -1557,9 +1557,8 @@ def draw_button(screen, label, pos, size=(180, 56), bg=(40, 40, 40), fg=(240, 24
 def compute_player_dps(p: "Player" | None) -> float:
     # TODO
     # Add visual effect for bandit (growing circle around bandit)
-    # Restart spoils and player lv bugs
     # Add same hint display for bosses (optional)
-    # Make more roguelike record the play hp in one whole run game
+    # Add a exeution CG like scenefor bosses(slow time, whole scene become red in backgrounf and black in figures)
     if p is None:
         # 兜底：用 META 粗估
         base_dmg = BULLET_DAMAGE_ZOMBIE + float(META.get("dmg", 0))
