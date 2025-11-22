@@ -66,6 +66,21 @@ Synergy:
 Works well with Bone Plating (you can “intentionally” take occasional hits).
 Encourages tanky, lower-mobility builds.
 
+2.5. Aegis Pulse
+    Trigger condition
+Only active while the player has any shield HP:
+player.shield_hp > 0 (biome/domain shields, future shield props)
+OR carapace_shield_hp > 0 (your Carapace one-time shield)
+
+Effect
+
+Every X seconds, while shield is present, emit a hexagonal force field centered on the player:
+Shape: visually rendered as a hexagon; collision can be:
+either a circle in code, and you just draw a hex/oct outline, or
+
+
+All enemies whose hitbox intersects the field take damage.
+
 3. Economy & Bandit Interaction Props
 
 These are great for your Bandit mechanic and the shop fantasy.
