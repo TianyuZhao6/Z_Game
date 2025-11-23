@@ -5188,7 +5188,7 @@ class Bullet:
                     # 受击雾化：直接免伤并瞬位
                     if random.random() < MIST_PHASE_CHANCE:
                         # 取消这发伤害
-                        game_state.add_damage_text(z.rect.centerx, z.rect.centery, "PHASE", crit=False, kind="shield")
+                        game_state.add_damage_text(z.rect.centerx, z.rect.centery, "TELEPORT", crit=False, kind="shield")
                         # 向远离玩家的方向瞬位 2 格
                         dx = z.rect.centerx - player.rect.centerx
                         dy = z.rect.centery - player.rect.centery
@@ -5596,13 +5596,15 @@ class TelegraphCircle:
 class AegisPulseRing:
     """Lightweight visual token for recent Aegis Pulse waves."""
     def __init__(self, x: float, y: float, r: float, delay: float, expand_time: float,
-                 fade_time: float):
+                 fade_time: float, damage: int):
         self.x = float(x)
         self.y = float(y)
         self.r = float(r)
         self.delay = float(delay)
         self.expand_time = float(expand_time)
         self.fade_time = float(fade_time)
+        self.damage = int(damage)
+        self.hit_done = False
         # store remaining life; total life includes delay so we can reuse the existing timer logic
         self.t = float(delay + expand_time + fade_time)
         self.life0 = float(self.t)
@@ -5911,6 +5913,27 @@ def _player_has_any_shield(player) -> bool:
 def _apply_aegis_pulse_damage(player, game_state: "GameState", zombies, cx: float, cy: float,
                               radius: float, damage: int) -> None:
     rr = float(radius)
+    text_kind = "aegis"
+    # Hit destructible obstacles (red blocks) the same way bullets do
+    for gp, ob in list(getattr(game_state, "obstacles", {}).items()):
+        if getattr(ob, "type", "") != "Destructible":
+            continue
+        # circle-rect intersection using closest point clamp
+        rect = ob.rect
+        closest_x = min(max(cx, rect.left), rect.right)
+        closest_y = min(max(cy, rect.top), rect.bottom)
+        dx = closest_x - cx
+        dy = closest_y - cy
+        if dx * dx + dy * dy > rr * rr:
+            continue
+        ob.health = (ob.health or 0) - BULLET_DAMAGE_BLOCK
+        if ob.health <= 0:
+            bx, by = rect.centerx, rect.centery
+            del game_state.obstacles[gp]
+            if random.random() < SPOILS_BLOCK_DROP_CHANCE:
+                game_state.spawn_spoils(bx, by, 1)
+            if player:
+                player.add_xp(XP_PLAYER_BLOCK)
     for z in list(zombies):
         if getattr(z, "hp", 0) <= 0:
             continue
@@ -5924,7 +5947,7 @@ def _apply_aegis_pulse_damage(player, game_state: "GameState", zombies, cx: floa
             continue
         if getattr(z, "type", "") == "boss_mist":
             if random.random() < MIST_PHASE_CHANCE:
-                game_state.add_damage_text(z.rect.centerx, z.rect.centery, "PHASE", crit=False, kind="shield")
+                game_state.add_damage_text(z.rect.centerx, z.rect.centery, "TELEPORT", crit=False, kind="shield")
                 pdx = z.rect.centerx - player.rect.centerx
                 pdy = z.rect.centery - player.rect.centery
                 L = (pdx * pdx + pdy * pdy) ** 0.5 or 1.0
@@ -5943,26 +5966,25 @@ def _apply_aegis_pulse_damage(player, game_state: "GameState", zombies, cx: floa
             blocked = min(dealt, z.shield_hp)
             z.shield_hp -= dealt
             if blocked > 0:
-                game_state.add_damage_text(z.rect.centerx, z.rect.centery, blocked, crit=False, kind="shield")
+                game_state.add_damage_text(z.rect.centerx, z.rect.centery, blocked, crit=False, kind=text_kind)
             overflow = dealt - blocked
             if overflow > 0:
                 z.hp -= overflow
-                game_state.add_damage_text(z.rect.centerx, z.rect.centery - 10, overflow, crit=False, kind="hp")
+                game_state.add_damage_text(z.rect.centerx, z.rect.centery - 10, overflow, crit=False, kind=text_kind)
         else:
             z.hp -= dealt
-            game_state.add_damage_text(z.rect.centerx, z.rect.centery, dealt, crit=False, kind="hp")
+            game_state.add_damage_text(z.rect.centerx, z.rect.centery, dealt, crit=False, kind=text_kind)
 
 
 def trigger_aegis_pulse(player, game_state: "GameState", zombies, radius: float, damage: int) -> None:
     cx, cy = player.rect.centerx, player.rect.centery
-    _apply_aegis_pulse_damage(player, game_state, zombies, cx, cy, radius, damage)
     if not hasattr(game_state, "aegis_pulses") or game_state.aegis_pulses is None:
         game_state.aegis_pulses = []
     layers, expand_time, layer_gap = aegis_pulse_visual_profile(getattr(player, "aegis_pulse_level", 1))
     for idx in range(layers):
         delay = idx * layer_gap
         game_state.aegis_pulses.append(
-            AegisPulseRing(cx, cy, radius, delay, expand_time, AEGIS_PULSE_RING_FADE)
+            AegisPulseRing(cx, cy, radius, delay, expand_time, AEGIS_PULSE_RING_FADE, damage)
         )
 
 
@@ -6907,7 +6929,7 @@ class GameState:
                                              life=t.payload.get("life", ACID_LIFETIME))
                 self.telegraphs.remove(t)
 
-    def update_aegis_pulses(self, dt: float):
+    def update_aegis_pulses(self, dt: float, player=None, zombies=None):
         if not getattr(self, "aegis_pulses", None):
             self.aegis_pulses = []
             return
@@ -6915,6 +6937,17 @@ class GameState:
         for p in self.aegis_pulses:
             p.t -= dt
             if p.t > 0:
+                # keep the ripple centered on the current player position so it travels with you
+                if player is not None:
+                    p.x = float(player.rect.centerx)
+                    p.y = float(player.rect.centery)
+                # each layer applies its damage once when it becomes active
+                if (not getattr(p, "hit_done", False)
+                        and (p.life0 - p.t) >= float(getattr(p, "delay", 0.0))
+                        and zombies is not None):
+                    _apply_aegis_pulse_damage(player, self, zombies, p.x, p.y, float(getattr(p, "r", 0.0)),
+                                              int(getattr(p, "damage", 0)))
+                    p.hit_done = True
                 alive.append(p)
         self.aegis_pulses = alive
 
@@ -7544,6 +7577,8 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         # 颜色：HP=红/白，护盾=蓝
         if d.kind == "shield":
             col = (120, 200, 255)
+        elif d.kind == "aegis":
+            col = AEGIS_PULSE_COLOR
         else:
             col = (255, 100, 100) if not d.crit else (255, 240, 120)
         size = DMG_TEXT_SIZE_NORMAL if not d.crit else DMG_TEXT_SIZE_CRIT
@@ -7975,7 +8010,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
         game_state.update_damage_texts(dt)
-        game_state.update_aegis_pulses(dt)
+        game_state.update_aegis_pulses(dt, player, zombies)
         game_state.collect_heals(player)
         player.update_bone_plating(dt)
         # --- NEW: Telegraph/Acid 更新 + 减速衰减 ---
@@ -8353,7 +8388,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
         game_state.update_damage_texts(dt)
-        game_state.update_aegis_pulses(dt)
+        game_state.update_aegis_pulses(dt, player, zombies)
         game_state.collect_heals(player)
         tick_aegis_pulse(player, game_state, zombies, dt)
         # Autofire
