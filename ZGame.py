@@ -984,6 +984,17 @@ BONE_PLATING_GAIN_INTERVAL = 6.0
 BONE_PLATING_MAX_LEVEL = 5
 BONE_PLATING_COLOR = (210, 235, 255)
 BONE_PLATING_GLOW = (200, 245, 255, 140)
+# --- Aegis Pulse (shield-synergy pulse) ---
+AEGIS_PULSE_BASE_RADIUS = 140
+AEGIS_PULSE_RADIUS_PER_LEVEL = 20
+AEGIS_PULSE_BASE_DAMAGE = 15
+AEGIS_PULSE_DAMAGE_PER_LEVEL = 7
+AEGIS_PULSE_BASE_COOLDOWN = 4.0
+AEGIS_PULSE_COOLDOWN_DELTA = 0.625
+AEGIS_PULSE_TTL = 0.40  # how long the ring lingers for rendering
+AEGIS_PULSE_COLOR = (120, 215, 255)
+AEGIS_PULSE_FILL_ALPHA = 38
+AEGIS_PULSE_RING_ALPHA = 200
 # persistent (per run) upgrades bought in shop
 META = {
     # —— 本轮累积资源 ——
@@ -1013,6 +1024,7 @@ META = {
     "shrapnel_level": 0,
     "carapace_shield_hp": 0,
     "coupon_level": 0,
+    "aegis_pulse_level": 0,
 }
 
 
@@ -1042,6 +1054,7 @@ def reset_run_state():
         "shrapnel_level": 0,
         "carapace_shield_hp": 0,
         "coupon_level": 0,
+        "aegis_pulse_level": 0,
     })
     globals()["_carry_player_state"] = None
     globals()["_pending_shop"] = False
@@ -1054,6 +1067,15 @@ def reset_run_state():
     globals().pop("_shop_reroll_cache", None)
     globals().pop("_resume_shop_cache", None)
     _clear_level_start_baseline()
+
+
+def aegis_pulse_stats(level: int) -> tuple[int, int, float]:
+    """Return (radius_px, damage, cooldown_s) for the given Aegis Pulse level."""
+    lvl = max(1, int(level))
+    radius = AEGIS_PULSE_BASE_RADIUS + AEGIS_PULSE_RADIUS_PER_LEVEL * (lvl - 1)
+    damage = AEGIS_PULSE_BASE_DAMAGE + AEGIS_PULSE_DAMAGE_PER_LEVEL * (lvl - 1)
+    cooldown = max(0.3, AEGIS_PULSE_BASE_COOLDOWN - AEGIS_PULSE_COOLDOWN_DELTA * (lvl - 1))
+    return radius, damage, cooldown
 
 
 def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
@@ -1289,7 +1311,8 @@ def capture_snapshot(game_state, player, zombies, current_level: int,
                        "level": int(getattr(player, "level", 1)),
                        "xp": int(getattr(player, "xp", 0)),
                        "bone_plating_hp": int(getattr(player, "bone_plating_hp", 0)),
-                       "bone_plating_cd": float(getattr(player, "_bone_plating_cd", BONE_PLATING_GAIN_INTERVAL))},
+                       "bone_plating_cd": float(getattr(player, "_bone_plating_cd", BONE_PLATING_GAIN_INTERVAL)),
+                       "aegis_pulse_cd": float(getattr(player, "_aegis_pulse_cd", 0.0))},
             "zombies": [{
                 "x": float(z.x), "y": float(z.y),
                 "attack": int(getattr(z, "attack", 10)),
@@ -2055,6 +2078,11 @@ def show_pause_menu(screen, background_surf):
                 "max_level": None,
             },
             {
+                "id": "aegis_pulse",
+                "name": "Aegis Pulse",
+                "max_level": 5,
+            },
+            {
                 "id": "coupon",
                 "name": "Coupon",
                 "max_level": COUPON_MAX_LEVEL,
@@ -2083,6 +2111,8 @@ def show_pause_menu(screen, background_surf):
         if iid == "carapace":
             carapace_hp = int(META.get("carapace_shield_hp", 0))
             return (carapace_hp + 19) // 20
+        if iid == "aegis_pulse":
+            return int(META.get("aegis_pulse_level", 0))
         return None
 
     owned = []
@@ -2457,6 +2487,17 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "aegis_pulse",
+                "name": "Aegis Pulse",
+                "desc": "When you have any shield, periodically release a hexagonal force field that damages nearby enemies.",
+                "cost": 14,
+                "rarity": 3,
+                "max_level": 5,
+                "apply": lambda: META.update(
+                    aegis_pulse_level=min(5, int(META.get("aegis_pulse_level", 0)) + 1)
+                ),
+            },
+            {
                 "id": "bone_plating",
                 "name": "Bone Plating",
                 "desc": "Every 6s gain 2 HP plating; max out at 5 buys to unlock full-hit negation.",
@@ -2600,6 +2641,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return int(META.get("coupon_level", 0))
         if iid == "bone_plating":
             return int(META.get("bone_plating_level", 0))
+        if iid == "aegis_pulse":
+            return int(META.get("aegis_pulse_level", 0))
         # reroll or anything else: no level display
         return None
 
@@ -3401,6 +3444,12 @@ class Player:
         self.bullet_ricochet = int(META.get("ricochet_level", 0))
         # on-kill shrapnel splashes
         self.shrapnel_level = int(META.get("shrapnel_level", 0))
+        self.aegis_pulse_level = int(META.get("aegis_pulse_level", 0))
+        if self.aegis_pulse_level > 0:
+            _, _, cd = aegis_pulse_stats(self.aegis_pulse_level)
+            self._aegis_pulse_cd = float(cd)
+        else:
+            self._aegis_pulse_cd = 0.0
         # 射程：base × mult
         self.range_base = float(META.get("base_range", MAX_FIRE_RANGE))
         self.range = float(self.range_base * META.get("range_mult", 1.0))
@@ -5524,6 +5573,16 @@ class TelegraphCircle:
         self.color = color
 
 
+class AegisPulseRing:
+    """Lightweight visual token for recent Aegis Pulse waves."""
+    def __init__(self, x: float, y: float, r: float, life: float = AEGIS_PULSE_TTL):
+        self.x = float(x)
+        self.y = float(y)
+        self.r = float(r)
+        self.t = float(life)
+        self.life0 = float(life)
+
+
 class EnemyShot:
     def __init__(self, x: float, y: float, vx: float, vy: float, dmg: int, max_dist: float = MAX_FIRE_RANGE, radius=4,
                  color=(255, 120, 50)):
@@ -5784,6 +5843,113 @@ def draw_iso_ground_ellipse(surface: pygame.Surface, x_px: float, y_px: float,
     else:
         pygame.draw.ellipse(surf, rgba, rect, max(1, int(width)))
     surface.blit(surf, (cx - rx - 1, cy - ry - 1))
+
+
+def draw_iso_hex_ring(surface: pygame.Surface, x_px: float, y_px: float, r_px: float,
+                      color: tuple[int, int, int], alpha: float,
+                      camx: float, camy: float,
+                      *, sides: int = 6, fill_alpha: float = 0.0, width: int = 3) -> None:
+    """Hex/oct ring helper projected onto the iso ground plane."""
+    wx = x_px / CELL_SIZE
+    wy = (y_px - INFO_BAR_HEIGHT) / CELL_SIZE
+    cx, cy = iso_world_to_screen(wx, wy, 0, camx, camy)
+    rx, ry = iso_circle_radii_screen(float(r_px))
+    surf = pygame.Surface((rx * 2 + 6, ry * 2 + 6), pygame.SRCALPHA)
+    scx, scy = surf.get_width() // 2, surf.get_height() // 2
+    pts = []
+    n = max(3, int(sides))
+    for i in range(n):
+        ang = math.tau * i / float(n)
+        px = scx + math.cos(ang) * rx
+        py = scy + math.sin(ang) * ry
+        pts.append((px, py))
+    if fill_alpha > 0:
+        rgba_fill = (*color, int(max(0, min(255, fill_alpha))))
+        pygame.draw.polygon(surf, rgba_fill, pts)
+    rgba_ring = (*color, int(max(0, min(255, alpha))))
+    pygame.draw.polygon(surf, rgba_ring, pts, max(1, int(width)))
+    surface.blit(surf, (cx - surf.get_width() // 2, cy - surf.get_height() // 2))
+
+
+def _player_has_any_shield(player) -> bool:
+    return (
+            int(getattr(player, "shield_hp", 0)) > 0
+            or int(getattr(player, "carapace_hp", 0)) > 0
+    )
+
+
+def _apply_aegis_pulse_damage(player, game_state: "GameState", zombies, cx: float, cy: float,
+                              radius: float, damage: int) -> None:
+    rr = float(radius)
+    for z in list(zombies):
+        if getattr(z, "hp", 0) <= 0:
+            continue
+        zr = float(getattr(z, "radius", getattr(z, "size", CELL_SIZE) * 0.5))
+        dx = z.rect.centerx - cx
+        dy = z.rect.centery - cy
+        if dx * dx + dy * dy > (rr + zr) ** 2:
+            continue
+        dealt = int(max(0, damage))
+        if dealt <= 0:
+            continue
+        if getattr(z, "type", "") == "boss_mist":
+            if random.random() < MIST_PHASE_CHANCE:
+                game_state.add_damage_text(z.rect.centerx, z.rect.centery, "PHASE", crit=False, kind="shield")
+                pdx = z.rect.centerx - player.rect.centerx
+                pdy = z.rect.centery - player.rect.centery
+                L = (pdx * pdx + pdy * pdy) ** 0.5 or 1.0
+                ox = pdx / L * (MIST_PHASE_TELE_TILES * CELL_SIZE)
+                oy = pdy / L * (MIST_PHASE_TELE_TILES * CELL_SIZE)
+                z.x += ox
+                z.y += oy - INFO_BAR_HEIGHT
+                z.rect.x = int(z.x)
+                z.rect.y = int(z.y + INFO_BAR_HEIGHT)
+                continue
+            dist_tiles = math.hypot((z.rect.centerx - cx) / CELL_SIZE,
+                                    (z.rect.centery - cy) / CELL_SIZE)
+            if dist_tiles >= MIST_RANGED_REDUCE_TILES:
+                dealt = int(dealt * MIST_RANGED_MULT)
+        if getattr(z, "shield_hp", 0) > 0:
+            blocked = min(dealt, z.shield_hp)
+            z.shield_hp -= dealt
+            if blocked > 0:
+                game_state.add_damage_text(z.rect.centerx, z.rect.centery, blocked, crit=False, kind="shield")
+            overflow = dealt - blocked
+            if overflow > 0:
+                z.hp -= overflow
+                game_state.add_damage_text(z.rect.centerx, z.rect.centery - 10, overflow, crit=False, kind="hp")
+        else:
+            z.hp -= dealt
+            game_state.add_damage_text(z.rect.centerx, z.rect.centery, dealt, crit=False, kind="hp")
+
+
+def trigger_aegis_pulse(player, game_state: "GameState", zombies, radius: float, damage: int) -> None:
+    cx, cy = player.rect.centerx, player.rect.centery
+    _apply_aegis_pulse_damage(player, game_state, zombies, cx, cy, radius, damage)
+    if not hasattr(game_state, "aegis_pulses") or game_state.aegis_pulses is None:
+        game_state.aegis_pulses = []
+    game_state.aegis_pulses.append(AegisPulseRing(cx, cy, radius))
+
+
+def tick_aegis_pulse(player, game_state: "GameState", zombies, dt: float) -> None:
+    lvl = int(getattr(player, "aegis_pulse_level", 0))
+    if lvl <= 0:
+        return
+    radius, damage, cooldown = aegis_pulse_stats(lvl)
+    cd_timer = float(getattr(player, "_aegis_pulse_cd", cooldown))
+    has_shield = _player_has_any_shield(player)
+    if has_shield:
+        cd_timer -= dt
+        # if dt was large, fire multiple pulses to catch up without runaway loops
+        while cd_timer <= 0.0:
+            trigger_aegis_pulse(player, game_state, zombies, radius, damage)
+            cd_timer += cooldown
+            if cd_timer <= -cooldown * 1.5:
+                cd_timer = cooldown
+                break
+    else:
+        cd_timer = min(cd_timer, cooldown)
+    player._aegis_pulse_cd = cd_timer
 
 
 def roll_spoils_for_zombie(z: "Zombie") -> int:
@@ -6391,6 +6557,7 @@ class GameState:
         self.dmg_texts = []  # List[DamageText]
         self.acids = []  # List[AcidPool]
         self.telegraphs = []  # List[TelegraphCircle]
+        self.aegis_pulses = []  # List[AegisPulseRing]
         self.ghosts = []  # 冲刺残影列表
         self.fog_on = False
         self.fog_radius_px = FOG_VIEW_TILES * CELL_SIZE
@@ -6705,6 +6872,17 @@ class GameState:
                                              life=t.payload.get("life", ACID_LIFETIME))
                 self.telegraphs.remove(t)
 
+    def update_aegis_pulses(self, dt: float):
+        if not getattr(self, "aegis_pulses", None):
+            self.aegis_pulses = []
+            return
+        alive = []
+        for p in self.aegis_pulses:
+            p.t -= dt
+            if p.t > 0:
+                alive.append(p)
+        self.aegis_pulses = alive
+
     def add_damage_text(self, x, y, amount, crit=False, kind="hp"):
         # allow string labels ("ENRAGE!", "IMMUNE", etc.)
         if isinstance(amount, (int, float)):
@@ -6824,6 +7002,17 @@ class GameState:
                 screen, t.x, t.y, t.r,
                 color=getattr(t, "color", (255, 80, 80)), alpha=180,
                 camx=cam_x, camy=cam_y, fill=False, width=2
+            )
+        for p in list(getattr(self, "aegis_pulses", [])):
+            life0 = max(0.001, float(getattr(p, "life0", AEGIS_PULSE_TTL)))
+            fade = max(0.0, min(1.0, float(getattr(p, "t", 0.0)) / life0))
+            draw_iso_hex_ring(
+                screen, p.x, p.y, p.r,
+                AEGIS_PULSE_COLOR, int(AEGIS_PULSE_RING_ALPHA * fade),
+                cam_x, cam_y,
+                sides=6,
+                fill_alpha=int(AEGIS_PULSE_FILL_ALPHA * fade),
+                width=3
             )
         # 2) Acid/Mist Pools（实体椭圆）
         for a in list(getattr(self, "acids", [])):
@@ -7027,6 +7216,18 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             color=t.color, alpha=180,
             camx=camx, camy=camy,
             fill=False, width=3
+        )
+    # Aegis Pulse rings (ground-level hexes)
+    for p in getattr(game_state, "aegis_pulses", []):
+        life0 = max(0.001, float(getattr(p, "life0", AEGIS_PULSE_TTL)))
+        fade = max(0.0, min(1.0, float(getattr(p, "t", 0.0)) / life0))
+        draw_iso_hex_ring(
+            screen, p.x, p.y, p.r,
+            AEGIS_PULSE_COLOR, int(AEGIS_PULSE_RING_ALPHA * fade),
+            camx, camy,
+            sides=6,
+            fill_alpha=int(AEGIS_PULSE_FILL_ALPHA * fade),
+            width=3
         )
     # 再画酸池（实心，微透明绿；你也可以做成分层：外圈更亮）
     for a in getattr(game_state, "acids", []):
@@ -7728,6 +7929,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
         game_state.update_damage_texts(dt)
+        game_state.update_aegis_pulses(dt)
         game_state.collect_heals(player)
         player.update_bone_plating(dt)
         # --- NEW: Telegraph/Acid 更新 + 减速衰减 ---
@@ -7746,6 +7948,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if player.acid_dot_timer <= 0.0:
                 player.acid_dot_dps = 0.0
         player.update_bone_plating(dt)
+        tick_aegis_pulse(player, game_state, zombies, dt)
         # ===== Level-up picker (freeze gameplay & timer like Pause) =====
         while getattr(player, "levelup_pending", 0) > 0:
             bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles)
@@ -7908,6 +8111,12 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     player.bone_plating_hp = int(p.get("bone_plating_hp", 0))
     player._bone_plating_cd = float(p.get("bone_plating_cd", BONE_PLATING_GAIN_INTERVAL))
     player._bone_plating_glow = 0.0
+    player.aegis_pulse_level = int(meta.get("aegis_pulse_level", META.get("aegis_pulse_level", 0)))
+    if player.aegis_pulse_level > 0:
+        _, _, cd = aegis_pulse_stats(player.aegis_pulse_level)
+        player._aegis_pulse_cd = float(p.get("aegis_pulse_cd", cd))
+    else:
+        player._aegis_pulse_cd = 0.0
     if not hasattr(player, 'fire_cd'): player.fire_cd = 0.0
     # Auto-turrets when resuming (use saved meta if present, else global META)
     turret_level = int(meta.get("auto_turret_level", META.get("auto_turret_level", 0)))
@@ -8098,7 +8307,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
         game_state.update_damage_texts(dt)
+        game_state.update_aegis_pulses(dt)
         game_state.collect_heals(player)
+        tick_aegis_pulse(player, game_state, zombies, dt)
         # Autofire
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
         target, dist = find_target()
