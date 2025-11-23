@@ -78,7 +78,6 @@ Every X seconds, while shield is present, emit a hexagonal force field centered 
 Shape: visually rendered as a hexagon; collision can be:
 either a circle in code, and you just draw a hex/oct outline, or
 
-
 All enemies whose hitbox intersects the field take damage.
 
 3. Economy & Bandit Interaction Props
