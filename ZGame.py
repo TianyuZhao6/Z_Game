@@ -992,6 +992,8 @@ AEGIS_PULSE_DAMAGE_PER_LEVEL = 7
 AEGIS_PULSE_BASE_COOLDOWN = 4.0
 AEGIS_PULSE_COOLDOWN_DELTA = 0.625
 AEGIS_PULSE_TTL = 0.40  # legacy linger time (kept for backward compat of saves)
+AEGIS_PULSE_DAMAGE_RATIOS = (0.30, 0.45, 0.60, 0.80, 1.00)  # % of max HP per level (1-5+)
+AEGIS_PULSE_WAVE_GAP = 0.35  # seconds between multi-wave pulses
 AEGIS_PULSE_COLOR = (120, 215, 255)
 AEGIS_PULSE_FILL_ALPHA = 38
 AEGIS_PULSE_RING_ALPHA = 200
@@ -1078,13 +1080,31 @@ def reset_run_state():
     _clear_level_start_baseline()
 
 
-def aegis_pulse_stats(level: int) -> tuple[int, int, float]:
+def _aegis_pulse_damage_for(level: int, player_max_hp: int | float | None) -> int:
+    """Damage scales off max HP using per-level ratios."""
+    lvl = max(1, int(level))
+    ratios = AEGIS_PULSE_DAMAGE_RATIOS
+    ratio = ratios[min(lvl - 1, len(ratios) - 1)]
+    base_hp = player_max_hp
+    if base_hp is None:
+        base_hp = int(META.get("base_maxhp", PLAYER_MAX_HP)) + int(META.get("maxhp", 0))
+    base_hp = max(1, int(base_hp))
+    return max(1, int(round(base_hp * ratio)))
+
+
+def aegis_pulse_stats(level: int, player_max_hp: int | float | None = None) -> tuple[int, int, float]:
     """Return (radius_px, damage, cooldown_s) for the given Aegis Pulse level."""
     lvl = max(1, int(level))
     radius = AEGIS_PULSE_BASE_RADIUS + AEGIS_PULSE_RADIUS_PER_LEVEL * (lvl - 1)
-    damage = AEGIS_PULSE_BASE_DAMAGE + AEGIS_PULSE_DAMAGE_PER_LEVEL * (lvl - 1)
+    damage = _aegis_pulse_damage_for(lvl, player_max_hp)
     cooldown = max(0.3, AEGIS_PULSE_BASE_COOLDOWN - AEGIS_PULSE_COOLDOWN_DELTA * (lvl - 1))
     return radius, damage, cooldown
+
+
+def aegis_pulse_wave_count(level: int) -> int:
+    """Number of waves per activation; scales up to 3."""
+    lvl = max(1, int(level))
+    return max(1, min(3, lvl))
 
 def aegis_pulse_visual_profile(level: int) -> tuple[int, float, float]:
     """Return (layers, expand_time, layer_gap) for the ripple animation."""
@@ -3466,7 +3486,7 @@ class Player:
         self.shrapnel_level = int(META.get("shrapnel_level", 0))
         self.aegis_pulse_level = int(META.get("aegis_pulse_level", 0))
         if self.aegis_pulse_level > 0:
-            _, _, cd = aegis_pulse_stats(self.aegis_pulse_level)
+            _, _, cd = aegis_pulse_stats(self.aegis_pulse_level, self.max_hp)
             self._aegis_pulse_cd = float(cd)
         else:
             self._aegis_pulse_cd = 0.0
@@ -5976,13 +5996,14 @@ def _apply_aegis_pulse_damage(player, game_state: "GameState", zombies, cx: floa
             game_state.add_damage_text(z.rect.centerx, z.rect.centery, dealt, crit=False, kind=text_kind)
 
 
-def trigger_aegis_pulse(player, game_state: "GameState", zombies, radius: float, damage: int) -> None:
+def trigger_aegis_pulse(player, game_state: "GameState", zombies, radius: float, damage: int,
+                        base_delay: float = 0.0) -> None:
     cx, cy = player.rect.centerx, player.rect.centery
     if not hasattr(game_state, "aegis_pulses") or game_state.aegis_pulses is None:
         game_state.aegis_pulses = []
     layers, expand_time, layer_gap = aegis_pulse_visual_profile(getattr(player, "aegis_pulse_level", 1))
     for idx in range(layers):
-        delay = idx * layer_gap
+        delay = base_delay + idx * layer_gap
         game_state.aegis_pulses.append(
             AegisPulseRing(cx, cy, radius, delay, expand_time, AEGIS_PULSE_RING_FADE, damage)
         )
@@ -5992,14 +6013,19 @@ def tick_aegis_pulse(player, game_state: "GameState", zombies, dt: float) -> Non
     lvl = int(getattr(player, "aegis_pulse_level", 0))
     if lvl <= 0:
         return
-    radius, damage, cooldown = aegis_pulse_stats(lvl)
+    radius, damage, cooldown = aegis_pulse_stats(lvl, getattr(player, "max_hp", None))
+    wave_count = aegis_pulse_wave_count(lvl)
     cd_timer = float(getattr(player, "_aegis_pulse_cd", cooldown))
     has_shield = _player_has_any_shield(player)
     if has_shield:
         cd_timer -= dt
         # if dt was large, fire multiple pulses to catch up without runaway loops
         while cd_timer <= 0.0:
-            trigger_aegis_pulse(player, game_state, zombies, radius, damage)
+            for w in range(wave_count):
+                trigger_aegis_pulse(
+                    player, game_state, zombies, radius, damage,
+                    base_delay=float(w) * AEGIS_PULSE_WAVE_GAP
+                )
             cd_timer += cooldown
             if cd_timer <= -cooldown * 1.5:
                 cd_timer = cooldown
@@ -8194,7 +8220,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     player._bone_plating_glow = 0.0
     player.aegis_pulse_level = int(meta.get("aegis_pulse_level", META.get("aegis_pulse_level", 0)))
     if player.aegis_pulse_level > 0:
-        _, _, cd = aegis_pulse_stats(player.aegis_pulse_level)
+        _, _, cd = aegis_pulse_stats(player.aegis_pulse_level, player.max_hp)
         player._aegis_pulse_cd = float(p.get("aegis_pulse_cd", cd))
     else:
         player._aegis_pulse_cd = 0.0
