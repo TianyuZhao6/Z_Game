@@ -985,8 +985,8 @@ BONE_PLATING_MAX_LEVEL = 5
 BONE_PLATING_COLOR = (210, 235, 255)
 BONE_PLATING_GLOW = (200, 245, 255, 140)
 # --- Aegis Pulse (shield-synergy pulse) ---
-AEGIS_PULSE_BASE_RADIUS = 140
-AEGIS_PULSE_RADIUS_PER_LEVEL = 20
+AEGIS_PULSE_BASE_RADIUS = 100
+AEGIS_PULSE_RADIUS_PER_LEVEL = 25
 AEGIS_PULSE_BASE_DAMAGE = 15
 AEGIS_PULSE_DAMAGE_PER_LEVEL = 7
 AEGIS_PULSE_BASE_COOLDOWN = 4.0
@@ -995,7 +995,7 @@ AEGIS_PULSE_TTL = 0.40  # legacy linger time (kept for backward compat of saves)
 AEGIS_PULSE_DAMAGE_RATIOS = (0.30, 0.45, 0.60, 0.80, 1.00)  # % of max HP per level (1-5+)
 AEGIS_PULSE_WAVE_GAP = 0.35  # seconds between multi-wave pulses
 AEGIS_PULSE_COLOR = (120, 215, 255)
-AEGIS_PULSE_FILL_ALPHA = 38
+AEGIS_PULSE_FILL_ALPHA = 16  # lighter fill to avoid distracting cover
 AEGIS_PULSE_RING_ALPHA = 200
 # Visual layering for the expanding ripple
 AEGIS_PULSE_BASE_LAYERS = 2  # minimum concentric rings
@@ -7332,7 +7332,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             camx, camy,
             sides=6,
             fill_alpha=int(AEGIS_PULSE_FILL_ALPHA * fade),
-            width=3
+            width=2
         )
     # 再画酸池（实心，微透明绿；你也可以做成分层：外圈更亮）
     for a in getattr(game_state, "acids", []):
