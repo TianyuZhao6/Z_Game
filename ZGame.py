@@ -995,7 +995,7 @@ AEGIS_PULSE_TTL = 0.40  # legacy linger time (kept for backward compat of saves)
 AEGIS_PULSE_DAMAGE_RATIOS = (0.30, 0.45, 0.60, 0.80, 1.00)  # % of max HP per level (1-5+)
 AEGIS_PULSE_WAVE_GAP = 0.35  # seconds between multi-wave pulses
 AEGIS_PULSE_COLOR = (120, 215, 255)
-AEGIS_PULSE_FILL_ALPHA = 16  # lighter fill to avoid distracting cover
+AEGIS_PULSE_FILL_ALPHA = 18  # lighter fill to avoid distracting cover
 AEGIS_PULSE_RING_ALPHA = 200
 # Visual layering for the expanding ripple
 AEGIS_PULSE_BASE_LAYERS = 2  # minimum concentric rings
