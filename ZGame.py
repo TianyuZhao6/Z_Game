@@ -991,10 +991,19 @@ AEGIS_PULSE_BASE_DAMAGE = 15
 AEGIS_PULSE_DAMAGE_PER_LEVEL = 7
 AEGIS_PULSE_BASE_COOLDOWN = 4.0
 AEGIS_PULSE_COOLDOWN_DELTA = 0.625
-AEGIS_PULSE_TTL = 0.40  # how long the ring lingers for rendering
+AEGIS_PULSE_TTL = 0.40  # legacy linger time (kept for backward compat of saves)
 AEGIS_PULSE_COLOR = (120, 215, 255)
 AEGIS_PULSE_FILL_ALPHA = 38
 AEGIS_PULSE_RING_ALPHA = 200
+# Visual layering for the expanding ripple
+AEGIS_PULSE_BASE_LAYERS = 2  # minimum concentric rings
+AEGIS_PULSE_LAYERS_PER_LEVEL = 0.5  # +1 layer every 2 levels (ceil)
+AEGIS_PULSE_MAX_LAYERS = 6
+AEGIS_PULSE_BASE_EXPAND_TIME = 1.0  # seconds for a ripple to reach full radius at lvl 1
+AEGIS_PULSE_EXPAND_DELTA = 0.06  # faster expansion per level
+AEGIS_PULSE_MIN_EXPAND_TIME = 0.45
+AEGIS_PULSE_RING_FADE = 0.20
+AEGIS_PULSE_MIN_START_R = 12
 # persistent (per run) upgrades bought in shop
 META = {
     # —— 本轮累积资源 ——
@@ -1077,6 +1086,17 @@ def aegis_pulse_stats(level: int) -> tuple[int, int, float]:
     cooldown = max(0.3, AEGIS_PULSE_BASE_COOLDOWN - AEGIS_PULSE_COOLDOWN_DELTA * (lvl - 1))
     return radius, damage, cooldown
 
+def aegis_pulse_visual_profile(level: int) -> tuple[int, float, float]:
+    """Return (layers, expand_time, layer_gap) for the ripple animation."""
+    lvl = max(1, int(level))
+    layers = int(min(AEGIS_PULSE_MAX_LAYERS,
+                     AEGIS_PULSE_BASE_LAYERS + math.ceil(lvl * AEGIS_PULSE_LAYERS_PER_LEVEL)))
+    expand_time = max(
+        AEGIS_PULSE_MIN_EXPAND_TIME,
+        AEGIS_PULSE_BASE_EXPAND_TIME - AEGIS_PULSE_EXPAND_DELTA * (lvl - 1)
+    )
+    layer_gap = expand_time / max(1, layers)
+    return layers, expand_time, layer_gap
 
 def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
     """
@@ -5575,12 +5595,21 @@ class TelegraphCircle:
 
 class AegisPulseRing:
     """Lightweight visual token for recent Aegis Pulse waves."""
-    def __init__(self, x: float, y: float, r: float, life: float = AEGIS_PULSE_TTL):
+    def __init__(self, x: float, y: float, r: float, delay: float, expand_time: float,
+                 fade_time: float):
         self.x = float(x)
         self.y = float(y)
         self.r = float(r)
-        self.t = float(life)
-        self.life0 = float(life)
+        self.delay = float(delay)
+        self.expand_time = float(expand_time)
+        self.fade_time = float(fade_time)
+        # store remaining life; total life includes delay so we can reuse the existing timer logic
+        self.t = float(delay + expand_time + fade_time)
+        self.life0 = float(self.t)
+        
+    @property
+    def age(self) -> float:
+        return float(self.life0 - self.t)
 
 
 class EnemyShot:
@@ -5875,6 +5904,7 @@ def _player_has_any_shield(player) -> bool:
     return (
             int(getattr(player, "shield_hp", 0)) > 0
             or int(getattr(player, "carapace_hp", 0)) > 0
+            or int(getattr(player, "bone_plating_hp", 0)) > 0  # treat plating as shield for Aegis Pulse
     )
 
 
@@ -5928,7 +5958,12 @@ def trigger_aegis_pulse(player, game_state: "GameState", zombies, radius: float,
     _apply_aegis_pulse_damage(player, game_state, zombies, cx, cy, radius, damage)
     if not hasattr(game_state, "aegis_pulses") or game_state.aegis_pulses is None:
         game_state.aegis_pulses = []
-    game_state.aegis_pulses.append(AegisPulseRing(cx, cy, radius))
+    layers, expand_time, layer_gap = aegis_pulse_visual_profile(getattr(player, "aegis_pulse_level", 1))
+    for idx in range(layers):
+        delay = idx * layer_gap
+        game_state.aegis_pulses.append(
+            AegisPulseRing(cx, cy, radius, delay, expand_time, AEGIS_PULSE_RING_FADE)
+        )
 
 
 def tick_aegis_pulse(player, game_state: "GameState", zombies, dt: float) -> None:
@@ -7219,10 +7254,21 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         )
     # Aegis Pulse rings (ground-level hexes)
     for p in getattr(game_state, "aegis_pulses", []):
-        life0 = max(0.001, float(getattr(p, "life0", AEGIS_PULSE_TTL)))
-        fade = max(0.0, min(1.0, float(getattr(p, "t", 0.0)) / life0))
+        age = max(0.0, float(getattr(p, "age", 0.0)))
+        delay = max(0.0, float(getattr(p, "delay", 0.0)))
+        expand_time = max(0.001, float(getattr(p, "expand_time", AEGIS_PULSE_BASE_EXPAND_TIME)))
+        fade_time = max(0.001, float(getattr(p, "fade_time", AEGIS_PULSE_RING_FADE)))
+        if age < delay:
+            continue
+        grow_progress = max(0.0, min(1.0, (age - delay) / expand_time))
+        fade_age = age - (delay + expand_time)
+        fade = 1.0 if fade_age <= 0 else max(0.0, 1.0 - fade_age / fade_time)
+        if fade <= 0:
+            continue
+        current_r = max(AEGIS_PULSE_MIN_START_R, float(getattr(p, "r", 0.0)) * grow_progress)
+        
         draw_iso_hex_ring(
-            screen, p.x, p.y, p.r,
+            screen, p.x, p.y, current_r,
             AEGIS_PULSE_COLOR, int(AEGIS_PULSE_RING_ALPHA * fade),
             camx, camy,
             sides=6,
