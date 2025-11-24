@@ -2529,7 +2529,7 @@ def show_shop_screen(screen) -> Optional[str]:
             {
                 "id": "aegis_pulse",
                 "name": "Aegis Pulse",
-                "desc": "When you have any shield, periodically release a hexagonal force field that damages nearby enemies.",
+                "desc": "Periodically release a hexagonal force field that damages nearby enemies when shield exists.",
                 "cost": 25,
                 "rarity": 4,
                 "max_level": 5,
@@ -2585,7 +2585,7 @@ def show_shop_screen(screen) -> Optional[str]:
             {
                 "id": "shrapnel_shells",
                 "name": "Shrapnel Shells",
-                "desc": "On enemy death, sometimes spawn 3–4 shrapnel splashes dealing 40% of lethal damage.",
+                "desc": "On enemy death, 25/35/45% spawn 3–4 shrapnel splashes dealing 40% of lethal damage.",
                 "cost": 16,
                 "rarity": 3,
                 "max_level": 3,
@@ -2596,7 +2596,7 @@ def show_shop_screen(screen) -> Optional[str]:
             {
                 "id": "coupon",
                 "name": "Coupon",
-                "desc": "Permanently reduce all shop prices this run.",
+                "desc": "Permanently reduce 5% all shop prices this run.",
                 "cost": 10,
                 "rarity": 2,
                 "max_level": COUPON_MAX_LEVEL,
