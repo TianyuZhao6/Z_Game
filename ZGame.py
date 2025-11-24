@@ -2878,7 +2878,8 @@ def show_shop_screen(screen) -> Optional[str]:
             header_h = line_h
             panel_h = 16 + header_h + rows * line_h + 12
             # Dock under the NEXT button and hug the left margin.
-            panel_x = margin_side
+            # nudge right for balance but keep some margin
+            panel_x = max(margin_side, int(VIEW_W * 0.075))
             # place below the buttons but keep on-screen
             base_y = y + card_h + 220
             panel_y = min(VIEW_H - panel_h - margin_bottom, base_y)
