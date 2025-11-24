@@ -986,7 +986,7 @@ BONE_PLATING_COLOR = (210, 235, 255)
 BONE_PLATING_GLOW = (200, 245, 255, 140)
 # --- Aegis Pulse (shield-synergy pulse) ---
 AEGIS_PULSE_BASE_RADIUS = 100
-AEGIS_PULSE_RADIUS_PER_LEVEL = 25
+AEGIS_PULSE_RADIUS_PER_LEVEL = 20
 AEGIS_PULSE_BASE_DAMAGE = 15
 AEGIS_PULSE_DAMAGE_PER_LEVEL = 7
 AEGIS_PULSE_BASE_COOLDOWN = 4.0
@@ -5933,6 +5933,9 @@ def _player_has_any_shield(player) -> bool:
 def _apply_aegis_pulse_damage(player, game_state: "GameState", zombies, cx: float, cy: float,
                               radius: float, damage: int) -> None:
     rr = float(radius)
+    dmg = int(max(0, damage))
+    if getattr(game_state, "biome_active", None) == "Scorched Hell":
+        dmg = int(round(dmg * 2.0))
     text_kind = "aegis"
     # Hit destructible obstacles (red blocks) the same way bullets do
     for gp, ob in list(getattr(game_state, "obstacles", {}).items()):
@@ -5962,7 +5965,7 @@ def _apply_aegis_pulse_damage(player, game_state: "GameState", zombies, cx: floa
         dy = z.rect.centery - cy
         if dx * dx + dy * dy > (rr + zr) ** 2:
             continue
-        dealt = int(max(0, damage))
+        dealt = int(max(0, dmg))
         if dealt <= 0:
             continue
         if getattr(z, "type", "") == "boss_mist":

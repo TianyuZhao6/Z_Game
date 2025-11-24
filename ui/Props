@@ -43,7 +43,7 @@ Pairs well with range and pierce so you can focus the marked target while hittin
 2. Defense & Survival Props
 
 Not just raw HP—give them interesting defensive patterns.
-2.1. Bone Plating rarity: 2
+2.1. Bone Plating rarity: 2  √
 Effect: Every 6 seconds, gain 2hp plating. Stacks are unlimited (reset each level). Purchase limit 5; once capped, any time you have plating it negates the next hit entirely (consuming one stack even if the damage exceeds the plating).
 Synergy:
 Strong for beginners / melee risk-takers.
@@ -66,18 +66,16 @@ Synergy:
 Works well with Bone Plating (you can “intentionally” take occasional hits).
 Encourages tanky, lower-mobility builds.
 
-2.5. Aegis Pulse
+2.5. Aegis Pulse  √
     Trigger condition
 Only active while the player has any shield HP:
 player.shield_hp > 0 (biome/domain shields, future shield props)
 OR carapace_shield_hp > 0 (your Carapace one-time shield)
 
-Effect
-
+Effect:
 Every X seconds, while shield is present, emit a hexagonal force field centered on the player:
 Shape: visually rendered as a hexagon; collision can be:
-either a circle in code, and you just draw a hex/oct outline, or
-
+either a circle in code, and you just draw a hex outline, or
 All enemies whose hitbox intersects the field take damage.
 
 3. Economy & Bandit Interaction Props
