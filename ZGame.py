@@ -2530,8 +2530,8 @@ def show_shop_screen(screen) -> Optional[str]:
                 "id": "aegis_pulse",
                 "name": "Aegis Pulse",
                 "desc": "When you have any shield, periodically release a hexagonal force field that damages nearby enemies.",
-                "cost": 14,
-                "rarity": 3,
+                "cost": 25,
+                "rarity": 4,
                 "max_level": 5,
                 "apply": lambda: META.update(
                     aegis_pulse_level=min(5, int(META.get("aegis_pulse_level", 0)) + 1)
@@ -2689,9 +2689,17 @@ def show_shop_screen(screen) -> Optional[str]:
     def _prop_max_level(it):
         return it.get("max_level", None)
 
+    def _prop_at_cap(it):
+        """Return True if this item has a max_level and the player already meets or exceeds it."""
+        max_lvl = _prop_max_level(it)
+        if max_lvl is None:
+            return False
+        lvl = _prop_level(it)
+        return lvl is not None and lvl >= max_lvl
+
     def roll_offers():
         # base pool (no reroll)
-        pool = [c for c in catalog if c.get("id") != "reroll"]
+        pool = [c for c in catalog if c.get("id") != "reroll" and not _prop_at_cap(c)]
         # start with any locked cards from previous shops
         locked_cards = []
         for lid in locked_ids:
@@ -2736,6 +2744,8 @@ def show_shop_screen(screen) -> Optional[str]:
     if slots_cache is not None or reroll_cache is not None:
         normal_slots = copy.deepcopy(slots_cache) if slots_cache is not None else []
         reroll_offer = copy.deepcopy(reroll_cache)
+        # purge any cached cards that reached cap since last shop
+        normal_slots = [c for c in normal_slots if c and not _prop_at_cap(c)]
         if not normal_slots:
             offers = roll_offers()
             normal_slots, reroll_offer = _split_offers(offers)
@@ -2852,34 +2862,42 @@ def show_shop_screen(screen) -> Optional[str]:
             if lvl is not None and lvl > 0 and itm.get("id") != "reroll":
                 owned.append((itm["name"], lvl, max_lvl))
         if owned:
-            panel_w = 320
-            line_h = 22
-            max_lines = 8
-            panel_h = 32 + line_h * min(len(owned), max_lines)
             margin_side = 40
             margin_bottom = 70
-            # Prefer the right side next to the cards if there's room,
-            # otherwise fall back to bottom-left.
-            right_space = VIEW_W - (start_x + total_w) - margin_side
-            if right_space >= panel_w:
-                panel_x = VIEW_W - panel_w - margin_side
-                panel_y = y
-            else:
-                panel_x = margin_side
-                panel_y = VIEW_H - panel_h - margin_bottom
+            line_h = font.get_linesize()
+            name_w_max = max(font.render(name, True, (0, 0, 0)).get_width() for name, _, _ in owned)
+            col_w = max(170, name_w_max + 60)
+            col_gap = 14
+            cols = 1
+            if len(owned) > 8:
+                cols = 2
+            if len(owned) > 16:
+                cols = 3
+            rows = max(1, math.ceil(len(owned) / cols))
+            panel_w = col_w * cols + col_gap * (cols - 1) + 28
+            header_h = line_h
+            panel_h = 16 + header_h + rows * line_h + 12
+            # Dock under the NEXT button and hug the left margin.
+            panel_x = margin_side
+            # place below the buttons but keep on-screen
+            base_y = y + card_h + 220
+            panel_y = min(VIEW_H - panel_h - margin_bottom, base_y)
             panel = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
             pygame.draw.rect(screen, SHOP_BOX_BG, panel, border_radius=14)
             pygame.draw.rect(screen, SHOP_BOX_BORDER, panel, 2, border_radius=14)
             header = font.render("Possession", True, (220, 220, 230))  # 或你喜欢的标题
-            screen.blit(header, header.get_rect(left=panel.x + 14, top=panel.y + 6))
-            yy = panel.y + 6 + font.get_linesize()
-            for name, lvl, max_lvl in owned:
+            screen.blit(header, header.get_rect(left=panel.x + 14, top=panel.y + 8))
+            base_y = panel.y + 8 + header_h + 4
+            for idx, (name, lvl, max_lvl) in enumerate(owned):
+                col = idx % cols
+                row = idx // cols
+                x0 = panel.x + 14 + col * (col_w + col_gap)
+                y0 = base_y + row * line_h
                 name_surf = font.render(name, True, (210, 210, 210))
                 lvl_str = f"{lvl}/{max_lvl}" if max_lvl is not None else f"x{lvl}"
                 lvl_surf = font.render(lvl_str, True, (180, 230, 255))
-                screen.blit(name_surf, (panel.x + 14, yy))
-                screen.blit(lvl_surf, lvl_surf.get_rect(right=panel.right - 14, top=yy))
-                yy += line_h
+                screen.blit(name_surf, (x0, y0))
+                screen.blit(lvl_surf, lvl_surf.get_rect(right=x0 + col_w, top=y0))
         # --- Reroll 按钮：在卡片下方单独一行 ---
         reroll_rect = None
         if reroll_offer is not None:
