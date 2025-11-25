@@ -722,7 +722,7 @@ COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
 COIN_GRAVITY = 400.0  # gravity pulling coin back to ground
 COIN_RESTITUTION = 0.45  # energy kept on bounce
 COIN_MIN_BOUNCE = 30.0  # stop bouncing when below this upward speed
-RAVAGER_HP_MULT = 5.0  # Ravager: 5x base HP
+RAVAGER_HP_MULT = 10.0  # Ravager: 10x base HP
 RAVAGER_ATK_MULT = 2.0  # 2.0x contact damage
 RAVAGER_SIZE_MULT = 1.25  # bigger than normal, smaller than boss
 RAVAGER_CONTACT_MULT = 2.0  # scales contact damage
@@ -2540,12 +2540,13 @@ def show_shop_screen(screen) -> Optional[str]:
             {
                 "id": "bone_plating",
                 "name": "Bone Plating",
-                "desc": "Every 6s gain 2 HP plating; max out at 5 buys to unlock full-hit negation.",
+                "desc": "Every 6s gain 2 HP plating; max out at 5 buys to unlock full-hit negation, -2% speed.",
                 "cost": 12,
                 "rarity": 2,
                 "max_level": 5,
                 "apply": lambda: META.update(
-                    bone_plating_level=min(5, int(META.get("bone_plating_level", 0)) + 1)
+                    bone_plating_level=min(5, int(META.get("bone_plating_level", 0)) + 1),
+                    speed_mult=max(0.30, float(META.get("speed_mult", 1.0)) * 0.98),
                 ),
             },
             {
