@@ -3949,6 +3949,7 @@ class Zombie:
         if is_bandit:
             bandit_break_t = max(0.0, float(getattr(self, "bandit_break_t", 0.0)) - dt)
             self.bandit_break_t = bandit_break_t
+        bandit_prev_pos = getattr(self, "_bandit_last_pos", (self.x, self.y))
         if not hasattr(self, "attack_timer"): self.attack_timer = 0.0
         self.attack_timer += dt
         # Cooldown between applying contact damage to blocking destructible tiles
@@ -4283,6 +4284,29 @@ class Zombie:
                     game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
                 self.bandit_break_t = max(float(getattr(self, "bandit_break_t", 0.0)), BANDIT_BREAK_SLOW_TIME)
                 self._focus_block = None
+        if is_bandit:
+            moved_len = ((self.x - bandit_prev_pos[0]) ** 2 + (self.y - bandit_prev_pos[1]) ** 2) ** 0.5
+            if moved_len < 1.0:
+                self._bandit_stuck_t = float(getattr(self, "_bandit_stuck_t", 0.0)) + dt
+            else:
+                self._bandit_stuck_t = 0.0
+            self._bandit_last_pos = (self.x, self.y)
+            if bandit_flee and getattr(self, "_bandit_stuck_t", 0.0) > 0.6 and fd is not None:
+                best = None
+                bestd = -1
+                for ny, row in enumerate(fd):
+                    for nx, d in enumerate(row):
+                        if (nx, ny) in game_state.obstacles:
+                            continue
+                        if d > bestd:
+                            bestd = d
+                            best = (nx, ny)
+                if best:
+                    self._bypass_cell = best
+                    self._bypass_t = 1.2
+                    self._ff_commit = None
+                    self._ff_commit_t = 0.0
+                    self._bandit_stuck_t = 0.0
         # Bulldozer cleanup: crush anything we hit during sweep-collision
         if getattr(self, "can_crush_all_blocks", False) and getattr(self, "_crush_queue", None):
             for ob in list(self._crush_queue):
