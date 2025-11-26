@@ -1289,7 +1289,7 @@ def apply_golden_interest_payout() -> int:
 
 
 def show_golden_interest_popup(screen, gain: int, new_total: int) -> None:
-    """Simple modal over the shop that confirms Golden Interest payout."""
+    """Simple modal over the shop that confirms Golden Interest payout with a coin-fountain flair."""
     clock = pygame.time.Clock()
     title_font = pygame.font.SysFont(None, 54, bold=True)
     body_font = pygame.font.SysFont(None, 30)
@@ -1304,8 +1304,54 @@ def show_golden_interest_popup(screen, gain: int, new_total: int) -> None:
     panel.center = (VIEW_W // 2, VIEW_H // 2)
     btn_rect = pygame.Rect(0, 0, 180, 54)
     btn_rect.center = (panel.centerx, panel.bottom - 70)
+    # coin fountain particles
+    coins: list[dict] = []
+    spawn_accum = 0.0
+    panel_block = panel.inflate(60, 60)
+
+    def spawn_coin():
+        # try a few times to avoid spawning over the modal
+        for _ in range(4):
+            x = random.uniform(40, VIEW_W - 40)
+            y = random.uniform(40, VIEW_H - 40)
+            if panel_block.collidepoint(x, y):
+                continue
+            vx = random.uniform(-220, 220)
+            vy = random.uniform(-280, -120)
+            coins.append({
+                "x": x,
+                "y": y,
+                "vx": vx,
+                "vy": vy,
+                "ttl": 3.0,
+                "r": random.randint(5, 8),
+            })
+            break
+
     while True:
+        dt = clock.tick(60) / 1000.0
+        # spawn coins continuously until the modal closes
+        spawn_accum += dt * 14.0  # ~14 coins/sec
+        while spawn_accum >= 1.0:
+            spawn_coin()
+            spawn_accum -= 1.0
+        # update coins
+        alive = []
+        for c in coins:
+            c["ttl"] -= dt
+            if c["ttl"] <= 0:
+                continue
+            c["vy"] += 420 * dt
+            c["x"] += c["vx"] * dt
+            c["y"] += c["vy"] * dt
+            alive.append(c)
+        coins = alive
+
         screen.blit(dim, (0, 0))
+        # draw fountain behind panel so it never blocks the modal
+        for c in coins:
+            pygame.draw.circle(screen, gold, (int(c["x"]), int(c["y"])), int(c["r"]))
+
         pygame.draw.rect(screen, (30, 24, 10), panel, border_radius=14)
         pygame.draw.rect(screen, gold, panel, width=3, border_radius=14)
         title = title_font.render("Golden Interest", True, gold)
@@ -1329,7 +1375,6 @@ def show_golden_interest_popup(screen, gain: int, new_total: int) -> None:
             if ev.type == pygame.MOUSEBUTTONDOWN and btn_rect.collidepoint(ev.pos):
                 flush_events()
                 return
-        clock.tick(60)
 
 
 def save_progress(current_level: int,
