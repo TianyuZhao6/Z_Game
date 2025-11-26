@@ -1295,6 +1295,7 @@ def show_golden_interest_popup(screen, gain: int, new_total: int) -> None:
     body_font = pygame.font.SysFont(None, 30)
     btn_font = pygame.font.SysFont(None, 32)
     gold = (255, 215, 120)
+    spawn_fountain = gain > 0
     # dim overlay
     dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
     dim.fill((0, 0, 0, 170))
@@ -1307,6 +1308,17 @@ def show_golden_interest_popup(screen, gain: int, new_total: int) -> None:
     # coin fountain particles
     coins: list[dict] = []
     spawn_accum = 0.0
+    # fountain intensity scales with how much interest was gained
+    if gain <= 0:
+        spawn_rate = 0.0
+    elif gain < 10:
+        spawn_rate = 4.0
+    elif gain < 30:
+        spawn_rate = 14.0
+    elif gain < 50:
+        spawn_rate = 20.0
+    else:
+        spawn_rate = 28.0
     panel_block = panel.inflate(60, 60)
 
     def spawn_coin():
@@ -1330,36 +1342,45 @@ def show_golden_interest_popup(screen, gain: int, new_total: int) -> None:
 
     while True:
         dt = clock.tick(60) / 1000.0
-        # spawn coins continuously until the modal closes
-        spawn_accum += dt * 14.0  # ~14 coins/sec
-        while spawn_accum >= 1.0:
-            spawn_coin()
-            spawn_accum -= 1.0
+        # spawn coins continuously until the modal closes (only if we earned interest)
+        if spawn_fountain:
+            spawn_accum += dt * spawn_rate  # coins per second based on gain
+            while spawn_accum >= 1.0:
+                spawn_coin()
+                spawn_accum -= 1.0
         # update coins
         alive = []
-        for c in coins:
-            c["ttl"] -= dt
-            if c["ttl"] <= 0:
-                continue
-            c["vy"] += 420 * dt
-            c["x"] += c["vx"] * dt
-            c["y"] += c["vy"] * dt
-            alive.append(c)
+        if spawn_fountain:
+            for c in coins:
+                c["ttl"] -= dt
+                if c["ttl"] <= 0:
+                    continue
+                c["vy"] += 420 * dt
+                c["x"] += c["vx"] * dt
+                c["y"] += c["vy"] * dt
+                alive.append(c)
         coins = alive
 
         screen.blit(dim, (0, 0))
         # draw fountain behind panel so it never blocks the modal
-        for c in coins:
-            pygame.draw.circle(screen, gold, (int(c["x"]), int(c["y"])), int(c["r"]))
+        if spawn_fountain:
+            for c in coins:
+                pygame.draw.circle(screen, gold, (int(c["x"]), int(c["y"])), int(c["r"]))
 
         pygame.draw.rect(screen, (30, 24, 10), panel, border_radius=14)
         pygame.draw.rect(screen, gold, panel, width=3, border_radius=14)
         title = title_font.render("Golden Interest", True, gold)
         screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 48)))
-        desc = body_font.render("Your saved coins generated interest!", True, (235, 225, 205))
+        desc_text = (
+            "Your saved coins generated interest!"
+            if gain > 0
+            else "Saving more coins in the shop to earn interest!"
+        )
+        desc = body_font.render(desc_text, True, (235, 225, 205))
         screen.blit(desc, desc.get_rect(center=(panel.centerx, panel.top + 96)))
-        gain_text = body_font.render(f"+{gain} coins (now: {new_total})", True, gold)
-        screen.blit(gain_text, gain_text.get_rect(center=(panel.centerx, panel.top + 140)))
+        if gain > 0:
+            gain_text = body_font.render(f"+{gain} coins (now: {new_total})", True, gold)
+            screen.blit(gain_text, gain_text.get_rect(center=(panel.centerx, panel.top + 140)))
         pygame.draw.rect(screen, (60, 50, 20), btn_rect, border_radius=10)
         pygame.draw.rect(screen, gold, btn_rect, width=2, border_radius=10)
         btn_label = btn_font.render("Next", True, gold)
