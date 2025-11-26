@@ -14,16 +14,16 @@ Multi-element attribute synergy:
 
 状态流 / 仆从流 / 赌狗流 等核心够稳的时候，再慢慢加进。
 ================================PROPS======================================
-1. Core Offense Props
+'1. Core Offense Props'
 
-1.1. Piercing Rounds  √ =======================================================================
-Effect: Player's Bullets can pass through N enemies, each hit deals full or slightly reduced damage.
+;1.1. Piercing Rounds  √ ======================================================================='
+Effect: Bullets can pass through N enemies, each hit deals full or slightly reduced damage.
 Synergy:
 Strong with range (bullets travel farther, hit more).
 Strong with firerate (more bullets → more multi-hits).
 Good vs swarms, slightly weaker vs single bosses.
 
-1.2. Ricochet Scope   √  ==========================================================================
+;1.2. Ricochet Scope   √  =========================================================================='
 Effect: When a bullet hits an enemy or wall, it can bounce once toward the nearest enemy if exists.
 Synergy:
 Works nicely with your obstacles (walls turn into combo tools).
@@ -37,7 +37,7 @@ High firerate builds become DoT machines.
 Good vs high-HP bosses (persistent damage even while kiting).
 Can interact with other props: e.g., “Hemorrhage” that increases damage to bleeding targets.
 
-1.4. Shrapnel Shells √  ==========================================================================
+;1.4. Shrapnel Shells √  =========================================================================='
 Effect: On enemy death, there is a chance to spawn 3–4 small projectiles in random directions.
 Synergy:
 Insane in big waves (chain-kill feeling).
@@ -45,16 +45,16 @@ More effective with crit (shrapnel can crit).
 You can add a prop later that upgrades shrapnel size or count.
 
 1.5. Mark of Vulnerability
-Effect: Every X seconds, randomly “mark” an enemy; marked enemies take +20% damage from all sources.
+Effect: Every X seconds, randomly “mark” an enemy, marked enemies take +20% damage from all sources.
 Synergy:
 Good vs elite / boss enemies.
 Pairs well with range and pierce so you can focus the marked target while hitting others.
 
-2. Defense & Survival Props
+'2. Defense & Survival Props'
 
 Not just raw HP—give them interesting defensive patterns.
-2.1. Bone Plating rarity: 2  √  ==========================================================================
-Effect: Every 6 seconds, gain 2hp plating. Stacks are unlimited (reset each level). Purchase limit 5; once capped, any time you have plating it negates the next hit entirely (consuming one stack even if the damage exceeds the plating).
+;2.1. Bone Plating rarity: 2  √  ==========================================================================
+Effect: Every 6 seconds, gain 2hp plating. Stacks are unlimited (reset each level). Purchase limit 5, once capped, any time you have plating it negates the next hit entirely (consuming one stack even if the damage exceeds the plating).
 Synergy:
 Strong for beginners / melee risk-takers.
 Combos with high speed playstyles (you can dash in to grab coins safely).
@@ -77,7 +77,7 @@ Synergy:
 Works well with Bone Plating (you can “intentionally” take occasional hits).
 Encourages tanky, lower-mobility builds.
 
-2.5. Aegis Pulse  √  ==========================================================================
+;2.5. Aegis Pulse  √  ==========================================================================
     Trigger condition
 Only active while the player has any shield HP:
 player.shield_hp > 0 (biome/domain shields, future shield props)
@@ -89,10 +89,10 @@ Shape: visually rendered as a hexagon; collision can be:
 either a circle in code, and you just draw a hex outline, or
 All enemies whose hitbox intersects the field take damage.
 
-2.6. Carapace  √  ==========================================================================
+;2.6. Carapace  √  ==========================================================================
 Effect: Add a one time shield for player
 
-3. Economy & Bandit Interaction Props
+'3. Economy & Bandit Interaction Props'
 
 These are great for your Bandit mechanic and the shop fantasy.
 
@@ -108,11 +108,11 @@ Synergy:
 Converts the “punishment” enemy into a high-reward target.
 Combos with high speed (easier to chase them down) and burst damage.
 
-3.3. Coin Magnet !!!!! √  ==========================================================================
-Effect: Increases coin pickup radius.
+;3.3. Coin Magnet !!!!! √  ==========================================================================
+Effect: Increases coin pickup radius. Each level increase 60 px.
 Synergy:
 Super good with high movement speed, kiting builds.
-Makes dangerous coin chasing much safer; good for wave-end cleanup.
+Makes dangerous coin chasing much safer, good for wave-end cleanup.
 
 3.4. Golden Interest
 Effect: At the start of each level, gain +X% of your unspent coins as bonus.
@@ -126,10 +126,10 @@ Synergy:
 Combined with Wanted Poster → “Bandit hunter” build.
 Fits your current collision volume and aura design (you can show a glowing outline).
   
-3.6. Coupon  √  ==========================================================================
+;3.6. Coupon  √  ==========================================================================
 Effect： Permanent decrease the price in shop by 5%
 
-4. Utility / Control Props
+'4. Utility / Control Props'
 These change the way the player moves or controls space.
 
 4.1. Time Dilation Boots
@@ -146,21 +146,21 @@ Obvious with speed and any dash cooldown reduction.
 Very fun for aggressive play around obstacles.
 
 4.3. Sticky Tar Flask
-Effect: Occasionally drops a slowing puddle where you stand for a second; enemies in it are slowed and take minor DoT.
+Effect: Occasionally drops a slowing puddle where you stand for a second, enemies in it are slowed and take minor DoT.
 Synergy:
 Strong near obstacles, choke points.
 Works with knockback / push effects if you add them later.
  
-4.4. Auto-Turret Backpack !!!!  √  ==========================================================================
+;4.4. Auto-Turret !!!!  √  ==========================================================================
 Effect: Deploys a small turret that follows you and fires weak bullets at nearest enemy.
 Synergy:
 Scales with damage buffs if turret uses your damage.
 Good with any prop that boosts “all sources” damage (e.g., Mark of Vulnerability).
 
-4.5 Stationary Turret    √  ==========================================================================
+;4.5 Stationary Turret    √  ==========================================================================
 Similiar to Auto Turret, just can not move
 
-5. Crit, Element, and Synergy Props
+'5. Crit, Element, and Synergy Props'
 
 These give crit & status builds more identity, especially since you already have crit chance.
 
@@ -186,4 +186,4 @@ Gives non-speed builds some safety through slows.
 Effect: Every N-th hit chains lightning to nearby enemy for bonus damage.
 Synergy:
 Rewards sustained fire (auto-fire weapons).
-Great vs clustered waves; weaker vs single boss, so still somewhat balanced.
+Great vs clustered waves, weaker vs single boss, so still somewhat balanced.
