@@ -742,6 +742,9 @@ SHOP_PRICE_REROLL_EXP = 1.06  # Reroll 的涨价更温和
 SHOP_PRICE_REROLL_STACK = 1.25  # 多次 Reroll 叠加更贵（防刷）
 COUPON_DISCOUNT_PER = 0.05  # each Coupon gives 5% off all shop prices this run
 COUPON_MAX_LEVEL = 4
+GOLDEN_INTEREST_RATE_PER_LEVEL = 0.05  # 5%/lvl interest on unspent coins
+GOLDEN_INTEREST_CAPS = (30, 50, 70, 90)  # per-wave caps by level (1-4)
+GOLDEN_INTEREST_MAX_LEVEL = 4
 # ----- healing drop tuning -----
 HEAL_DROP_CHANCE_ZOMBIE = 0.12  # 12% when a zombie dies
 HEAL_DROP_CHANCE_BLOCK = 0.08  # 8% when a destructible block is broken
@@ -1034,6 +1037,7 @@ META = {
     "bone_plating_level": 0,
     "shrapnel_level": 0,
     "carapace_shield_hp": 0,
+    "golden_interest_level": 0,
     "coupon_level": 0,
     "aegis_pulse_level": 0,
 }
@@ -1064,6 +1068,7 @@ def reset_run_state():
         "bone_plating_level": 0,
         "shrapnel_level": 0,
         "carapace_shield_hp": 0,
+        "golden_interest_level": 0,
         "coupon_level": 0,
         "aegis_pulse_level": 0,
     })
@@ -1257,6 +1262,30 @@ def _clear_shop_cache():
     globals().pop("_shop_reroll_id_cache", None)
     globals().pop("_shop_reroll_cache", None)
     globals().pop("_resume_shop_cache", None)
+
+
+def _golden_interest_gain(coins: int, level: int) -> int:
+    """Return the per-wave interest payout based on current coins and Golden Interest level."""
+    lvl = max(0, min(GOLDEN_INTEREST_MAX_LEVEL, int(level)))
+    if lvl <= 0 or coins <= 0:
+        return 0
+    rate = GOLDEN_INTEREST_RATE_PER_LEVEL * lvl
+    cap = GOLDEN_INTEREST_CAPS[min(lvl - 1, len(GOLDEN_INTEREST_CAPS) - 1)]
+    raw_gain = math.floor(max(0, coins) * rate)
+    return max(0, min(int(raw_gain), int(cap)))
+
+
+def apply_golden_interest_payout() -> int:
+    """
+    Apply Golden Interest on shop exit (start of next wave).
+    Returns the coins gained so callers can surface feedback if desired.
+    """
+    coins = int(META.get("spoils", 0))
+    level = int(META.get("golden_interest_level", 0))
+    gain = _golden_interest_gain(coins, level)
+    if gain > 0:
+        META["spoils"] = coins + gain
+    return gain
 
 
 def save_progress(current_level: int,
@@ -2123,6 +2152,11 @@ def show_pause_menu(screen, background_surf):
                 "max_level": 5,
             },
             {
+                "id": "golden_interest",
+                "name": "Golden Interest",
+                "max_level": GOLDEN_INTEREST_MAX_LEVEL,
+            },
+            {
                 "id": "coupon",
                 "name": "Coupon",
                 "max_level": COUPON_MAX_LEVEL,
@@ -2144,6 +2178,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("pierce_level", 0))
         if iid == "shrapnel_shells":
             return int(META.get("shrapnel_level", 0))
+        if iid == "golden_interest":
+            return int(META.get("golden_interest_level", 0))
         if iid == "coupon":
             return int(META.get("coupon_level", 0))
         if iid == "bone_plating":
@@ -2595,6 +2631,19 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "golden_interest",
+                "name": "Golden Interest",
+                "desc": "Earn interest on unspent coins after shopping (5/10/15/20%, cap 30/50/70/90).",
+                "cost": 12,
+                "rarity": 2,
+                "max_level": GOLDEN_INTEREST_MAX_LEVEL,
+                "apply": lambda: META.update(
+                    golden_interest_level=min(
+                        GOLDEN_INTEREST_MAX_LEVEL, int(META.get("golden_interest_level", 0)) + 1
+                    )
+                ),
+            },
+            {
                 "id": "coupon",
                 "name": "Coupon",
                 "desc": "Permanently reduce 5% all shop prices this run.",
@@ -2678,6 +2727,8 @@ def show_shop_screen(screen) -> Optional[str]:
         if iid == "carapace":
             hp = int(META.get("carapace_shield_hp", 0))
             return (hp + 19) // 20
+        if iid == "golden_interest":
+            return int(META.get("golden_interest_level", 0))
         if iid == "coupon":
             return int(META.get("coupon_level", 0))
         if iid == "bone_plating":
@@ -2978,6 +3029,7 @@ def show_shop_screen(screen) -> Optional[str]:
                                 "__RESTART__": "restart",
                                 "__EXIT__": "exit"}[chosen_biome]
                     globals()["_next_biome"] = chosen_biome  # 正常选择到场景名
+                    apply_golden_interest_payout()
                     _clear_shop_cache()
                     return None  # 照常结束商店，进入下一关
                 # 1) lock toggle check – click on small lock box
