@@ -1288,6 +1288,50 @@ def apply_golden_interest_payout() -> int:
     return gain
 
 
+def show_golden_interest_popup(screen, gain: int, new_total: int) -> None:
+    """Simple modal over the shop that confirms Golden Interest payout."""
+    clock = pygame.time.Clock()
+    title_font = pygame.font.SysFont(None, 54, bold=True)
+    body_font = pygame.font.SysFont(None, 30)
+    btn_font = pygame.font.SysFont(None, 32)
+    gold = (255, 215, 120)
+    # dim overlay
+    dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    dim.fill((0, 0, 0, 170))
+    # panel
+    panel_w, panel_h = 520, 260
+    panel = pygame.Rect(0, 0, panel_w, panel_h)
+    panel.center = (VIEW_W // 2, VIEW_H // 2)
+    btn_rect = pygame.Rect(0, 0, 180, 54)
+    btn_rect.center = (panel.centerx, panel.bottom - 70)
+    while True:
+        screen.blit(dim, (0, 0))
+        pygame.draw.rect(screen, (30, 24, 10), panel, border_radius=14)
+        pygame.draw.rect(screen, gold, panel, width=3, border_radius=14)
+        title = title_font.render("Golden Interest", True, gold)
+        screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 48)))
+        desc = body_font.render("Your saved coins generated interest!", True, (235, 225, 205))
+        screen.blit(desc, desc.get_rect(center=(panel.centerx, panel.top + 96)))
+        gain_text = body_font.render(f"+{gain} coins (now: {new_total})", True, gold)
+        screen.blit(gain_text, gain_text.get_rect(center=(panel.centerx, panel.top + 140)))
+        pygame.draw.rect(screen, (60, 50, 20), btn_rect, border_radius=10)
+        pygame.draw.rect(screen, gold, btn_rect, width=2, border_radius=10)
+        btn_label = btn_font.render("Next", True, gold)
+        screen.blit(btn_label, btn_label.get_rect(center=btn_rect.center))
+        pygame.display.flip()
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if ev.type == pygame.KEYDOWN and ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_ESCAPE):
+                flush_events()
+                return
+            if ev.type == pygame.MOUSEBUTTONDOWN and btn_rect.collidepoint(ev.pos):
+                flush_events()
+                return
+        clock.tick(60)
+
+
 def save_progress(current_level: int,
                   max_wave_reached: int | None = None,
                   pending_shop: bool = False):
@@ -3019,6 +3063,10 @@ def show_shop_screen(screen) -> Optional[str]:
             if ev.type == pygame.MOUSEBUTTONDOWN:
                 if close.collidepoint(ev.pos):
                     flush_events()
+                    # Show Golden Interest payout before biome selection (only if owned)
+                    if int(META.get("golden_interest_level", 0)) > 0:
+                        gain = apply_golden_interest_payout()
+                        show_golden_interest_popup(screen, gain, int(META.get("spoils", 0)))
                     # <<< 在 NEXT 之后弹出“场景四选一” >>>
                     chosen_biome = show_biome_picker_in_shop(screen)
                     # 识别从翻卡界面透传出来的暂停菜单选择
@@ -3029,7 +3077,6 @@ def show_shop_screen(screen) -> Optional[str]:
                                 "__RESTART__": "restart",
                                 "__EXIT__": "exit"}[chosen_biome]
                     globals()["_next_biome"] = chosen_biome  # 正常选择到场景名
-                    apply_golden_interest_payout()
                     _clear_shop_cache()
                     return None  # 照常结束商店，进入下一关
                 # 1) lock toggle check – click on small lock box
