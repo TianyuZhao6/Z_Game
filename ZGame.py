@@ -1449,6 +1449,19 @@ def save_progress(current_level: int,
             if int(globals().get("_baseline_for_level", -999)) == int(current_level):
                 if "_coins_at_level_start" in globals():
                     meta_for_save["spoils"] = int(globals()["_coins_at_level_start"])
+                items_base = globals().get("_items_run_baseline", {})
+                try:
+                    base_spawn = int(items_base.get("spawned", globals().get("_run_items_spawned_start",
+                                                                             META.get("run_items_spawned", 0))))
+                except Exception:
+                    base_spawn = int(META.get("run_items_spawned", 0))
+                try:
+                    base_collect = int(items_base.get("collected", globals().get("_run_items_collected_start",
+                                                                                 META.get("run_items_collected", 0))))
+                except Exception:
+                    base_collect = int(META.get("run_items_collected", 0))
+                meta_for_save["run_items_spawned"] = max(0, int(base_spawn))
+                meta_for_save["run_items_collected"] = max(0, int(base_collect))
     except Exception:
         pass
     # 2) Persist the baseline bundle if present
@@ -1465,6 +1478,14 @@ def save_progress(current_level: int,
             pass
     if "_player_level_baseline" in globals() and isinstance(globals()["_player_level_baseline"], dict):
         baseline_bundle["player"] = dict(globals()["_player_level_baseline"])
+    if "_items_run_baseline" in globals() and isinstance(globals()["_items_run_baseline"], dict):
+        try:
+            ib = dict(globals()["_items_run_baseline"])
+            if "count_this_level" in ib and ib["count_this_level"] is not None:
+                ib["count_this_level"] = int(ib["count_this_level"])
+            baseline_bundle["items"] = ib
+        except Exception:
+            pass
     data = {
         "mode": "progress",
         "current_level": int(current_level),
@@ -1609,6 +1630,24 @@ def load_save() -> Optional[dict]:
                     globals()["_baseline_for_level"] = int(b["level"])
                 if "coins" in b:
                     globals()["_coins_at_level_start"] = int(b["coins"])
+                if isinstance(b.get("items"), dict):
+                    try:
+                        ib = b.get("items", {})
+                        spawn = int(ib.get("spawned", 0))
+                        collect = int(ib.get("collected", 0))
+                        cnt = ib.get("count_this_level", None)
+                        if cnt is not None:
+                            try:
+                                cnt = int(cnt)
+                            except Exception:
+                                cnt = None
+                        globals()["_items_run_baseline"] = {
+                            "spawned": spawn,
+                            "collected": collect,
+                            "count_this_level": cnt,
+                        }
+                    except Exception:
+                        pass
                 if isinstance(b.get("player"), dict):
                     globals()["_player_level_baseline"] = dict(b["player"])
         except Exception as e:
@@ -1637,10 +1676,12 @@ def _clear_level_start_baseline():
     globals().pop("_coins_at_level_start", None)
     globals().pop("_coins_at_shop_entry", None)
     globals().pop("_player_level_baseline", None)
+    globals().pop("_items_run_baseline", None)
+    globals().pop("_items_counted_level", None)
     globals().pop("_restart_from_shop", None)
 
 
-def _capture_level_start_baseline(level_idx: int, player: "Player"):
+def _capture_level_start_baseline(level_idx: int, player: "Player", game_state: "GameState" | None = None):
     """Record the exact state the first time we enter this level in this run."""
     globals()["_baseline_for_level"] = int(level_idx)
     globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
@@ -1652,6 +1693,28 @@ def _capture_level_start_baseline(level_idx: int, player: "Player"):
         "bullet_damage": int(getattr(player, "bullet_damage", META.get("base_dmg", 0) + META.get("dmg", 0))),
         "max_hp": int(getattr(player, "max_hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
         "hp": int(getattr(player, "hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
+    }
+    try:
+        base_spawn = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
+    except Exception:
+        base_spawn = int(META.get("run_items_spawned", 0))
+    try:
+        base_collect = int(globals().get("_run_items_collected_start", META.get("run_items_collected", 0)))
+    except Exception:
+        base_collect = int(META.get("run_items_collected", 0))
+    lvl_items = None
+    if game_state is not None:
+        try:
+            lvl_items = int(getattr(game_state, "items_total", len(getattr(game_state, "items", []))))
+        except Exception:
+            try:
+                lvl_items = len(getattr(game_state, "items", []))
+            except Exception:
+                lvl_items = None
+    globals()["_items_run_baseline"] = {
+        "spawned": base_spawn,
+        "collected": base_collect,
+        "count_this_level": lvl_items,
     }
 
 
@@ -1672,6 +1735,33 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
         META["spoils"] = int(globals()["_coins_at_shop_entry"])
     else:
         META["spoils"] = 0
+    # 1.5) Items: restore run-level item counters to the level-start baseline
+    items_base = globals().get("_items_run_baseline", None)
+    if isinstance(items_base, dict):
+        base_spawn = int(items_base.get("spawned", META.get("run_items_spawned", 0)))
+        base_collect = int(items_base.get("collected", META.get("run_items_collected", 0)))
+        lvl_items = items_base.get("count_this_level", None)
+    else:
+        base_spawn = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
+        base_collect = int(globals().get("_run_items_collected_start", META.get("run_items_collected", 0)))
+        lvl_items = None
+    if lvl_items is None:
+        try:
+            lvl_items = int(getattr(game_state, "items_total", len(getattr(game_state, "items", []))))
+        except Exception:
+            try:
+                lvl_items = len(getattr(game_state, "items", []))
+            except Exception:
+                lvl_items = 0
+    try:
+        lvl_items = int(lvl_items)
+    except Exception:
+        lvl_items = 0
+    META["run_items_spawned"] = max(0, int(base_spawn) + max(0, int(lvl_items)))
+    META["run_items_collected"] = max(0, int(base_collect))
+    globals()["_run_items_spawned_start"] = int(base_spawn)
+    globals()["_run_items_collected_start"] = int(base_collect)
+    globals()["_items_counted_level"] = int(level_idx)
     # 2) Clear per-level counters/state (same as before)
     if hasattr(game_state, "spoils_gained"):
         game_state.spoils_gained = 0
@@ -7927,6 +8017,23 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             pygame.draw.circle(screen, col, (data["cx"], data["cy"]), rad)
         elif kind == "zombie":
             z, cx, cy = data["z"], data["cx"], data["cy"]
+            if getattr(z, "type", "") == "bandit" and getattr(z, "radar_tagged", False):
+                base_rr = max(24, int(getattr(z, "radius", 0) * 4.0))
+                phase = float(getattr(z, "radar_ring_phase", 0.0))
+                pulse = 1.0 + 0.10 * math.sin(math.tau * phase)
+                ring_r = max(20, int(base_rr * pulse))
+                draw_iso_ground_ellipse(
+                    screen,
+                    z.rect.centerx,
+                    z.rect.centery,
+                    ring_r,
+                    (255, 60, 60),
+                    220,
+                    camx,
+                    camy,
+                    fill=False,
+                    width=4,
+                )
             player_size = int(CELL_SIZE * 0.6)
             if getattr(z, "is_boss", False) or getattr(z, "type", "") == "ravager":
                 draw_size = max(player_size, int(z.rect.w))
@@ -8382,7 +8489,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     # Assume current_level is the 0-based level index used everywhere else
     if int(globals().get("_baseline_for_level", -999)) != int(current_level):
         # First time entering this level in this run → capture
-        _capture_level_start_baseline(current_level, player)
+        _capture_level_start_baseline(current_level, player, game_state)
     else:
         # We had already entered this same level earlier in this run → restore for a clean restart
         _restore_level_start_baseline(current_level, player, game_state)

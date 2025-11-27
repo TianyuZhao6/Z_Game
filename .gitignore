@@ -1,1 +1,5 @@
 *.pyc
+diagnose_and_fix.ps1
+diagnose_python.py
+fix_python.bat
+FIX_PYTHON_ERROR.md
