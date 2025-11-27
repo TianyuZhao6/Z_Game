@@ -2905,7 +2905,9 @@ def show_shop_screen(screen) -> Optional[str]:
             return f"{protected} coins restored (at {pct}%)"
         if iid == "bone_plating":
             gain = max(0, lvl * BONE_PLATING_STACK_HP)
-            return f"Every {int(BONE_PLATING_GAIN_INTERVAL)}s gain {gain} hp shield"
+            spd_pen = max(0.0, (1.0 - float(META.get("speed_mult", 1.0))) * 100.0)
+            spd_txt = f", -{spd_pen:.0f}% speed" if spd_pen > 0 else ""
+            return f"Every {int(BONE_PLATING_GAIN_INTERVAL)}s gain {gain} hp shield{spd_txt}"
         if iid == "coupon":
             disc = int(COUPON_DISCOUNT_PER * 100 * lvl)
             return f"-{disc}% shop prices"
@@ -3027,7 +3029,7 @@ def show_shop_screen(screen) -> Optional[str]:
             if lb_lvl > 0:
                 protected = lockbox_protected_min(max(0, int(META.get("spoils", 0))), lb_lvl)
                 msg_txt = f"{protected} coins restored"
-                overlay_surf = title_font.render(msg_txt, True, (255, 230, 160))
+                overlay_surf = pygame.font.SysFont("Franklin Gothic Medium", 96).render(msg_txt, True, (255, 230, 160))
                 t = max(0.0, min(1.0, (lockbox_msg_until - now_ms) / float(lockbox_msg_life)))
                 overlay_alpha = int(255 * t)
         # Offers row ? keep slot spacing even if some cards are gone
@@ -5203,11 +5205,11 @@ class Zombie:
         if getattr(self, "type", "") == "bandit":
             cx, cy = self.rect.centerx, self.rect.bottom
             t = float(getattr(self, "_aura_t", 0.0)) % 1.0
-            base_r = max(10, int(self.radius * 4.8))
-            r = int(base_r + (self.radius * 0.8) * t)
-            alpha = int(180 - 120 * t)
+            base_r = max(14, int(self.radius * 6.0))
+            r = int(base_r + (self.radius * 1.0) * t)
+            alpha = int(200 - 140 * t)
             s = pygame.Surface((r * 2 + 4, r * 2 + 4), pygame.SRCALPHA)
-            pygame.draw.circle(s, (255, 215, 0, alpha), (r + 2, r + 2), r, width=3)
+            pygame.draw.circle(s, (255, 215, 0, alpha), (r + 2, r + 2), r, width=4)
             screen.blit(s, (cx - r - 2, cy - r - 2))
         fallback = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         color = getattr(self, "_current_color", fallback)
@@ -8954,6 +8956,7 @@ if __name__ == "__main__":
         globals()["_carry_player_state"] = None
         globals()["_pending_shop"] = False
         globals().pop("_last_spoils", None)
+        globals().pop("_next_biome", None)
     while True:
         # If we saved while in the shop last time, reopen the shop first
         if globals().get("_pending_shop", False):
