@@ -96,7 +96,7 @@ Effect: Add a one time shield for player
 
 These are great for your Bandit mechanic and the shop fantasy.
 
-3.1. Lockbox
+;3.1. Lockbox
 Effect: A percentage of your coins becomes “protected” and cannot be stolen by bandits.
 Synergy:
 Great early if bandits are frequent.
@@ -120,7 +120,7 @@ Synergy:
 Encourages the player to save coins and forgo instant power.
 Works nicely with Lockbox (protect your savings from bandits).
 
-3.5. Bandit Radar
+;3.5. Bandit Radar
 Effect: When a bandit spawns, highlight them and slow them slightly for a short duration.
 Synergy:
 Combined with Wanted Poster → “Bandit hunter” build.
