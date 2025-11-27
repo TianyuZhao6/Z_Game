@@ -748,6 +748,8 @@ GOLDEN_INTEREST_CAPS = (30, 50, 70, 90)  # per-wave caps by level (1-4)
 GOLDEN_INTEREST_MAX_LEVEL = 4
 LOCKBOX_PROTECT_RATES = (0.25, 0.40, 0.55, 0.70)
 LOCKBOX_MAX_LEVEL = len(LOCKBOX_PROTECT_RATES)
+BANDIT_RADAR_SLOW_MULT = (0.92, 0.88, 0.84, 0.80)
+BANDIT_RADAR_SLOW_DUR = (2.0, 3.0, 4.0, 5.0)
 # ----- healing drop tuning -----
 HEAL_DROP_CHANCE_ZOMBIE = 0.12  # 12% when a zombie dies
 HEAL_DROP_CHANCE_BLOCK = 0.08  # 8% when a destructible block is broken
@@ -1042,6 +1044,7 @@ META = {
     "carapace_shield_hp": 0,
     "golden_interest_level": 0,
     "lockbox_level": 0,
+    "bandit_radar_level": 0,
     "coupon_level": 0,
     "aegis_pulse_level": 0,
     "run_items_spawned": 0,
@@ -1076,6 +1079,7 @@ def reset_run_state():
         "carapace_shield_hp": 0,
         "golden_interest_level": 0,
         "lockbox_level": 0,
+        "bandit_radar_level": 0,
         "coupon_level": 0,
         "aegis_pulse_level": 0,
         "run_items_spawned": 0,
@@ -2291,6 +2295,11 @@ def show_pause_menu(screen, background_surf):
                 "max_level": 5,
             },
             {
+                "id": "bandit_radar",
+                "name": "Bandit Radar",
+                "max_level": 4,
+            },
+            {
                 "id": "lockbox",
                 "name": "Lockbox",
                 "max_level": LOCKBOX_MAX_LEVEL,
@@ -2322,6 +2331,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("pierce_level", 0))
         if iid == "shrapnel_shells":
             return int(META.get("shrapnel_level", 0))
+        if iid == "bandit_radar":
+            return int(META.get("bandit_radar_level", 0))
         if iid == "lockbox":
             return int(META.get("lockbox_level", 0))
         if iid == "golden_interest":
@@ -2790,6 +2801,17 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "bandit_radar",
+                "name": "Bandit Radar",
+                "desc": "Bandits spawn slowed & highlighted (8/12/16/20% for 2/3/4/5s).",
+                "cost": 18,
+                "rarity": 2,
+                "max_level": 4,
+                "apply": lambda: META.update(
+                    bandit_radar_level=min(4, int(META.get("bandit_radar_level", 0)) + 1)
+                ),
+            },
+            {
                 "id": "lockbox",
                 "name": "Lockbox",
                 "desc": "Protect a slice of your coins from bandits and other losses (25/40/55/70%).",
@@ -2876,6 +2898,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return int(META.get("shrapnel_level", 0))
         if iid == "stationary_turret":
             return int(META.get("stationary_turret_count", 0))
+        if iid == "bandit_radar":
+            return int(META.get("bandit_radar_level", 0))
         if iid == "lockbox":
             return int(META.get("lockbox_level", 0))
         if iid == "coin_magnet":
@@ -2924,6 +2948,11 @@ def show_shop_screen(screen) -> Optional[str]:
             per = 10
             chance = min(80, base + per * (lvl - 1))
             return f"{chance}% shrapnel on kill"
+        if iid == "bandit_radar":
+            lvl_idx = min(max(lvl, 1), len(BANDIT_RADAR_SLOW_MULT))
+            slow_pct = int((1.0 - BANDIT_RADAR_SLOW_MULT[lvl_idx - 1]) * 100)
+            dur = BANDIT_RADAR_SLOW_DUR[lvl_idx - 1]
+            return f"Bandits -{slow_pct}% speed for {dur:.0f}s"
         if iid == "aegis_pulse":
             idx = min(max(lvl, 1) - 1, len(AEGIS_PULSE_DAMAGE_RATIOS) - 1)
             pct = int(AEGIS_PULSE_DAMAGE_RATIOS[idx] * 100)
@@ -3561,6 +3590,17 @@ def spawn_wave_with_budget(game_state: "GameState",
             bandit.lockbox_level = lb_lvl
             bandit.lockbox_baseline = baseline_coins
             bandit.lockbox_floor = lockbox_protected_min(baseline_coins, lb_lvl)
+        radar_lvl = int(META.get("bandit_radar_level", 0))
+        if radar_lvl > 0:
+            bandit.radar_tagged = True
+            bandit.radar_level = radar_lvl
+            bandit._radar_base_speed = float(bandit.speed)
+            mult = BANDIT_RADAR_SLOW_MULT[min(radar_lvl - 1, len(BANDIT_RADAR_SLOW_MULT) - 1)]
+            dur = BANDIT_RADAR_SLOW_DUR[min(radar_lvl - 1, len(BANDIT_RADAR_SLOW_DUR) - 1)]
+            bandit.speed = float(bandit.speed) * float(mult)
+            bandit.radar_slow_left = float(dur)
+            bandit.radar_ring_period = 2.0
+            bandit.radar_ring_phase = 0.0
         zombies.append(bandit)
         game_state.bandit_spawned_this_level = True
         game_state.pending_focus = ("bandit", (cx, cy))
@@ -4977,6 +5017,12 @@ class Zombie:
             self._aura_t = (getattr(self, "_aura_t", 0.0) + dt / 1.2) % 1.0
             # 持续闪金光（维持金色淡晕）
             self._gold_glow_t = max(self._gold_glow_t, 0.2)
+            if getattr(self, "radar_slow_left", 0.0) > 0.0:
+                self.radar_slow_left = max(0.0, float(getattr(self, "radar_slow_left", 0.0)) - dt)
+                if self.radar_slow_left <= 0.0 and hasattr(self, "_radar_base_speed"):
+                    self.speed = float(getattr(self, "_radar_base_speed", self.speed))
+            if getattr(self, "radar_tagged", False):
+                self.radar_ring_phase = (float(getattr(self, "radar_ring_phase", 0.0)) + dt) % float(getattr(self, "radar_ring_period", 2.0))
             # 偷钱累积：以秒为单位的离散扣除，避免浮点抖动
             self._steal_accum += float(getattr(self, "steal_per_sec", BANDIT_STEAL_RATE_MIN)) * dt
             steal_units = int(self._steal_accum)
@@ -5216,6 +5262,11 @@ class Zombie:
             pygame.draw.circle(s, (255, 215, 0, int(alpha * 0.35)), (r + 3, r + 3), r)
             pygame.draw.circle(s, (255, 215, 0, alpha), (r + 3, r + 3), r, width=5)
             screen.blit(s, (cx - r - 3, cy - r - 3))
+            if getattr(self, "radar_tagged", False):
+                rr = max(20, int(self.radius * 3.0))
+                ring = pygame.Surface((rr * 2 + 10, rr * 2 + 10), pygame.SRCALPHA)
+                pygame.draw.circle(ring, (255, 60, 60, 220), (rr + 5, rr + 5), rr, width=6)
+                screen.blit(ring, (self.rect.centerx - rr - 5, self.rect.centery - rr - 5))
         fallback = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         color = getattr(self, "_current_color", fallback)
         pygame.draw.rect(screen, color, self.rect)
@@ -8143,6 +8194,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     clock = pygame.time.Clock()
     # --- initialize time_left before creating game_state, using global current_level ---
     level_idx = int(globals().get("current_level", 0))
+    if level_idx == 0:
+        META["run_items_spawned"] = 0
+        META["run_items_collected"] = 0
+    globals()["_run_items_spawned_start"] = int(META.get("run_items_spawned", 0))
+    globals()["_run_items_collected_start"] = int(META.get("run_items_collected", 0))
     time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
     globals()["_time_left_runtime"] = time_left
     globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
@@ -8155,7 +8211,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         main_block_hp=config["block_hp"],
         level_idx=level_idx
     )
-    META["run_items_spawned"] = int(META.get("run_items_spawned", 0)) + len(items)
+    last_counted_level = globals().get("_items_counted_level")
+    if last_counted_level != level_idx:
+        META["run_items_spawned"] = int(META.get("run_items_spawned", 0)) + len(items)
+        globals()["_items_counted_level"] = level_idx
     # 生成完 obstacles 后 —— 调用兜底
     ensure_passage_budget(obstacles, GRID_SIZE, player_start)
     game_state = GameState(obstacles, items, main_item_list, decorations)
@@ -9022,6 +9081,9 @@ if __name__ == "__main__":
         result, reward, bg = main_run_level(config, chosen_zombie)
         if result == "restart":
             META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
+            META["run_items_spawned"] = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
+            META["run_items_collected"] = int(globals().get("_run_items_collected_start", META.get("run_items_collected", 0)))
+            globals().pop("_items_counted_level", None)
             globals().pop("_last_spoils", None)
             flush_events()
             continue
@@ -9122,6 +9184,9 @@ if __name__ == "__main__":
             elif action in ("restart", "retry"):
                 # restart this level as a fresh run
                 META["spoils"] = int(globals().get("_coins_at_shop_entry", META.get("spoils", 0)))
+                META["run_items_spawned"] = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
+                META["run_items_collected"] = int(globals().get("_run_items_collected_start", META.get("run_items_collected", 0)))
+                globals().pop("_items_counted_level", None)
                 globals().pop("_last_spoils", None)
                 continue
             elif action == "exit":
