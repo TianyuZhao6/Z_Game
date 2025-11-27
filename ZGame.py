@@ -674,6 +674,7 @@ SPOILS_PER_TYPE = {  # average coins per zombie type (rounded when spawning)
     "bomber": (1, 2),  # alias for suicide, if used
     "splinter": (1, 2),
     "splinterling": (0, 1),
+    "ravager": (2, 5),
 }
 # --- Twin Boss (Level 5 only) ---
 ENABLE_TWIN_BOSS = True
@@ -2892,6 +2893,51 @@ def show_shop_screen(screen) -> Optional[str]:
         # reroll or anything else: no level display
         return None
 
+    def _owned_live_text(it, lvl: int | None):
+        iid = it.get("id")
+        lvl = 0 if lvl is None else int(lvl)
+        if lvl <= 0:
+            return None
+        if iid == "lockbox":
+            coins = max(0, int(META.get("spoils", 0)))
+            pct = int(LOCKBOX_PROTECT_RATES[min(lvl - 1, len(LOCKBOX_PROTECT_RATES) - 1)] * 100)
+            protected = lockbox_protected_min(coins, lvl)
+            return f"{protected} coins restored (at {pct}%)"
+        if iid == "bone_plating":
+            gain = max(0, lvl * BONE_PLATING_STACK_HP)
+            return f"Every {int(BONE_PLATING_GAIN_INTERVAL)}s gain {gain} hp shield"
+        if iid == "coupon":
+            disc = int(COUPON_DISCOUNT_PER * 100 * lvl)
+            return f"-{disc}% shop prices"
+        if iid == "piercing_rounds":
+            return f"Pierce {lvl} extra enemy" + ("ies" if lvl > 1 else "")
+        if iid == "ricochet_scope":
+            return f"Bounce {lvl} times"
+        if iid == "shrapnel_shells":
+            base = 25
+            per = 10
+            chance = min(80, base + per * (lvl - 1))
+            return f"{chance}% shrapnel on kill"
+        if iid == "aegis_pulse":
+            idx = min(max(lvl, 1) - 1, len(AEGIS_PULSE_DAMAGE_RATIOS) - 1)
+            pct = int(AEGIS_PULSE_DAMAGE_RATIOS[idx] * 100)
+            return f"Pulse hits for {pct}% max HP"
+        if iid == "golden_interest":
+            rate_pct = int(GOLDEN_INTEREST_RATE_PER_LEVEL * 100 * lvl)
+            cap = GOLDEN_INTEREST_CAPS[min(lvl - 1, len(GOLDEN_INTEREST_CAPS) - 1)]
+            return f"Interest {rate_pct}% (cap {cap})"
+        if iid == "coin_magnet":
+            radius = int(META.get("coin_magnet_radius", 0))
+            return f"Pickup radius +{radius}px"
+        if iid == "auto_turret":
+            return f"Auto-turret count {lvl}"
+        if iid == "stationary_turret":
+            return f"Stationary turrets {lvl}"
+        if iid == "carapace":
+            hp = int(META.get("carapace_shield_hp", 0))
+            return f"Shield HP {hp}"
+        return None
+
     def _prop_max_level(it):
         return it.get("max_level", None)
 
@@ -2959,6 +3005,10 @@ def show_shop_screen(screen) -> Optional[str]:
         normal_slots, reroll_offer = _split_offers(offers)
         _save_slots()
     hovered_uid: Optional[str] = None  # used to stabilise hover so cards don't blink
+    lockbox_msg: Optional[str] = None
+    lockbox_msg_until = 0
+    lockbox_msg_life = 2200  # ms
+    owned_rows: list = []
     while True:
         # --- draw ---
         screen.fill((16, 16, 18))
@@ -2969,6 +3019,17 @@ def show_shop_screen(screen) -> Optional[str]:
         # Spoils (center under title)
         money_surf = font.render(f"Coins: {META['spoils']}", True, (255, 230, 120))
         screen.blit(money_surf, money_surf.get_rect(center=(VIEW_W // 2, 130)))
+        now_ms = pygame.time.get_ticks()
+        overlay_surf = None
+        overlay_alpha = 255
+        if lockbox_msg and now_ms < lockbox_msg_until:
+            lb_lvl = int(META.get("lockbox_level", 0))
+            if lb_lvl > 0:
+                protected = lockbox_protected_min(max(0, int(META.get("spoils", 0))), lb_lvl)
+                msg_txt = f"{protected} coins restored"
+                overlay_surf = title_font.render(msg_txt, True, (255, 230, 160))
+                t = max(0.0, min(1.0, (lockbox_msg_until - now_ms) / float(lockbox_msg_life)))
+                overlay_alpha = int(255 * t)
         # Offers row ? keep slot spacing even if some cards are gone
         card_w, card_h = 220, 180
         gap = 22
@@ -3066,12 +3127,12 @@ def show_shop_screen(screen) -> Optional[str]:
             lvl = _prop_level(itm)
             max_lvl = _prop_max_level(itm)
             if lvl is not None and lvl > 0 and itm.get("id") != "reroll":
-                owned.append((itm["name"], lvl, max_lvl))
+                owned.append({"itm": itm, "lvl": lvl, "max": max_lvl})
         if owned:
             margin_side = 40
             margin_bottom = 70
             line_h = font.get_linesize()
-            name_w_max = max(font.render(name, True, (0, 0, 0)).get_width() for name, _, _ in owned)
+            name_w_max = max(font.render(ent["itm"]["name"], True, (0, 0, 0)).get_width() for ent in owned)
             col_w = max(170, name_w_max + 60)
             col_gap = 14
             cols = 1
@@ -3095,7 +3156,11 @@ def show_shop_screen(screen) -> Optional[str]:
             header = font.render("Possession", True, (220, 220, 230))  # 或你喜欢的标题
             screen.blit(header, header.get_rect(left=panel.x + 14, top=panel.y + 8))
             base_y = panel.y + 8 + header_h + 4
-            for idx, (name, lvl, max_lvl) in enumerate(owned):
+            owned_rows.clear()
+            for idx, ent in enumerate(owned):
+                name = ent["itm"]["name"]
+                lvl = ent["lvl"]
+                max_lvl = ent["max"]
                 col = idx % cols
                 row = idx // cols
                 x0 = panel.x + 14 + col * (col_w + col_gap)
@@ -3105,6 +3170,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 lvl_surf = font.render(lvl_str, True, (180, 230, 255))
                 screen.blit(name_surf, (x0, y0))
                 screen.blit(lvl_surf, lvl_surf.get_rect(right=x0 + col_w, top=y0))
+                owned_rows.append((pygame.Rect(x0, y0, col_w, line_h), ent))
         # --- Reroll 按钮：在卡片下方单独一行 ---
         reroll_rect = None
         if reroll_offer is not None:
@@ -3136,6 +3202,25 @@ def show_shop_screen(screen) -> Optional[str]:
             # 也把 reroll 按钮加入 rects，这样原来的点击逻辑可以直接使用
             uid = reroll_offer.get("id") or reroll_offer.get("name")
             rects.append((reroll_rect, reroll_offer, reroll_dyn_cost, False, uid, None, None))
+        # possession hover tooltip
+        tooltip_txt = None
+        tooltip_pos = None
+        if owned_rows:
+            for row_rect, ent in owned_rows:
+                if row_rect.collidepoint((mx, my)):
+                    tooltip_txt = _owned_live_text(ent["itm"], ent["lvl"])
+                    tooltip_pos = (row_rect.right + 10, row_rect.centery)
+                    break
+        if tooltip_txt:
+            tip_surf = desc_font.render(tooltip_txt, True, (235, 235, 235))
+            pad = 8
+            bg = pygame.Surface((tip_surf.get_width() + pad * 2, tip_surf.get_height() + pad * 2), pygame.SRCALPHA)
+            pygame.draw.rect(bg, (30, 30, 36, 230), bg.get_rect(), border_radius=10)
+            pygame.draw.rect(bg, (120, 150, 210, 240), bg.get_rect(), 2, border_radius=10)
+            bg.blit(tip_surf, (pad, pad))
+            bx = min(VIEW_W - bg.get_width() - 10, tooltip_pos[0])
+            by = max(60, min(VIEW_H - bg.get_height() - 60, tooltip_pos[1] - bg.get_height() // 2))
+            screen.blit(bg, (bx, by))
         # --- NEXT 按钮：在 Reroll 下面单独一行 ---
         close = pygame.Rect(0, 0, 220, 56)
         if reroll_rect is not None:
@@ -3147,6 +3232,9 @@ def show_shop_screen(screen) -> Optional[str]:
         pygame.draw.rect(screen, (120, 120, 120), close, 2, border_radius=10)
         txt = btn_font.render("NEXT", True, (230, 230, 230))
         screen.blit(txt, txt.get_rect(center=close.center))
+        if overlay_surf:
+            overlay_surf.set_alpha(overlay_alpha)
+            screen.blit(overlay_surf, overlay_surf.get_rect(center=(VIEW_W // 2, VIEW_H // 2)))
         pygame.display.flip()
         # --- input ---
         for ev in pygame.event.get():
@@ -3212,6 +3300,7 @@ def show_shop_screen(screen) -> Optional[str]:
                     if not is_reroll and is_capped:
                         continue
                     if r.collidepoint(ev.pos) and META["spoils"] >= dyn_cost:
+                        coins_before_buy = int(META.get("spoils", 0))
                         META["spoils"] -= dyn_cost
                         card_id = it.get("id")
                         if card_id and card_id in locked_ids:
@@ -3226,6 +3315,9 @@ def show_shop_screen(screen) -> Optional[str]:
                             _save_slots()
                         else:
                             it["apply"]()
+                            if card_id == "lockbox":
+                                lockbox_msg = "lockbox"
+                                lockbox_msg_until = pygame.time.get_ticks() + lockbox_msg_life
                             # Remove the purchased card from its slot (leave blank space)
                             if 0 <= slot_idx < len(normal_slots):
                                 normal_slots[slot_idx] = None
