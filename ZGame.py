@@ -745,6 +745,8 @@ COUPON_MAX_LEVEL = 4
 GOLDEN_INTEREST_RATE_PER_LEVEL = 0.05  # 5%/lvl interest on unspent coins
 GOLDEN_INTEREST_CAPS = (30, 50, 70, 90)  # per-wave caps by level (1-4)
 GOLDEN_INTEREST_MAX_LEVEL = 4
+LOCKBOX_PROTECT_RATES = (0.25, 0.40, 0.55, 0.70)
+LOCKBOX_MAX_LEVEL = len(LOCKBOX_PROTECT_RATES)
 # ----- healing drop tuning -----
 HEAL_DROP_CHANCE_ZOMBIE = 0.12  # 12% when a zombie dies
 HEAL_DROP_CHANCE_BLOCK = 0.08  # 8% when a destructible block is broken
@@ -1038,6 +1040,7 @@ META = {
     "shrapnel_level": 0,
     "carapace_shield_hp": 0,
     "golden_interest_level": 0,
+    "lockbox_level": 0,
     "coupon_level": 0,
     "aegis_pulse_level": 0,
 }
@@ -1069,6 +1072,7 @@ def reset_run_state():
         "shrapnel_level": 0,
         "carapace_shield_hp": 0,
         "golden_interest_level": 0,
+        "lockbox_level": 0,
         "coupon_level": 0,
         "aegis_pulse_level": 0,
     })
@@ -1396,6 +1400,26 @@ def show_golden_interest_popup(screen, gain: int, new_total: int) -> None:
             if ev.type == pygame.MOUSEBUTTONDOWN and btn_rect.collidepoint(ev.pos):
                 flush_events()
                 return
+
+
+def lockbox_protected_min(coins_before: int, level: int | None = None) -> int:
+    """Return the minimum coins kept by Lockbox for a single loss event."""
+    lvl = LOCKBOX_MAX_LEVEL if level is None else int(level)
+    lvl = max(0, min(lvl, LOCKBOX_MAX_LEVEL))
+    if lvl <= 0:
+        return 0
+    rate = LOCKBOX_PROTECT_RATES[min(lvl - 1, len(LOCKBOX_PROTECT_RATES) - 1)]
+    return int(math.floor(max(0, coins_before) * rate))
+
+
+def clamp_coin_loss_with_lockbox(coins_before: int, raw_loss: int, level: int | None = None) -> int:
+    """Cap a requested coin loss so Lockbox protection cannot be bypassed."""
+    loss = max(0, int(raw_loss))
+    floor = lockbox_protected_min(coins_before, level)
+    if floor <= 0:
+        return loss
+    max_loss = max(0, coins_before - floor)
+    return min(loss, max_loss)
 
 
 def save_progress(current_level: int,
@@ -2262,6 +2286,11 @@ def show_pause_menu(screen, background_surf):
                 "max_level": 5,
             },
             {
+                "id": "lockbox",
+                "name": "Lockbox",
+                "max_level": LOCKBOX_MAX_LEVEL,
+            },
+            {
                 "id": "golden_interest",
                 "name": "Golden Interest",
                 "max_level": GOLDEN_INTEREST_MAX_LEVEL,
@@ -2288,6 +2317,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("pierce_level", 0))
         if iid == "shrapnel_shells":
             return int(META.get("shrapnel_level", 0))
+        if iid == "lockbox":
+            return int(META.get("lockbox_level", 0))
         if iid == "golden_interest":
             return int(META.get("golden_interest_level", 0))
         if iid == "coupon":
@@ -2754,6 +2785,17 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "lockbox",
+                "name": "Lockbox",
+                "desc": "Protect a slice of your coins from bandits and other losses (25/40/55/70%).",
+                "cost": 14,
+                "rarity": 2,
+                "max_level": LOCKBOX_MAX_LEVEL,
+                "apply": lambda: META.update(
+                    lockbox_level=min(LOCKBOX_MAX_LEVEL, int(META.get("lockbox_level", 0)) + 1)
+                ),
+            },
+            {
                 "id": "coupon",
                 "name": "Coupon",
                 "desc": "Permanently reduce 5% all shop prices this run.",
@@ -2829,6 +2871,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return int(META.get("shrapnel_level", 0))
         if iid == "stationary_turret":
             return int(META.get("stationary_turret_count", 0))
+        if iid == "lockbox":
+            return int(META.get("lockbox_level", 0))
         if iid == "coin_magnet":
             # radius 0,60,120,... => treat as 0,1,2,...
             return int(META.get("coin_magnet_radius", 0) // 60)
@@ -3413,6 +3457,12 @@ def spawn_wave_with_budget(game_state: "GameState",
         cy = int(gy * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT)
         bandit = make_coin_bandit((cx, cy), level_idx, wave_index, int(budget),
                                   player_dps=compute_player_dps(player))
+        lb_lvl = int(META.get("lockbox_level", 0))
+        if lb_lvl > 0:
+            baseline_coins = max(0, int(META.get("spoils", 0)) + int(getattr(game_state, "spoils_gained", 0)))
+            bandit.lockbox_level = lb_lvl
+            bandit.lockbox_baseline = baseline_coins
+            bandit.lockbox_floor = lockbox_protected_min(baseline_coins, lb_lvl)
         zombies.append(bandit)
         game_state.bandit_spawned_this_level = True
         game_state.pending_focus = ("bandit", (cx, cy))
@@ -4838,7 +4888,19 @@ class Zombie:
                 lvl = int(getattr(game_state, "spoils_gained", 0))
                 bank = int(META.get("spoils", 0))
                 total_avail = max(0, lvl + bank)
-                got = min(steal_units, total_avail)
+                lb_lvl = int(getattr(self, "lockbox_level", META.get("lockbox_level", 0)))
+                lock_floor = 0
+                if lb_lvl > 0:
+                    lock_floor = int(getattr(self, "lockbox_floor", 0))
+                    if lock_floor <= 0:
+                        baseline = int(getattr(self, "lockbox_baseline", total_avail))
+                        lock_floor = lockbox_protected_min(baseline, lb_lvl)
+                        self.lockbox_level = lb_lvl
+                        self.lockbox_baseline = baseline
+                        self.lockbox_floor = lock_floor
+                    lock_floor = min(lock_floor, total_avail)
+                stealable_cap = max(0, total_avail - lock_floor)
+                got = min(steal_units, stealable_cap)
                 if got > 0:
                     take_lvl = min(lvl, got)
                     if take_lvl:
@@ -6949,25 +7011,36 @@ class GameState:
         return gained
 
     def lose_coins(self, amount: int) -> int:
-        """从本局临时金币（spoils_gained）优先扣，再从META['spoils']扣；返回实际扣除数。"""
+        """Drain run coins first, then banked META coins; returns amount removed. Respects Lockbox protection."""
         amt = int(max(0, amount))
         if amt <= 0:
             return 0
         taken = 0
-        # 先扣本局
-        g = int(getattr(self, "spoils_gained", 0))
+        meta = globals().get("META", {})
+        level_spoils = int(getattr(self, "spoils_gained", 0))
+        try:
+            bank = int(meta.get("spoils", 0))
+        except Exception:
+            meta = {}
+            bank = 0
+        coins_before = max(0, level_spoils + bank)
+        lb_lvl = 0
+        try:
+            lb_lvl = int(meta.get("lockbox_level", 0))
+        except Exception:
+            lb_lvl = 0
+        amt = clamp_coin_loss_with_lockbox(coins_before, amt, lb_lvl)
+        # 优先扣本局
+        g = level_spoils
         d = min(g, amt)
         self.spoils_gained = g - d
         taken += d
         amt -= d
-        # 不足再扣全局
-        try:
-            meta = globals().get("META", {})
-            rest = min(int(meta.get("spoils", 0)), amt)
-            meta["spoils"] = int(meta.get("spoils", 0)) - rest
+        # 再扣金库
+        if amt > 0 and isinstance(meta, dict):
+            rest = min(max(0, bank), amt)
+            meta["spoils"] = bank - rest
             taken += rest
-        except Exception:
-            pass
         return taken
 
     def spawn_heal(self, x_px: float, y_px: float, amount: int = HEAL_POTION_AMOUNT):
