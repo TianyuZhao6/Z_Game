@@ -262,11 +262,11 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     # ===== 右上角：物品 & 金币 =====
     hud_font = font_timer  # 统一字号
     # 物品（最右）
-    total_items = int(getattr(game_state, "items_total", len(getattr(game_state, "items", []))))
-    collected = max(0, total_items - len(getattr(game_state, "items", [])))
+    total_items = int(META.get("run_items_spawned", 0))
+    collected = int(META.get("run_items_collected", 0))
     icon_x, icon_y = VIEW_W - 120, 10
     pygame.draw.circle(screen, (255, 255, 0), (icon_x, icon_y + 8), 8)
-    items_text = hud_font.render(f"{collected}/{total_items}", True, (255, 255, 255))
+    items_text = hud_font.render(f"{collected}", True, (255, 255, 255))
     screen.blit(items_text, (icon_x + 18, icon_y))
     # 金币（物品左侧）
     spoils_total = int(META.get("spoils", 0)) + int(getattr(game_state, "spoils_gained", 0))
@@ -1044,6 +1044,8 @@ META = {
     "lockbox_level": 0,
     "coupon_level": 0,
     "aegis_pulse_level": 0,
+    "run_items_spawned": 0,
+    "run_items_collected": 0,
 }
 
 
@@ -1076,6 +1078,8 @@ def reset_run_state():
         "lockbox_level": 0,
         "coupon_level": 0,
         "aegis_pulse_level": 0,
+        "run_items_spawned": 0,
+        "run_items_collected": 0,
     })
     globals()["_carry_player_state"] = None
     globals()["_pending_shop"] = False
@@ -5205,12 +5209,13 @@ class Zombie:
         if getattr(self, "type", "") == "bandit":
             cx, cy = self.rect.centerx, self.rect.bottom
             t = float(getattr(self, "_aura_t", 0.0)) % 1.0
-            base_r = max(14, int(self.radius * 6.0))
-            r = int(base_r + (self.radius * 1.0) * t)
-            alpha = int(200 - 140 * t)
-            s = pygame.Surface((r * 2 + 4, r * 2 + 4), pygame.SRCALPHA)
-            pygame.draw.circle(s, (255, 215, 0, alpha), (r + 2, r + 2), r, width=4)
-            screen.blit(s, (cx - r - 2, cy - r - 2))
+            base_r = max(16, int(self.radius * 7.0))
+            r = int(base_r + (self.radius * 1.2) * t)
+            alpha = int(210 - 150 * t)
+            s = pygame.Surface((r * 2 + 6, r * 2 + 6), pygame.SRCALPHA)
+            pygame.draw.circle(s, (255, 215, 0, int(alpha * 0.35)), (r + 3, r + 3), r)
+            pygame.draw.circle(s, (255, 215, 0, alpha), (r + 3, r + 3), r, width=5)
+            screen.blit(s, (cx - r - 3, cy - r - 3))
         fallback = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         color = getattr(self, "_current_color", fallback)
         pygame.draw.rect(screen, color, self.rect)
@@ -6793,7 +6798,8 @@ def reconstruct_path(came_from: Dict, start: Tuple[int, int], goal: Tuple[int, i
 
 
 # ==================== 游戏初始化函数 ====================
-def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int, zombie_count: int, main_block_hp: int):
+def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int, zombie_count: int, main_block_hp: int,
+                           level_idx: int = 0):
     """
     Generate entities with map-fill: obstacle clusters, ample items, and non-blocking decorations.
     Main block removed — all items are collectible when touched.
@@ -6868,7 +6874,7 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
             obstacles[pos] = Obstacle(pos[0], pos[1], typ, health=hp)
     forbidden |= set(obstacles.keys())
     # --- items (all are normal) ---
-    item_target = max(item_count, MIN_ITEMS, grid_size // 2)
+    item_target = random.randint(9, 19)
     item_candidates = [p for p in all_positions if p not in forbidden]
     items = [Item(x, y, is_main=False) for (x, y) in
              random.sample(item_candidates, min(len(item_candidates), item_target))]
@@ -7080,6 +7086,10 @@ class GameState:
         for it in list(self.items):
             if player_rect.colliderect(it.rect):
                 self.items.remove(it)
+                try:
+                    META["run_items_collected"] = int(META.get("run_items_collected", 0)) + 1
+                except Exception:
+                    pass
                 return True
         return False
 
@@ -8142,8 +8152,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         obstacle_count=config["obstacle_count"],
         item_count=config["item_count"],
         zombie_count=config["zombie_count"],
-        main_block_hp=config["block_hp"]
+        main_block_hp=config["block_hp"],
+        level_idx=level_idx
     )
+    META["run_items_spawned"] = int(META.get("run_items_spawned", 0)) + len(items)
     # 生成完 obstacles 后 —— 调用兜底
     ensure_passage_budget(obstacles, GRID_SIZE, player_start)
     game_state = GameState(obstacles, items, main_item_list, decorations)
