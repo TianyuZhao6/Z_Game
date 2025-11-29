@@ -1976,160 +1976,191 @@ def hex_points_flat(cx: float, cy: float, r: float) -> list[tuple[float, float]]
     return pts
 
 
+# ==================== HEX TRANSITION SYSTEM ====================
+
 class HexCell:
-    __slots__ = ("cx", "cy", "r", "delay", "reveal_t", "points")
+    __slots__ = ("cx", "cy", "r", "points", "trigger_delay", "state_t")
 
     def __init__(self, cx, cy, r):
         self.cx = float(cx)
         self.cy = float(cy)
         self.r = float(r)
-        self.delay = 0.0
-        self.reveal_t = 0.0
         self.points = hex_points_flat(self.cx, self.cy, self.r)
+        # Randomize slightly for the "glitch" feel later
+        self.trigger_delay = 0.0
+        self.state_t = 0.0 # 0.0 = Open (Transparent), 1.0 = Closed (Opaque)
 
-
-def build_hex_grid(view_w: int, view_h: int, r: int = 90) -> list[HexCell]:
-    """Flat-top even-q grid covering the screen with overscan, no overlaps/gaps."""
+def build_hex_grid(view_w: int, view_h: int, r: int = 45) -> list[HexCell]:
+    """
+    Builds a tighter grid. r=45 is a good balance for 1080p-ish screens.
+    """
     size = float(r)
+    # Flat-top hex spacing
     step_x = size * 1.5
     step_y = math.sqrt(3) * size
-    margin = size * 2.5
+    
+    # Add significant overscan so we never see edges
+    margin = size * 2.0
     cols = int(math.ceil((view_w + margin * 2) / step_x)) + 2
     rows = int(math.ceil((view_h + margin * 2) / step_y)) + 2
+    
     cells = []
-    seen = set()
-    for q in range(-cols, cols + 1):
-        x = q * step_x + margin
-        offset_y = (step_y / 2) if (q % 2 != 0) else 0.0
-        for r_idx in range(-rows, rows + 1):
-            y = r_idx * step_y + offset_y + margin
-            if x < -margin or x > view_w + margin:
-                continue
-            if y < -margin or y > view_h + margin:
-                continue
-            key = (int(round(x * 10)), int(round(y * 10)))
-            if key in seen:
-                continue
-            seen.add(key)
+    # Center the grid alignment
+    start_x = -margin
+    start_y = -margin
+    
+    for col in range(cols):
+        for row in range(rows):
+            x = start_x + col * step_x
+            y = start_y + row * step_y
+            # Offset every odd column
+            if col % 2 != 0:
+                y += step_y / 2.0
+            
+            # Simple bounds check (loose)
+            if x < -margin * 2 or x > view_w + margin * 2: continue
+            if y < -margin * 2 or y > view_h + margin * 2: continue
+            
             cells.append(HexCell(x, y, size))
     return cells
-
 
 class HexTransition:
     def __init__(self, grid: list[HexCell]):
         self.grid = grid
-        self.phase = "IDLE"
-        self.phase_time = 0.0
-        self.total_time = 0.0
-        self.darken_duration = 0.25
-        self.reveal_duration = 0.55
-        self.cleanup_duration = 0.25
-        self.from_surface = None
-        self.to_surface = None
-        self.direction = "down"
+        # Visual Constants
+        self.COLOR_FILL = (8, 12, 24)       # Deep Cyber Navy/Black
+        self.COLOR_GRID = (0, 255, 255)     # Neon Cyan
+        self.GRID_ALPHA = 40                # Faint grid lines always visible
+        self.FILL_ALPHA_MAX = 255
+        
+        # Animation Timing
+        self.duration_in = 0.5   # Time to close (Cover screen)
+        self.duration_hold = 0.1 # Pause while fully dark
+        self.duration_out = 0.5  # Time to open (Reveal new screen)
+        
+        # State
+        self.timer = 0.0
+        self.state = "IDLE" # IDLE, CLOSING, HOLDING, OPENING
+        self.midpoint_triggered = False # Has the underlying screen been swapped?
+        
+        # Cache the static grid lines to save FPS
+        self._cache_grid_surface = None
+
+    def _get_delay(self, cell, style="wave"):
+        """
+        Calculates a delay based on position to create a 'wipe' effect.
+        """
+        cx, cy = VIEW_W // 2, VIEW_H // 2
+        
+        if style == "wave":
+            # Distance from center (Circle wipe)
+            dist = math.hypot(cell.cx - cx, cell.cy - cy)
+            max_dist = math.hypot(VIEW_W, VIEW_H) / 1.5
+            norm_dist = min(1.0, dist / max_dist)
+            # Mix distance (80%) with random noise (20%) for the "digital" look
+            return norm_dist * 0.8 + random.random() * 0.2
+            
+        elif style == "random":
+            return random.random()
+            
+        return 0.0
+
+    def start(self):
+        self.timer = 0.0
+        self.state = "CLOSING"
+        self.midpoint_triggered = False
+        
+        # Pre-calculate delays for this specific transition run
+        for cell in self.grid:
+            cell.trigger_delay = self._get_delay(cell, style="wave")
+            cell.state_t = 0.0
 
     def is_active(self):
-        return self.phase != "IDLE"
+        return self.state != "IDLE"
 
-    def start(self, from_surface: pygame.Surface, to_surface: pygame.Surface, direction: str = "down"):
-        self.from_surface = from_surface
-        self.to_surface = to_surface
-        self.direction = direction
-        self.phase = "DARKEN"
-        self.phase_time = 0.0
-        self.total_time = 0.0
-        for cell in self.grid:
-            # reveal delay based on direction (sweeping band)
-            if direction in ("down", "up"):
-                norm = cell.cy / float(max(1, VIEW_H))
-                if direction == "up":
-                    norm = 1.0 - norm
-            else:
-                norm = cell.cx / float(max(1, VIEW_W))
-                if direction == "left":
-                    norm = 1.0 - norm
-            jitter = random.uniform(-0.05, 0.05)
-            cell.delay = max(0.0, (self.darken_duration * 0.4) + norm * 0.4 + jitter)
-            cell.reveal_t = 0.0
+    def should_swap_screens(self):
+        """Returns True exactly once when the screen is fully obscured."""
+        if self.state == "HOLDING" and not self.midpoint_triggered:
+            self.midpoint_triggered = True
+            return True
+        return False
 
     def update(self, dt: float):
-        if self.phase == "IDLE":
+        if self.state == "IDLE":
             return
-        self.phase_time += dt
-        self.total_time += dt
-        if self.phase == "DARKEN":
-            if self.phase_time >= self.darken_duration:
-                self.phase = "REVEAL"
-                self.phase_time = 0.0
-        elif self.phase == "REVEAL":
-            if self.phase_time >= self.reveal_duration:
-                self.phase = "CLEANUP"
-                self.phase_time = 0.0
-        elif self.phase == "CLEANUP":
-            if self.phase_time >= self.cleanup_duration:
-                self.phase = "IDLE"
-                self.phase_time = 0.0
-        if self.phase == "REVEAL":
-            for cell in self.grid:
-                t = (self.total_time - cell.delay) / max(0.001, self.reveal_duration)
-                cell.reveal_t = max(0.0, min(1.0, t))
 
-    def draw(self, target: pygame.Surface):
-        if self.phase == "IDLE":
-            return
-        # background mix
-        if self.phase == "DARKEN":
-            if self.from_surface:
-                target.blit(self.from_surface, (0, 0))
-        elif self.phase == "REVEAL":
-            mix = max(0.0, min(1.0, self.total_time / max(0.001, self.darken_duration + self.reveal_duration)))
-            if self.from_surface:
-                target.blit(self.from_surface, (0, 0))
-            if self.to_surface:
-                overlay = self.to_surface.copy()
-                overlay.set_alpha(int(255 * mix))
-                target.blit(overlay, (0, 0))
-        elif self.phase == "CLEANUP":
-            if self.to_surface:
-                target.blit(self.to_surface, (0, 0))
-        # hex overlay
+        self.timer += dt
+
+        # 1. CLOSING PHASE (Transparent -> Opaque)
+        if self.state == "CLOSING":
+            done_count = 0
+            for cell in self.grid:
+                # Individual cell timing
+                # cell_time goes from 0.0 to 1.0 based on global timer and its delay
+                # Multiplier 2.0 makes individual cells snap faster than the whole wave
+                t = (self.timer / self.duration_in - cell.trigger_delay) * 2.5
+                cell.state_t = max(0.0, min(1.0, t))
+                if cell.state_t >= 1.0:
+                    done_count += 1
+            
+            if done_count >= len(self.grid) or self.timer > self.duration_in + 0.2:
+                self.state = "HOLDING"
+                self.timer = 0.0
+
+        # 2. HOLDING PHASE (Fully Opaque)
+        elif self.state == "HOLDING":
+            if self.timer >= self.duration_hold:
+                self.state = "OPENING"
+                self.timer = 0.0
+                # Reset delays for opening? (Optional: randomize again for variety)
+                # for cell in self.grid: cell.trigger_delay = ...
+
+        # 3. OPENING PHASE (Opaque -> Transparent)
+        elif self.state == "OPENING":
+            done_count = 0
+            for cell in self.grid:
+                # Logic reversed: start at 1.0, go to 0.0
+                t = (self.timer / self.duration_out - cell.trigger_delay) * 2.5
+                cell.state_t = 1.0 - max(0.0, min(1.0, t))
+                if cell.state_t <= 0.0:
+                    done_count += 1
+            
+            if done_count >= len(self.grid) or self.timer > self.duration_out + 0.2:
+                self.state = "IDLE"
+
+    def draw(self, screen: pygame.Surface):
+        if self.state == "IDLE": return
+
+        # 1. Lazy-load cache for the faint grid lines (Optimization)
+        if self._cache_grid_surface is None:
+            self._cache_grid_surface = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+            for cell in self.grid:
+                # Draw faint cyan outline
+                pygame.draw.polygon(self._cache_grid_surface, (*self.COLOR_GRID, self.GRID_ALPHA), cell.points, 1)
+        
+        # Blit the static grid lines
+        screen.blit(self._cache_grid_surface, (0,0))
+
+        # 2. Draw Dynamic Cells
+        # We draw onto a temporary surface to handle alpha blending correctly
         overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-        if self.phase == "DARKEN":
-            progress = max(0.0, min(1.0, self.phase_time / max(0.001, self.darken_duration)))
-            dark_alpha = int(200 * progress)
-            if self.from_surface:
-                target.blit(self.from_surface, (0, 0))
-            if self.to_surface:
-                fade_overlay = self.to_surface.copy()
-                fade_overlay.set_alpha(int(80 * progress))
-                target.blit(fade_overlay, (0, 0))
-            overlay.fill((0, 0, 0, dark_alpha // 2))
-            outline_alpha = int(180 * progress)
-            for cell in self.grid:
-                pts = cell.points
-                pygame.draw.polygon(overlay, (10, 180, 200, dark_alpha), pts)
-                pygame.draw.polygon(overlay, (30, 220, 240, outline_alpha), pts, width=2)
-        elif self.phase == "REVEAL":
-            for cell in self.grid:
-                t = cell.reveal_t
-                if t <= 0 and self.total_time < cell.delay:
-                    continue
-                fill_alpha = int(max(0, 160 * (1.0 - t)))
-                outline_alpha = int(180 + 60 * min(1.0, t + 0.1))
-                pts = cell.points
-                pygame.draw.polygon(overlay, (10, 180, 220, fill_alpha), pts)
-                pygame.draw.polygon(overlay, (40, 220, 240, outline_alpha), pts, width=2)
-        elif self.phase == "CLEANUP":
-            fade = 1.0 - (self.phase_time / max(0.001, self.cleanup_duration))
-            fill_alpha = int(120 * fade)
-            outline_alpha = int(180 * fade)
-            for cell in self.grid:
-                pts = cell.points
-                pygame.draw.polygon(overlay, (10, 180, 220, fill_alpha), pts)
-                pygame.draw.polygon(overlay, (40, 220, 240, outline_alpha), pts, width=2)
-        target.blit(overlay, (0, 0))
-        pygame.display.flip()
+        
+        for cell in self.grid:
+            if cell.state_t <= 0.01: continue # Skip transparent cells
+            
+            # Alpha calculation: simpler is better for "solid" feel
+            alpha = int(cell.state_t * 255)
+            
+            # Fill
+            pygame.draw.polygon(overlay, (*self.COLOR_FILL, alpha), cell.points)
+            
+            # Highlight Stroke (The "Glow" effect as it closes)
+            # Only draw bright stroke if cell is partially transitioning
+            if 0.1 < cell.state_t < 0.9:
+                stroke_alpha = int(255 * (1.0 - abs(0.5 - cell.state_t)*2))
+                pygame.draw.polygon(overlay, (*self.COLOR_GRID, stroke_alpha), cell.points, 3)
 
+        screen.blit(overlay, (0,0))
 
 # Global transition resources (lazy init)
 _hex_grid_cache: list[HexCell] | None = None
@@ -2165,7 +2196,7 @@ def ensure_hex_background():
         )
         pygame.draw.line(surf, col, (0, y), (VIEW_W, y))
     # outlines (true edge-aligned hexes)
-    outline_col = (40, 220, 240, 180)
+    outline_col = (70, 230, 255, 170)
     for cell in _hex_grid_cache:
         pygame.draw.polygon(surf, outline_col, cell.points, width=2)
     _hex_bg_surface = surf
@@ -2174,18 +2205,41 @@ def ensure_hex_background():
 
 def play_hex_transition(screen: pygame.Surface, from_surface: pygame.Surface, to_surface: pygame.Surface,
                         direction: str = "down"):
-    """Blocking helper to run the hex transition once."""
+    """
+    Blocking helper that plays the full hex animation.
+    1. Plays Close animation over from_surface.
+    2. Swaps to to_surface when fully dark.
+    3. Plays Open animation over to_surface.
+    """
     trans = ensure_hex_transition()
-    trans.start(from_surface, to_surface, direction=direction)
+    trans.start()
+    
     clock = pygame.time.Clock()
+    current_bg = from_surface
+    
     while trans.is_active():
         dt = clock.tick(60) / 1000.0
-        pygame.event.pump()
+        
+        # Handle events to prevent OS thinking the app froze
+        pygame.event.pump() 
+        
         trans.update(dt)
+        
+        # The Midpoint Swap:
+        # Check if the transition has reached the point where we switch backgrounds
+        if trans.should_swap_screens():
+            current_bg = to_surface
+            
+        # Draw Sequence
+        # 1. Draw the underlying game/menu state (current_bg)
+        if current_bg:
+            screen.blit(current_bg, (0, 0))
+            
+        # 2. Draw the Hex Overlay on top
         trans.draw(screen)
-    if to_surface:
-        screen.blit(to_surface, (0, 0))
+        
         pygame.display.flip()
+        
     flush_events()
 
 
