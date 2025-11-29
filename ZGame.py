@@ -4734,6 +4734,23 @@ class Zombie:
             else:
                 self._bandit_stuck_t = 0.0
             self._bandit_last_pos = (self.x, self.y)
+            # Watchdog: if the bandit barely changes position over time, force a sidestep to break jitter.
+            idle_pos = getattr(self, "_bandit_idle_pos", (self.x, self.y))
+            idle_t = float(getattr(self, "_bandit_idle_t", 0.0)) + dt
+            idle_d = ((self.x - idle_pos[0]) ** 2 + (self.y - idle_pos[1]) ** 2) ** 0.5
+            if idle_d >= 30.0:
+                self._bandit_idle_pos = (self.x, self.y)
+                self._bandit_idle_t = 0.0
+            else:
+                self._bandit_idle_t = idle_t
+                if idle_t >= 2.0:
+                    self._avoid_side = random.choice((-1, 1))
+                    self._avoid_t = max(self._avoid_t, 0.45)
+                    self._ff_commit = None
+                    self._ff_commit_t = 0.0
+                    self._bypass_t = 0.0
+                    self._bandit_idle_pos = (self.x, self.y)
+                    self._bandit_idle_t = 0.0
             if bandit_flee and getattr(self, "_bandit_stuck_t", 0.0) > 0.6 and fd is not None:
                 best = None
                 bestd = -1
