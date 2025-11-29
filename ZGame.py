@@ -4406,6 +4406,16 @@ class Zombie:
             gp = getattr(self._focus_block, "grid_pos", None)
             if (gp is not None) and (gp not in game_state.obstacles):
                 self._focus_block = None
+        if is_bandit:
+            self.mode = getattr(self, "mode", "FLEE")
+            self.last_collision_tile = getattr(self, "last_collision_tile", None)
+            self.frames_on_same_tile = int(getattr(self, "frames_on_same_tile", 0))
+            self.stuck_origin_pos = tuple(getattr(self, "stuck_origin_pos", (self.x, self.y)))
+            esc_dir = getattr(self, "escape_dir", (0.0, 0.0))
+            if not (isinstance(esc_dir, (tuple, list)) and len(esc_dir) == 2):
+                esc_dir = (0.0, 0.0)
+            self.escape_dir = esc_dir
+            self.escape_timer = float(getattr(self, "escape_timer", 0.0))
         if is_bandit and getattr(self, "bandit_triggered", False):
             # While fleeing, never stick to a focus target or bypass side cell
             self._focus_block = None
@@ -4509,164 +4519,187 @@ class Zombie:
                         self._bypass_t = 0.50  # ~0.5s of commitment to the side cell
         if self._focus_block and not bandit_flee:
             target_cx, target_cy = self._focus_block.rect.centerx, self._focus_block.rect.centery
-        # —— 若已有“临时路径”，把目标切换到下一个路点（脚底中心） ——
-        # 当前“脚底”所在格
-        gx = int((self.x + self.size * 0.5) // CELL_SIZE)
-        gy = int((self.y + self.size) // CELL_SIZE)
-        if self._path_step < len(self._path):
-            nx, ny = self._path[self._path_step]
-            # 到达该格就推进
-            if gx == nx and gy == ny:
-                self._path_step += 1
-                if self._path_step < len(self._path):
-                    nx, ny = self._path[self._path_step]
-            # 仍有路点：将追踪目标改成这个路点的“脚底”
+        escape_override = False
+        if bandit_flee and getattr(self, "mode", "FLEE") == "ESCAPE_CORNER":
+            ex, ey = self.escape_dir
+            mag = (ex * ex + ey * ey) ** 0.5
+            if mag < 1e-4:
+                ex, ey = -dxp, -dyp
+                mag = (ex * ex + ey * ey) ** 0.5 or 1.0
+            ux, uy = ex / mag, ey / mag
+            vx_des, vy_des = chase_step(ux, uy, speed)
+            tau = 0.12
+            alpha = 1.0 - pow(0.001, dt / tau)
+            self._vx = (1.0 - alpha) * getattr(self, "_vx", 0.0) + alpha * vx_des
+            self._vy = (1.0 - alpha) * getattr(self, "_vy", 0.0) + alpha * vy_des
+            vx, vy = self._vx, self._vy
+            dx, dy = vx, vy
+            oldx, oldy = self.x, self.y
+            escape_override = True
+            self.escape_timer = max(0.0, float(getattr(self, "escape_timer", 0.0)) - dt)
+            if self.escape_timer <= 0.0:
+                self.mode = "FLEE"
+                self.last_collision_tile = None
+                self.frames_on_same_tile = 0
+        if not escape_override:
+            # —— 若已有“临时路径”，把目标切换到下一个路点（脚底中心） ——
+            # 当前“脚底”所在格
+            gx = int((self.x + self.size * 0.5) // CELL_SIZE)
+            gy = int((self.y + self.size) // CELL_SIZE)
             if self._path_step < len(self._path):
-                target_cx = nx * CELL_SIZE + CELL_SIZE * 0.5
-                target_cy = ny * CELL_SIZE + CELL_SIZE
-        # === 4) FLOW-FIELD STEER (preferred) ===
-        cx0, cy0 = self.rect.centerx, self.rect.centery
-        gx = int(cx0 // CELL_SIZE)
-        gy = int((cy0 - INFO_BAR_HEIGHT) // CELL_SIZE)
-        ff = getattr(game_state, "ff_next", None)
-        fd = getattr(game_state, "ff_dist", None)
-        # 1) primary: read next step from the 2-D flow field
-        step = ff[gx][gy] if (ff is not None and 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE) else None
-        boss_simple = (getattr(self, "is_boss", False)
-                       or getattr(self, "type", "") in ("boss_mist", "boss_mem"))
-        if boss_simple:
-            step = None  # stay on simple-chase
-            self._ff_commit = None  # <-- critical: use None, not 0.0
-            self._ff_commit_t = 0.0
-            self._avoid_t = 0.0
-        # If this is a bandit that has triggered flee mode, invert FF preference to run away
-        bandit_escape_step = None
-        if bandit_flee and fd is not None:
-            best = None
-            bestd = -1
-            for nx in (gx - 1, gx, gx + 1):
-                for ny in (gy - 1, gy, gy + 1):
-                    if nx == gx and ny == gy:
-                        continue
-                    if not (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE):
-                        continue
-                    if (nx, ny) in game_state.obstacles:
-                        continue
-                    if nx != gx and ny != gy:
-                        if (gx, ny) in game_state.obstacles or (nx, gy) in game_state.obstacles:
+                nx, ny = self._path[self._path_step]
+                # 到达该格就推进
+                if gx == nx and gy == ny:
+                    self._path_step += 1
+                    if self._path_step < len(self._path):
+                        nx, ny = self._path[self._path_step]
+                # 仍有路点：将追踪目标改成这个路点的“脚底”
+                if self._path_step < len(self._path):
+                    target_cx = nx * CELL_SIZE + CELL_SIZE * 0.5
+                    target_cy = ny * CELL_SIZE + CELL_SIZE
+            # === 4) FLOW-FIELD STEER (preferred) ===
+            cx0, cy0 = self.rect.centerx, self.rect.centery
+            gx = int(cx0 // CELL_SIZE)
+            gy = int((cy0 - INFO_BAR_HEIGHT) // CELL_SIZE)
+            ff = getattr(game_state, "ff_next", None)
+            fd = getattr(game_state, "ff_dist", None)
+            # 1) primary: read next step from the 2-D flow field
+            step = ff[gx][gy] if (ff is not None and 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE) else None
+            boss_simple = (getattr(self, "is_boss", False)
+                           or getattr(self, "type", "") in ("boss_mist", "boss_mem"))
+            if boss_simple:
+                step = None  # stay on simple-chase
+                self._ff_commit = None  # <-- critical: use None, not 0.0
+                self._ff_commit_t = 0.0
+                self._avoid_t = 0.0
+            # If this is a bandit that has triggered flee mode, invert FF preference to run away
+            bandit_escape_step = None
+            if bandit_flee and fd is not None:
+                best = None
+                bestd = -1
+                for nx in (gx - 1, gx, gx + 1):
+                    for ny in (gy - 1, gy + 1):
+                        if nx == gx and ny == gy:
                             continue
-                    d = fd[ny][nx]
-                    if d > bestd and not Zombie.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
-                        bestd = d
-                        best = (nx, ny)
-            bandit_escape_step = best
-            if bandit_escape_step is not None:
-                step = bandit_escape_step
-        # 2) fallback: pick the neighbor with the smallest distance (row-major: fd[ny][nx])
-        if step is None and fd is not None and not boss_simple:
-            best = None
-            bestd = 10 ** 9
-            for nx in (gx - 1, gx, gx + 1):
-                for ny in (gy - 1, gy, gy + 1):
-                    if nx == gx and ny == gy:
-                        continue
-                    if not (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE):
-                        continue
-                    # 1) skip blocked target cells
-                    if (nx, ny) in game_state.obstacles:
-                        continue
-                    # 2) forbid cutting corners on diagonals
-                    if nx != gx and ny != gy:
-                        if (gx, ny) in game_state.obstacles or (nx, gy) in game_state.obstacles:
+                        if not (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE):
                             continue
-                    d = fd[ny][nx]
-                    if d < bestd:
+                        if (nx, ny) in game_state.obstacles:
+                            continue
                         if nx != gx and ny != gy:
-                            if ((gx, ny) in game_state.obstacles) and ((nx, gy) in game_state.obstacles):
+                            if (gx, ny) in game_state.obstacles or (nx, gy) in game_state.obstacles:
                                 continue
-                            # existing “no-hidden-corner” / LoS check
-                        if not Zombie.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
+                        d = fd[ny][nx]
+                        if d > bestd and not Zombie.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
                             bestd = d
                             best = (nx, ny)
-            step = best
-            # --- smooth FF steering: commit briefly to avoid oscillation (applies to all) ---
-            if step is not None:
-                prev = getattr(self, "_ff_commit", None)
-                # Make sure prev is a (x,y) cell, otherwise treat as no commit
-                if not (isinstance(prev, (tuple, list)) and len(prev) == 2):
-                    prev = None
-                if prev is None:
-                    self._ff_commit = step
-                    self._ff_commit_t = 0.25
-                else:
-                    if step != prev:
-                        pcx = prev[0] * CELL_SIZE + CELL_SIZE * 0.5
-                        pcy = prev[1] * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
-                        d2 = (pcx - cx0) ** 2 + (pcy - cy0) ** 2
-                        if d2 <= (CELL_SIZE * 0.35) ** 2 or getattr(self, "_ff_commit_t", 0.0) <= 0.0:
-                            self._ff_commit = step
-                            self._ff_commit_t = 0.25
-                        else:
-                            step = prev
+                bandit_escape_step = best
+                if bandit_escape_step is not None:
+                    step = bandit_escape_step
+            # 2) fallback: pick the neighbor with the smallest distance (row-major: fd[ny][nx])
+            if step is None and fd is not None and not boss_simple:
+                best = None
+                bestd = 10 ** 9
+                for nx in (gx - 1, gx, gx + 1):
+                    for ny in (gy - 1, gy + 1):
+                        if nx == gx and ny == gy:
+                            continue
+                        if not (0 <= nx < GRID_SIZE and 0 <= ny < GRID_SIZE):
+                            continue
+                        # 1) skip blocked target cells
+                        if (nx, ny) in game_state.obstacles:
+                            continue
+                        # 2) forbid cutting corners on diagonals
+                        if nx != gx and ny != gy:
+                            if (gx, ny) in game_state.obstacles or (nx, gy) in game_state.obstacles:
+                                continue
+                        d = fd[ny][nx]
+                        if d < bestd:
+                            if nx != gx and ny != gy:
+                                if ((gx, ny) in game_state.obstacles) and ((nx, gy) in game_state.obstacles):
+                                    continue
+                                # existing “no-hidden-corner” / LoS check
+                            if not Zombie.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
+                                bestd = d
+                                best = (nx, ny)
+                step = best
+                # --- smooth FF steering: commit briefly to avoid oscillation (applies to all) ---
+                if step is not None:
+                    prev = getattr(self, "_ff_commit", None)
+                    # Make sure prev is a (x,y) cell, otherwise treat as no commit
+                    if not (isinstance(prev, (tuple, list)) and len(prev) == 2):
+                        prev = None
+                    if prev is None:
+                        self._ff_commit = step
+                        self._ff_commit_t = 0.25
                     else:
-                        self._ff_commit_t = max(0.0, getattr(self, "_ff_commit_t", 0.0) - dt)
-            # else:
-            #     # bosses take simple-chase path (ignore FF)
-            #     step = step if not is_boss_simple else None
-        # Simple-bypass override for regular zombies
-        if getattr(self, "_bypass_t", 0.0) > 0.0 and getattr(self, "_bypass_cell", None) is not None:
-            # drop it if we already reached the side cell or LoS is now clear
-            if (gx, gy) == self._bypass_cell or not self.first_obstacle_on_grid_line((gx, gy), gp,
-                                                                                     game_state.obstacles):
-                self._bypass_t = 0.0
-                self._bypass_cell = None
+                        if step != prev:
+                            pcx = prev[0] * CELL_SIZE + CELL_SIZE * 0.5
+                            pcy = prev[1] * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
+                            d2 = (pcx - cx0) ** 2 + (pcy - cy0) ** 2
+                            if d2 <= (CELL_SIZE * 0.35) ** 2 or getattr(self, "_ff_commit_t", 0.0) <= 0.0:
+                                self._ff_commit = step
+                                self._ff_commit_t = 0.25
+                            else:
+                                step = prev
+                        else:
+                            self._ff_commit_t = max(0.0, getattr(self, "_ff_commit_t", 0.0) - dt)
+                # else:
+                #     # bosses take simple-chase path (ignore FF)
+                #     step = step if not is_boss_simple else None
+            # Simple-bypass override for regular zombies
+            if getattr(self, "_bypass_t", 0.0) > 0.0 and getattr(self, "_bypass_cell", None) is not None:
+                # drop it if we already reached the side cell or LoS is now clear
+                if (gx, gy) == self._bypass_cell or not self.first_obstacle_on_grid_line((gx, gy), gp,
+                                                                                         game_state.obstacles):
+                    self._bypass_t = 0.0
+                    self._bypass_cell = None
+                else:
+                    step = self._bypass_cell
+            if step is not None:
+                nx, ny = step
+                # world-pixel center of the recommended next cell
+                next_cx = nx * CELL_SIZE + CELL_SIZE * 0.5
+                next_cy = ny * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
+                dx = next_cx - cx0
+                dy = next_cy - cy0
+                L = (dx * dx + dy * dy) ** 0.5 or 1.0
+                ux, uy = dx / L, dy / L
+                # desired velocity this frame
+                vx_des, vy_des = chase_step(ux, uy, speed)
+                # light steering smoothing (≈ 120 ms time constant)
+                tau = 0.12
+                alpha = 1.0 - pow(0.001, dt / tau)  # stable, dt-based lerp factor
+                self._vx = (1.0 - alpha) * getattr(self, "_vx", 0.0) + alpha * vx_des
+                self._vy = (1.0 - alpha) * getattr(self, "_vy", 0.0) + alpha * vy_des
+                # use smoothed velocity as this frame’s step
+                vx, vy = self._vx, self._vy
+                dx, dy = vx, vy
+                oldx, oldy = self.x, self.y
             else:
-                step = self._bypass_cell
-        if step is not None:
-            nx, ny = step
-            # world-pixel center of the recommended next cell
-            next_cx = nx * CELL_SIZE + CELL_SIZE * 0.5
-            next_cy = ny * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
-            dx = next_cx - cx0
-            dy = next_cy - cy0
-            L = (dx * dx + dy * dy) ** 0.5 or 1.0
-            ux, uy = dx / L, dy / L
-            # desired velocity this frame
-            vx_des, vy_des = chase_step(ux, uy, speed)
-            # light steering smoothing (≈ 120 ms time constant)
-            tau = 0.12
-            alpha = 1.0 - pow(0.001, dt / tau)  # stable, dt-based lerp factor
-            self._vx = (1.0 - alpha) * getattr(self, "_vx", 0.0) + alpha * vx_des
-            self._vy = (1.0 - alpha) * getattr(self, "_vy", 0.0) + alpha * vy_des
-            # use smoothed velocity as this frame’s step
-            vx, vy = self._vx, self._vy
-            dx, dy = vx, vy
-            oldx, oldy = self.x, self.y
-        else:
-            # Fallback: keep your existing target-point chase (path step / LOS)
-            dx = target_cx - cx0
-            dy = target_cy - cy0
-            L = (dx * dx + dy * dy) ** 0.5 or 1.0
-            ux, uy = dx / L, dy / L
-            # Bandit logic: once flee has triggered, always run AWAY from the player
-            if bandit_flee:
-                flee_x, flee_y = -dxp, -dyp  # straight away from player
-                # if still near-zero (standing on the player), pick a perpendicular shove
-                if abs(flee_x) < 1e-4 and abs(flee_y) < 1e-4:
-                    flee_x, flee_y = -dy, dx
-                mag = (flee_x * flee_x + flee_y * flee_y) ** 0.5 or 1.0
-                ux, uy = flee_x / mag, flee_y / mag
-            # desired velocity this frame
-            vx_des, vy_des = chase_step(ux, uy, speed)
-            # light steering smoothing (≈ 120 ms time constant)
-            tau = 0.12
-            alpha = 1.0 - pow(0.001, dt / tau)  # stable, dt-based lerp factor
-            self._vx = (1.0 - alpha) * getattr(self, "_vx", 0.0) + alpha * vx_des
-            self._vy = (1.0 - alpha) * getattr(self, "_vy", 0.0) + alpha * vy_des
-            # use smoothed velocity as this frame’s step
-            vx, vy = self._vx, self._vy
-            dx, dy = vx, vy
-            oldx, oldy = self.x, self.y
+                # Fallback: keep your existing target-point chase (path step / LOS)
+                dx = target_cx - cx0
+                dy = target_cy - cy0
+                L = (dx * dx + dy * dy) ** 0.5 or 1.0
+                ux, uy = dx / L, dy / L
+                # Bandit logic: once flee has triggered, always run AWAY from the player
+                if bandit_flee:
+                    flee_x, flee_y = -dxp, -dyp  # straight away from player
+                    # if still near-zero (standing on the player), pick a perpendicular shove
+                    if abs(flee_x) < 1e-4 and abs(flee_y) < 1e-4:
+                        flee_x, flee_y = -dy, dx
+                    mag = (flee_x * flee_x + flee_y * flee_y) ** 0.5 or 1.0
+                    ux, uy = flee_x / mag, flee_y / mag
+                # desired velocity this frame
+                vx_des, vy_des = chase_step(ux, uy, speed)
+                # light steering smoothing (≈ 120 ms time constant)
+                tau = 0.12
+                alpha = 1.0 - pow(0.001, dt / tau)  # stable, dt-based lerp factor
+                self._vx = (1.0 - alpha) * getattr(self, "_vx", 0.0) + alpha * vx_des
+                self._vy = (1.0 - alpha) * getattr(self, "_vy", 0.0) + alpha * vy_des
+                # use smoothed velocity as this frame’s step
+                vx, vy = self._vx, self._vy
+                dx, dy = vx, vy
+                oldx, oldy = self.x, self.y
         # If target is exactly on us this frame, dodge sideways deterministically
         if not getattr(self, "is_boss", False):
             if abs(dx) < 1e-3 and abs(dy) < 1e-3:
@@ -4792,8 +4825,8 @@ class Zombie:
                             if random.random() < SPOILS_BLOCK_DROP_CHANCE:
                                 game_state.spawn_spoils(ob.rect.centerx, ob.rect.centery, 1)
                             self.gain_xp(XP_ZOMBIE_BLOCK)
-                            if random.random() < HEAL_DROP_CHANCE_BLOCK:
-                                game_state.spawn_heal(ob.rect.centerx, ob.rect.centery, HEAL_POTION_AMOUNT)
+                    if random.random() < HEAL_DROP_CHANCE_BLOCK:
+                        game_state.spawn_heal(ob.rect.centerx, ob.rect.centery, HEAL_POTION_AMOUNT)
                 if crushed_any:
                     self._focus_block = None
                     # prevent “stuck” heuristics from kicking in right after we bulldozed
@@ -4802,6 +4835,66 @@ class Zombie:
                     self.no_clip_t = max(getattr(self, 'no_clip_t', 0.0), 0.10)
             except Exception:
                 pass
+        # —— Bandit corner escape detection —— 
+        if bandit_flee:
+            MIN_FRAMES_STUCK = 8
+            STUCK_MOVE_THRESHOLD = CELL_SIZE * 0.25
+            ESCAPE_DURATION = 0.5
+            ESCAPE_TEST_STEP = CELL_SIZE * 0.5
+            ob = getattr(self, "_hit_ob", None)
+            collided_tile = None
+            if ob and not getattr(ob, "nonblocking", False):
+                gp = getattr(ob, "grid_pos", None)
+                if gp is not None:
+                    collided_tile = tuple(gp)
+                else:
+                    collided_tile = (int(ob.rect.centerx // CELL_SIZE),
+                                     int((ob.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE))
+            bandit_pos = (self.rect.centerx, self.rect.centery)
+            if collided_tile is not None:
+                if collided_tile != getattr(self, "last_collision_tile", None):
+                    self.last_collision_tile = collided_tile
+                    self.frames_on_same_tile = 1
+                    self.stuck_origin_pos = (self.x, self.y)
+                else:
+                    self.frames_on_same_tile = int(getattr(self, "frames_on_same_tile", 0)) + 1
+                disp = ((self.x - self.stuck_origin_pos[0]) ** 2 + (self.y - self.stuck_origin_pos[1]) ** 2) ** 0.5
+                if self.frames_on_same_tile >= MIN_FRAMES_STUCK and disp <= STUCK_MOVE_THRESHOLD and getattr(self, "mode", "FLEE") != "ESCAPE_CORNER":
+                    bx, by = bandit_pos
+                    flee_dx, flee_dy = bx - px, by - py
+                    mag = (flee_dx * flee_dx + flee_dy * flee_dy) ** 0.5 or 1.0
+                    base_dir = (flee_dx / mag, flee_dy / mag)
+                    left_dir = (-base_dir[1], base_dir[0])
+                    right_dir = (base_dir[1], -base_dir[0])
+                    candidates = [base_dir, left_dir, right_dir]
+
+                    def _dir_clear(vec):
+                        tx = bx + vec[0] * ESCAPE_TEST_STEP
+                        ty = by + vec[1] * ESCAPE_TEST_STEP
+                        cell = (int(tx // CELL_SIZE), int((ty - INFO_BAR_HEIGHT) // CELL_SIZE))
+                        if not (0 <= cell[0] < GRID_SIZE and 0 <= cell[1] < GRID_SIZE):
+                            return False
+                        return cell not in game_state.obstacles
+
+                    best_dir = None
+                    best_d2 = -1
+                    for vec in candidates:
+                        if not _dir_clear(vec):
+                            continue
+                        tx = bx + vec[0] * ESCAPE_TEST_STEP
+                        ty = by + vec[1] * ESCAPE_TEST_STEP
+                        d2p = (tx - px) ** 2 + (ty - py) ** 2
+                        if d2p > best_d2:
+                            best_d2 = d2p
+                            best_dir = vec
+                    if best_dir is None:
+                        best_dir = left_dir if _dir_clear(left_dir) else right_dir
+                    self.escape_dir = best_dir
+                    self.escape_timer = ESCAPE_DURATION
+                    self.mode = "ESCAPE_CORNER"
+            else:
+                self.last_collision_tile = None
+                self.frames_on_same_tile = 0
         # —— 卡住检测（只有“被挡住”或“无进展”才累计）——
         blocked = (self._hit_ob is not None)
         moved2 = (self.x - oldx) ** 2 + (self.y - oldy) ** 2
@@ -6794,6 +6887,13 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, playe
     z.speed = min(ZOMBIE_SPEED_MAX, BANDIT_BASE_SPEED + scale_spd)
     # 专用圆形碰撞体（用于与玩家的接触判定 & 光环半径）
     z.radius = int(z.size * 0.50)
+    # Anti-jitter & corner-escape bookkeeping
+    z.mode = "FLEE"
+    z.last_collision_tile = None
+    z.frames_on_same_tile = 0
+    z.stuck_origin_pos = (z.x, z.y)
+    z.escape_dir = (0.0, 0.0)
+    z.escape_timer = 0.0
     # --- 生命值 = max(基础血, 玩家DPS × 4) ---
     dps = float(player_dps) if player_dps is not None else float(compute_player_dps(None))
     target_hp = int(math.ceil(BANDIT_BASE_HP + dps * 4.0))
