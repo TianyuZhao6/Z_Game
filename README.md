@@ -1,10 +1,10 @@
-# Zombie Card Game
+# Z_Game
 
 ## 目录结构
 
 - core/: 游戏逻辑
 - ui/: UI 渲染
-- assets/: 图片资源（需自行放入）
+- assets/: 图片资源
 - main.py: 启动入口
 
 ## 运行方式
