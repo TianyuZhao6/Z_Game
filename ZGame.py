@@ -2151,6 +2151,8 @@ class HexTransition:
 _hex_grid_cache: list[HexCell] | None = None
 _hex_transition: HexTransition | None = None
 _hex_bg_surface: pygame.Surface | None = None
+_menu_transition_frame: pygame.Surface | None = None
+_skip_intro_once = False
 
 
 def ensure_hex_transition():
@@ -2196,6 +2198,23 @@ def ensure_hex_background():
         pygame.draw.polygon(surf, outline_col, cell.points, width=2)
     _hex_bg_surface = surf
     return _hex_bg_surface
+
+
+def queue_menu_transition(frame: pygame.Surface):
+    """Cache the menu frame so the next scene can run the hex shutter using a live target frame."""
+    global _menu_transition_frame
+    _menu_transition_frame = frame
+
+
+def run_pending_menu_transition(screen: pygame.Surface):
+    """If a menu frame is queued, run the hex transition onto the already-rendered scene on screen."""
+    global _menu_transition_frame
+    if _menu_transition_frame is None:
+        return
+    from_surf = _menu_transition_frame
+    to_surf = screen.copy()
+    play_hex_transition(screen, from_surf, to_surf, direction="down")
+    _menu_transition_frame = None
 
 
 def play_hex_transition(screen: pygame.Surface, from_surface: pygame.Surface, to_surface: pygame.Surface,
@@ -2569,10 +2588,12 @@ def render_start_menu_surface(saved_exists: bool):
     return surf
 
 
-def show_start_menu(screen):
+def show_start_menu(screen, *, skip_intro: bool = False):
     """Return a tuple ('new', None) or ('continue', save_data) based on player's choice."""
     flush_events()
-    run_neuro_intro(screen)
+    intro_flag = globals().pop("_skip_intro_once", False)
+    if not skip_intro and not intro_flag:
+        run_neuro_intro(screen)
     clock = pygame.time.Clock()
     header_font = pygame.font.SysFont("Consolas", 22)
     btn_font = pygame.font.SysFont(None, 30)
@@ -2622,15 +2643,13 @@ def show_start_menu(screen):
                     # hard reset the run state the instant START NEW is clicked
                     clear_save()  # delete savegame.json if it exists
                     reset_run_state()  # zero META, clear carry, cancel pending shop, drop _last_spoils
-                    from_surf = screen.copy()
-                    play_hex_transition(screen, from_surf, ensure_hex_background(), direction="down")
+                    queue_menu_transition(screen.copy())
                     flush_events()
                     return ("new", None)
                 if drawn_rects["continue"].collidepoint(event.pos) and saved_exists:
                     data = load_save()
                     if data:
-                        from_surf = screen.copy()
-                        play_hex_transition(screen, from_surf, ensure_hex_background(), direction="down")
+                        queue_menu_transition(screen.copy())
                         flush_events()
                         return ("continue", data)
                 if drawn_rects["instruction"].collidepoint(event.pos):
@@ -3332,6 +3351,7 @@ def show_shop_screen(screen) -> Optional[str]:
         desc_font = pygame.font.SysFont(None, 24)  # smaller font just for descriptions
         title_font = pygame.font.SysFont(None, 56)
         btn_font = pygame.font.SysFont(None, 32)
+        did_menu_hex = False
         # --- shared shop box style  ---
         SHOP_BOX_BG = (35, 40, 48)  # base background (Reroll style)
         SHOP_BOX_BORDER = (130, 160, 210)  # base border
@@ -3577,8 +3597,9 @@ def show_shop_screen(screen) -> Optional[str]:
             return f"{protected} coins restored (at {pct}%)"
         if iid == "bone_plating":
             gain = max(0, lvl * BONE_PLATING_STACK_HP)
-            spd_pen = max(0.0, (1.0 - float(META.get("speed_mult", 1.0))) * 100.0)
-            spd_txt = f", -{spd_pen:.0f}% speed" if spd_pen > 0 else ""
+            effective_speed = max(0.30, 0.98 ** lvl)
+            spd_pen = max(0.0, (1.0 - effective_speed) * 100.0)
+            spd_txt = f", -{spd_pen:.0f}% speed" if spd_pen >= 0.5 else ""
             return f"Every {int(BONE_PLATING_GAIN_INTERVAL)}s gain {gain} hp shield{spd_txt}"
         if iid == "coupon":
             disc = int(COUPON_DISCOUNT_PER * 100 * lvl)
@@ -3914,6 +3935,9 @@ def show_shop_screen(screen) -> Optional[str]:
         if overlay_surf:
             overlay_surf.set_alpha(overlay_alpha)
             screen.blit(overlay_surf, overlay_surf.get_rect(center=(VIEW_W // 2, VIEW_H // 2)))
+        if not did_menu_hex:
+            run_pending_menu_transition(screen)
+            did_menu_hex = True
         pygame.display.flip()
         # --- input ---
         for ev in pygame.event.get():
@@ -8861,6 +8885,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         draw_boss_hp_bars_twin(screen, bosses[:2])
     elif len(bosses) == 1:
         draw_boss_hp_bar(screen, bosses[0])
+    run_pending_menu_transition(screen)
     pygame.display.flip()
     return screen.copy()
 
@@ -9186,8 +9211,16 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     game_result = None
     last_frame = None
     clock.tick(60)
+    entry_freeze = 0.4  # pause briefly on entry to prevent over-firing bursts
     while running:
         dt = clock.tick(60) / 1000.0
+        if entry_freeze > 0:
+            entry_freeze = max(0.0, entry_freeze - dt)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+            last_frame = render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
+                                         obstacles=game_state.obstacles)
+            continue
         # ==== 消费镜头聚焦请求：完全暂停游戏与计时 ====
         pf = getattr(game_state, "pending_focus", None)
         if pf:
@@ -9249,6 +9282,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     # write a progress save (this contains META + carry)
                     save_progress(current_level=current_level,
                                   max_wave_reached=wave_index)
+                    globals()["_skip_intro_once"] = True
                     return 'home', config.get('reward', None), bg
                 elif choice == 'exit':
                     # write a progress save so Homepage shows CONTINUE
@@ -9634,6 +9668,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         chosen_zombie_type, bullets
                     )
                     save_snapshot(snap2)
+                    globals()["_skip_intro_once"] = True
                     return 'home', None, bg
                 elif choice == 'exit':
                     # also save progress from a snapshot resume
@@ -9868,7 +9903,8 @@ if __name__ == "__main__":
         # --- snapshot coins at first entry to this level ---
         if "_coins_at_level_start" not in globals():
             globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
-        door_transition(screen)
+        if globals().get("_menu_transition_frame") is None:
+            door_transition(screen)
         result, reward, bg = main_run_level(config, chosen_zombie)
         if result == "restart":
             META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
