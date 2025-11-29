@@ -4835,12 +4835,12 @@ class Zombie:
                     self.no_clip_t = max(getattr(self, 'no_clip_t', 0.0), 0.10)
             except Exception:
                 pass
-        # —— Bandit corner escape detection —— 
+        # —— Bandit corner escape detection ——
         if bandit_flee:
-            MIN_FRAMES_STUCK = 8
-            STUCK_MOVE_THRESHOLD = CELL_SIZE * 0.25
-            ESCAPE_DURATION = 0.5
-            ESCAPE_TEST_STEP = CELL_SIZE * 0.5
+            MIN_FRAMES_STUCK = 4
+            STUCK_MOVE_THRESHOLD = CELL_SIZE * 0.30
+            ESCAPE_DURATION = 0.55
+            ESCAPE_TEST_STEP = CELL_SIZE * 0.6
             ob = getattr(self, "_hit_ob", None)
             collided_tile = None
             if ob and not getattr(ob, "nonblocking", False):
@@ -4866,7 +4866,14 @@ class Zombie:
                     base_dir = (flee_dx / mag, flee_dy / mag)
                     left_dir = (-base_dir[1], base_dir[0])
                     right_dir = (base_dir[1], -base_dir[0])
-                    candidates = [base_dir, left_dir, right_dir]
+                    # also consider directly away from obstacle center (bounce)
+                    ox, oy = collided_tile
+                    ob_cx = ox * CELL_SIZE + CELL_SIZE * 0.5
+                    ob_cy = oy * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
+                    away_dx, away_dy = bx - ob_cx, by - ob_cy
+                    away_mag = (away_dx * away_dx + away_dy * away_dy) ** 0.5 or 1.0
+                    bounce_dir = (away_dx / away_mag, away_dy / away_mag)
+                    candidates = [base_dir, left_dir, right_dir, bounce_dir]
 
                     def _dir_clear(vec):
                         tx = bx + vec[0] * ESCAPE_TEST_STEP
@@ -4888,7 +4895,13 @@ class Zombie:
                             best_d2 = d2p
                             best_dir = vec
                     if best_dir is None:
-                        best_dir = left_dir if _dir_clear(left_dir) else right_dir
+                        # fallback: pick any perpendicular dir that isn't blocked
+                        if _dir_clear(left_dir):
+                            best_dir = left_dir
+                        elif _dir_clear(right_dir):
+                            best_dir = right_dir
+                        else:
+                            best_dir = bounce_dir
                     self.escape_dir = best_dir
                     self.escape_timer = ESCAPE_DURATION
                     self.mode = "ESCAPE_CORNER"
