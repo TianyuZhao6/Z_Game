@@ -1967,6 +1967,186 @@ def draw_button(screen, label, pos, size=(180, 56), bg=(40, 40, 40), fg=(240, 24
     return rect
 
 
+class HexCell:
+    __slots__ = ("cx", "cy", "r", "delay", "reveal_t")
+
+    def __init__(self, cx, cy, r):
+        self.cx = cx
+        self.cy = cy
+        self.r = r
+        self.delay = 0.0
+        self.reveal_t = 0.0
+
+    @property
+    def points(self):
+        pts = []
+        for i in range(6):
+            ang = math.radians(60 * i - 30)  # flat-top orientation
+            pts.append((self.cx + self.r * math.cos(ang), self.cy + self.r * math.sin(ang)))
+        return pts
+
+
+def build_hex_grid(view_w: int, view_h: int, r: int = 90) -> list[HexCell]:
+    """Staggered flat-top hex grid covering the whole screen."""
+    grid = []
+    w = r * 2
+    h = math.sqrt(3) * r
+    dx = 0.75 * w  # horizontal spacing (overlap)
+    dy = h * 0.5
+    y = -h
+    row = 0
+    while y < view_h + h:
+        x_offset = 0 if row % 2 == 0 else w * 0.5
+        x = -w + x_offset
+        while x < view_w + w:
+            grid.append(HexCell(int(x + r), int(y + h / 2), int(r * 0.95)))
+            x += dx
+        y += dy
+        row += 1
+    return grid
+
+
+class HexTransition:
+    def __init__(self, grid: list[HexCell]):
+        self.grid = grid
+        self.phase = "IDLE"
+        self.phase_time = 0.0
+        self.total_time = 0.0
+        self.darken_duration = 0.25
+        self.reveal_duration = 0.55
+        self.cleanup_duration = 0.25
+        self.from_surface = None
+        self.to_surface = None
+        self.direction = "down"
+
+    def is_active(self):
+        return self.phase != "IDLE"
+
+    def start(self, from_surface: pygame.Surface, to_surface: pygame.Surface, direction: str = "down"):
+        self.from_surface = from_surface
+        self.to_surface = to_surface
+        self.direction = direction
+        self.phase = "DARKEN"
+        self.phase_time = 0.0
+        self.total_time = 0.0
+        for cell in self.grid:
+            # reveal delay based on direction (sweeping band)
+            if direction in ("down", "up"):
+                norm = cell.cy / float(max(1, VIEW_H))
+                if direction == "up":
+                    norm = 1.0 - norm
+            else:
+                norm = cell.cx / float(max(1, VIEW_W))
+                if direction == "left":
+                    norm = 1.0 - norm
+            jitter = random.uniform(-0.05, 0.05)
+            cell.delay = max(0.0, (self.darken_duration * 0.4) + norm * 0.4 + jitter)
+            cell.reveal_t = 0.0
+
+    def update(self, dt: float):
+        if self.phase == "IDLE":
+            return
+        self.phase_time += dt
+        self.total_time += dt
+        if self.phase == "DARKEN":
+            if self.phase_time >= self.darken_duration:
+                self.phase = "REVEAL"
+                self.phase_time = 0.0
+        elif self.phase == "REVEAL":
+            if self.phase_time >= self.reveal_duration:
+                self.phase = "CLEANUP"
+                self.phase_time = 0.0
+        elif self.phase == "CLEANUP":
+            if self.phase_time >= self.cleanup_duration:
+                self.phase = "IDLE"
+                self.phase_time = 0.0
+        if self.phase == "REVEAL":
+            for cell in self.grid:
+                t = (self.total_time - cell.delay) / max(0.001, self.reveal_duration)
+                cell.reveal_t = max(0.0, min(1.0, t))
+
+    def draw(self, target: pygame.Surface):
+        if self.phase == "IDLE":
+            return
+        # background mix
+        if self.phase == "DARKEN":
+            if self.from_surface:
+                target.blit(self.from_surface, (0, 0))
+        elif self.phase == "REVEAL":
+            mix = max(0.0, min(1.0, self.total_time / max(0.001, self.darken_duration + self.reveal_duration)))
+            if self.from_surface:
+                target.blit(self.from_surface, (0, 0))
+            if self.to_surface:
+                overlay = self.to_surface.copy()
+                overlay.set_alpha(int(255 * mix))
+                target.blit(overlay, (0, 0))
+        elif self.phase == "CLEANUP":
+            if self.to_surface:
+                target.blit(self.to_surface, (0, 0))
+        # hex overlay
+        overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+        if self.phase == "DARKEN":
+            dark_alpha = max(80, min(200, int(255 * (self.phase_time / max(0.001, self.darken_duration)))))
+            overlay.fill((0, 0, 0, dark_alpha // 2))
+            outline_alpha = int(80 + 140 * (self.phase_time / max(0.001, self.darken_duration)))
+            for cell in self.grid:
+                pts = cell.points
+                pygame.draw.polygon(overlay, (10, 180, 200, dark_alpha), pts)
+                pygame.draw.polygon(overlay, (30, 220, 240, outline_alpha), pts, width=2)
+        elif self.phase == "REVEAL":
+            for cell in self.grid:
+                t = cell.reveal_t
+                if t <= 0 and self.total_time < cell.delay:
+                    continue
+                flash = 80 if 0 < t < 0.12 else 0
+                fill_alpha = int(max(0, 160 * (1.0 - t)))
+                outline_alpha = int(180 + 60 * min(1.0, t + 0.1))
+                pts = cell.points
+                pygame.draw.polygon(overlay, (10 + flash, 180 + flash // 2, 220, fill_alpha), pts)
+                pygame.draw.polygon(overlay, (40, 220, 240, outline_alpha), pts, width=2)
+        elif self.phase == "CLEANUP":
+            fade = 1.0 - (self.phase_time / max(0.001, self.cleanup_duration))
+            fill_alpha = int(120 * fade)
+            outline_alpha = int(180 * fade)
+            for cell in self.grid:
+                pts = cell.points
+                pygame.draw.polygon(overlay, (10, 180, 220, fill_alpha), pts)
+                pygame.draw.polygon(overlay, (40, 220, 240, outline_alpha), pts, width=2)
+        target.blit(overlay, (0, 0))
+        pygame.display.flip()
+
+
+# Global transition resources (lazy init)
+_hex_grid_cache: list[HexCell] | None = None
+_hex_transition: HexTransition | None = None
+
+
+def ensure_hex_transition():
+    global _hex_grid_cache, _hex_transition
+    if _hex_grid_cache is None:
+        _hex_grid_cache = build_hex_grid(VIEW_W, VIEW_H, r=int(max(60, VIEW_W * 0.06)))
+    if _hex_transition is None:
+        _hex_transition = HexTransition(_hex_grid_cache)
+    return _hex_transition
+
+
+def play_hex_transition(screen: pygame.Surface, from_surface: pygame.Surface, to_surface: pygame.Surface,
+                        direction: str = "down"):
+    """Blocking helper to run the hex transition once."""
+    trans = ensure_hex_transition()
+    trans.start(from_surface, to_surface, direction=direction)
+    clock = pygame.time.Clock()
+    while trans.is_active():
+        dt = clock.tick(60) / 1000.0
+        pygame.event.pump()
+        trans.update(dt)
+        trans.draw(screen)
+    if to_surface:
+        screen.blit(to_surface, (0, 0))
+        pygame.display.flip()
+    flush_events()
+
+
 def compute_player_dps(p: "Player" | None) -> float:
     # TODO
     # Add visual effect for bandit (growing circle around bandit)
@@ -2029,6 +2209,53 @@ def draw_settings_gear(screen, x, y):
     return rect
 
 
+def render_instruction_surface():
+    surf = pygame.Surface((VIEW_W, VIEW_H))
+    surf.fill((18, 18, 22))
+    font = pygame.font.SysFont(None, 28)
+    big = pygame.font.SysFont(None, 40)
+    surf.blit(big.render("Instruction", True, (240, 240, 240)), (40, 40))
+    lines = [
+        "WASD to move. Survive until the timer hits 00:00 to win.",
+        "Zombies deal contact damage. Avoid or kite them.",
+        "Auto-fire targets the closest enemy/block in range.",
+        "Shop between levels to upgrade;",
+    ]
+    y = 110
+    for s in lines:
+        surf.blit(font.render(s, True, (200, 200, 200)), (40, y))
+        y += 38
+    draw_button(surf, "BACK", (VIEW_W // 2 - 90, VIEW_H - 120))
+    return surf
+
+
+def render_start_menu_surface(saved_exists: bool):
+    surf = pygame.Surface((VIEW_W, VIEW_H))
+    # background stripes
+    surf.fill((26, 28, 24))
+    for i in range(0, VIEW_W, 40):
+        pygame.draw.rect(surf, (32 + (i // 40 % 2) * 6, 34, 30), (i, 0, 40, VIEW_H))
+    title_font = pygame.font.SysFont(None, 64)
+    subtitle_font = pygame.font.SysFont(None, 24)
+    title = title_font.render(GAME_TITLE, True, (230, 230, 210))
+    surf.blit(title, title.get_rect(center=(VIEW_W // 2, 140)))
+    sub = subtitle_font.render("A pixel roguelite of memory and monsters", True, (160, 160, 150))
+    surf.blit(sub, sub.get_rect(center=(VIEW_W // 2, 180)))
+    gap_x = 36
+    top_y = 260
+    btn_w = 180
+    start_label = "START NEW" if saved_exists else "START"
+    draw_button(surf, start_label, (VIEW_W // 2 - btn_w - gap_x // 2, top_y))
+    draw_button(surf, "INSTRUCTION", (VIEW_W // 2 + gap_x // 2, top_y))
+    next_y = top_y + 80
+    if saved_exists:
+        draw_button(surf, "CONTINUE", (VIEW_W // 2 - btn_w // 2, next_y))
+        next_y += 80
+    draw_button(surf, "EXIT", (VIEW_W // 2 - btn_w // 2, next_y))
+    draw_settings_gear(surf, VIEW_W - 44, 8)
+    return surf
+
+
 def show_start_menu(screen):
     """Return a tuple ('new', None) or ('continue', save_data) based on player's choice."""
     flush_events()
@@ -2049,11 +2276,11 @@ def show_start_menu(screen):
         gap_x = 36
         top_y = 260
         btn_w = 180
-        # START (left) and HOW TO PLAY (right)
+        # START (left) and INSTRUCTION (right)
         saved_exists = has_save()
         start_label = "START NEW" if saved_exists else "START"
         start_rect = draw_button(screen, start_label, (VIEW_W // 2 - btn_w - gap_x // 2, top_y))
-        how_rect = draw_button(screen, "HOW TO PLAY", (VIEW_W // 2 + gap_x // 2, top_y))
+        how_rect = draw_button(screen, "INSTRUCTION", (VIEW_W // 2 + gap_x // 2, top_y))
         cont_rect = None
         next_y = top_y + 80
         if saved_exists:
@@ -2089,24 +2316,29 @@ def show_start_menu(screen):
                     pygame.quit()
                     sys.exit()
                 elif how_rect.collidepoint(event.pos):
-                    show_help(screen)
+                    # Instruction transition: menu -> instruction
+                    from_surf = screen.copy()
+                    instr_surf = render_instruction_surface()
+                    play_hex_transition(screen, from_surf, instr_surf, direction="down")
+                    flush_events()
+                    show_instruction(screen)
                     flush_events()
         clock.tick(60)
 
 
-def show_help(screen):
+def show_instruction(screen):
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 28)
     big = pygame.font.SysFont(None, 40)
     while True:
         screen.fill((18, 18, 18))
-        screen.blit(big.render("How to Play", True, (240, 240, 240)), (40, 40))
+        screen.blit(big.render("Instruction", True, (240, 240, 240)), (40, 40))
         lines = [
             "WASD to move. Survive until the timer hits 00:00 to win.",
-            "Breakable yellow blocks block the final fragment (secondary).",
+            "Break yellow blocks to reach hidden fragments.",
             "Zombies deal contact damage. Avoid or kite them.",
             "Auto-fire targets the closest enemy/block in range.",
-            "Transitions use the classic 'two doors' animation."
+            "Shop between levels to upgrade; Radar highlights bandits."
         ]
         y = 100
         for s in lines:
@@ -2117,12 +2349,14 @@ def show_help(screen):
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                door_transition(screen)
-                flush_events()
+                from_surf = screen.copy()
+                to_surf = render_start_menu_surface(has_save())
+                play_hex_transition(screen, from_surf, to_surf, direction="up")
                 return
             if event.type == pygame.MOUSEBUTTONDOWN and back.collidepoint(event.pos):
-                door_transition(screen)
-                flush_events()
+                from_surf = screen.copy()
+                to_surf = render_start_menu_surface(has_save())
+                play_hex_transition(screen, from_surf, to_surf, direction="up")
                 return
         clock.tick(60)
 
