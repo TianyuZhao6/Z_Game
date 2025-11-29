@@ -1967,43 +1967,52 @@ def draw_button(screen, label, pos, size=(180, 56), bg=(40, 40, 40), fg=(240, 24
     return rect
 
 
+def hex_points_flat(cx: float, cy: float, r: float) -> list[tuple[float, float]]:
+    """Canonical flat-top hex vertices (6 points, clockwise, sharing edges)."""
+    pts = []
+    for i in range(6):
+        ang = math.radians(-60 * i)  # 0deg at +X for a flat-top layout
+        pts.append((cx + r * math.cos(ang), cy + r * math.sin(ang)))
+    return pts
+
+
 class HexCell:
-    __slots__ = ("cx", "cy", "r", "delay", "reveal_t")
+    __slots__ = ("cx", "cy", "r", "delay", "reveal_t", "points")
 
     def __init__(self, cx, cy, r):
-        self.cx = cx
-        self.cy = cy
-        self.r = r
+        self.cx = float(cx)
+        self.cy = float(cy)
+        self.r = float(r)
         self.delay = 0.0
         self.reveal_t = 0.0
-
-    @property
-    def points(self):
-        pts = []
-        for i in range(6):
-            ang = math.radians(60 * i - 30)  # flat-top orientation
-            pts.append((self.cx + self.r * math.cos(ang), self.cy + self.r * math.sin(ang)))
-        return pts
+        self.points = hex_points_flat(self.cx, self.cy, self.r)
 
 
 def build_hex_grid(view_w: int, view_h: int, r: int = 90) -> list[HexCell]:
-    """Staggered flat-top hex grid covering the whole screen."""
-    grid = []
-    w = r * 2
-    h = math.sqrt(3) * r
-    dx = 0.75 * w  # horizontal spacing (overlap)
-    dy = h * 0.5
-    y = -h
-    row = 0
-    while y < view_h + h:
-        x_offset = 0 if row % 2 == 0 else w * 0.5
-        x = -w + x_offset
-        while x < view_w + w:
-            grid.append(HexCell(int(x + r), int(y + h / 2), int(r * 0.95)))
-            x += dx
-        y += dy
-        row += 1
-    return grid
+    """Flat-top even-q grid covering the screen with overscan, no overlaps/gaps."""
+    size = float(r)
+    step_x = size * 1.5
+    step_y = math.sqrt(3) * size
+    margin = size * 2.5
+    cols = int(math.ceil((view_w + margin * 2) / step_x)) + 2
+    rows = int(math.ceil((view_h + margin * 2) / step_y)) + 2
+    cells = []
+    seen = set()
+    for q in range(-cols, cols + 1):
+        x = q * step_x + margin
+        offset_y = (step_y / 2) if (q % 2 != 0) else 0.0
+        for r_idx in range(-rows, rows + 1):
+            y = r_idx * step_y + offset_y + margin
+            if x < -margin or x > view_w + margin:
+                continue
+            if y < -margin or y > view_h + margin:
+                continue
+            key = (int(round(x * 10)), int(round(y * 10)))
+            if key in seen:
+                continue
+            seen.add(key)
+            cells.append(HexCell(x, y, size))
+    return cells
 
 
 class HexTransition:
@@ -2086,9 +2095,16 @@ class HexTransition:
         # hex overlay
         overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
         if self.phase == "DARKEN":
-            dark_alpha = max(80, min(200, int(255 * (self.phase_time / max(0.001, self.darken_duration)))))
+            progress = max(0.0, min(1.0, self.phase_time / max(0.001, self.darken_duration)))
+            dark_alpha = int(200 * progress)
+            if self.from_surface:
+                target.blit(self.from_surface, (0, 0))
+            if self.to_surface:
+                fade_overlay = self.to_surface.copy()
+                fade_overlay.set_alpha(int(80 * progress))
+                target.blit(fade_overlay, (0, 0))
             overlay.fill((0, 0, 0, dark_alpha // 2))
-            outline_alpha = int(80 + 140 * (self.phase_time / max(0.001, self.darken_duration)))
+            outline_alpha = int(180 * progress)
             for cell in self.grid:
                 pts = cell.points
                 pygame.draw.polygon(overlay, (10, 180, 200, dark_alpha), pts)
@@ -2098,11 +2114,10 @@ class HexTransition:
                 t = cell.reveal_t
                 if t <= 0 and self.total_time < cell.delay:
                     continue
-                flash = 80 if 0 < t < 0.12 else 0
                 fill_alpha = int(max(0, 160 * (1.0 - t)))
                 outline_alpha = int(180 + 60 * min(1.0, t + 0.1))
                 pts = cell.points
-                pygame.draw.polygon(overlay, (10 + flash, 180 + flash // 2, 220, fill_alpha), pts)
+                pygame.draw.polygon(overlay, (10, 180, 220, fill_alpha), pts)
                 pygame.draw.polygon(overlay, (40, 220, 240, outline_alpha), pts, width=2)
         elif self.phase == "CLEANUP":
             fade = 1.0 - (self.phase_time / max(0.001, self.cleanup_duration))
@@ -2119,6 +2134,7 @@ class HexTransition:
 # Global transition resources (lazy init)
 _hex_grid_cache: list[HexCell] | None = None
 _hex_transition: HexTransition | None = None
+_hex_bg_surface: pygame.Surface | None = None
 
 
 def ensure_hex_transition():
@@ -2128,6 +2144,32 @@ def ensure_hex_transition():
     if _hex_transition is None:
         _hex_transition = HexTransition(_hex_grid_cache)
     return _hex_transition
+
+
+def ensure_hex_background():
+    global _hex_bg_surface, _hex_grid_cache
+    if _hex_bg_surface is not None:
+        return _hex_bg_surface
+    if _hex_grid_cache is None:
+        _hex_grid_cache = build_hex_grid(VIEW_W, VIEW_H, r=int(max(60, VIEW_W * 0.06)))
+    surf = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    # gradient fill
+    top_col = (12, 26, 32)
+    bot_col = (6, 88, 110)
+    for y in range(VIEW_H):
+        t = y / max(1, VIEW_H - 1)
+        col = (
+            int(top_col[0] * (1 - t) + bot_col[0] * t),
+            int(top_col[1] * (1 - t) + bot_col[1] * t),
+            int(top_col[2] * (1 - t) + bot_col[2] * t),
+        )
+        pygame.draw.line(surf, col, (0, y), (VIEW_W, y))
+    # outlines (true edge-aligned hexes)
+    outline_col = (40, 220, 240, 180)
+    for cell in _hex_grid_cache:
+        pygame.draw.polygon(surf, outline_col, cell.points, width=2)
+    _hex_bg_surface = surf
+    return _hex_bg_surface
 
 
 def play_hex_transition(screen: pygame.Surface, from_surface: pygame.Surface, to_surface: pygame.Surface,
@@ -2209,113 +2251,340 @@ def draw_settings_gear(screen, x, y):
     return rect
 
 
+INSTRUCTION_LINES = [
+    "WASD to move. Survive until the timer hits 00:00 to win.",
+    "Break yellow blocks to reach hidden fragments.",
+    "Zombies deal contact damage. Avoid or kite them.",
+    "Auto-fire targets the closest enemy/block in range.",
+    "Bandits: Radar tags them in red; intercept before they flee.",
+    "Shop between levels to upgrade (turrets, bullets, economy).",
+    "Lockbox protects a portion of coins; Golden Interest pays interest.",
+    "Pause: ESC to open menu; Restart/Home keep your meta upgrades.",
+]
+INSTRUCTION_Y_START = 110
+INSTRUCTION_LINE_SPACING = 38
+
+
+def neuro_instruction_layout():
+    panel_rect = pygame.Rect(int(VIEW_W * 0.14), int(VIEW_H * 0.26),
+                             int(VIEW_W * 0.72), int(VIEW_H * 0.48))
+    back_rect = pygame.Rect(0, 0, 220, 60)
+    back_rect.center = (VIEW_W // 2, panel_rect.bottom + 70)
+    return panel_rect, back_rect
+
+
+def draw_neuro_instruction(surface: pygame.Surface, t: float, *, hover_back: bool,
+                           title_font, body_font, btn_font):
+    panel_rect, back_rect = neuro_instruction_layout()
+    draw_neuro_waves(surface, t)
+    title = title_font.render("INSTRUCTION", True, (220, 240, 255))
+    surface.blit(title, title.get_rect(center=(VIEW_W // 2, int(VIEW_H * 0.16))))
+    panel = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+    pygame.draw.rect(panel, (14, 32, 50, 140), panel.get_rect(), border_radius=18)
+    pygame.draw.rect(panel, (80, 200, 255, 180), panel.get_rect(), width=2, border_radius=18)
+    y = 26
+    for line in INSTRUCTION_LINES:
+        txt = body_font.render(line, True, (200, 225, 245))
+        panel.blit(txt, (24, y))
+        y += txt.get_height() + 12
+    surface.blit(panel, panel_rect.topleft)
+    drawn_back = draw_neuro_button(surface, back_rect, "BACK", btn_font,
+                                   hovered=hover_back, disabled=False, t=t)
+    return drawn_back
+
+
 def render_instruction_surface():
-    surf = pygame.Surface((VIEW_W, VIEW_H))
-    surf.fill((18, 18, 22))
-    font = pygame.font.SysFont(None, 28)
-    big = pygame.font.SysFont(None, 40)
-    surf.blit(big.render("Instruction", True, (240, 240, 240)), (40, 40))
-    lines = [
-        "WASD to move. Survive until the timer hits 00:00 to win.",
-        "Zombies deal contact damage. Avoid or kite them.",
-        "Auto-fire targets the closest enemy/block in range.",
-        "Shop between levels to upgrade;",
-    ]
-    y = 110
-    for s in lines:
-        surf.blit(font.render(s, True, (200, 200, 200)), (40, y))
-        y += 38
-    draw_button(surf, "BACK", (VIEW_W // 2 - 90, VIEW_H - 120))
+    surf = ensure_neuro_background().copy()
+    body_font = pygame.font.SysFont("Consolas", 20)
+    title_font = pygame.font.SysFont("Consolas", 34, bold=True)
+    btn_font = pygame.font.SysFont(None, 30)
+    draw_neuro_instruction(surf, 0.0, hover_back=False,
+                           title_font=title_font, body_font=body_font, btn_font=btn_font)
     return surf
 
 
-def render_start_menu_surface(saved_exists: bool):
+# --- Neuro console start menu visuals ---
+_neuro_bg_surface: pygame.Surface | None = None
+_neuro_log_seed = random.getrandbits(24)
+_NEURO_SYSTEM_MESSAGES = [
+    "link stable. awaiting neural sync...",
+    "bioscan: green. cortex latency 12ms.",
+    "encryption tunnel alive. tracing ghosts...",
+    "memory shards indexed. ready for run.",
+    "diagnostics clean. no corruption detected.",
+    "entropy pool topped. firing neurons.",
+]
+
+
+def ensure_neuro_background():
+    """One-time soft grid/dot matrix background (no hex)."""
+    global _neuro_bg_surface
+    if _neuro_bg_surface is not None:
+        return _neuro_bg_surface
     surf = pygame.Surface((VIEW_W, VIEW_H))
-    # background stripes
-    surf.fill((26, 28, 24))
-    for i in range(0, VIEW_W, 40):
-        pygame.draw.rect(surf, (32 + (i // 40 % 2) * 6, 34, 30), (i, 0, 40, VIEW_H))
-    title_font = pygame.font.SysFont(None, 64)
-    subtitle_font = pygame.font.SysFont(None, 24)
-    title = title_font.render(GAME_TITLE, True, (230, 230, 210))
-    surf.blit(title, title.get_rect(center=(VIEW_W // 2, 140)))
-    sub = subtitle_font.render("A pixel roguelite of memory and monsters", True, (160, 160, 150))
-    surf.blit(sub, sub.get_rect(center=(VIEW_W // 2, 180)))
-    gap_x = 36
-    top_y = 260
-    btn_w = 180
-    start_label = "START NEW" if saved_exists else "START"
-    draw_button(surf, start_label, (VIEW_W // 2 - btn_w - gap_x // 2, top_y))
-    draw_button(surf, "INSTRUCTION", (VIEW_W // 2 + gap_x // 2, top_y))
-    next_y = top_y + 80
-    if saved_exists:
-        draw_button(surf, "CONTINUE", (VIEW_W // 2 - btn_w // 2, next_y))
-        next_y += 80
-    draw_button(surf, "EXIT", (VIEW_W // 2 - btn_w // 2, next_y))
-    draw_settings_gear(surf, VIEW_W - 44, 8)
+    # subtle vertical gradient
+    for y in range(VIEW_H):
+        t = y / max(1, VIEW_H - 1)
+        col = (
+            int(8 + 18 * t),
+            int(18 + 46 * t),
+            int(28 + 74 * t),
+        )
+        pygame.draw.line(surf, col, (0, y), (VIEW_W, y))
+    # dot matrix / grid overlay
+    grid = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    spacing = 28
+    for y in range(-spacing, VIEW_H + spacing, spacing):
+        alpha = max(14, int(34 * (1 - abs((y - VIEW_H * 0.5) / (VIEW_H * 0.65)))))
+        pygame.draw.line(grid, (20, 90, 120, alpha), (0, y), (VIEW_W, y))
+    for x in range(-spacing, VIEW_W + spacing, spacing):
+        alpha = max(12, int(30 * (1 - abs((x - VIEW_W * 0.5) / (VIEW_W * 0.65)))))
+        pygame.draw.line(grid, (20, 90, 120, alpha), (x, 0), (x, VIEW_H))
+    for y in range(0, VIEW_H, spacing):
+        for x in range(0, VIEW_W, spacing):
+            pygame.draw.circle(grid, (70, 150, 190, 36), (x, y), 1)
+    surf.blit(grid, (0, 0))
+    _neuro_bg_surface = surf
+    return _neuro_bg_surface
+
+
+def draw_neuro_waves(target: pygame.Surface, t: float):
+    """Animated EEG-style sine lines sliding across the screen."""
+    overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    wave_cols = [(80, 200, 255, 110), (120, 180, 255, 90)]
+    for i, col in enumerate(wave_cols):
+        mid_y = int(VIEW_H * (0.34 + i * 0.18))
+        amp = 14 + i * 5
+        freq = 0.018 + i * 0.007
+        speed = 80 + i * 40
+        pts = []
+        for x in range(0, VIEW_W + 12, 8):
+            phase = t * speed * 0.05 + x * freq
+            w = math.sin(phase) * amp + math.sin(phase * 0.35 + i) * amp * 0.24
+            pts.append((x, mid_y + w))
+        pygame.draw.lines(overlay, col, False, pts, 2)
+    target.blit(overlay, (0, 0))
+
+
+def draw_neuro_hover_spike(target: pygame.Surface, rect: pygame.Rect, t: float):
+    """Tiny waveform spike that flickers on hover."""
+    spike = pygame.Surface(rect.size, pygame.SRCALPHA)
+    x = rect.width * (0.5 + 0.35 * math.sin(t * 9.0))
+    pygame.draw.line(spike, (140, 255, 255, 170), (x, rect.height * 0.18), (x, rect.height * 0.82), 2)
+    pygame.draw.circle(spike, (140, 255, 255, 190), (int(x), int(rect.height * 0.5)), 3)
+    target.blit(spike, rect.topleft)
+
+
+def draw_neuro_button(surface: pygame.Surface, rect: pygame.Rect, label: str, font,
+                      *, hovered: bool, disabled: bool, t: float) -> pygame.Rect:
+    scale = 1.04 if hovered and not disabled else 1.0
+    scaled = pygame.Rect(0, 0, int(rect.width * scale), int(rect.height * scale))
+    scaled.center = rect.center
+    panel = pygame.Surface(scaled.size, pygame.SRCALPHA)
+    fill_alpha = 150 if hovered and not disabled else 110
+    if disabled:
+        fill_alpha = 65
+    pygame.draw.rect(panel, (14, 32, 50, fill_alpha), panel.get_rect(), border_radius=16)
+    border_col = (80, 200, 255, 220 if hovered and not disabled else 150)
+    if disabled:
+        border_col = (90, 110, 130, 120)
+    pygame.draw.rect(panel, border_col, panel.get_rect(), width=2, border_radius=16)
+    glow_alpha = 90 if hovered and not disabled else 40
+    glow = pygame.Surface((scaled.width + 12, scaled.height + 12), pygame.SRCALPHA)
+    pygame.draw.rect(glow, (40, 180, 255, glow_alpha), glow.get_rect(), border_radius=18)
+    surface.blit(glow, scaled.inflate(12, 12).topleft)
+    surface.blit(panel, scaled.topleft)
+    text_col = (220, 240, 255) if not disabled else (130, 140, 150)
+    text = font.render(label, True, text_col)
+    surface.blit(text, text.get_rect(center=scaled.center))
+    if hovered and not disabled:
+        draw_neuro_hover_spike(surface, scaled, t)
+    return scaled
+
+
+def neuro_menu_layout():
+    """Centers and sizes for the vertical stack of panels."""
+    center_x = int(VIEW_W * 0.52)
+    top_y = int(VIEW_H * 0.28)
+    width, height, spacing = 320, 68, 82
+    ids = ["start", "continue", "instruction", "settings", "exit"]
+    rects = {}
+    y = top_y
+    for ident in ids:
+        rects[ident] = pygame.Rect(0, 0, width, height)
+        rects[ident].center = (center_x, y)
+        y += spacing
+    return rects
+
+
+def draw_neuro_info_column(surface: pygame.Surface, font, t: float, saved_exists: bool):
+    col_rect = pygame.Rect(int(VIEW_W * 0.78), 80, int(VIEW_W * 0.17), VIEW_H - 160)
+    panel = pygame.Surface(col_rect.size, pygame.SRCALPHA)
+    pygame.draw.rect(panel, (12, 30, 50, 120), panel.get_rect(), border_radius=14)
+    pygame.draw.rect(panel, (70, 180, 230, 170), panel.get_rect(), width=2, border_radius=14)
+    surface.blit(panel, col_rect.topleft)
+    lines = [
+        f"run time: {t:6.2f}s",
+        f"seed: 0x{_neuro_log_seed:06X}",
+        f"save slot: {'ready' if saved_exists else 'empty'}",
+        f"build: neuro-console",
+        _NEURO_SYSTEM_MESSAGES[int(t * 0.75) % len(_NEURO_SYSTEM_MESSAGES)],
+    ]
+    y = col_rect.top + 14
+    for line in lines:
+        surf_line = font.render(line, True, (150, 200, 230))
+        surface.blit(surf_line, (col_rect.left + 14, y))
+        y += surf_line.get_height() + 6
+
+
+def draw_neuro_title_intro(surface: pygame.Surface, title_font, prompt_font, t: float):
+    """Intro screen: centered title + pulsing prompt."""
+    title = title_font.render(GAME_TITLE.upper(), True, (220, 240, 255))
+    title_rect = title.get_rect(center=(VIEW_W // 2, int(VIEW_H * 0.32)))
+    glow = pygame.Surface((title_rect.width + 60, title_rect.height + 40), pygame.SRCALPHA)
+    pygame.draw.rect(glow, (60, 150, 220, 90), glow.get_rect(), border_radius=22)
+    surface.blit(glow, glow.get_rect(center=title_rect.center).topleft)
+    surface.blit(title, title_rect)
+    pulse = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(t * 3.0))
+    prompt_color = (120 + int(110 * pulse), 220, 255)
+    prompt = prompt_font.render("PRESS ANY KEY TO LINK", True, prompt_color)
+    surface.blit(prompt, prompt.get_rect(center=(VIEW_W // 2, int(VIEW_H * 0.52))))
+
+
+def draw_neuro_home_header(surface: pygame.Surface, font):
+    """Homepage header: small console-style label."""
+    surface.blit(font.render("> NEUROSCAPE: MIND RUNNER", True, (170, 230, 255)), (50, 70))
+
+
+def animate_menu_exit(screen: pygame.Surface, snapshot: pygame.Surface, duration: int = 450):
+    """Slide/fade the menu upward before entering the run."""
+    clock = pygame.time.Clock()
+    start = pygame.time.get_ticks()
+    while True:
+        elapsed = pygame.time.get_ticks() - start
+        progress = min(1.0, elapsed / max(1, duration))
+        dy = int(-VIEW_H * 0.35 * progress)
+        alpha = int(255 * (1.0 - progress))
+        frame = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+        temp = snapshot.copy()
+        temp.set_alpha(alpha)
+        frame.blit(temp, (0, dy))
+        screen.fill((0, 0, 0))
+        screen.blit(frame, (0, 0))
+        pygame.display.flip()
+        if progress >= 1.0:
+            break
+        clock.tick(60)
+
+
+def run_neuro_intro(screen: pygame.Surface):
+    """Show one-time minimal intro (background + link prompt)."""
+    clock = pygame.time.Clock()
+    title_font = pygame.font.SysFont("Consolas", 48, bold=True)
+    prompt_font = pygame.font.SysFont("Consolas", 24)
+    t = 0.0
+    while True:
+        dt = clock.tick(60) / 1000.0
+        t += dt
+        screen.blit(ensure_neuro_background(), (0, 0))
+        draw_neuro_waves(screen, t)
+        draw_neuro_title_intro(screen, title_font, prompt_font, t)
+        pygame.display.flip()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                return
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                return
+
+
+def render_start_menu_surface(saved_exists: bool):
+    """Static snapshot of the Neuro Console menu (used for transitions)."""
+    surf = ensure_neuro_background().copy()
+    wave_t = 0.0
+    draw_neuro_waves(surf, wave_t)
+    header_font = pygame.font.SysFont("Consolas", 22)
+    btn_font = pygame.font.SysFont(None, 30)
+    info_font = pygame.font.SysFont("Consolas", 18)
+    draw_neuro_home_header(surf, header_font)
+    rects = neuro_menu_layout()
+    draw_neuro_button(surf, rects["start"], "START NEW", btn_font, hovered=False, disabled=False, t=wave_t)
+    draw_neuro_button(surf, rects["continue"], "CONTINUE", btn_font,
+                      hovered=False, disabled=not saved_exists, t=wave_t)
+    draw_neuro_button(surf, rects["instruction"], "INSTRUCTION", btn_font, hovered=False, disabled=False, t=wave_t)
+    draw_neuro_button(surf, rects["settings"], "SETTINGS", btn_font, hovered=False, disabled=False, t=wave_t)
+    draw_neuro_button(surf, rects["exit"], "EXIT", btn_font, hovered=False, disabled=False, t=wave_t)
+    draw_neuro_info_column(surf, info_font, wave_t, saved_exists)
     return surf
 
 
 def show_start_menu(screen):
     """Return a tuple ('new', None) or ('continue', save_data) based on player's choice."""
     flush_events()
+    run_neuro_intro(screen)
     clock = pygame.time.Clock()
-    title_font = pygame.font.SysFont(None, 64)
-    subtitle_font = pygame.font.SysFont(None, 24)
+    header_font = pygame.font.SysFont("Consolas", 22)
+    btn_font = pygame.font.SysFont(None, 30)
+    info_font = pygame.font.SysFont("Consolas", 18)
+    t = 0.0
     while True:
-        # background stripes
-        screen.fill((26, 28, 24))
-        for i in range(0, VIEW_W, 40):
-            pygame.draw.rect(screen, (32 + (i // 40 % 2) * 6, 34, 30), (i, 0, 40, VIEW_H))
-        # title
-        title = title_font.render(GAME_TITLE, True, (230, 230, 210))
-        screen.blit(title, title.get_rect(center=(VIEW_W // 2, 140)))
-        sub = subtitle_font.render("A pixel roguelite of memory and monsters", True, (160, 160, 150))
-        screen.blit(sub, sub.get_rect(center=(VIEW_W // 2, 180)))
-        # structured layout
-        gap_x = 36
-        top_y = 260
-        btn_w = 180
-        # START (left) and INSTRUCTION (right)
+        dt = clock.tick(60) / 1000.0
+        t += dt
         saved_exists = has_save()
-        start_label = "START NEW" if saved_exists else "START"
-        start_rect = draw_button(screen, start_label, (VIEW_W // 2 - btn_w - gap_x // 2, top_y))
-        how_rect = draw_button(screen, "INSTRUCTION", (VIEW_W // 2 + gap_x // 2, top_y))
-        cont_rect = None
-        next_y = top_y + 80
-        if saved_exists:
-            # Centered CONTINUE if save exists
-            cont_rect = draw_button(screen, "CONTINUE", (VIEW_W // 2 - btn_w // 2, next_y))
-            next_y += 80
-        # EXIT centered at bottom
-        exit_rect = draw_button(screen, "EXIT", (VIEW_W // 2 - btn_w // 2, next_y))
-        gear_rect = draw_settings_gear(screen, VIEW_W - 44, 8)
+        base_rects = neuro_menu_layout()
+        mouse_pos = pygame.mouse.get_pos()
+        hover_id = None
+        for ident, r in base_rects.items():
+            if r.inflate(int(r.width * 0.08), int(r.height * 0.08)).collidepoint(mouse_pos):
+                hover_id = ident
+                break
+        screen.blit(ensure_neuro_background(), (0, 0))
+        draw_neuro_waves(screen, t)
+        draw_neuro_home_header(screen, header_font)
+        drawn_rects = {}
+        drawn_rects["start"] = draw_neuro_button(screen, base_rects["start"], "START NEW", btn_font,
+                                                 hovered=hover_id == "start", disabled=False, t=t)
+        drawn_rects["continue"] = draw_neuro_button(
+            screen, base_rects["continue"], "CONTINUE", btn_font,
+            hovered=hover_id == "continue", disabled=not saved_exists, t=t
+        )
+        drawn_rects["instruction"] = draw_neuro_button(
+            screen, base_rects["instruction"], "INSTRUCTION", btn_font,
+            hovered=hover_id == "instruction", disabled=False, t=t
+        )
+        drawn_rects["settings"] = draw_neuro_button(
+            screen, base_rects["settings"], "SETTINGS", btn_font,
+            hovered=hover_id == "settings", disabled=False, t=t
+        )
+        drawn_rects["exit"] = draw_neuro_button(
+            screen, base_rects["exit"], "EXIT", btn_font,
+            hovered=hover_id == "exit", disabled=False, t=t
+        )
+        draw_neuro_info_column(screen, info_font, t, saved_exists)
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if gear_rect.collidepoint(event.pos):
-                    show_settings_popup(screen, screen.copy())
-                    flush_events()
-                elif start_rect.collidepoint(event.pos):
+                if drawn_rects["start"].collidepoint(event.pos):
                     # hard reset the run state the instant START NEW is clicked
                     clear_save()  # delete savegame.json if it exists
                     reset_run_state()  # zero META, clear carry, cancel pending shop, drop _last_spoils
-                    door_transition(screen)
+                    from_surf = screen.copy()
+                    play_hex_transition(screen, from_surf, ensure_hex_background(), direction="down")
                     flush_events()
                     return ("new", None)
-                elif cont_rect and cont_rect.collidepoint(event.pos):
+                if drawn_rects["continue"].collidepoint(event.pos) and saved_exists:
                     data = load_save()
                     if data:
-                        door_transition(screen)
+                        from_surf = screen.copy()
+                        play_hex_transition(screen, from_surf, ensure_hex_background(), direction="down")
                         flush_events()
                         return ("continue", data)
-                elif exit_rect.collidepoint(event.pos):
-                    pygame.quit()
-                    sys.exit()
-                elif how_rect.collidepoint(event.pos):
+                if drawn_rects["instruction"].collidepoint(event.pos):
                     # Instruction transition: menu -> instruction
                     from_surf = screen.copy()
                     instr_surf = render_instruction_surface()
@@ -2323,28 +2592,30 @@ def show_start_menu(screen):
                     flush_events()
                     show_instruction(screen)
                     flush_events()
-        clock.tick(60)
+                if drawn_rects["settings"].collidepoint(event.pos):
+                    show_settings_popup(screen, screen.copy())
+                    flush_events()
+                if drawn_rects["exit"].collidepoint(event.pos):
+                    pygame.quit()
+                    sys.exit()
 
 
 def show_instruction(screen):
     clock = pygame.time.Clock()
-    font = pygame.font.SysFont(None, 28)
-    big = pygame.font.SysFont(None, 40)
+    body_font = pygame.font.SysFont("Consolas", 20)
+    title_font = pygame.font.SysFont("Consolas", 34, bold=True)
+    btn_font = pygame.font.SysFont(None, 30)
+    t = 0.0
     while True:
-        screen.fill((18, 18, 18))
-        screen.blit(big.render("Instruction", True, (240, 240, 240)), (40, 40))
-        lines = [
-            "WASD to move. Survive until the timer hits 00:00 to win.",
-            "Break yellow blocks to reach hidden fragments.",
-            "Zombies deal contact damage. Avoid or kite them.",
-            "Auto-fire targets the closest enemy/block in range.",
-            "Shop between levels to upgrade; Radar highlights bandits."
-        ]
-        y = 100
-        for s in lines:
-            screen.blit(font.render(s, True, (200, 200, 200)), (40, y))
-            y += 36
-        back = draw_button(screen, "BACK", (VIEW_W // 2 - 90, VIEW_H - 120))
+        dt = clock.tick(60) / 1000.0
+        t += dt
+        _, back_rect = neuro_instruction_layout()
+        hover_back = back_rect.inflate(int(back_rect.width * 0.08), int(back_rect.height * 0.08)).collidepoint(
+            pygame.mouse.get_pos()
+        )
+        screen.blit(ensure_neuro_background(), (0, 0))
+        back = draw_neuro_instruction(screen, t, hover_back=hover_back,
+                                      title_font=title_font, body_font=body_font, btn_font=btn_font)
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
