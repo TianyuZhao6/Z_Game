@@ -1979,7 +1979,7 @@ def hex_points_flat(cx: float, cy: float, r: float) -> list[tuple[float, float]]
 # ==================== HEX TRANSITION SYSTEM (GEOMETRY SCALE) ====================
 
 class HexCell:
-    __slots__ = ("cx", "cy", "max_r", "trigger_delay", "current_scale")
+    __slots__ = ("cx", "cy", "max_r", "trigger_delay", "current_scale", "points")
 
     def __init__(self, cx, cy, r):
         self.cx = float(cx)
@@ -1987,6 +1987,7 @@ class HexCell:
         self.max_r = float(r)
         self.trigger_delay = 0.0
         self.current_scale = 0.0  # 0.0 = Invisible, 1.2 = Fully covering
+        self.points = hex_points_flat(self.cx, self.cy, self.max_r)
 
 def build_hex_grid(view_w: int, view_h: int, r: int = 50) -> list[HexCell]:
     # Slightly larger radius (50) for better performance on geometry calc
@@ -2156,6 +2157,13 @@ def ensure_hex_transition():
     global _hex_grid_cache, _hex_transition
     if _hex_grid_cache is None:
         _hex_grid_cache = build_hex_grid(VIEW_W, VIEW_H, r=int(max(60, VIEW_W * 0.06)))
+    # upgrade any existing cells to have points for static outlines
+    for cell in _hex_grid_cache:
+        if not hasattr(cell, "points"):
+            try:
+                cell.points = hex_points_flat(cell.cx, cell.cy, cell.max_r)
+            except Exception:
+                pass
     if _hex_transition is None:
         _hex_transition = HexTransition(_hex_grid_cache)
     return _hex_transition
@@ -2167,6 +2175,9 @@ def ensure_hex_background():
         return _hex_bg_surface
     if _hex_grid_cache is None:
         _hex_grid_cache = build_hex_grid(VIEW_W, VIEW_H, r=int(max(60, VIEW_W * 0.06)))
+    for cell in _hex_grid_cache:
+        if not hasattr(cell, "points"):
+            cell.points = hex_points_flat(cell.cx, cell.cy, cell.max_r)
     surf = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
     # gradient fill
     top_col = (12, 26, 32)
