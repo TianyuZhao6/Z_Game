@@ -2022,14 +2022,14 @@ class HexTransition:
         self.grid = grid
         
         # --- Visual Config ---
-        self.COLOR_FILL = (8, 12, 24)       # Deep Navy/Black background
+        self.COLOR_FILL = (6, 10, 16)       # Deep Navy/Black background (darker)
         self.COLOR_OUTLINE = (0, 255, 255)  # Cyan Neon
         self.OUTLINE_WIDTH = 2
         
         # --- Timing ---
-        self.duration_in = 0.6    # Grow time
-        self.duration_hold = 0.15 # Time to stay fully black
-        self.duration_out = 0.6   # Shrink time
+        self.duration_in = 0.65    # Grow time
+        self.duration_hold = 0.18  # Time to stay fully black
+        self.duration_out = 0.65   # Shrink time
         
         # State
         self.timer = 0.0
@@ -2039,12 +2039,11 @@ class HexTransition:
     def _get_delay(self, cell):
         # Distance from center (Circle wipe)
         cx, cy = VIEW_W // 2, VIEW_H // 2
-        dist = math.hypot(cell.cx - cx, cell.cy - cy)
-        max_dist = math.hypot(VIEW_W, VIEW_H) / 1.4
-        
-        # 80% distance, 20% random noise for "tech" feel
-        norm_dist = min(1.0, dist / max_dist)
-        return norm_dist * 0.8 + random.random() * 0.2
+        dist = abs(cell.cy - cy)  # vertical banding: center row triggers first
+        max_dist = (VIEW_H / 2.0) or 1.0
+        norm_band = min(1.0, dist / max_dist)
+        # bias so center row fires first, edges last, with small jitter
+        return norm_band * 0.55 + random.random() * 0.06
 
     def start(self):
         self.timer = 0.0
@@ -2074,20 +2073,14 @@ class HexTransition:
         if self.state == "CLOSING":
             done_count = 0
             for cell in self.grid:
-                # Time math: scale from 0.0 to 1.2 (1.2 ensures overlap/no gaps)
-                start_t = cell.trigger_delay * 0.5 
-                actual_t = (self.timer - start_t) / (self.duration_in * 0.6)
-                
-                # Smoothstep easing for organic "pop"
+                start_t = cell.trigger_delay * 0.65
+                actual_t = (self.timer - start_t) / max(0.001, self.duration_in * 0.7)
                 t_clamped = max(0.0, min(1.0, actual_t))
                 ease = t_clamped * t_clamped * (3.0 - 2.0 * t_clamped)
-                
-                cell.current_scale = ease * 1.2 # Overshoot to 1.2
-                
-                if cell.current_scale >= 1.15:
+                cell.current_scale = min(1.0, ease)  # cap to avoid overlap
+                if cell.current_scale >= 0.995:
                     done_count += 1
-            
-            if done_count >= len(self.grid) or self.timer > self.duration_in + 0.3:
+            if done_count >= len(self.grid) or self.timer > self.duration_in + 0.4:
                 self.state = "HOLDING"
                 self.timer = 0.0
 
@@ -2104,19 +2097,14 @@ class HexTransition:
         elif self.state == "OPENING":
             done_count = 0
             for cell in self.grid:
-                # Reverse logic: 1.2 -> 0.0
-                start_t = cell.trigger_delay * 0.5
-                actual_t = (self.timer - start_t) / (self.duration_out * 0.6)
-                
+                start_t = cell.trigger_delay * 0.65
+                actual_t = (self.timer - start_t) / max(0.001, self.duration_out * 0.7)
                 t_clamped = max(0.0, min(1.0, actual_t))
                 ease = t_clamped * t_clamped * (3.0 - 2.0 * t_clamped)
-                
-                cell.current_scale = 1.2 * (1.0 - ease)
-                
+                cell.current_scale = max(0.0, 1.0 - ease)
                 if cell.current_scale <= 0.01:
                     done_count += 1
-            
-            if done_count >= len(self.grid) or self.timer > self.duration_out + 0.3:
+            if done_count >= len(self.grid) or self.timer > self.duration_out + 0.4:
                 self.state = "IDLE"
 
     def draw(self, screen: pygame.Surface):
@@ -2124,28 +2112,43 @@ class HexTransition:
 
         # Standard flat-top hex angles
         angles = [math.radians(a) for a in (0, 60, 120, 180, 240, 300)]
+        center_y = VIEW_H * 0.5
+        max_band = max(1.0, VIEW_H * 0.5)
+        overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+        veil = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+        if self.state == "CLOSING":
+            cover_alpha = 230
+        elif self.state == "HOLDING":
+            cover_alpha = 255
+        else:  # OPENING
+            cover_alpha = int(200 * max(0.0, 1.0 - self.timer / max(0.001, self.duration_out)))
+        veil.fill((0, 0, 0, cover_alpha))
+        screen.blit(veil, (0, 0))
 
         for cell in self.grid:
             # OPTIMIZATION: Don't draw if invisible
             if cell.current_scale <= 0.01: continue
-            
-            # 1. Calculate Dynamic Radius
-            r = cell.max_r * cell.current_scale
             cx, cy = cell.cx, cell.cy
-            
-            # 2. Generate Points on the fly based on current Scale
-            # This is what creates the "Shrink/Grow" effect
-            points = []
+            # Fixed outline geometry (shared edges)
+            outline_points = cell.points
+            # Scaled fill geometry
+            draw_scale = max(0.0, min(1.0, cell.current_scale)) * 0.92
+            fill_points = []
             for ang in angles:
-                points.append((cx + r * math.cos(ang), cy + r * math.sin(ang)))
+                px = cx + cell.max_r * math.cos(ang)
+                py = cy + cell.max_r * math.sin(ang)
+                fill_points.append((cx + (px - cx) * draw_scale, cy + (py - cy) * draw_scale))
+
+            # band factor for center-first sequencing (brighter in middle rows)
+            band_factor = 1.0 - min(1.0, abs(cell.cy - center_y) / max_band)
+            # 3. Draw Fill (The "Shutter") with gradient alpha
+            fill_alpha = int(max(0, min(255, 255 * max(0.6, draw_scale) * (0.9 + 0.1 * band_factor))))
+            pygame.draw.polygon(overlay, (*self.COLOR_FILL, fill_alpha), fill_points)
             
-            # 3. Draw Fill (The "Shutter")
-            pygame.draw.polygon(screen, self.COLOR_FILL, points)
-            
-            # 4. Draw Outline (The Neon Edge)
-            # Only draw outline if it's not fully massive (covering edges)
-            if cell.current_scale < 1.1:
-                pygame.draw.polygon(screen, self.COLOR_OUTLINE, points, self.OUTLINE_WIDTH)
+            # 4. Draw Outline (The Neon Edge) always on; stronger when shrinking
+            outline_alpha = int(max(0, min(255, 220 * (0.5 + 0.5 * band_factor) * max(0.3, draw_scale))))
+            pygame.draw.polygon(overlay, (*self.COLOR_OUTLINE, outline_alpha), outline_points, self.OUTLINE_WIDTH)
+        screen.blit(overlay, (0, 0))
 
 # Global transition resources (lazy init)
 _hex_grid_cache: list[HexCell] | None = None
