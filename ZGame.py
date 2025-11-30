@@ -2023,14 +2023,14 @@ class HexTransition:
         
         # --- Visual Config ---
         self.COLOR_FILL = (6, 10, 16)       # Deep Navy/Black background (darker)
-        self.COLOR_OUTLINE = (0, 255, 255)  # Cyan Neon
+        self.COLOR_OUTLINE = (70, 230, 255)  # Cyan Neon aligned to homepage
         self.OUTLINE_WIDTH = 2
         
         # --- Timing ---
-        self.duration_in = 0.65    # Grow time
-        self.duration_hold = 0.18  # Time to stay fully black
-        self.duration_out = 0.65   # Shrink time
-        
+        self.duration_in = 0.32    # Grow time
+        self.duration_hold = 0.14  # Time to stay fully black
+        self.duration_out = 0.32   # Shrink time 
+       
         # State
         self.timer = 0.0
         self.state = "IDLE"
@@ -2161,7 +2161,7 @@ _skip_intro_once = False
 def ensure_hex_transition():
     global _hex_grid_cache, _hex_transition
     if _hex_grid_cache is None:
-        _hex_grid_cache = build_hex_grid(VIEW_W, VIEW_H, r=int(max(60, VIEW_W * 0.06)))
+        _hex_grid_cache = build_hex_grid(VIEW_W, VIEW_H, r=int(max(90, VIEW_W * 0.08)))
     # upgrade any existing cells to have points for static outlines
     for cell in _hex_grid_cache:
         if not hasattr(cell, "points"):
@@ -2179,7 +2179,7 @@ def ensure_hex_background():
     if _hex_bg_surface is not None:
         return _hex_bg_surface
     if _hex_grid_cache is None:
-        _hex_grid_cache = build_hex_grid(VIEW_W, VIEW_H, r=int(max(60, VIEW_W * 0.06)))
+        _hex_grid_cache = build_hex_grid(VIEW_W, VIEW_H, r=int(max(90, VIEW_W * 0.08)))
     for cell in _hex_grid_cache:
         if not hasattr(cell, "points"):
             cell.points = hex_points_flat(cell.cx, cell.cy, cell.max_r)
@@ -9875,7 +9875,7 @@ if __name__ == "__main__":
                 # keep the shop pending so CONTINUE returns here again
                 save_progress(current_level, pending_shop=True)
                 flush_events()
-                selection = show_start_menu(screen)
+                selection = show_start_menu(screen, skip_intro=True)
                 if not selection: sys.exit()
                 mode, save_data = selection
                 if mode == "continue" and save_data:
@@ -9919,7 +9919,7 @@ if __name__ == "__main__":
             continue
         if result == "home":
             flush_events()
-            selection = show_start_menu(screen)
+            selection = show_start_menu(screen, skip_intro=True)
             if not selection:
                 sys.exit()
             mode, save_data = selection
@@ -9958,7 +9958,7 @@ if __name__ == "__main__":
             if action == "home":
                 # NEW: reset per-run carry
                 globals()["_carry_player_state"] = None
-                selection = show_start_menu(screen)
+                selection = show_start_menu(screen, skip_intro=True)
                 if not selection:
                     sys.exit()
                 mode, save_data = selection
@@ -9989,7 +9989,7 @@ if __name__ == "__main__":
             if action == "home":
                 save_progress(current_level, pending_shop=True)
                 flush_events()
-                selection = show_start_menu(screen)
+                selection = show_start_menu(screen, skip_intro=True)
                 if not selection: sys.exit()
                 mode, save_data = selection
                 # keep your existing homepage handling logic
@@ -10032,7 +10032,7 @@ if __name__ == "__main__":
                 save_progress(current_level)
         else:
             # Unknown state -> go home
-            selection = show_start_menu(screen)
+            selection = show_start_menu(screen, skip_intro=True)
             if not selection:
                 sys.exit()
             mode, save_data = selection
