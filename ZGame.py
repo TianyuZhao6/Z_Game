@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import heapq
 import sys
 import pygame
@@ -2280,29 +2280,6 @@ def compute_player_dps(p: "Player" | None) -> float:
     return dmg * sps * (1.0 + cc * (cm - 1.0))
 
 
-def door_transition(screen, color=(0, 0, 0), duration=500):
-    door_width = VIEW_W // 2
-    left_rect = pygame.Rect(0, 0, 0, VIEW_H)
-    right_rect = pygame.Rect(VIEW_W, 0, 0, VIEW_H)
-    clock = pygame.time.Clock()
-    start_time = pygame.time.get_ticks()
-    while True:
-        elapsed = pygame.time.get_ticks() - start_time
-        progress = min(1, elapsed / duration)
-        lw = int(door_width * progress)
-        rw = int(door_width * progress)
-        left_rect.width = lw
-        right_rect.x = VIEW_W - rw
-        right_rect.width = rw
-        screen.fill((0, 0, 0))
-        pygame.draw.rect(screen, color, left_rect)
-        pygame.draw.rect(screen, color, right_rect)
-        pygame.display.flip()
-        if progress >= 1: break
-        clock.tick(60)
-    flush_events()
-
-
 def draw_settings_gear(screen, x, y):
     """Draw a simple gear icon at (x,y) top-left; returns its rect."""
     rect = pygame.Rect(x, y, 32, 24)
@@ -2636,6 +2613,7 @@ def show_start_menu(screen, *, skip_intro: bool = False):
             hovered=hover_id == "exit", disabled=False, t=t
         )
         draw_neuro_info_column(screen, info_font, t, saved_exists)
+        run_pending_menu_transition(screen)
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -2714,6 +2692,7 @@ def show_fail_screen(screen, background_surf):
     retry = draw_button(screen, "RETRY", (VIEW_W // 2 - 200, 300))
     home = draw_button(screen, "HOME", (VIEW_W // 2 + 20, 300))
     pygame.display.flip()
+    start_menu_surf = None
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
@@ -2735,12 +2714,26 @@ def show_fail_screen(screen, background_surf):
                     home = draw_button(screen, "HOME", (VIEW_W // 2 + 20, 300))
                     pygame.display.flip()
                     continue
-                if pick == "home":  door_transition(screen); flush_events(); return "home"
-                if pick == "restart": door_transition(screen); flush_events(); return "retry"
+                if pick == "home":
+                    queue_menu_transition(pygame.display.get_surface().copy())
+                    start_menu_surf = start_menu_surf or render_start_menu_surface(has_save())
+                    flush_events()
+                    return "home"
+                if pick == "restart":
+                    queue_menu_transition(pygame.display.get_surface().copy())
+                    flush_events()
+                    return "retry"
                 if pick == "exit": pygame.quit(); sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if retry.collidepoint(event.pos): door_transition(screen); flush_events(); return "retry"
-                if home.collidepoint(event.pos): door_transition(screen); flush_events(); return "home"
+                if retry.collidepoint(event.pos):
+                    queue_menu_transition(pygame.display.get_surface().copy())
+                    flush_events()
+                    return "retry"
+                if home.collidepoint(event.pos):
+                    queue_menu_transition(pygame.display.get_surface().copy())
+                    start_menu_surf = start_menu_surf or render_start_menu_surface(has_save())
+                    flush_events()
+                    return "home"
 
 
 def show_success_screen(screen, background_surf, reward_choices):
@@ -2764,6 +2757,7 @@ def show_success_screen(screen, background_surf, reward_choices):
     next_btn = draw_button(screen, "CONFIRM", (VIEW_W // 2 - 90, 370))
     chosen = None
     pygame.display.flip()
+    start_menu_surf = None
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
@@ -2793,11 +2787,11 @@ def show_success_screen(screen, background_surf, reward_choices):
                     pygame.display.flip()
                     continue  # 回到本界面等待点击
                 if pick == "home":
-                    door_transition(screen)
+                    queue_menu_transition(pygame.display.get_surface().copy())
                     flush_events()
                     return "home"  # 让上层逻辑去处理“回主页”
                 if pick == "restart":
-                    door_transition(screen)
+                    queue_menu_transition(pygame.display.get_surface().copy())
                     flush_events()
                     return "restart"  # 让上层逻辑去处理“重开本关”
                 if pick == "exit":
@@ -2807,7 +2801,7 @@ def show_success_screen(screen, background_surf, reward_choices):
                 for rect, card in card_rects:
                     if rect.collidepoint(event.pos): chosen = card
                 if next_btn.collidepoint(event.pos) and (chosen or len(reward_choices) == 0):
-                    door_transition(screen)
+                    queue_menu_transition(screen.copy())
                     flush_events()
                     return chosen
 
@@ -3955,7 +3949,10 @@ def show_shop_screen(screen) -> Optional[str]:
                     flush_events()
                     break
                 if choice == "restart":
+                    queue_menu_transition(screen.copy())
                     globals()["_restart_from_shop"] = True
+                if choice == "home":
+                    queue_menu_transition(screen.copy())
                 flush_events()
                 return choice  # home / restart / exit
             if ev.type == pygame.MOUSEMOTION:
@@ -3966,12 +3963,14 @@ def show_shop_screen(screen) -> Optional[str]:
                         break
             if ev.type == pygame.MOUSEBUTTONDOWN:
                 if close.collidepoint(ev.pos):
+                    from_surf = screen.copy()
                     flush_events()
                     # Show Golden Interest payout before biome selection (only if owned)
                     if int(META.get("golden_interest_level", 0)) > 0:
                         gain = apply_golden_interest_payout()
                         show_golden_interest_popup(screen, gain, int(META.get("spoils", 0)))
                     # <<< 在 NEXT 之后弹出“场景四选一” >>>
+                    queue_menu_transition(from_surf)
                     chosen_biome = show_biome_picker_in_shop(screen)
                     # 识别从翻卡界面透传出来的暂停菜单选择
                     if chosen_biome in ("__HOME__", "__RESTART__", "__EXIT__"):
@@ -4067,6 +4066,7 @@ def show_biome_picker_in_shop(screen) -> str:
     # 确认按钮
     confirm = pygame.Rect(0, 0, 240, 56)
     confirm.center = (VIEW_W // 2, y + card_h + 90)
+    start_menu_surf = None
 
     def draw():
         screen.fill((16, 16, 18))
@@ -4106,6 +4106,7 @@ def show_biome_picker_in_shop(screen) -> str:
             pygame.draw.rect(screen, (35, 35, 35), confirm, border_radius=10)
             txt = pygame.font.SysFont(None, 32).render("CONFIRM", True, (120, 120, 120))
         screen.blit(txt, txt.get_rect(center=confirm.center))
+        run_pending_menu_transition(screen)
         pygame.display.flip()
 
     while True:
@@ -4121,11 +4122,11 @@ def show_biome_picker_in_shop(screen) -> str:
                     flush_events()
                     continue  # 回到翻卡界面
                 if pick == "home":
-                    door_transition(screen)
+                    queue_menu_transition(pygame.display.get_surface().copy())
                     flush_events()
                     return "__HOME__"
                 if pick == "restart":
-                    door_transition(screen)
+                    queue_menu_transition(pygame.display.get_surface().copy())
                     flush_events()
                     return "__RESTART__"
                 if pick == "exit":
@@ -4141,6 +4142,7 @@ def show_biome_picker_in_shop(screen) -> str:
                             break
                 # 点击确认：只有当 chosen 存在（即至少翻开并选择了一张）才生效
                 if chosen and confirm.collidepoint(ev.pos):
+                    queue_menu_transition(screen.copy())
                     flush_events()
                     return chosen
         clock.tick(60)
@@ -9278,8 +9280,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 if choice == 'continue':
                     pass  # just resume
                 elif choice == 'restart':
+                    queue_menu_transition(pygame.display.get_surface().copy())
                     return 'restart', config.get('reward', None), bg
                 elif choice == 'home':
+                    queue_menu_transition(pygame.display.get_surface().copy())
                     # carry your current level/xp forward
                     globals()["_carry_player_state"] = capture_player_carry(player)
                     # write a progress save (this contains META + carry)
@@ -9664,8 +9668,10 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 if choice == 'continue':
                     pass
                 elif choice == 'restart':
+                    queue_menu_transition(pygame.display.get_surface().copy())
                     return 'restart', None, bg
                 elif choice == 'home':
+                    queue_menu_transition(pygame.display.get_surface().copy())
                     snap2 = capture_snapshot(
                         game_state, player, zombies, level_idx,
                         chosen_zombie_type, bullets
@@ -9907,7 +9913,7 @@ if __name__ == "__main__":
         if "_coins_at_level_start" not in globals():
             globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
         if globals().get("_menu_transition_frame") is None:
-            door_transition(screen)
+            flush_events()
         result, reward, bg = main_run_level(config, chosen_zombie)
         if result == "restart":
             META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
