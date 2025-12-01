@@ -2818,7 +2818,7 @@ def show_success_screen(screen, background_surf, reward_choices):
                 for rect, card in card_rects:
                     if rect.collidepoint(event.pos): chosen = card
                 if next_btn.collidepoint(event.pos) and (chosen or len(reward_choices) == 0):
-                    queue_menu_transition(screen.copy())
+                    # animation add if needed
                     flush_events()
                     return chosen
 
@@ -3980,14 +3980,14 @@ def show_shop_screen(screen) -> Optional[str]:
                         break
             if ev.type == pygame.MOUSEBUTTONDOWN:
                 if close.collidepoint(ev.pos):
-                    from_surf = screen.copy()
+                    # animation add if needed
                     flush_events()
                     # Show Golden Interest payout before biome selection (only if owned)
                     if int(META.get("golden_interest_level", 0)) > 0:
                         gain = apply_golden_interest_payout()
                         show_golden_interest_popup(screen, gain, int(META.get("spoils", 0)))
                     # <<< 在 NEXT 之后弹出“场景四选一” >>>
-                    queue_menu_transition(from_surf)
+                    # animation add if needed
                     chosen_biome = show_biome_picker_in_shop(screen)
                     # 识别从翻卡界面透传出来的暂停菜单选择
                     if chosen_biome in ("__HOME__", "__RESTART__", "__EXIT__"):
@@ -4159,7 +4159,7 @@ def show_biome_picker_in_shop(screen) -> str:
                             break
                 # 点击确认：只有当 chosen 存在（即至少翻开并选择了一张）才生效
                 if chosen and confirm.collidepoint(ev.pos):
-                    queue_menu_transition(screen.copy())
+                    # animation add if needed
                     flush_events()
                     return chosen
         clock.tick(60)
