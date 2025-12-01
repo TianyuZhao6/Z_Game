@@ -748,7 +748,7 @@ GOLDEN_INTEREST_CAPS = (30, 50, 70, 90)  # per-wave caps by level (1-4)
 GOLDEN_INTEREST_MAX_LEVEL = 4
 SHADY_LOAN_MAX_LEVEL = 3
 SHADY_LOAN_INSTANT_GOLD = (80, 120, 160)
-SHADY_LOAN_WAVES = (3, 4, 5)
+SHADY_LOAN_WAVES = (1, 2, 3)
 SHADY_LOAN_DEBT_RATES = (0.25, 0.30, 0.35)
 SHADY_LOAN_DEBT_CAPS = (50, 80, 110)
 SHADY_LOAN_HP_PENALTIES = (0.30, 0.35, 0.40)
@@ -1054,6 +1054,8 @@ META = {
     "shady_loan_waves_remaining": 0,
     "shady_loan_remaining_debt": 0,
     "shady_loan_defaulted": False,
+    "shady_loan_status": None,  # None/active/repaid/defaulted
+    "shady_loan_last_level": 0,
     "lockbox_level": 0,
     "bandit_radar_level": 0,
     "coupon_level": 0,
@@ -1093,6 +1095,8 @@ def reset_run_state():
         "shady_loan_waves_remaining": 0,
         "shady_loan_remaining_debt": 0,
         "shady_loan_defaulted": False,
+        "shady_loan_status": None,
+        "shady_loan_last_level": 0,
         "lockbox_level": 0,
         "bandit_radar_level": 0,
         "coupon_level": 0,
@@ -1432,22 +1436,35 @@ def _shady_loan_level_idx(level: int) -> int:
 
 
 def purchase_shady_loan() -> dict:
-    """Increment Shady Loan, grant upfront coins, and reset the repayment timer."""
+    """Increment Shady Loan, grant upfront coins, and refresh repayment with stacking debt."""
     prev_lvl = int(META.get("shady_loan_level", 0))
-    new_lvl = min(SHADY_LOAN_MAX_LEVEL, prev_lvl + 1)
-    idx = _shady_loan_level_idx(new_lvl)
-    instant = int(SHADY_LOAN_INSTANT_GOLD[idx])
-    META["spoils"] = int(META.get("spoils", 0)) + instant
-    META["shady_loan_level"] = new_lvl
-    META["shady_loan_waves_remaining"] = int(SHADY_LOAN_WAVES[idx])
     prev_debt = max(0, int(META.get("shady_loan_remaining_debt", 0)))
-    META["shady_loan_remaining_debt"] = max(instant, prev_debt if prev_lvl > 0 else 0)
+    META["shady_loan_status"] = "active"
+    # If the previous loan was fully repaid and we were at cap, restart at Lv1.
+    if prev_lvl >= SHADY_LOAN_MAX_LEVEL and prev_debt <= 0:
+        purchase_level = 1
+    else:
+        purchase_level = min(SHADY_LOAN_MAX_LEVEL, prev_lvl + 1 if prev_lvl > 0 else 1)
+        if prev_lvl >= SHADY_LOAN_MAX_LEVEL and prev_debt > 0:
+            purchase_level = SHADY_LOAN_MAX_LEVEL
+    idx = _shady_loan_level_idx(purchase_level)
+    instant = int(SHADY_LOAN_INSTANT_GOLD[idx])
+    new_debt = prev_debt + instant
+    new_waves = max(int(META.get("shady_loan_waves_remaining", 0)), int(SHADY_LOAN_WAVES[idx]))
+    META["spoils"] = int(META.get("spoils", 0)) + instant
+    META["shady_loan_last_level"] = purchase_level
+    if prev_debt <= 0:
+        META["shady_loan_level"] = purchase_level
+    else:
+        META["shady_loan_level"] = max(prev_lvl, purchase_level)
+    META["shady_loan_waves_remaining"] = new_waves
+    META["shady_loan_remaining_debt"] = new_debt
     META["shady_loan_defaulted"] = False
     return {
-        "level": new_lvl,
+        "level": int(META["shady_loan_level"]),
         "instant": instant,
-        "waves": int(META.get("shady_loan_waves_remaining", 0)),
-        "debt": int(META.get("shady_loan_remaining_debt", 0)),
+        "waves": new_waves,
+        "debt": new_debt,
     }
 
 
@@ -1487,12 +1504,16 @@ def apply_shady_loan_repayment() -> Optional[dict]:
     idx = _shady_loan_level_idx(level)
     coins_before = max(0, int(META.get("spoils", 0)))
     penalty_ratio = SHADY_LOAN_HP_PENALTIES[idx]
+    lockbox_lvl = int(META.get("lockbox_level", 0))
     # Already overdue -> apply default immediately
     if waves_left <= 0:
         new_max = apply_shady_loan_hp_penalty(penalty_ratio)
         META["shady_loan_remaining_debt"] = 0
         META["shady_loan_waves_remaining"] = 0
         META["shady_loan_defaulted"] = True
+        META["shady_loan_status"] = "defaulted"
+        META["shady_loan_last_level"] = level
+        META["shady_loan_level"] = 0
         return {
             "level": level,
             "raw_payment": 0,
@@ -1507,12 +1528,50 @@ def apply_shady_loan_repayment() -> Optional[dict]:
             "new_max_hp": new_max,
             "cleared": False,
         }
+    # Final wave: attempt to clear the entire remaining debt in one shot
+    if waves_left <= 1:
+        pay_all = clamp_coin_loss_with_lockbox(coins_before, min(debt_left, coins_before), lockbox_lvl)
+        META["spoils"] = coins_before - pay_all
+        coins_after = int(META.get("spoils", coins_before))
+        debt_left = max(0, debt_left - pay_all)
+        waves_left = 0
+        defaulted = False
+        new_max_hp = None
+        if debt_left > 0:
+            defaulted = True
+            META["shady_loan_defaulted"] = True
+            META["shady_loan_status"] = "defaulted"
+            META["shady_loan_last_level"] = level
+            new_max_hp = apply_shady_loan_hp_penalty(penalty_ratio)
+            debt_left = 0
+            coins_after = int(META.get("spoils", coins_after))
+        else:
+            META["shady_loan_defaulted"] = False
+            META["shady_loan_status"] = "repaid"
+            META["shady_loan_last_level"] = level
+        META["shady_loan_level"] = 0
+        META["shady_loan_remaining_debt"] = debt_left
+        META["shady_loan_waves_remaining"] = waves_left
+        return {
+            "level": level,
+            "raw_payment": pay_all,
+            "capped_payment": pay_all,
+            "actual_payment": pay_all,
+            "coins_before": coins_before,
+            "coins_after": coins_after,
+            "debt_left": debt_left,
+            "waves_left": waves_left,
+            "defaulted": defaulted,
+            "hp_penalty_pct": penalty_ratio if defaulted else 0.0,
+            "new_max_hp": new_max_hp,
+            "cleared": (debt_left <= 0 and not defaulted),
+        }
+    # Regular wave: pay capped percentage
     rate = float(SHADY_LOAN_DEBT_RATES[idx])
     cap = int(SHADY_LOAN_DEBT_CAPS[idx])
     raw_payment = int(math.floor(coins_before * rate))
     capped_payment = min(raw_payment, cap)
     actual_payment = min(capped_payment, coins_before, debt_left)
-    lockbox_lvl = int(META.get("lockbox_level", 0))
     actual_payment = clamp_coin_loss_with_lockbox(coins_before, actual_payment, lockbox_lvl)
     if actual_payment > 0:
         META["spoils"] = coins_before - actual_payment
@@ -1525,13 +1584,9 @@ def apply_shady_loan_repayment() -> Optional[dict]:
         debt_left = 0
         waves_left = 0
         META["shady_loan_defaulted"] = False
-    elif waves_left <= 0:
-        defaulted = True
-        META["shady_loan_defaulted"] = True
-        new_max_hp = apply_shady_loan_hp_penalty(penalty_ratio)
-        debt_left = 0
-        waves_left = 0
-        coins_after = int(META.get("spoils", coins_after))
+        META["shady_loan_status"] = "repaid"
+        META["shady_loan_last_level"] = level
+        META["shady_loan_level"] = 0
     META["shady_loan_remaining_debt"] = debt_left
     META["shady_loan_waves_remaining"] = waves_left
     return {
@@ -3821,6 +3876,8 @@ def show_shop_screen(screen) -> Optional[str]:
     def _owned_live_text(it, lvl: int | None):
         iid = it.get("id")
         lvl = 0 if lvl is None else int(lvl)
+        if iid == "shady_loan":
+            lvl = max(lvl, int(META.get("shady_loan_last_level", lvl)))
         if lvl <= 0:
             return None
         if iid == "lockbox":
@@ -3862,13 +3919,14 @@ def show_shop_screen(screen) -> Optional[str]:
         if iid == "shady_loan":
             debt = max(0, int(META.get("shady_loan_remaining_debt", 0)))
             waves = int(META.get("shady_loan_waves_remaining", 0))
-            if bool(META.get("shady_loan_defaulted", False)):
+            status = META.get("shady_loan_status")
+            if status == "defaulted":
                 idx = min(max(lvl, 1), SHADY_LOAN_MAX_LEVEL) - 1
                 pct = int(SHADY_LOAN_HP_PENALTIES[idx] * 100)
                 return f"Defaulted: -{pct}% max HP"
-            if debt <= 0:
+            if status == "repaid" and debt <= 0:
                 return "Loan repaid"
-            return f"Debt {debt}, {max(0, waves)} waves left"
+            return f"Debt {debt}, {max(0, waves)} waves left (final clears remainder)"
         if iid == "coin_magnet":
             radius = int(META.get("coin_magnet_radius", 0))
             return f"Pickup radius +{radius}px"
@@ -3886,6 +3944,8 @@ def show_shop_screen(screen) -> Optional[str]:
 
     def _prop_at_cap(it):
         """Return True if this item has a max_level and the player already meets or exceeds it."""
+        if it.get("id") == "shady_loan":
+            return False  # always offer Shady Loan, even past its nominal cap
         max_lvl = _prop_max_level(it)
         if max_lvl is None:
             return False
@@ -4068,6 +4128,10 @@ def show_shop_screen(screen) -> Optional[str]:
         owned = []
         for itm in catalog:
             lvl = _prop_level(itm)
+            if itm.get("id") == "shady_loan":
+                status = META.get("shady_loan_status")
+                if status in ("repaid", "defaulted") and (lvl is None or lvl <= 0):
+                    lvl = max(1, int(META.get("shady_loan_last_level", 1)))  # keep visible in possessions after resolution
             max_lvl = _prop_max_level(itm)
             if lvl is not None and lvl > 0 and itm.get("id") != "reroll":
                 owned.append({"itm": itm, "lvl": lvl, "max": max_lvl})
@@ -4108,9 +4172,14 @@ def show_shop_screen(screen) -> Optional[str]:
                 row = idx // cols
                 x0 = panel.x + 14 + col * (col_w + col_gap)
                 y0 = base_y + row * line_h
-                name_surf = font.render(name, True, (210, 210, 210))
+                name_color = (210, 210, 210)
+                lvl_color = (180, 230, 255)
+                if ent["itm"].get("id") == "shady_loan" and META.get("shady_loan_status") == "defaulted":
+                    name_color = (200, 80, 80)
+                    lvl_color = (220, 120, 120)
+                name_surf = font.render(name, True, name_color)
                 lvl_str = f"{lvl}/{max_lvl}" if max_lvl is not None else f"x{lvl}"
-                lvl_surf = font.render(lvl_str, True, (180, 230, 255))
+                lvl_surf = font.render(lvl_str, True, lvl_color)
                 screen.blit(name_surf, (x0, y0))
                 screen.blit(lvl_surf, lvl_surf.get_rect(right=x0 + col_w, top=y0))
                 owned_rows.append((pygame.Rect(x0, y0, col_w, line_h), ent))

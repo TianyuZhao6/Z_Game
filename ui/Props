@@ -133,7 +133,7 @@ Effect： Permanent decrease the price in shop by 5%
 
 3.7. Shady Loan
 rarity: 3, cost: 5, max level: 3
-Effect: Take a risky loan: get +80/+120/+160 coins instantly, owe at least that much, and repay over 3/4/5 waves (25/30/35% of current coins, cap 50/80/110) after Golden Interest. If debt remains when the timer ends, lose 30/35/40% max HP.
+Effect: Take a risky loan: get +80/+120/+160 coins instantly, owe at least that much, and repay over 3/4/5 waves (25/30/35% of current coins, cap 50/80/110) after Golden Interest. Multiple loans stack debt and use the highest timer; the final wave attempts to clear all remaining debt at once, otherwise you lose 30/35/40% max HP.
 
 '4. Utility / Control Props'
 These change the way the player moves or controls space.
