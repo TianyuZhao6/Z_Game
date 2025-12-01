@@ -2471,6 +2471,22 @@ def draw_neuro_info_column(surface: pygame.Surface, font, t: float, saved_exists
     pygame.draw.rect(panel, (12, 30, 50, 120), panel.get_rect(), border_radius=14)
     pygame.draw.rect(panel, (70, 180, 230, 170), panel.get_rect(), width=2, border_radius=14)
     surface.blit(panel, col_rect.topleft)
+    # simple word wrap so system messages stay within the column
+    def _wrap_text(txt: str, max_px: int) -> list[str]:
+        words = txt.split()
+        lines = []
+        cur = ""
+        for w in words:
+            trial = w if not cur else f"{cur} {w}"
+            if font.size(trial)[0] <= max_px:
+                cur = trial
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines or [""]
     lines = [
         f"run time: {t:6.2f}s",
         f"seed: 0x{_neuro_log_seed:06X}",
@@ -2479,10 +2495,12 @@ def draw_neuro_info_column(surface: pygame.Surface, font, t: float, saved_exists
         _NEURO_SYSTEM_MESSAGES[int(t * 0.75) % len(_NEURO_SYSTEM_MESSAGES)],
     ]
     y = col_rect.top + 14
+    text_max_w = col_rect.width - 28  # padding inside the panel
     for line in lines:
-        surf_line = font.render(line, True, (150, 200, 230))
-        surface.blit(surf_line, (col_rect.left + 14, y))
-        y += surf_line.get_height() + 6
+        for seg in _wrap_text(line, text_max_w):
+            surf_line = font.render(seg, True, (150, 200, 230))
+            surface.blit(surf_line, (col_rect.left + 14, y))
+            y += surf_line.get_height() + 6
 
 
 def draw_neuro_title_intro(surface: pygame.Surface, title_font, prompt_font, t: float):
