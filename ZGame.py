@@ -2678,7 +2678,6 @@ def show_instruction(screen):
                 to_surf = render_start_menu_surface(has_save())
                 play_hex_transition(screen, from_surf, to_surf, direction="up")
                 return
-        clock.tick(60)
 
 
 def show_fail_screen(screen, background_surf):
@@ -7257,9 +7256,13 @@ def tick_aegis_pulse(player, game_state: "GameState", zombies, dt: float) -> Non
 
 def roll_spoils_for_zombie(z: "Zombie") -> int:
     """Return number of coins to drop for a killed zombie, applying drop chance."""
+    t = getattr(z, "type", "basic")
+    # Ravagers should always drop spoils (no RNG miss)
+    if t == "ravager":
+        lo, hi = SPOILS_PER_TYPE.get("ravager", (2, 5))
+        return random.randint(int(lo), int(hi))
     if random.random() > SPOILS_DROP_CHANCE:
         return 0
-    t = getattr(z, "type", "basic")
     lo, hi = SPOILS_PER_TYPE.get(t, (1, 1))
     return random.randint(int(lo), int(hi))
 
