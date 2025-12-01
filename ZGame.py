@@ -746,6 +746,12 @@ COUPON_MAX_LEVEL = 4
 GOLDEN_INTEREST_RATE_PER_LEVEL = 0.05  # 5%/lvl interest on unspent coins
 GOLDEN_INTEREST_CAPS = (30, 50, 70, 90)  # per-wave caps by level (1-4)
 GOLDEN_INTEREST_MAX_LEVEL = 4
+SHADY_LOAN_MAX_LEVEL = 3
+SHADY_LOAN_INSTANT_GOLD = (80, 120, 160)
+SHADY_LOAN_WAVES = (3, 4, 5)
+SHADY_LOAN_DEBT_RATES = (0.25, 0.30, 0.35)
+SHADY_LOAN_DEBT_CAPS = (50, 80, 110)
+SHADY_LOAN_HP_PENALTIES = (0.30, 0.35, 0.40)
 LOCKBOX_PROTECT_RATES = (0.25, 0.40, 0.55, 0.70)
 LOCKBOX_MAX_LEVEL = len(LOCKBOX_PROTECT_RATES)
 BANDIT_RADAR_SLOW_MULT = (0.92, 0.88, 0.84, 0.80)
@@ -1044,6 +1050,10 @@ META = {
     "shrapnel_level": 0,
     "carapace_shield_hp": 0,
     "golden_interest_level": 0,
+    "shady_loan_level": 0,
+    "shady_loan_waves_remaining": 0,
+    "shady_loan_remaining_debt": 0,
+    "shady_loan_defaulted": False,
     "lockbox_level": 0,
     "bandit_radar_level": 0,
     "coupon_level": 0,
@@ -1079,6 +1089,10 @@ def reset_run_state():
         "shrapnel_level": 0,
         "carapace_shield_hp": 0,
         "golden_interest_level": 0,
+        "shady_loan_level": 0,
+        "shady_loan_waves_remaining": 0,
+        "shady_loan_remaining_debt": 0,
+        "shady_loan_defaulted": False,
         "lockbox_level": 0,
         "bandit_radar_level": 0,
         "coupon_level": 0,
@@ -1399,6 +1413,192 @@ def show_golden_interest_popup(screen, gain: int, new_total: int) -> None:
         pygame.draw.rect(screen, gold, btn_rect, width=2, border_radius=10)
         btn_label = btn_font.render("Next", True, gold)
         screen.blit(btn_label, btn_label.get_rect(center=btn_rect.center))
+        pygame.display.flip()
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if ev.type == pygame.KEYDOWN and ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_ESCAPE):
+                flush_events()
+                return
+            if ev.type == pygame.MOUSEBUTTONDOWN and btn_rect.collidepoint(ev.pos):
+                flush_events()
+                return
+
+
+def _shady_loan_level_idx(level: int) -> int:
+    lvl = max(0, min(SHADY_LOAN_MAX_LEVEL, int(level)))
+    return max(0, lvl - 1)
+
+
+def purchase_shady_loan() -> dict:
+    """Increment Shady Loan, grant upfront coins, and reset the repayment timer."""
+    prev_lvl = int(META.get("shady_loan_level", 0))
+    new_lvl = min(SHADY_LOAN_MAX_LEVEL, prev_lvl + 1)
+    idx = _shady_loan_level_idx(new_lvl)
+    instant = int(SHADY_LOAN_INSTANT_GOLD[idx])
+    META["spoils"] = int(META.get("spoils", 0)) + instant
+    META["shady_loan_level"] = new_lvl
+    META["shady_loan_waves_remaining"] = int(SHADY_LOAN_WAVES[idx])
+    prev_debt = max(0, int(META.get("shady_loan_remaining_debt", 0)))
+    META["shady_loan_remaining_debt"] = max(instant, prev_debt if prev_lvl > 0 else 0)
+    META["shady_loan_defaulted"] = False
+    return {
+        "level": new_lvl,
+        "instant": instant,
+        "waves": int(META.get("shady_loan_waves_remaining", 0)),
+        "debt": int(META.get("shady_loan_remaining_debt", 0)),
+    }
+
+
+def apply_shady_loan_hp_penalty(penalty_ratio: float) -> int:
+    """Apply the max HP cut when defaulting; returns the new max HP."""
+    base_hp = max(1, int(META.get("base_maxhp", PLAYER_MAX_HP)))
+    bonus_hp = max(0, int(META.get("maxhp", 0)))
+    total_hp = base_hp + bonus_hp
+    target = max(1, int(math.floor(total_hp * (1.0 - penalty_ratio))))
+    new_bonus = min(bonus_hp, max(0, target - 1))
+    new_base = max(1, target - new_bonus)
+    META["base_maxhp"] = new_base
+    META["maxhp"] = new_bonus
+    carry = globals().get("_carry_player_state")
+    if isinstance(carry, dict):
+        carry["hp"] = min(target, max(1, int(carry.get("hp", target))))
+    baseline = globals().get("_player_level_baseline")
+    if isinstance(baseline, dict):
+        baseline["hp"] = min(target, max(1, int(baseline.get("hp", target))))
+        baseline["max_hp"] = min(target, max(1, int(baseline.get("max_hp", target))))
+    return target
+
+
+def apply_shady_loan_repayment() -> Optional[dict]:
+    """
+    Resolve one wave of Shady Loan repayment. Returns a summary dict when work was done,
+    or None if no active loan exists.
+    """
+    level = int(META.get("shady_loan_level", 0))
+    debt_left = int(META.get("shady_loan_remaining_debt", 0))
+    waves_left = int(META.get("shady_loan_waves_remaining", 0))
+    if level <= 0:
+        return None
+    if debt_left <= 0:
+        META["shady_loan_waves_remaining"] = 0
+        return None
+    idx = _shady_loan_level_idx(level)
+    coins_before = max(0, int(META.get("spoils", 0)))
+    penalty_ratio = SHADY_LOAN_HP_PENALTIES[idx]
+    # Already overdue -> apply default immediately
+    if waves_left <= 0:
+        new_max = apply_shady_loan_hp_penalty(penalty_ratio)
+        META["shady_loan_remaining_debt"] = 0
+        META["shady_loan_waves_remaining"] = 0
+        META["shady_loan_defaulted"] = True
+        return {
+            "level": level,
+            "raw_payment": 0,
+            "capped_payment": 0,
+            "actual_payment": 0,
+            "coins_before": coins_before,
+            "coins_after": coins_before,
+            "debt_left": 0,
+            "waves_left": 0,
+            "defaulted": True,
+            "hp_penalty_pct": penalty_ratio,
+            "new_max_hp": new_max,
+            "cleared": False,
+        }
+    rate = float(SHADY_LOAN_DEBT_RATES[idx])
+    cap = int(SHADY_LOAN_DEBT_CAPS[idx])
+    raw_payment = int(math.floor(coins_before * rate))
+    capped_payment = min(raw_payment, cap)
+    actual_payment = min(capped_payment, coins_before, debt_left)
+    lockbox_lvl = int(META.get("lockbox_level", 0))
+    actual_payment = clamp_coin_loss_with_lockbox(coins_before, actual_payment, lockbox_lvl)
+    if actual_payment > 0:
+        META["spoils"] = coins_before - actual_payment
+    coins_after = int(META.get("spoils", coins_before))
+    debt_left = max(0, debt_left - actual_payment)
+    waves_left = max(0, waves_left - 1)
+    defaulted = False
+    new_max_hp = None
+    if debt_left <= 0:
+        debt_left = 0
+        waves_left = 0
+        META["shady_loan_defaulted"] = False
+    elif waves_left <= 0:
+        defaulted = True
+        META["shady_loan_defaulted"] = True
+        new_max_hp = apply_shady_loan_hp_penalty(penalty_ratio)
+        debt_left = 0
+        waves_left = 0
+        coins_after = int(META.get("spoils", coins_after))
+    META["shady_loan_remaining_debt"] = debt_left
+    META["shady_loan_waves_remaining"] = waves_left
+    return {
+        "level": level,
+        "raw_payment": raw_payment,
+        "capped_payment": capped_payment,
+        "actual_payment": actual_payment,
+        "coins_before": coins_before,
+        "coins_after": coins_after,
+        "debt_left": debt_left,
+        "waves_left": waves_left,
+        "defaulted": defaulted,
+        "hp_penalty_pct": penalty_ratio if defaulted else 0.0,
+        "new_max_hp": new_max_hp,
+        "cleared": (debt_left <= 0 and not defaulted),
+    }
+
+
+def show_shady_loan_popup(screen, outcome: dict) -> None:
+    """Small modal summarizing Shady Loan repayment/default."""
+    clock = pygame.time.Clock()
+    title_font = pygame.font.SysFont(None, 50, bold=True)
+    body_font = pygame.font.SysFont(None, 28)
+    btn_font = pygame.font.SysFont(None, 32)
+    dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    dim.fill((0, 0, 0, 170))
+    panel_w, panel_h = 620, 260
+    panel = pygame.Rect(0, 0, panel_w, panel_h)
+    panel.center = (VIEW_W // 2, VIEW_H // 2)
+    btn_rect = pygame.Rect(0, 0, 180, 52)
+    btn_rect.center = (panel.centerx, panel.bottom - 60)
+    red = (210, 80, 70)
+    gold = (255, 215, 140)
+    title_txt = "Shady Loan"
+    lines: list[str] = []
+    if outcome.get("defaulted"):
+        pct = int(outcome.get("hp_penalty_pct", 0.0) * 100)
+        new_hp = outcome.get("new_max_hp", "?")
+        title_txt = "Shady Loan Defaulted"
+        lines.append(f"Missed the deadline: -{pct}% max HP (now {new_hp}).")
+        lines.append("Debt wiped, but the scar remains.")
+    elif outcome.get("cleared"):
+        title_txt = "Shady Loan Repaid"
+        lines.append(f"Loan fully repaid at Lv{outcome.get('level', 1)}.")
+        lines.append(f"Coins now: {outcome.get('coins_after', META.get('spoils', 0))}.")
+    else:
+        payment = outcome.get("actual_payment", 0)
+        debt_left = outcome.get("debt_left", 0)
+        waves_left = outcome.get("waves_left", 0)
+        lines.append(f"Paid {payment} coins toward the loan.")
+        lines.append(f"Debt left: {debt_left} | Waves left: {waves_left}")
+        lines.append(f"Coins now: {outcome.get('coins_after', META.get('spoils', 0))}.")
+    while True:
+        screen.blit(dim, (0, 0))
+        pygame.draw.rect(screen, (24, 22, 28), panel, border_radius=14)
+        pygame.draw.rect(screen, red if outcome.get("defaulted") else gold, panel, 3, border_radius=14)
+        title = title_font.render(title_txt, True, gold if not outcome.get("defaulted") else red)
+        screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 46)))
+        y = panel.top + 96
+        for line in lines:
+            surf = body_font.render(line, True, (230, 230, 230))
+            screen.blit(surf, surf.get_rect(center=(panel.centerx, y)))
+            y += 34
+        pygame.draw.rect(screen, (50, 50, 60), btn_rect, border_radius=10)
+        pygame.draw.rect(screen, gold, btn_rect, 2, border_radius=10)
+        btn_lbl = btn_font.render("Next", True, gold)
+        screen.blit(btn_lbl, btn_lbl.get_rect(center=btn_rect.center))
         pygame.display.flip()
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
@@ -2988,6 +3188,11 @@ def show_pause_menu(screen, background_surf):
                 "max_level": GOLDEN_INTEREST_MAX_LEVEL,
             },
             {
+                "id": "shady_loan",
+                "name": "Shady Loan",
+                "max_level": SHADY_LOAN_MAX_LEVEL,
+            },
+            {
                 "id": "coupon",
                 "name": "Coupon",
                 "max_level": COUPON_MAX_LEVEL,
@@ -3015,6 +3220,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("lockbox_level", 0))
         if iid == "golden_interest":
             return int(META.get("golden_interest_level", 0))
+        if iid == "shady_loan":
+            return int(META.get("shady_loan_level", 0))
         if iid == "coupon":
             return int(META.get("coupon_level", 0))
         if iid == "bone_plating":
@@ -3480,6 +3687,15 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "shady_loan",
+                "name": "Shady Loan",
+                "desc": "Risky loan: upfront gold now, pay it back over a few waves or lose max HP.",
+                "cost": 5,
+                "rarity": 3,
+                "max_level": SHADY_LOAN_MAX_LEVEL,
+                "apply": purchase_shady_loan,
+            },
+            {
                 "id": "bandit_radar",
                 "name": "Bandit Radar",
                 "desc": "Bandits spawn slowed & highlighted (8/12/16/20% for 2/3/4/5s).",
@@ -3591,6 +3807,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return (hp + 19) // 20
         if iid == "golden_interest":
             return int(META.get("golden_interest_level", 0))
+        if iid == "shady_loan":
+            return int(META.get("shady_loan_level", 0))
         if iid == "coupon":
             return int(META.get("coupon_level", 0))
         if iid == "bone_plating":
@@ -3641,6 +3859,16 @@ def show_shop_screen(screen) -> Optional[str]:
             rate_pct = int(GOLDEN_INTEREST_RATE_PER_LEVEL * 100 * lvl)
             cap = GOLDEN_INTEREST_CAPS[min(lvl - 1, len(GOLDEN_INTEREST_CAPS) - 1)]
             return f"Interest {rate_pct}% (cap {cap})"
+        if iid == "shady_loan":
+            debt = max(0, int(META.get("shady_loan_remaining_debt", 0)))
+            waves = int(META.get("shady_loan_waves_remaining", 0))
+            if bool(META.get("shady_loan_defaulted", False)):
+                idx = min(max(lvl, 1), SHADY_LOAN_MAX_LEVEL) - 1
+                pct = int(SHADY_LOAN_HP_PENALTIES[idx] * 100)
+                return f"Defaulted: -{pct}% max HP"
+            if debt <= 0:
+                return "Loan repaid"
+            return f"Debt {debt}, {max(0, waves)} waves left"
         if iid == "coin_magnet":
             radius = int(META.get("coin_magnet_radius", 0))
             return f"Pickup radius +{radius}px"
@@ -3989,6 +4217,9 @@ def show_shop_screen(screen) -> Optional[str]:
                         show_golden_interest_popup(screen, gain, int(META.get("spoils", 0)))
                     # <<< 在 NEXT 之后弹出“场景四选一” >>>
                     # animation add if needed
+                    loan_outcome = apply_shady_loan_repayment()
+                    if loan_outcome:
+                        show_shady_loan_popup(screen, loan_outcome)
                     chosen_biome = show_biome_picker_in_shop(screen)
                     # 识别从翻卡界面透传出来的暂停菜单选择
                     if chosen_biome in ("__HOME__", "__RESTART__", "__EXIT__"):
@@ -5121,6 +5352,7 @@ class Zombie:
                         self._bypass_t = 0.50  # ~0.5s of commitment to the side cell
         if self._focus_block and not bandit_flee:
             target_cx, target_cy = self._focus_block.rect.centerx, self._focus_block.rect.centery
+        fd = None  # flow-distance field; stays None if we skip FF steering (e.g., during escape override)
         escape_override = False
         if bandit_flee and getattr(self, "mode", "FLEE") == "ESCAPE_CORNER":
             ex, ey = self.escape_dir
