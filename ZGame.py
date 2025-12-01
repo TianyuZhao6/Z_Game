@@ -4160,6 +4160,7 @@ def show_biome_picker_in_shop(screen) -> str:
                 # 点击确认：只有当 chosen 存在（即至少翻开并选择了一张）才生效
                 if chosen and confirm.collidepoint(ev.pos):
                     # animation add if needed
+                    queue_menu_transition(pygame.display.get_surface().copy())
                     flush_events()
                     return chosen
         clock.tick(60)
