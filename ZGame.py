@@ -748,6 +748,7 @@ GOLDEN_INTEREST_CAPS = (30, 50, 70, 90)  # per-wave caps by level (1-4)
 GOLDEN_INTEREST_MAX_LEVEL = 4
 SHADY_LOAN_MAX_LEVEL = 3
 SHADY_LOAN_INSTANT_GOLD = (80, 120, 160)
+SHADY_LOAN_BASE_DEBT = (96, 144, 192)  # total debt added per purchase (higher than upfront)
 SHADY_LOAN_WAVES = (1, 2, 3)
 SHADY_LOAN_DEBT_RATES = (0.25, 0.30, 0.35)
 SHADY_LOAN_DEBT_CAPS = (50, 80, 110)
@@ -1449,7 +1450,8 @@ def purchase_shady_loan() -> dict:
             purchase_level = SHADY_LOAN_MAX_LEVEL
     idx = _shady_loan_level_idx(purchase_level)
     instant = int(SHADY_LOAN_INSTANT_GOLD[idx])
-    new_debt = prev_debt + instant
+    debt_add = int(SHADY_LOAN_BASE_DEBT[idx])
+    new_debt = prev_debt + debt_add
     new_waves = max(int(META.get("shady_loan_waves_remaining", 0)), int(SHADY_LOAN_WAVES[idx]))
     META["spoils"] = int(META.get("spoils", 0)) + instant
     META["shady_loan_last_level"] = purchase_level
@@ -3626,7 +3628,7 @@ def show_shop_screen(screen) -> Optional[str]:
         clock = pygame.time.Clock()
         font = pygame.font.SysFont(None, 30)  # titles, cost, etc.
         desc_font = pygame.font.SysFont(None, 24)  # smaller font just for descriptions
-        title_font = pygame.font.SysFont(None, 56)
+        title_font = pygame.font.SysFont(None, 56)  
         btn_font = pygame.font.SysFont(None, 32)
         did_menu_hex = False
         # --- shared shop box style  ---
@@ -3876,8 +3878,7 @@ def show_shop_screen(screen) -> Optional[str]:
     def _owned_live_text(it, lvl: int | None):
         iid = it.get("id")
         lvl = 0 if lvl is None else int(lvl)
-        if iid == "shady_loan":
-            lvl = max(lvl, int(META.get("shady_loan_last_level", lvl)))
+        if iid == "shady_loan":lvl = max(lvl, int(META.get("shady_loan_last_level", lvl)))
         if lvl <= 0:
             return None
         if iid == "lockbox":
@@ -3945,7 +3946,11 @@ def show_shop_screen(screen) -> Optional[str]:
     def _prop_at_cap(it):
         """Return True if this item has a max_level and the player already meets or exceeds it."""
         if it.get("id") == "shady_loan":
-            return False  # always offer Shady Loan, even past its nominal cap
+            lvl = int(META.get("shady_loan_level", 0))
+            debt = int(META.get("shady_loan_remaining_debt", 0))
+            active = META.get("shady_loan_status") == "active"
+            # Only block re-offer when we're already at max level AND still owe money
+            return active and debt > 0 and lvl >= SHADY_LOAN_MAX_LEVEL
         max_lvl = _prop_max_level(it)
         if max_lvl is None:
             return False
