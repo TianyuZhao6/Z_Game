@@ -751,9 +751,10 @@ LOCKBOX_MAX_LEVEL = len(LOCKBOX_PROTECT_RATES)
 BANDIT_RADAR_SLOW_MULT = (0.92, 0.88, 0.84, 0.80)
 BANDIT_RADAR_SLOW_DUR = (2.0, 3.0, 4.0, 5.0)
 # ----- healing drop tuning -----
-HEAL_DROP_CHANCE_ZOMBIE = 0.12  # 12% when a zombie dies
-HEAL_DROP_CHANCE_BLOCK = 0.08  # 8% when a destructible block is broken
+HEAL_DROP_CHANCE_ZOMBIE = 0.08  # 8% when a zombie dies
+HEAL_DROP_CHANCE_BLOCK = 0.03  # 3% when a destructible block is broken
 HEAL_POTION_AMOUNT = 6  # HP restored on pickup (capped to player.max_hp)
+HEAL_MAX_ON_FIELD = 18  # cap active heals to avoid clutter spikes (e.g., long boss waves)
 # ----- player XP rewards by zombie type -----
 XP_PER_ZOMBIE_TYPE = {
     "basic": 6,
@@ -6480,7 +6481,8 @@ class Bullet:
                     z.hp -= dealt
                     game_state.add_damage_text(cx, cy, dealt, crit=is_crit, kind="hp")
                 hp_lost = max(0, hp_before - max(z.hp, 0))
-                if z.hp <= 0:
+                if z.hp <= 0 and not getattr(z, "_death_processed", False):
+                    z._death_processed = True  # Prevent duplicate death processing
                     cx, cy = z.rect.centerx, z.rect.centery
                     # --- Shrapnel Shells: on enemy death, spawn shrapnel splashes ---
                     shrap_lvl = int(META.get("shrapnel_level", 0))
@@ -6551,7 +6553,11 @@ class Bullet:
                         drop_n += int(getattr(z, "spoils", 0))
                         if drop_n > 0:
                             game_state.spawn_spoils(cx, cy, drop_n)
-                        if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                        # Bosses: guaranteed heal potions; regular zombies: random chance
+                        if getattr(z, "is_boss", False):
+                            for _ in range(BOSS_HEAL_POTIONS):
+                                game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
+                        elif random.random() < HEAL_DROP_CHANCE_ZOMBIE:
                             game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
                         if player:
                             base_xp = XP_PER_ZOMBIE_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
@@ -8024,6 +8030,9 @@ class GameState:
         return taken
 
     def spawn_heal(self, x_px: float, y_px: float, amount: int = HEAL_POTION_AMOUNT):
+        # Prevent runaway heal stacks (can happen in long boss fights).
+        if len(self.heals) >= HEAL_MAX_ON_FIELD:
+            return
         jx = random.uniform(-6, 6);
         jy = random.uniform(-6, 6)
         self.heals.append(HealPickup(x_px + jx, y_px + jy, amount))
@@ -9410,13 +9419,18 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         # special behaviors & enemy shots
         for z in list(zombies):
             z.update_special(dt, player, zombies, enemy_shots, game_state)
-            if z.hp <= 0:
+            if z.hp <= 0 and not getattr(z, "_death_processed", False):
+                z._death_processed = True  # Prevent duplicate death processing
                 if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) is not None:
                     trigger_twin_enrage(z, zombies, game_state)
                 total_drop = int(SPOILS_PER_KILL) + int(getattr(z, "spoils", 0))
                 if total_drop > 0:
                     game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
-                if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                # Bosses: guaranteed heal potions; regular zombies: random chance
+                if getattr(z, "is_boss", False):
+                    for _ in range(BOSS_HEAL_POTIONS):
+                        game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
+                elif random.random() < HEAL_DROP_CHANCE_ZOMBIE:
                     game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
                 # 额外经验（非子弹击杀时）
                 if not getattr(z, "_xp_awarded", False):  # <-- add this guard
@@ -9791,11 +9805,16 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         # Special behaviors & enemy shots
         for z in list(zombies):
             z.update_special(dt, player, zombies, enemy_shots, game_state)
-            if z.hp <= 0:
+            if z.hp <= 0 and not getattr(z, "_death_processed", False):
+                z._death_processed = True  # Prevent duplicate death processing
                 total_drop = int(SPOILS_PER_KILL) + int(getattr(z, "spoils", 0))
                 if total_drop > 0:
                     game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
-                if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                # Bosses: guaranteed heal potions; regular zombies: random chance
+                if getattr(z, "is_boss", False):
+                    for _ in range(BOSS_HEAL_POTIONS):
+                        game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
+                elif random.random() < HEAL_DROP_CHANCE_ZOMBIE:
                     game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
                 # 额外经验（非子弹击杀时）
                 try:
