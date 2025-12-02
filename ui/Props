@@ -135,6 +135,11 @@ Effect： Permanent decrease the price in shop by 5%
 rarity: 3, cost: 5, max level: 3
 Effect: Take a risky loan: get +80/+120/+160 coins instantly, owe at least that much, and repay over 3/4/5 waves (25/30/35% of current coins, cap 50/80/110) after Golden Interest. Multiple loans stack debt and use the highest timer; the final wave attempts to clear all remaining debt at once, otherwise you lose 30/35/40% max HP.
 
+3.8. Black Market pass
+Consumable, Rarity: 3, Base Price: $30
+Effect： You’ve got connections in the underworld.
+  the next shop becomes a bit of a black market with better econ deals.
+
 '4. Utility / Control Props'
 These change the way the player moves or controls space.
 
