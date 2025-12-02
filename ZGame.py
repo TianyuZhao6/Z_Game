@@ -749,10 +749,11 @@ GOLDEN_INTEREST_MAX_LEVEL = 4
 SHADY_LOAN_MAX_LEVEL = 3
 SHADY_LOAN_INSTANT_GOLD = (80, 120, 160)
 SHADY_LOAN_BASE_DEBT = (96, 144, 192)  # total debt added per purchase (higher than upfront)
-# SHADY_LOAN_WAVES = (1, 2, 3)
 SHADY_LOAN_DEBT_RATES = (0.25, 0.30, 0.35)
 SHADY_LOAN_DEBT_CAPS = (50, 80, 110)
 SHADY_LOAN_HP_PENALTIES = (0.30, 0.35, 0.40)
+WANTED_POSTER_WAVES = 2
+WANTED_POSTER_BOUNTY_BASE = 30
 LOCKBOX_PROTECT_RATES = (0.25, 0.40, 0.55, 0.70)
 LOCKBOX_MAX_LEVEL = len(LOCKBOX_PROTECT_RATES)
 BANDIT_RADAR_SLOW_MULT = (0.92, 0.88, 0.84, 0.80)
@@ -1057,6 +1058,8 @@ META = {
     "shady_loan_defaulted": False,
     "shady_loan_status": None,  # None/active/repaid/defaulted
     "shady_loan_last_level": 0,
+    "wanted_poster_waves": 0,
+    "wanted_active": False,
     "lockbox_level": 0,
     "bandit_radar_level": 0,
     "coupon_level": 0,
@@ -1098,6 +1101,8 @@ def reset_run_state():
         "shady_loan_defaulted": False,
         "shady_loan_status": None,
         "shady_loan_last_level": 0,
+        "wanted_poster_waves": 0,
+        "wanted_active": False,
         "lockbox_level": 0,
         "bandit_radar_level": 0,
         "coupon_level": 0,
@@ -1468,6 +1473,14 @@ def purchase_shady_loan() -> dict:
         "waves": new_waves,
         "debt": new_debt,
     }
+
+
+def use_wanted_poster() -> dict:
+    """Activate a 2-wave bounty window for bandit kills (consumable in shop)."""
+    waves = int(META.get("wanted_poster_waves", 0)) + WANTED_POSTER_WAVES
+    META["wanted_poster_waves"] = waves
+    META["wanted_active"] = False  # will arm on next level start
+    return {"waves": waves}
 
 
 def apply_shady_loan_hp_penalty(penalty_ratio: float) -> int:
@@ -3245,6 +3258,11 @@ def show_pause_menu(screen, background_surf):
                 "max_level": GOLDEN_INTEREST_MAX_LEVEL,
             },
             {
+                "id": "wanted_poster",
+                "name": "Wanted Poster",
+                "max_level": None,
+            },
+            {
                 "id": "shady_loan",
                 "name": "Shady Loan",
                 "max_level": SHADY_LOAN_MAX_LEVEL,
@@ -3277,6 +3295,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("lockbox_level", 0))
         if iid == "golden_interest":
             return int(META.get("golden_interest_level", 0))
+        if iid == "wanted_poster":
+            return int(META.get("wanted_poster_waves", 0))
         if iid == "shady_loan":
             return int(META.get("shady_loan_level", 0))
         if iid == "coupon":
@@ -3744,6 +3764,14 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "wanted_poster",
+                "name": "Wanted Poster",
+                "desc": "Consumable: next 2 levels, the first Bandit kill pays a bounty.",
+                "cost": 15,
+                "rarity": 2,
+                "apply": use_wanted_poster,
+            },
+            {
                 "id": "shady_loan",
                 "name": "Shady Loan",
                 "desc": "Risky loan: upfront gold now, pay it back over a few waves or lose max HP.",
@@ -3866,6 +3894,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return int(META.get("golden_interest_level", 0))
         if iid == "shady_loan":
             return int(META.get("shady_loan_level", 0))
+        if iid == "wanted_poster":
+            return int(META.get("wanted_poster_waves", 0))
         if iid == "coupon":
             return int(META.get("coupon_level", 0))
         if iid == "bone_plating":
@@ -3917,6 +3947,10 @@ def show_shop_screen(screen) -> Optional[str]:
             rate_pct = int(GOLDEN_INTEREST_RATE_PER_LEVEL * 100 * lvl)
             cap = GOLDEN_INTEREST_CAPS[min(lvl - 1, len(GOLDEN_INTEREST_CAPS) - 1)]
             return f"Interest {rate_pct}% (cap {cap})"
+        if iid == "wanted_poster":
+            waves = int(META.get("wanted_poster_waves", 0))
+            status = "ready" if waves > 0 else ("armed" if META.get("wanted_active") else "spent")
+            return f"Bounty charges: {waves} ({status})"
         if iid == "shady_loan":
             debt = max(0, int(META.get("shady_loan_remaining_debt", 0)))
             waves = int(META.get("shady_loan_waves_remaining", 0))
@@ -3951,6 +3985,8 @@ def show_shop_screen(screen) -> Optional[str]:
             active = META.get("shady_loan_status") == "active"
             # Only block re-offer when we're already at max level AND still owe money
             return active and debt > 0 and lvl >= SHADY_LOAN_MAX_LEVEL
+        if it.get("id") == "wanted_poster":
+            return False  # consumable; always offer
         max_lvl = _prop_max_level(it)
         if max_lvl is None:
             return False
@@ -6846,6 +6882,14 @@ class Bullet:
                                                    kind="shield")
                         if refund > 0:
                             game_state.spawn_spoils(cx, cy, refund)  # 掉一袋钱：玩家自己去捡
+                        if META.get("wanted_active", False):
+                            bounty = int(WANTED_POSTER_BOUNTY_BASE + stolen * 1.0)
+                            META["spoils"] = int(META.get("spoils", 0)) + bounty
+                            META["wanted_active"] = False
+                            game_state.wanted_wave_active = False
+                            game_state.flash_banner(f"Bounty Claimed! +{bounty}", sec=1.0)
+                            game_state.add_damage_text(z.rect.centerx, z.rect.centery, f"+{bounty}", crit=True,
+                                                       kind="hp")
                         # bandit 的普通随机掉落就不要叠加了，直接走移除流程
                         if player:
                             base_xp = XP_PER_ZOMBIE_TYPE.get("bandit", XP_PLAYER_KILL)
@@ -9350,6 +9394,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     pygame.display.set_caption("Zombie Card Game – Level")
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
+    game_state = None
+    wanted_active_for_level = False
     # --- initialize time_left before creating game_state, using global current_level ---
     level_idx = int(globals().get("current_level", 0))
     if level_idx == 0:
@@ -9378,6 +9424,14 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     game_state = GameState(obstacles, items, main_item_list, decorations)
     game_state.current_level = current_level
     game_state.bandit_spawned_this_level = False
+    wp = int(META.get("wanted_poster_waves", 0))
+    if wp > 0:
+        META["wanted_poster_waves"] = max(0, wp - 1)
+        META["wanted_active"] = True
+        wanted_active_for_level = True
+    else:
+        META["wanted_active"] = False
+    game_state.wanted_wave_active = bool(META.get("wanted_active", False))
     # --- use boss-specific time limit AFTER game_state exists ---
     level_idx = int(getattr(game_state, "current_level", 0))  # 0-based inside code
     time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
