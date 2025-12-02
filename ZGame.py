@@ -749,7 +749,7 @@ GOLDEN_INTEREST_MAX_LEVEL = 4
 SHADY_LOAN_MAX_LEVEL = 3
 SHADY_LOAN_INSTANT_GOLD = (80, 120, 160)
 SHADY_LOAN_BASE_DEBT = (96, 144, 192)  # total debt added per purchase (higher than upfront)
-SHADY_LOAN_WAVES = (1, 2, 3)
+# SHADY_LOAN_WAVES = (1, 2, 3)
 SHADY_LOAN_DEBT_RATES = (0.25, 0.30, 0.35)
 SHADY_LOAN_DEBT_CAPS = (50, 80, 110)
 SHADY_LOAN_HP_PENALTIES = (0.30, 0.35, 0.40)
@@ -1452,7 +1452,7 @@ def purchase_shady_loan() -> dict:
     instant = int(SHADY_LOAN_INSTANT_GOLD[idx])
     debt_add = int(SHADY_LOAN_BASE_DEBT[idx])
     new_debt = prev_debt + debt_add
-    new_waves = max(int(META.get("shady_loan_waves_remaining", 0)), int(SHADY_LOAN_WAVES[idx]))
+    new_waves = int(META.get("shady_loan_waves_remaining", 0)) + 1  # each purchase adds one wave
     META["spoils"] = int(META.get("spoils", 0)) + instant
     META["shady_loan_last_level"] = purchase_level
     if prev_debt <= 0:
