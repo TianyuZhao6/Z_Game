@@ -6886,6 +6886,7 @@ class Bullet:
                             bounty = int(WANTED_POSTER_BOUNTY_BASE + stolen * 1.0)
                             META["spoils"] = int(META.get("spoils", 0)) + bounty
                             META["wanted_active"] = False
+                            META["wanted_poster_waves"] = 0  # one poster only pays once; remaining waves void
                             game_state.wanted_wave_active = False
                             game_state.flash_banner(f"Bounty Claimed! +{bounty}", sec=1.0)
                             game_state.add_damage_text(z.rect.centerx, z.rect.centery, f"+{bounty}", crit=True,
