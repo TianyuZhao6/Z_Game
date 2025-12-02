@@ -7,7 +7,22 @@ Multi-element attribute synergy:
 弹道流 已经有雏形（Pierce / Ricochet / Shrapnel）。
 炮台流 有 Auto / Stationary。
 护盾流 刚做了 Carapace + Bone Plating + Shield AOE。
-经济流 有 Coin / Coupon / Reroll 基础。
+经济流 有 Coin / Coupon / Reroll 基础
+
+状态流 有 Buff / Debuff / Status 基础 
+   Leave a trace wherever you go on map, then apply a status effect to enemies in the area.
+   Status effect will be removed when you leave the area for a while.
+   Status effect will be removed when you die/restart/clear the level.
+
+
+仆从流 有 Pet / Minion / Summoner 基础 
+   Summon a Summoner that follows you and attacks enemies. When the Summoner dies, 
+   it will be replaced by a new one. Summoner will level up with you.
+   Summoner will have a unique ability that is different from your own.
+   Summoner will have a unique passive ability that is different from your own.
+
+赌狗流 有 Lucky / Risk / Chance 基础
+
 
 
 经济流 & 控场流做成通用支线，可以跟任何主流派混搭。
@@ -15,6 +30,21 @@ Multi-element attribute synergy:
 状态流 / 仆从流 / 赌狗流 等核心够稳的时候，再慢慢加进。
 
 Boss: Anti-U
+================================RARITY=====================================
+Rarity tiers & behavior
+
+Let’s use numeric rarity for easy tuning:
+1 – Common: Very frequent in shop, almost never as boss rewards.
+2 – Uncommon: Medium frequency.
+3 – Rare: Low frequency early, gets more common in later levels.
+4 – Epic: Very low chance in shop; most often from bosses.
+
+Rule you wanted:
+The higher the rarity, the lower the probability of appearing in the shop (but the refresh chance increases as levels increase).
+
+So for the shop we’ll:
+Give lower base weight to higher rarity.
+Give higher growth per level to higher rarity.
 ================================PROPS======================================
 '1. Core Offense Props'
 
@@ -139,7 +169,7 @@ Effect: Take a risky loan: get +80/+120/+160 coins instantly, owe at least that 
 Consumable, Rarity: 3, Base Price: $30
 Effect： You’ve got connections in the underworld.
   the next shop becomes a bit of a black market with better econ deals.
-  Shop prices +20%, with more rare items available.
+  Shop prices +20%, with more rare items available.(all item >= rarity 3)
 
 '4. Utility / Control Props'
 These change the way the player moves or controls space.
@@ -199,3 +229,5 @@ Effect: Every N-th hit chains lightning to nearby enemy for bonus damage.
 Synergy:
 Rewards sustained fire (auto-fire weapons).
 Great vs clustered waves, weaker vs single boss, so still somewhat balanced.
+
+'6. “Set / Combo” Ideas'
