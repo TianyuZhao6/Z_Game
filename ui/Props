@@ -139,6 +139,7 @@ Effect: Take a risky loan: get +80/+120/+160 coins instantly, owe at least that 
 Consumable, Rarity: 3, Base Price: $30
 Effect： You’ve got connections in the underworld.
   the next shop becomes a bit of a black market with better econ deals.
+  Shop prices +20%, with more rare items available.
 
 '4. Utility / Control Props'
 These change the way the player moves or controls space.
