@@ -40,7 +40,7 @@ Good vs high-HP bosses (persistent damage even while kiting).
 Can interact with other props: e.g., “Hemorrhage” that increases damage to bleeding targets.
 
 ;1.4. Shrapnel Shells √  =========================================================================='
-Effect: On enemy death, there is a chance to spawn 3–4 small projectiles in random directions.
+Effect: On enemy death, 25/35/45% to spawn 3–4 small projectiles in random directions.
 Synergy:
 Insane in big waves (chain-kill feeling).
 More effective with crit (shrapnel can crit).
@@ -131,7 +131,7 @@ Fits your current collision volume and aura design (you can show a glowing outli
 ;3.6. Coupon  √  ==========================================================================
 Effect： Permanent decrease the price in shop by 5%
 
-3.7. Shady Loan
+;3.7. Shady Loan
 rarity: 3, cost: 5, max level: 3
 Effect: Take a risky loan: get +80/+120/+160 coins instantly, owe at least that much, and repay over 3/4/5 waves (25/30/35% of current coins, cap 50/80/110) after Golden Interest. Multiple loans stack debt and use the highest timer; the final wave attempts to clear all remaining debt at once, otherwise you lose 30/35/40% max HP.
 
