@@ -3,6 +3,7 @@ import heapq
 import sys
 import pygame
 import math
+import threading
 import random
 import json
 import os
@@ -2460,6 +2461,8 @@ class NeuroMusicVisualizer:
 
 # Global Instance
 _neuro_viz = NeuroMusicVisualizer()
+_neuro_viz_loader: threading.Thread | None = None
+_neuro_viz_loader_path: str | None = None
 
 # ==================== HEX TRANSITION SYSTEM (GEOMETRY SCALE) ====================
 
@@ -2881,11 +2884,155 @@ def ensure_neuro_background():
     return _neuro_bg_surface
 
 
-def draw_neuro_waves(target: pygame.Surface, t: float):
-    """Animated EEG-style sine lines sliding across the screen."""
+def _neuro_outline_points(cx: int, cy: int) -> list[tuple[float, float]]:
+    """Return the current NeuroViz polygon points, falling back to a circle if unavailable."""
+    try:
+        if "_neuro_viz" in globals() and getattr(_neuro_viz, "bars", None):
+            pts = []
+            for bar in _neuro_viz.bars:
+                r = _neuro_viz.radius + bar.get("val", 0.0)
+                rad = math.radians(bar.get("angle", 0.0) - 90)
+                pts.append((cx + math.cos(rad) * r, cy + math.sin(rad) * r))
+            if len(pts) >= 3:
+                return pts
+    except Exception:
+        pass
+    # Fallback: soft circle approximation
+    pts = []
+    base_r = 140
+    for i in range(36):
+        ang = math.radians(i * 10.0)
+        pts.append((cx + math.cos(ang) * base_r, cy + math.sin(ang) * base_r))
+    return pts
+
+
+def draw_intro_waves(target: pygame.Surface, t: float):
+    """Start-screen waves: radial ripples running forever until any key is pressed."""
     overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-    wave_cols = [(80, 200, 255, 110), (120, 180, 255, 90)]
-    for i, col in enumerate(wave_cols):
+    cx, cy = VIEW_W // 2, int(VIEW_H * 0.52)
+    max_r = math.hypot(VIEW_W, VIEW_H) * 0.55
+    
+    ripple_freq_hz = 0.9   # fixed spawn rate (waves per second)
+    ripple_speed = 320.0    # px per second expansion
+    max_age = max_r / ripple_speed
+    active_ripples = int(max_age * ripple_freq_hz) + 4
+    wave_period = 1.0 / ripple_freq_hz
+    loop_window = max_age + wave_period  # wrap time so waves never end
+    
+    # Pull energy from the Neuro viz so the ripples breathe with the music
+    energy = 0.0
+    try:
+        if "_neuro_viz" in globals() and getattr(_neuro_viz, "bars", None):
+            energy = sum(b.get("val", 0.0) for b in _neuro_viz.bars) / max(1, len(_neuro_viz.bars))
+    except Exception:
+        pass
+    energy_norm = max(0.0, min(1.0, energy / 70.0))
+    
+    base_alpha = 130 + int(90 * energy_norm)
+    base_thickness = 2 + int(3 * energy_norm)
+    hue_shift = int(40 * energy_norm)
+    
+    for i in range(active_ripples):
+        age = (t - i * wave_period) % loop_window
+        if age < 0 or age > max_age:
+            continue
+        
+        radius = age * ripple_speed
+        if radius <= 0 or radius > max_r:
+            continue
+        
+        fade = max(0.0, 1.0 - radius / max_r)
+        alpha = int(base_alpha * fade)
+        if alpha <= 0:
+            continue
+        
+        thickness = max(1, int(base_thickness + 2 * fade))
+        col = (70, 200 + hue_shift, 255, alpha)
+        pygame.draw.circle(overlay, col, (cx, cy), int(radius), thickness)
+        
+        # Subtle shimmer on each ring for a liquid feel
+        shimmer_radius = radius + (6 + energy_norm * 6) * math.sin(age * math.tau * 0.33)
+        if 0 < shimmer_radius < max_r:
+            pygame.draw.circle(overlay, (col[0], col[1], col[2], int(alpha * 0.6)), (cx, cy), int(shimmer_radius), 1)
+    
+    target.blit(overlay, (0, 0))
+
+
+def draw_neuro_waves(target: pygame.Surface, t: float):
+    """Home/menus: infinite outline ripples based on the current NeuroViz shape & color."""
+    overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    cx, cy = VIEW_W // 2, int(VIEW_H * 0.52)
+    base_pts = _neuro_outline_points(cx, cy)
+    if len(base_pts) < 3:
+        return
+    
+    # Average radius from center to shape vertices
+    avg_r = sum(math.hypot(x - cx, y - cy) for x, y in base_pts) / len(base_pts)
+    avg_r = max(1.0, avg_r)
+    
+    ripple_freq_hz = 0.95    # waves per second
+    scale_speed = 0.85       # how fast each outline grows per second
+    max_scale = 4.5          # where we fade out the ring
+    max_age = (max_scale - 1.0) / scale_speed
+    active_ripples = int(max_age * ripple_freq_hz) + 4
+    wave_period = 1.0 / ripple_freq_hz
+    loop_window = max_age + wave_period  # wrap time so waves never end
+    
+    energy = 0.0
+    try:
+        if "_neuro_viz" in globals() and getattr(_neuro_viz, "bars", None):
+            energy = sum(b.get("val", 0.0) for b in _neuro_viz.bars) / max(1, len(_neuro_viz.bars))
+    except Exception:
+        pass
+    energy_norm = max(0.0, min(1.0, energy / 70.0))
+    
+    base_alpha = 140 + int(80 * energy_norm)
+    base_thickness = 2 + int(2 * energy_norm)
+    col_base = tuple(int(c) for c in getattr(_neuro_viz, "poly_color", (70, 230, 255)))
+    
+    for i in range(active_ripples):
+        age = (t - i * wave_period) % loop_window
+        if age < 0 or age > max_age:
+            continue
+        scale = 1.0 + age * scale_speed
+        if scale <= 0 or scale > max_scale:
+            continue
+        
+        fade = max(0.0, 1.0 - (scale - 1.0) / (max_scale - 1.0))
+        alpha = int(base_alpha * fade)
+        if alpha <= 0:
+            continue
+        
+        thickness = max(1, int(base_thickness + 3 * fade))
+        pts = []
+        
+        for x, y in base_pts:
+            dx = x - cx
+            dy = y - cy
+            pts.append((int(round(cx + dx * scale)), int(round(cy + dy * scale))))
+        
+        if len(pts) >= 3:
+            r, g, b = [max(0, min(255, int(v))) for v in col_base[:3]]
+            a = max(0, min(255, int(alpha)))
+            pygame.draw.polygon(overlay, (r, g, b, a), pts, thickness)
+        
+        # Light shimmer echo for a more liquid feel
+        shimmer_scale = scale + 0.05 + 0.02 * math.sin(age * math.tau * 0.5)
+        if shimmer_scale < max_scale and len(base_pts) >= 3:
+            pts_shimmer = [
+                (int(round(cx + (x - cx) * shimmer_scale)), int(round(cy + (y - cy) * shimmer_scale)))
+                for x, y in base_pts
+            ]
+            r, g, b = [max(0, min(255, int(v))) for v in col_base[:3]]
+            a = max(0, min(255, int(alpha * 0.5)))
+            pygame.draw.polygon(overlay, (r, g, b, a), pts_shimmer, 1)
+    
+    # Sliding EEG lines over the ripples
+    line_cols = [
+        (max(0, min(255, col_base[0])), max(0, min(255, col_base[1])), max(0, min(255, col_base[2])), 130),
+        (max(0, min(255, col_base[0] + 20)), max(0, min(255, col_base[1] - 20)), max(0, min(255, col_base[2])), 110),
+    ]
+    for i, col in enumerate(line_cols):
         mid_y = int(VIEW_H * (0.34 + i * 0.18))
         amp = 14 + i * 5
         freq = 0.018 + i * 0.007
@@ -2894,8 +3041,10 @@ def draw_neuro_waves(target: pygame.Surface, t: float):
         for x in range(0, VIEW_W + 12, 8):
             phase = t * speed * 0.05 + x * freq
             w = math.sin(phase) * amp + math.sin(phase * 0.35 + i) * amp * 0.24
-            pts.append((x, mid_y + w))
-        pygame.draw.lines(overlay, col, False, pts, 2)
+            pts.append((x, int(round(mid_y + w))))
+        if len(pts) >= 2:
+            pygame.draw.lines(overlay, col, False, pts, 2)
+    
     target.blit(overlay, (0, 0))
 
 
@@ -3050,7 +3199,7 @@ def run_neuro_intro(screen: pygame.Surface):
         dt = clock.tick(60) / 1000.0
         t += dt
         screen.blit(ensure_neuro_background(), (0, 0))
-        draw_neuro_waves(screen, t)
+        draw_intro_waves(screen, t)
         draw_neuro_title_intro(screen, title_font, prompt_font, t)
         pygame.display.flip()
         for event in pygame.event.get():
@@ -9638,7 +9787,7 @@ class GameSound:
 
 def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms: int = 400):
     """Stop current BGM and play the first existing file in candidates."""
-    global _bgm, _neuro_viz
+    global _bgm, _neuro_viz, _neuro_viz_loader, _neuro_viz_loader_path
     try:
         if "_bgm" in globals() and getattr(_bgm, "stop", None):
             try:
@@ -9652,8 +9801,24 @@ def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms:
         _bgm.playBackGroundMusic()
         
         # --- MODIFIED: Load into NeuroVisualizer instead of intro_envelope ---
-        if _neuro_viz:
-            _neuro_viz.load_music(path)
+        # Heavy librosa analysis can hitch the first frame; load it asynchronously.
+        def _kickoff_load(p: str):
+            global _neuro_viz_loader, _neuro_viz_loader_path
+            if not _neuro_viz:
+                return
+            # Avoid duplicate loaders on the same path
+            if _neuro_viz_loader and _neuro_viz_loader.is_alive() and _neuro_viz_loader_path == p:
+                return
+            def _worker():
+                try:
+                    _neuro_viz.load_music(p)
+                except Exception as e:
+                    print(f"[AudioAnalyzer] async load failed for {p}: {e}")
+            _neuro_viz_loader_path = p
+            _neuro_viz_loader = threading.Thread(target=_worker, daemon=True)
+            _neuro_viz_loader.start()
+        
+        _kickoff_load(path)
             
         return True
     except Exception as e:
