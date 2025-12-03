@@ -2451,10 +2451,13 @@ class NeuroMusicVisualizer:
             poly_points.append((int(round(x)), int(round(y))))
             
         if len(poly_points) > 2:
+            # Clamp colors to valid pygame ints
+            poly_col = tuple(max(0, min(255, int(round(c)))) for c in self.poly_color)
+            circle_col = tuple(max(0, min(255, int(round(c)))) for c in self.circle_color)
             # Draw the filled shape (Navy background)
-            pygame.draw.polygon(screen, self.circle_color, poly_points)
+            pygame.draw.polygon(screen, circle_col, poly_points)
             # Draw the neon outline
-            pygame.draw.polygon(screen, self.poly_color, poly_points, 3)
+            pygame.draw.polygon(screen, poly_col, poly_points, 3)
             
         # Draw inner decorative ring
         pygame.draw.circle(screen, (30, 40, 50), (center_x, center_y), int(self.radius * 0.8), 1)
