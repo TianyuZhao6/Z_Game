@@ -10,6 +10,7 @@ import os
 import shutil
 import copy
 import wave
+import hashlib
 import numpy as np
 import librosa
 import colorsys
@@ -2260,6 +2261,7 @@ class AudioAnalyzer:
     """
     Embedded analyzer using librosa to generate spectrogram data for visualization.
     Refactored from AudioAnalyzer.py for Game integration.
+    Now includes caching to avoid re-analyzing the same BGM file every time.
     """
     def __init__(self):
         self.spectrogram = None
@@ -2268,8 +2270,70 @@ class AudioAnalyzer:
         self.duration = 0.0
         self.loaded = False
 
-    def load(self, filename):
+    def _get_cache_path(self, filename):
+        """Generate cache file path based on audio file path and modification time."""
         try:
+            # Get file modification time to invalidate cache if file changes
+            mtime = os.path.getmtime(filename)
+            # Create a safe cache filename from the audio file path
+            cache_key = f"{os.path.abspath(filename)}_{mtime}"
+            cache_hash = hashlib.md5(cache_key.encode()).hexdigest()
+            # Use TEMP directory for cache files
+            cache_dir = os.path.join(os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(), "TEMP")
+            os.makedirs(cache_dir, exist_ok=True)
+            return os.path.join(cache_dir, f"audio_analysis_{cache_hash}.npz")
+        except Exception:
+            return None
+
+    def _load_from_cache(self, cache_path):
+        """Load analysis results from cache file."""
+        try:
+            if not cache_path or not os.path.exists(cache_path):
+                return False
+            data = np.load(cache_path)
+            self.spectrogram = data['spectrogram']
+            self.time_index_ratio = float(data['time_index_ratio'])
+            self.frequencies_index_ratio = float(data['frequencies_index_ratio'])
+            self.duration = float(data['duration'])
+            self.loaded = True
+            print(f"[AudioAnalyzer] Loaded from cache: {cache_path}")
+            return True
+        except Exception as e:
+            print(f"[AudioAnalyzer] Cache load failed: {e}")
+            return False
+
+    def _save_to_cache(self, cache_path):
+        """Save analysis results to cache file."""
+        try:
+            if not cache_path or self.spectrogram is None:
+                return False
+            np.savez_compressed(
+                cache_path,
+                spectrogram=self.spectrogram,
+                time_index_ratio=self.time_index_ratio,
+                frequencies_index_ratio=self.frequencies_index_ratio,
+                duration=self.duration
+            )
+            print(f"[AudioAnalyzer] Saved to cache: {cache_path}")
+            return True
+        except Exception as e:
+            print(f"[AudioAnalyzer] Cache save failed: {e}")
+            return False
+
+    def load(self, filename):
+        """Load and analyze audio file, using cache if available."""
+        if not filename or not os.path.exists(filename):
+            self.loaded = False
+            return
+        
+        # Try to load from cache first
+        cache_path = self._get_cache_path(filename)
+        if cache_path and self._load_from_cache(cache_path):
+            return  # Successfully loaded from cache
+        
+        # Cache miss or invalid - perform analysis
+        try:
+            print(f"[AudioAnalyzer] Analyzing {filename} (this may take a moment)...")
             # Load with librosa
             time_series, sample_rate = librosa.load(filename)
             
@@ -2286,6 +2350,10 @@ class AudioAnalyzer:
             self.duration = float(times[-1]) if len(times) > 0 else 0.0
             self.loaded = True
             print(f"[AudioAnalyzer] Analysis complete for {filename}")
+            
+            # Save to cache for next time
+            if cache_path:
+                self._save_to_cache(cache_path)
         except Exception as e:
             print(f"[AudioAnalyzer] Failed to analyze {filename}: {e}")
             self.loaded = False
