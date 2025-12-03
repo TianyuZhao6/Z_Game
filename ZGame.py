@@ -2264,6 +2264,7 @@ class AudioAnalyzer:
         self.spectrogram = None
         self.frequencies_index_ratio = 0
         self.time_index_ratio = 0
+        self.duration = 0.0
         self.loaded = False
 
     def load(self, filename):
@@ -2281,20 +2282,29 @@ class AudioAnalyzer:
 
             self.time_index_ratio = len(times) / times[-1] if len(times) > 0 else 0
             self.frequencies_index_ratio = len(frequencies) / frequencies[-1] if len(frequencies) > 0 else 0
+            self.duration = float(times[-1]) if len(times) > 0 else 0.0
             self.loaded = True
             print(f"[AudioAnalyzer] Analysis complete for {filename}")
         except Exception as e:
             print(f"[AudioAnalyzer] Failed to analyze {filename}: {e}")
             self.loaded = False
+            self.duration = 0.0
 
     def get_decibel(self, target_time, freq):
         if not self.loaded or self.spectrogram is None:
             return -80 # silence
         
+        # Wrap/guard time so looping BGM stays in-range
+        if self.duration > 0:
+            target_time = target_time % self.duration
+        if target_time < 0:
+            target_time = 0
+        
         t_idx = int(target_time * self.time_index_ratio)
         f_idx = int(freq * self.frequencies_index_ratio)
         
         # Clamp indices
+        if t_idx < 0: t_idx = 0
         if t_idx >= self.spectrogram.shape[1]: t_idx = self.spectrogram.shape[1] - 1
         if f_idx >= self.spectrogram.shape[0]: f_idx = self.spectrogram.shape[0] - 1
         
@@ -2360,6 +2370,12 @@ class NeuroMusicVisualizer:
     def update(self, dt, music_pos_seconds):
         if not self.analyzer.loaded:
             return
+        
+        # Keep playback position in track range so looping songs stay synced
+        if self.analyzer.duration > 0:
+            music_pos_seconds = music_pos_seconds % self.analyzer.duration
+        elif music_pos_seconds < 0:
+            music_pos_seconds = 0.0
 
         # 1. Update bars based on spectrogram
         avg_bass = 0
