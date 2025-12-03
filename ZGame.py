@@ -8,9 +8,15 @@ import json
 import os
 import shutil
 import copy
+import wave
 from queue import PriorityQueue
 from collections import deque
 from typing import Dict, List, Set, Tuple, Optional
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 
 # --- Event queue helper to prevent ghost clicks ---
@@ -754,6 +760,7 @@ SHADY_LOAN_DEBT_CAPS = (50, 80, 110)
 SHADY_LOAN_HP_PENALTIES = (0.30, 0.35, 0.40)
 WANTED_POSTER_WAVES = 2
 WANTED_POSTER_BOUNTY_BASE = 30
+INTRO_ANALYZE_MS = 30  # window step for intro waveform (ms)
 LOCKBOX_PROTECT_RATES = (0.25, 0.40, 0.55, 0.70)
 LOCKBOX_MAX_LEVEL = len(LOCKBOX_PROTECT_RATES)
 BANDIT_RADAR_SLOW_MULT = (0.92, 0.88, 0.84, 0.80)
@@ -1120,6 +1127,7 @@ def reset_run_state():
     globals().pop("_shop_reroll_id_cache", None)
     globals().pop("_shop_reroll_cache", None)
     globals().pop("_resume_shop_cache", None)
+    globals().pop("_intro_envelope", None)
     _clear_level_start_baseline()
 
 
@@ -1274,6 +1282,8 @@ else:
 # Audio volumes (placeholders; no audio wired yet)
 FX_VOLUME = 70  # 0-100
 BGM_VOLUME = 60  # 0-100
+_intro_envelope = None  # (levels list, step_ms) for Intro_V0 waveform driving viz
+_music_viz_flow = {"history": None, "bands": 120}  # cached per-frame bar history for the menu viz
 LEVELS = [
     {"obstacle_count": 15, "item_count": 3, "zombie_count": 1, "block_hp": 10, "zombie_types": ["basic"],
      "reward": "zombie_fast"},
@@ -1300,6 +1310,7 @@ def _clear_shop_cache():
     globals().pop("_shop_reroll_id_cache", None)
     globals().pop("_shop_reroll_cache", None)
     globals().pop("_resume_shop_cache", None)
+    globals().pop("_intro_envelope", None)
 
 
 def _golden_interest_gain(coins: int, level: int) -> int:
@@ -2793,6 +2804,125 @@ def draw_neuro_home_header(surface: pygame.Surface, font):
     surface.blit(font.render("> NEUROSCAPE: MIND RUNNER", True, (170, 230, 255)), (50, 70))
 
 
+def _intro_level_at(ms: int | None) -> float:
+    """Return a 0-1 amplitude sample from the precomputed intro envelope."""
+    if ms is None or _intro_envelope is None:
+        return 0.5
+    levels, step_ms = _intro_envelope
+    if not levels:
+        return 0.5
+    idx = max(0, min(len(levels) - 1, int(ms // step_ms)))
+    return float(levels[idx])
+
+
+def draw_music_visualizer(surface: pygame.Surface, t: float,
+                          center: tuple[int, int] | None = None,
+                          base_radius: float | None = None,
+                          alpha: int = 140,
+                          music_pos_ms: int | None = None):
+    """
+    Radial music visualization used on the menu: flowing ring + spoke highlights.
+    Uses a short bar history to create motion blur so the bloom shifts from a jagged burst (graph 2)
+    toward a more filled ring (graph 3).
+    """
+    global _music_viz_flow
+    w, h = surface.get_size()
+    if center is None:
+        center = (w // 2, h // 2)
+    if base_radius is None:
+        base_radius = min(w, h) * 0.32
+    alpha = max(0, min(255, int(alpha)))
+    cx, cy = center
+    level = _intro_level_at(music_pos_ms)
+    pos_s = (music_pos_ms / 1000.0) if music_pos_ms is not None else t
+    bands = max(24, int(_music_viz_flow.get("bands", 120)))
+    rotation = pos_s * 0.75
+    bar_span = base_radius * (0.35 + 0.55 * level)
+    jitter_span = base_radius * (0.08 + 0.12 * level)
+    base_ring = base_radius * (0.84 + 0.14 * level)
+    inner_ring = base_radius * (0.44 + 0.12 * level)
+
+    import colorsys
+    hue = (0.58 + 0.20 * math.sin(pos_s * 0.35) + 0.18 * level) % 1.0
+    r_f, g_f, b_f = colorsys.hsv_to_rgb(hue, 0.72, 1.0)
+    main_rgb = (int(r_f * 255), int(g_f * 255), int(b_f * 255))
+    rim_rgb = tuple(min(255, int(c * 1.08)) for c in main_rgb)
+    spoke_rgb = tuple(min(255, int(c * 1.15)) for c in main_rgb)
+
+    history = _music_viz_flow.get("history")
+    if history is None or (len(history) > 0 and len(history[0]) != bands):
+        from collections import deque
+        history = deque(maxlen=9)
+        _music_viz_flow["history"] = history
+
+    buf_size = int(base_radius * 3.0)
+    tmp = pygame.Surface((buf_size, buf_size), pygame.SRCALPHA)
+    offset = (cx - buf_size // 2, cy - buf_size // 2)
+
+    outer_pts: list[tuple[int, int]] = []
+    base_pts: list[tuple[int, int]] = []
+    lengths: list[float] = []
+    for i in range(bands):
+        ang = rotation + 2.0 * math.pi * i / bands
+        wave = 0.55 + 0.45 * math.sin(pos_s * 1.8 + i * 0.24) ** 2
+        flow = 0.6 + 0.4 * math.sin(pos_s * 3.5 + i * 0.12 + level * 3.0)
+        flutter = math.sin(pos_s * 6.0 + i * 0.9) * 0.5 + math.sin(pos_s * 4.2 + i * 0.37) * 0.5
+        bar_len = bar_span * wave * flow + jitter_span * flutter
+        base_r = base_ring * (0.96 + 0.04 * math.sin(pos_s * 0.9 + i * 0.07))
+        r_outer = max(4.0, base_r + bar_len)
+        r_inner = max(4.0, base_r - base_radius * 0.16)
+        ox = int(cx + math.cos(ang) * r_outer - offset[0])
+        oy = int(cy + math.sin(ang) * r_outer - offset[1])
+        bx = int(cx + math.cos(ang) * r_inner - offset[0])
+        by = int(cy + math.sin(ang) * r_inner - offset[1])
+        outer_pts.append((ox, oy))
+        base_pts.append((bx, by))
+        lengths.append(r_outer - base_radius)
+
+    history.append(list(lengths))
+
+    if len(history) > 1:
+        for idx, hist in enumerate(reversed(history)):
+            fade = (idx + 1) / len(history)
+            fade_alpha = int(alpha * 0.08 * (1.0 + 2.4 * (1 - fade)))
+            if fade_alpha <= 2:
+                continue
+            layer_pts = []
+            for i in range(bands):
+                ang = rotation + 2.0 * math.pi * i / bands
+                r = base_radius + hist[i]
+                layer_pts.append((
+                    int(cx + math.cos(ang) * r - offset[0]),
+                    int(cy + math.sin(ang) * r - offset[1])
+                ))
+            if len(layer_pts) >= 3:
+                pygame.draw.polygon(tmp, (main_rgb[0], main_rgb[1], main_rgb[2], fade_alpha), layer_pts)
+
+    if len(outer_pts) >= 3:
+        pygame.draw.polygon(tmp, (*main_rgb, alpha), outer_pts)
+        pygame.draw.polygon(tmp, (*rim_rgb, min(240, alpha + 60)), outer_pts, width=2)
+
+    spoke_alpha = int(alpha * (0.32 + 0.48 * level))
+    for idx, (bp, op) in enumerate(zip(base_pts, outer_pts)):
+        shade = 0.6 + 0.4 * math.sin(pos_s * 1.1 + idx * 0.15)
+        col = (
+            int(spoke_rgb[0] * shade),
+            int(spoke_rgb[1] * shade),
+            int(spoke_rgb[2] * shade),
+            max(30, int(spoke_alpha * shade)),
+        )
+        pygame.draw.line(tmp, col, bp, op, width=2)
+        if idx % 12 == 0:
+            pygame.draw.circle(tmp, col, op, 3 + int(2 * level))
+
+    center_pt = (buf_size // 2, buf_size // 2)
+    pygame.draw.circle(tmp, (20, 28, 36, int(alpha * 0.35)), center_pt, int(inner_ring))
+    pygame.draw.circle(tmp, (*rim_rgb, min(255, alpha + 40)), center_pt, int(inner_ring), width=2)
+    pygame.draw.circle(tmp, (255, 255, 255, int(alpha * 0.20)), center_pt, int(inner_ring * 0.55))
+
+    surface.blit(tmp, offset)
+
+
 def animate_menu_exit(screen: pygame.Surface, snapshot: pygame.Surface, duration: int = 450):
     """Slide/fade the menu upward before entering the run."""
     clock = pygame.time.Clock()
@@ -2853,6 +2983,13 @@ def render_start_menu_surface(saved_exists: bool):
     draw_neuro_button(surf, rects["instruction"], "INSTRUCTION", btn_font, hovered=False, disabled=False, t=wave_t)
     draw_neuro_button(surf, rects["settings"], "SETTINGS", btn_font, hovered=False, disabled=False, t=wave_t)
     draw_neuro_button(surf, rects["exit"], "EXIT", btn_font, hovered=False, disabled=False, t=wave_t)
+    draw_music_visualizer(
+        surf, wave_t,
+        center=(surf.get_width() // 2, int(surf.get_height() * 0.52)),
+        base_radius=min(surf.get_width(), surf.get_height()) * 0.34,
+        alpha=150,
+        music_pos_ms=None,
+    )
     draw_neuro_info_column(surf, info_font, wave_t, saved_exists)
     return surf
 
@@ -2881,6 +3018,13 @@ def show_start_menu(screen, *, skip_intro: bool = False):
                 break
         screen.blit(ensure_neuro_background(), (0, 0))
         draw_neuro_waves(screen, t)
+        draw_music_visualizer(
+            screen, t,
+            center=(VIEW_W // 2, int(VIEW_H * 0.52)),
+            base_radius=min(VIEW_W, VIEW_H) * 0.34,
+            alpha=150,
+            music_pos_ms=pygame.mixer.music.get_pos() if pygame.mixer.get_init() else None,
+        )
         draw_neuro_home_header(screen, header_font)
         drawn_rects = {}
         drawn_rects["start"] = draw_neuro_button(screen, base_rects["start"], "START NEW", btn_font,
@@ -9416,6 +9560,56 @@ def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms:
         return False
 
 
+def _load_intro_envelope(pref_path: str | None):
+    """Precompute a simple RMS envelope for Intro_V0 to drive the homepage visualizer."""
+    global _intro_envelope
+    if _intro_envelope is not None:
+        return
+    if np is None:
+        return
+    path = None
+    candidates = []
+    if pref_path:
+        candidates.append(pref_path)
+    here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
+    candidates.extend([
+        os.path.join(here, "assets", "Intro_V0.wav"),
+        os.path.join(here, "Z_Game", "assets", "Intro_V0.wav"),
+        os.path.join(os.getcwd(), "assets", "Intro_V0.wav"),
+        os.path.join(os.getcwd(), "Z_Game", "assets", "Intro_V0.wav"),
+    ])
+    for p in candidates:
+        if p and os.path.exists(p):
+            path = p
+            break
+    if not path:
+        return
+    try:
+        with wave.open(path, "rb") as wf:
+            n_channels = wf.getnchannels()
+            fr = wf.getframerate()
+            n_frames = wf.getnframes()
+            raw = wf.readframes(n_frames)
+            dtype = np.int16 if wf.getsampwidth() == 2 else np.int8
+            data = np.frombuffer(raw, dtype=dtype).astype(np.float32)
+            if n_channels > 1:
+                data = data.reshape(-1, n_channels).mean(axis=1)
+            # normalize
+            data /= max(1.0, np.max(np.abs(data)))
+            step = int(fr * (INTRO_ANALYZE_MS / 1000.0))
+            step = max(64, step)
+            env = []
+            for i in range(0, len(data), step):
+                window = data[i:i + step]
+                if window.size == 0:
+                    break
+                rms = float(np.sqrt(np.mean(window * window)))
+                env.append(rms)
+            _intro_envelope = (env, INTRO_ANALYZE_MS)
+    except Exception as e:
+        print(f"[Audio] envelope load failed: {e}")
+
+
 def play_intro_bgm():
     """Play Intro_V0 if present (home/start), fallback to ZGAME.wav."""
     here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
@@ -9431,6 +9625,7 @@ def play_intro_bgm():
         os.path.join(os.getcwd(), "Z_Game", "assets", "ZGAME.wav"),
     ]
     _play_bgm_candidates(intro_candidates, volume=BGM_VOLUME / 100.0)
+    _load_intro_envelope(intro_candidates[0])
 
 
 def play_combat_bgm():
