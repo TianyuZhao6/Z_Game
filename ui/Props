@@ -104,7 +104,7 @@ Obvious synergy with max HP props and heal mechanics.
 Encourages high skill players to take risks.
 
 2.4. Retaliation Thorns
-Effect: Enemies that hit you take a flat damage or % of their max HP.
+Effect: Enemies that hit you by contact damage take a flat damage or % of their max HP.
 Synergy:
 Works well with Bone Plating (you can “intentionally” take occasional hits).
 Encourages tanky, lower-mobility builds.
@@ -123,6 +123,43 @@ All enemies whose hitbox intersects the field take damage.
 
 ;2.6. Carapace  √  ==========================================================================
 Effect: Add a one time shield for player
+
+2.7. Shield Capacitor
+
+Rarity: 3
+Effect:
+When you pick up a heal while at full HP, the heal instead grants temporary shield HP.
+At higher levels, overheal conversion % goes up, or you can store more “capacitor charge.”
+
+Combos:
+Carapace + Shield Capacitor → Heals become extra layers on top of your base shield, making Carapace scale really hard later.
+Bone Plating + Shield Capacitor → Constant trickle of plating plus overheal > you become a walking shield sandwich.
+
+2.8. Mirror Shell
+
+Rarity: 3
+Effect:
+While you have shield HP, a percentage of 'RANGED damage' you take is reflected back to the attacker.
+At higher levels, reflect % and/or bounce range increases.
+Combos:
+Mirror Shell + Aegis Pulse
+→ You already want to stay close-ish to enemies for the pulse; reflected shots punish ranged hordes simultaneously.
+Mirror Shell + Bone Plating
+→ The more hits you can “eat” with temporary armor, the more reflected damage you dish out.
+
+2.9. Shardstorm
+
+Rarity: 3–4
+Effect:
+When your shield breaks, it explodes into shards that fly outward like bullets (number of shards & damage scale with level).
+
+Combos:
+Carapace + Bone Plating + Shardstorm
+→ Your layers of shield now become ammo when they finally break, turning mistakes into mini-nukes.
+Shardstorm + Piercing Rounds / Ricochet Scope / Shrapnel Shells
+→ Shards inherit bullet modifiers: piercing, bouncing, or spawning shrapnel on kill. Shield path suddenly becomes part of the bullet engine.
+
+2.10. 
 
 '3. Economy & Bandit Interaction Props'
 
