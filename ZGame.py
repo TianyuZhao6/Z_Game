@@ -9,15 +9,11 @@ import os
 import shutil
 import copy
 import wave
+import numpy as np
+import librosa
 from queue import PriorityQueue
 from collections import deque
 from typing import Dict, List, Set, Tuple, Optional
-
-try:
-    import numpy as np
-except ImportError:
-    np = None
-
 
 # --- Event queue helper to prevent ghost clicks ---
 def flush_events():
@@ -2815,6 +2811,17 @@ def _intro_level_at(ms: int | None) -> float:
     return float(levels[idx])
 
 
+def _current_music_pos_ms() -> int | None:
+    """Safe wrapper for pygame.mixer.music.get_pos(), returning None if not playing."""
+    try:
+        pos = pygame.mixer.music.get_pos()
+        if pos is None or pos < 0:
+            return None
+        return int(pos)
+    except Exception:
+        return None
+
+
 def draw_music_visualizer(surface: pygame.Surface, t: float,
                           center: tuple[int, int] | None = None,
                           base_radius: float | None = None,
@@ -2827,12 +2834,17 @@ def draw_music_visualizer(surface: pygame.Surface, t: float,
     """
     global _music_viz_flow
     w, h = surface.get_size()
+    if _intro_envelope is None and not _music_viz_flow.get("env_tried"):
+        _music_viz_flow["env_tried"] = True
+        _load_intro_envelope(getattr(globals().get("_bgm", None), "music_path", None))
     if center is None:
         center = (w // 2, h // 2)
     if base_radius is None:
         base_radius = min(w, h) * 0.32
     alpha = max(0, min(255, int(alpha)))
     cx, cy = center
+    if music_pos_ms is None:
+        music_pos_ms = _current_music_pos_ms()
     level = _intro_level_at(music_pos_ms)
     pos_s = (music_pos_ms / 1000.0) if music_pos_ms is not None else t
     bands = max(24, int(_music_viz_flow.get("bands", 120)))
@@ -3023,7 +3035,7 @@ def show_start_menu(screen, *, skip_intro: bool = False):
             center=(VIEW_W // 2, int(VIEW_H * 0.52)),
             base_radius=min(VIEW_W, VIEW_H) * 0.34,
             alpha=150,
-            music_pos_ms=pygame.mixer.music.get_pos() if pygame.mixer.get_init() else None,
+            music_pos_ms=_current_music_pos_ms() if pygame.mixer.get_init() else None,
         )
         draw_neuro_home_header(screen, header_font)
         drawn_rects = {}
@@ -9554,6 +9566,8 @@ def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms:
             return False
         _bgm = GameSound(music_path=path, volume=volume)
         _bgm.playBackGroundMusic()
+        if _intro_envelope is None:
+            _load_intro_envelope(path)
         return True
     except Exception as e:
         print(f"[Audio] bgm swap failed: {e}")
@@ -9564,8 +9578,6 @@ def _load_intro_envelope(pref_path: str | None):
     """Precompute a simple RMS envelope for Intro_V0 to drive the homepage visualizer."""
     global _intro_envelope
     if _intro_envelope is not None:
-        return
-    if np is None:
         return
     path = None
     candidates = []
@@ -9584,6 +9596,24 @@ def _load_intro_envelope(pref_path: str | None):
             break
     if not path:
         return
+    # --- preferred: librosa RMS for tighter envelope ---
+    if librosa is not None:
+        try:
+            y, sr = librosa.load(path, mono=True)
+            hop = max(1, int(sr * (INTRO_ANALYZE_MS / 1000.0)))
+            frame = max(16, hop * 2)
+            rms = librosa.feature.rms(y=y, frame_length=frame, hop_length=hop, center=False)[0]
+            env = rms.tolist()
+            if env:
+                peak = max(1e-6, max(env))
+                env = [v / peak for v in env]
+                _intro_envelope = (env, INTRO_ANALYZE_MS)
+                return
+        except Exception as e:
+            print(f"[Audio] librosa envelope load failed: {e}")
+    # --- fallback: numpy + wave ---
+    if np is None:
+        return
     try:
         with wave.open(path, "rb") as wf:
             n_channels = wf.getnchannels()
@@ -9594,7 +9624,6 @@ def _load_intro_envelope(pref_path: str | None):
             data = np.frombuffer(raw, dtype=dtype).astype(np.float32)
             if n_channels > 1:
                 data = data.reshape(-1, n_channels).mean(axis=1)
-            # normalize
             data /= max(1.0, np.max(np.abs(data)))
             step = int(fr * (INTRO_ANALYZE_MS / 1000.0))
             step = max(64, step)
@@ -9605,7 +9634,10 @@ def _load_intro_envelope(pref_path: str | None):
                     break
                 rms = float(np.sqrt(np.mean(window * window)))
                 env.append(rms)
-            _intro_envelope = (env, INTRO_ANALYZE_MS)
+            if env:
+                peak = max(1e-6, max(env))
+                env = [v / peak for v in env]
+                _intro_envelope = (env, INTRO_ANALYZE_MS)
     except Exception as e:
         print(f"[Audio] envelope load failed: {e}")
 
