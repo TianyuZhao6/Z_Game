@@ -3641,6 +3641,7 @@ def show_shop_screen(screen) -> Optional[str]:
     if not globals().get("_resume_shop_cache", False):
         _clear_shop_cache()
     globals()["_resume_shop_cache"] = False
+    play_combat_bgm()  # ensure shop uses the combat/main track
     # snapshot coins at shop entry (post-bank, pre-purchase)
     globals()["_coins_at_shop_entry"] = int(META.get("spoils", 0))
     globals()["_in_shop_ui"] = True
@@ -9311,6 +9312,11 @@ class GameSound:
         # --- pick a path ---
         here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
         candidates = [
+            # preferred intro BGM
+            os.path.join(here, "assets", "Intro_V0.wav"),
+            os.path.join(here, "Z_Game", "assets", "Intro_V0.wav"),
+            os.path.join(os.getcwd(), "assets", "Intro_V0.wav"),
+            os.path.join(os.getcwd(), "Z_Game", "assets", "Intro_V0.wav"),
             # project-typical
             os.path.join(here, "Z_Game", "assets", "ZGAME.wav"),
             os.path.join(here, "assets", "ZGAME.wav"),
@@ -9390,6 +9396,55 @@ class GameSound:
                 print(f"[Audio] set_volume failed: {e}")
 
 
+def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms: int = 400):
+    """Stop current BGM and play the first existing file in candidates."""
+    global _bgm
+    try:
+        if "_bgm" in globals() and getattr(_bgm, "stop", None):
+            try:
+                _bgm.stop(fade_ms=fadeout_ms)
+            except Exception:
+                pass
+        path = next((p for p in candidates if p and os.path.exists(p)), None)
+        if not path:
+            return False
+        _bgm = GameSound(music_path=path, volume=volume)
+        _bgm.playBackGroundMusic()
+        return True
+    except Exception as e:
+        print(f"[Audio] bgm swap failed: {e}")
+        return False
+
+
+def play_intro_bgm():
+    """Play Intro_V0 if present (home/start), fallback to ZGAME.wav."""
+    here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
+    intro_candidates = [
+        os.path.join(here, "assets", "Intro_V0.wav"),
+        os.path.join(here, "Z_Game", "assets", "Intro_V0.wav"),
+        os.path.join(os.getcwd(), "assets", "Intro_V0.wav"),
+        os.path.join(os.getcwd(), "Z_Game", "assets", "Intro_V0.wav"),
+        # fallback
+        os.path.join(here, "assets", "ZGAME.wav"),
+        os.path.join(here, "Z_Game", "assets", "ZGAME.wav"),
+        os.path.join(os.getcwd(), "assets", "ZGAME.wav"),
+        os.path.join(os.getcwd(), "Z_Game", "assets", "ZGAME.wav"),
+    ]
+    _play_bgm_candidates(intro_candidates, volume=BGM_VOLUME / 100.0)
+
+
+def play_combat_bgm():
+    """Play the main combat/shop track (ZGAME.wav)."""
+    here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
+    combat_candidates = [
+        os.path.join(here, "assets", "ZGAME.wav"),
+        os.path.join(here, "Z_Game", "assets", "ZGAME.wav"),
+        os.path.join(os.getcwd(), "assets", "ZGAME.wav"),
+        os.path.join(os.getcwd(), "Z_Game", "assets", "ZGAME.wav"),
+    ]
+    _play_bgm_candidates(combat_candidates, volume=BGM_VOLUME / 100.0)
+
+
 # ==================== 游戏主循环 ====================
 def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
     pygame.display.set_caption("Zombie Card Game – Level")
@@ -9407,6 +9462,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
     globals()["_time_left_runtime"] = time_left
     globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
+    play_combat_bgm()
+   
     spatial = SpatialHash(SPATIAL_CELL)
     obstacles, items, player_start, zombie_starts, main_item_list, decorations = generate_game_entities(
         grid_size=GRID_SIZE,
@@ -10224,8 +10281,7 @@ if __name__ == "__main__":
     resize_world_to_view()
     # Now start BGM using Settings default (BGM_VOLUME 0-100)
     try:
-        _bgm = GameSound(volume=BGM_VOLUME / 100.0)
-        _bgm.playBackGroundMusic()
+        play_intro_bgm()
     except Exception as e:
         print(f"[Audio] background music not started: {e}")
     # Borderless fullscreen to avoid display mode flicker
