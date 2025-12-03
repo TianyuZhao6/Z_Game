@@ -610,7 +610,7 @@ def draw_shield_outline(screen, rect):
 # - Card system UI polish (later pass)
 # - Sprite/animation pipeline to be added
 # - Balance obstacle density via OBSTACLE_DENSITY/DECOR_DENSITY
-GAME_TITLE = "Neuroscape: Mind Runner"
+GAME_TITLE = "Neuroscape: Mind Survivor"
 INFO_BAR_HEIGHT = 40
 GRID_SIZE = 36
 CELL_SIZE = 40
@@ -2933,8 +2933,8 @@ def draw_intro_waves(target: pygame.Surface, t: float):
     hue_shift = int(40 * energy_norm)
     
     for i in range(active_ripples):
-        age = (t - i * wave_period) % loop_window
-        if age < 0 or age > max_age:
+        age = (t + i * wave_period) % loop_window  # phase-offset so waves exist at t=0
+        if age > max_age:
             continue
         
         radius = age * ripple_speed
@@ -2991,8 +2991,8 @@ def draw_neuro_waves(target: pygame.Surface, t: float):
     col_base = tuple(int(c) for c in getattr(_neuro_viz, "poly_color", (70, 230, 255)))
     
     for i in range(active_ripples):
-        age = (t - i * wave_period) % loop_window
-        if age < 0 or age > max_age:
+        age = (t + i * wave_period) % loop_window  # phase-offset so waves exist at t=0
+        if age > max_age:
             continue
         scale = 1.0 + age * scale_speed
         if scale <= 0 or scale > max_scale:
@@ -3084,12 +3084,23 @@ def draw_neuro_button(surface: pygame.Surface, rect: pygame.Rect, label: str, fo
     return scaled
 
 
-def neuro_menu_layout():
-    """Centers and sizes for the vertical stack of panels."""
+def neuro_menu_layout(include_continue: bool = True):
+    """Centers and sizes for the vertical stack of panels.
+    Spacing adapts to 4 vs 5 buttons and sits near the circle center.
+    """
     center_x = int(VIEW_W * 0.52)
-    top_y = int(VIEW_H * 0.28)
-    width, height, spacing = 320, 68, 82
-    ids = ["start", "continue", "instruction", "settings", "exit"]
+    # Place column centered on the visualizer circle
+    base_y = int(VIEW_H * 0.52)
+    width, height = 320, 68
+    ids = ["start", "instruction", "settings", "exit"]
+    if include_continue:
+        ids.insert(1, "continue")
+    count = len(ids)
+    # Tighter spacing for 5, looser for 4
+    spacing = 78 if count >= 5 else 88
+    # Offset upward so column is centered around base_y
+    total_h = (count - 1) * spacing
+    top_y = base_y - total_h // 2
     rects = {}
     y = top_y
     for ident in ids:
@@ -3221,10 +3232,11 @@ def render_start_menu_surface(saved_exists: bool):
     btn_font = pygame.font.SysFont(None, 30)
     info_font = pygame.font.SysFont("Consolas", 18)
     draw_neuro_home_header(surf, header_font)
-    rects = neuro_menu_layout()
+    rects = neuro_menu_layout(include_continue=saved_exists)
     draw_neuro_button(surf, rects["start"], "START NEW", btn_font, hovered=False, disabled=False, t=wave_t)
-    draw_neuro_button(surf, rects["continue"], "CONTINUE", btn_font,
-                      hovered=False, disabled=not saved_exists, t=wave_t)
+    if saved_exists:
+        draw_neuro_button(surf, rects["continue"], "CONTINUE", btn_font,
+                          hovered=False, disabled=False, t=wave_t)
     draw_neuro_button(surf, rects["instruction"], "INSTRUCTION", btn_font, hovered=False, disabled=False, t=wave_t)
     draw_neuro_button(surf, rects["settings"], "SETTINGS", btn_font, hovered=False, disabled=False, t=wave_t)
     draw_neuro_button(surf, rects["exit"], "EXIT", btn_font, hovered=False, disabled=False, t=wave_t)
@@ -3257,10 +3269,12 @@ def show_start_menu(screen, *, skip_intro: bool = False):
             _neuro_viz.update(dt, pos)
             
         saved_exists = has_save()
-        base_rects = neuro_menu_layout()
+        base_rects = neuro_menu_layout(include_continue=saved_exists)
         mouse_pos = pygame.mouse.get_pos()
         hover_id = None
         for ident, r in base_rects.items():
+            if ident == "continue" and not saved_exists:
+                continue  # hide continue when no save exists
             if r.inflate(int(r.width * 0.08), int(r.height * 0.08)).collidepoint(mouse_pos):
                 hover_id = ident
                 break
@@ -3274,10 +3288,11 @@ def show_start_menu(screen, *, skip_intro: bool = False):
         drawn_rects = {}
         drawn_rects["start"] = draw_neuro_button(screen, base_rects["start"], "START NEW", btn_font,
                                                  hovered=hover_id == "start", disabled=False, t=t)
-        drawn_rects["continue"] = draw_neuro_button(
-            screen, base_rects["continue"], "CONTINUE", btn_font,
-            hovered=hover_id == "continue", disabled=not saved_exists, t=t
-        )
+        if saved_exists:
+            drawn_rects["continue"] = draw_neuro_button(
+                screen, base_rects["continue"], "CONTINUE", btn_font,
+                hovered=hover_id == "continue", disabled=False, t=t
+            )
         drawn_rects["instruction"] = draw_neuro_button(
             screen, base_rects["instruction"], "INSTRUCTION", btn_font,
             hovered=hover_id == "instruction", disabled=False, t=t

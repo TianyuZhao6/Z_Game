@@ -1,0 +1,69 @@
+{
+  "mode": "progress",
+  "current_level": 0,
+  "meta": {
+    "spoils": 0,
+    "base_dmg": 12,
+    "base_fire_cd": 0.26,
+    "base_range": 800.0,
+    "base_speed": 4.5,
+    "base_maxhp": 40,
+    "base_crit": 0.05,
+    "dmg": 0,
+    "firerate_mult": 1.0,
+    "range_mult": 1.0,
+    "speed_mult": 1.0,
+    "speed": 0,
+    "maxhp": 0,
+    "crit": 0.0,
+    "coin_magnet_radius": 0,
+    "auto_turret_level": 0,
+    "stationary_turret_count": 0,
+    "pierce_level": 0,
+    "ricochet_level": 0,
+    "carapace_level": 0,
+    "bone_plating_level": 0,
+    "shrapnel_level": 0,
+    "carapace_shield_hp": 0,
+    "golden_interest_level": 0,
+    "shady_loan_level": 0,
+    "shady_loan_waves_remaining": 0,
+    "shady_loan_remaining_debt": 0,
+    "shady_loan_defaulted": false,
+    "shady_loan_status": null,
+    "shady_loan_last_level": 0,
+    "wanted_poster_waves": 0,
+    "wanted_active": false,
+    "lockbox_level": 0,
+    "bandit_radar_level": 0,
+    "coupon_level": 0,
+    "aegis_pulse_level": 0,
+    "run_items_spawned": 0,
+    "run_items_collected": 0
+  },
+  "carry_player": {
+    "level": 1,
+    "xp": 0,
+    "hp": 40
+  },
+  "pending_shop": false,
+  "biome": null,
+  "max_wave_reached": 1,
+  "baseline": {
+    "level": 0,
+    "coins": 0,
+    "player": {
+      "level": 1,
+      "xp": 0,
+      "xp_to_next": 33,
+      "bullet_damage": 12,
+      "max_hp": 40,
+      "hp": 40
+    },
+    "items": {
+      "spawned": 0,
+      "collected": 0,
+      "count_this_level": 11
+    }
+  }
+}
