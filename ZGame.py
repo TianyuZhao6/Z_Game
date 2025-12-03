@@ -3258,6 +3258,16 @@ def show_start_menu(screen, *, skip_intro: bool = False):
     intro_flag = globals().pop("_skip_intro_once", False)
     if not skip_intro and not intro_flag:
         run_neuro_intro(screen)
+    # Ensure home screen always uses Intro BGM
+    try:
+        cur = getattr(_bgm, "music_path", "") if "_bgm" in globals() else ""
+        if "intro_v0.wav" not in cur.lower():
+            play_intro_bgm()
+    except Exception:
+        try:
+            play_intro_bgm()
+        except Exception:
+            pass
     clock = pygame.time.Clock()
     header_font = pygame.font.SysFont("Consolas", 22)
     btn_font = pygame.font.SysFont(None, 30)
