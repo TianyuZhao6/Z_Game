@@ -2271,17 +2271,14 @@ class AudioAnalyzer:
         self.loaded = False
 
     def _get_cache_path(self, filename):
-        """Generate cache file path based on audio file path and modification time."""
+        """Generate cache file path. Only cache the homepage Intro track to avoid multiple files."""
         try:
-            # Get file modification time to invalidate cache if file changes
-            mtime = os.path.getmtime(filename)
-            # Create a safe cache filename from the audio file path
-            cache_key = f"{os.path.abspath(filename)}_{mtime}"
-            cache_hash = hashlib.md5(cache_key.encode()).hexdigest()
-            # Use TEMP directory for cache files
+            name = os.path.basename(filename).lower()
+            if "intro_v0" not in name:
+                return None  # skip caching for non-homepage tracks to avoid extra npz files
             cache_dir = os.path.join(os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(), "TEMP")
             os.makedirs(cache_dir, exist_ok=True)
-            return os.path.join(cache_dir, f"audio_analysis_{cache_hash}.npz")
+            return os.path.join(cache_dir, "audio_analysis_intro_v0.npz")
         except Exception:
             return None
 
@@ -2326,7 +2323,7 @@ class AudioAnalyzer:
             self.loaded = False
             return
         
-        # Try to load from cache first
+        # Try to load from cache first (only for Intro_V0)
         cache_path = self._get_cache_path(filename)
         if cache_path and self._load_from_cache(cache_path):
             return  # Successfully loaded from cache
