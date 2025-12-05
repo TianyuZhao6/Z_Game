@@ -5492,6 +5492,7 @@ class Player:
             dy = (my / length)
         else:
             dx = dy = 0.0
+        frame_scale = dt * 60.0  # keep speed tuned for a 60 FPS baseline
         # 基础速度
         spd = int(self.speed)
         # 处于减速状态 → 应用减速（例如 35% 减速 = 速度*0.65）
@@ -5500,7 +5501,7 @@ class Player:
             spd = max(1, int(spd * (1.0 - min(0.85, float(self.apply_slow_extra)))))
         # 把“减速后的速度”喂给步进与碰撞
         prev_cx, prev_cy = self.rect.centerx, self.rect.centery
-        step_x, step_y = iso_equalized_step(dx, dy, spd)
+        step_x, step_y = iso_equalized_step(dx, dy, spd * frame_scale)
         collide_and_slide_circle(self, obstacles.values(), step_x, step_y)
         self._last_move_vec = (self.rect.centerx - prev_cx, self.rect.centery - prev_cy)
 
@@ -5802,6 +5803,7 @@ class Zombie:
     def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
         # shift last → prev at frame start
         self._foot_prev = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))
+        frame_scale = dt * 60.0  # convert 60 FPS-tuned speeds into this frame's step
         # ---- BUFF/生成延迟/速度上限：与原逻辑一致 ----
         base_attack = self.attack
         # Hell Domain: generic attack scaler for melee/block hits/skill uses
@@ -5876,6 +5878,7 @@ class Zombie:
             # drop any previous chase commitment when fleeing
             self._ff_commit = None
             self._ff_commit_t = 0.0
+        speed_step = speed * frame_scale
         # --- Twin “lane” offset and mild separation so they don’t block each other ---
         if getattr(self, "is_boss", False) and getattr(self, "twin_id", None) is not None:
             cx0 = self.x + self.size * 0.5
@@ -5954,7 +5957,7 @@ class Zombie:
                 ex, ey = -dxp, -dyp
                 mag = (ex * ex + ey * ey) ** 0.5 or 1.0
             ux, uy = ex / mag, ey / mag
-            vx_des, vy_des = chase_step(ux, uy, speed)
+            vx_des, vy_des = chase_step(ux, uy, speed_step)
             tau = 0.12
             alpha = 1.0 - pow(0.001, dt / tau)
             self._vx = (1.0 - alpha) * getattr(self, "_vx", 0.0) + alpha * vx_des
@@ -6092,7 +6095,7 @@ class Zombie:
                 L = (dx * dx + dy * dy) ** 0.5 or 1.0
                 ux, uy = dx / L, dy / L
                 # desired velocity this frame
-                vx_des, vy_des = chase_step(ux, uy, speed)
+                vx_des, vy_des = chase_step(ux, uy, speed_step)
                 # light steering smoothing (≈ 120 ms time constant)
                 tau = 0.12
                 alpha = 1.0 - pow(0.001, dt / tau)  # stable, dt-based lerp factor
@@ -6117,7 +6120,7 @@ class Zombie:
                     mag = (flee_x * flee_x + flee_y * flee_y) ** 0.5 or 1.0
                     ux, uy = flee_x / mag, flee_y / mag
                 # desired velocity this frame
-                vx_des, vy_des = chase_step(ux, uy, speed)
+                vx_des, vy_des = chase_step(ux, uy, speed_step)
                 # light steering smoothing (≈ 120 ms time constant)
                 tau = 0.12
                 alpha = 1.0 - pow(0.001, dt / tau)  # stable, dt-based lerp factor
@@ -6131,7 +6134,7 @@ class Zombie:
         if not getattr(self, "is_boss", False):
             if abs(dx) < 1e-3 and abs(dy) < 1e-3:
                 slot = float(getattr(self, "twin_slot", 1.0))
-                dx, dy = 0.0, slot * max(0.6, min(speed, 1.2))
+                dx, dy = 0.0, slot * max(0.6, min(speed, 1.2)) * frame_scale
         # —— 侧移（反卡住）：被卡住一小会儿就沿着法向 90° 滑行 ——
         if self._avoid_t > 0.0:
             # 左右各一条切线，选择预先决定的那一边
@@ -6338,7 +6341,8 @@ class Zombie:
         # —— 卡住检测（只有“被挡住”或“无进展”才累计）——
         blocked = (self._hit_ob is not None)
         moved2 = (self.x - oldx) ** 2 + (self.y - oldy) ** 2
-        min_move2 = max(0.04, (0.15 * speed) * (0.15 * speed))  # speed-scaled
+        min_move = 0.15 * speed_step
+        min_move2 = max(0.04 * frame_scale * frame_scale, min_move * min_move)  # speed-scaled
         # 目标距离是否在本帧没有明显下降（允许轻微抖动）
         dist2 = (self.rect.centerx - int(target_cx)) ** 2 + (self.rect.centery - int(target_cy)) ** 2
         prev_d2 = getattr(self, "_prev_d2", float("inf"))
