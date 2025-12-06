@@ -126,10 +126,13 @@ Effect: Add a one time shield for player
 
 2.7. Shield Capacitor
 
-Rarity: 3
+Rarity: 2 (common/uncommon)
+
 Effect:
-When you pick up a heal while at full HP, the heal instead grants temporary shield HP.
-At higher levels, overheal conversion % goes up, or you can store more “capacitor charge.”
+
+When you pick up a heal while at full HP, 
+transfer certain ratio of the heal instead grants temporary shield HP.
+At higher levels, overheal conversion (10/15/20)% goes up.
 
 Combos:
 Carapace + Shield Capacitor → Heals become extra layers on top of your base shield, making Carapace scale really hard later.
@@ -159,7 +162,13 @@ Carapace + Bone Plating + Shardstorm
 Shardstorm + Piercing Rounds / Ricochet Scope / Shrapnel Shells
 → Shards inherit bullet modifiers: piercing, bouncing, or spawning shrapnel on kill. Shield path suddenly becomes part of the bullet engine.
 
-2.10. 
+2.10. Retaliation Core
+
+Rarity: 2–3
+
+Effect:
+When your shield takes damage, you gain some short buffs:
+ +X% bullet damage or +crit chance for a few seconds.
 
 '3. Economy & Bandit Interaction Props'
 
@@ -207,6 +216,24 @@ Consumable, Rarity: 3, Base Price: $30
 Effect： You’ve got connections in the underworld.
   the next shop becomes a bit of a black market with better econ deals.
   Shop prices +20%, with more rare items available.(all item >= rarity 3)
+
+3.9. VIP Punchcard
+
+Rarity: 3 (rare)
+Theme: “You’re a valued customer – the shop starts paying you.”
+Effect (concept):
+You get cashback on shop spending each time you visit:
+Example: “Gain back 10/15/20/25% of coins spent in this shop as spoils at the end of the next level.”
+Cashback applies to all purchases including Reroll, which encourages heavy rolling and shopping.
+
+3.10. Spoil Splitter
+
+Rarity: 2 (uncommon)
+
+Effect (concept):
+Every time you pick up a coin, you have an X% chance to spawn +1 extra coin 
+(chance scales with level, e.g., 10/20/30/40/50%).
+Doesn’t trigger on “fake” coins (e.g., bank interest ticks, if you want to avoid loops) – only on actual pickups from the ground.
 
 '4. Utility / Control Props'
 These change the way the player moves or controls space.
