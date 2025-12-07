@@ -1033,6 +1033,14 @@ AEGIS_PULSE_MIN_START_R = 12
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
 VULN_MARK_DURATIONS = (5.0, 6.0, 7.0)  # mark lifetime per level
+MARK_PULSE_PERIOD = 1.0  # seconds per beat
+MARK_PULSE_MIN_SCALE = 0.85
+MARK_PULSE_MAX_SCALE = 1.15
+MARK_PULSE_MIN_ALPHA = 160
+MARK_PULSE_MAX_ALPHA = 255
+MARK_PULSE_DARK = (60, 0, 0)
+MARK_PULSE_BRIGHT = (255, 40, 40)
+mark_pulse_time = 0.0  # global pulse accumulator
 SHOP_CATALOG_VERSION = 2  # bump to invalidate cached offers when catalog changes
 # persistent (per run) upgrades bought in shop
 META = {
@@ -4214,6 +4222,7 @@ def show_shop_screen(screen) -> Optional[str]:
         SHOP_BOX_BORDER_HOVER = (170, 190, 230)
         SHOP_BOX_BG_DISABLED = (25, 28, 34)  # capped / disabled
         SHOP_BOX_BORDER_DISABLED = (90, 110, 150)
+      
         # --- catalog of shop props ---
         catalog = [
             {
@@ -4304,6 +4313,17 @@ def show_shop_screen(screen) -> Optional[str]:
                 "max_level": 3,
                 "apply": lambda: META.update(
                     shrapnel_level=min(3, int(META.get("shrapnel_level", 0)) + 1)
+                ),
+            },
+            {
+                "id": "mark_vulnerability",
+                "name": "Mark of Vulnerability",
+                "desc": "Every 5/4/3s mark a priority enemy for 5/6/7s; marked take +15/22/30% damage.",
+                "cost": 25,
+                "rarity": 3,
+                "max_level": 3,
+                "apply": lambda: META.update(
+                    vuln_mark_level=min(3, int(META.get("vuln_mark_level", 0)) + 1)
                 ),
             },
             {
@@ -9198,6 +9218,8 @@ class GameState:
                     z._vuln_mark_t = 0.0
             self._vuln_mark_cd = 0.0
             return
+        # global pulse
+        globals()["mark_pulse_time"] = globals().get("mark_pulse_time", 0.0) + dt
         interval, bonus, duration = mark_of_vulnerability_stats(lvl)
         # decay marks and small hit flash
         for z in zombies:
@@ -9806,23 +9828,32 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             mark_t = float(getattr(z, "_vuln_mark_t", 0.0))
             if mark_t > 0.0:
                 flash = float(getattr(z, "_vuln_hit_flash", 0.0))
-                overlay = pygame.Surface(body.size, pygame.SRCALPHA)
                 lvl_vis = int(getattr(z, "_vuln_mark_level", 1))
                 lvl_vis = max(1, min(lvl_vis, len(VULN_MARK_DURATIONS)))
                 dur_vis = VULN_MARK_DURATIONS[lvl_vis - 1]
-                base_alpha = 70 + int(90 * min(1.0, mark_t / max(0.001, dur_vis)))
-                alpha = min(200, base_alpha + int(140 * min(1.0, flash)))
-                pygame.draw.rect(overlay, (190, 40, 40, alpha), overlay.get_rect(), border_radius=6)
-                screen.blit(overlay, body.topleft)
-                mark_size = max(18, int(draw_size * 0.9))
-                mark_rect = pygame.Rect(0, 0, mark_size, mark_size)
+                rem_ratio = max(0.0, min(1.0, mark_t / max(0.001, dur_vis)))
+                phase = (globals().get("mark_pulse_time", 0.0) % MARK_PULSE_PERIOD) / MARK_PULSE_PERIOD
+                pulse = 0.5 + 0.5 * math.sin(phase * math.tau)
+                scale = MARK_PULSE_MIN_SCALE + (MARK_PULSE_MAX_SCALE - MARK_PULSE_MIN_SCALE) * pulse
+                base_size = max(18, int(draw_size * 0.9))
+                size = int(base_size * scale)
+                alpha = int(
+                    (MARK_PULSE_MIN_ALPHA + (MARK_PULSE_MAX_ALPHA - MARK_PULSE_MIN_ALPHA) * pulse)
+                    * rem_ratio
+                )
+                alpha = int(min(255, alpha + int(80 * min(1.0, flash))))
+                color = (
+                    int(MARK_PULSE_DARK[0] + (MARK_PULSE_BRIGHT[0] - MARK_PULSE_DARK[0]) * pulse),
+                    int(MARK_PULSE_DARK[1] + (MARK_PULSE_BRIGHT[1] - MARK_PULSE_DARK[1]) * pulse),
+                    int(MARK_PULSE_DARK[2] + (MARK_PULSE_BRIGHT[2] - MARK_PULSE_DARK[2]) * pulse),
+                    max(0, min(255, alpha)),
+                )
+                mark_rect = pygame.Rect(0, 0, size, size)
                 mark_rect.midbottom = (cx, body.top - 6)
                 mark = pygame.Surface(mark_rect.size, pygame.SRCALPHA)
-                core_w = max(6, mark_size // 5)
-                pygame.draw.line(mark, (0, 0, 0, 210), (2, 2), (mark_size - 2, mark_size - 2), width=core_w)
-                pygame.draw.line(mark, (0, 0, 0, 210), (mark_size - 2, 2), (2, mark_size - 2), width=core_w)
-                pygame.draw.line(mark, (240, 50, 50), (2, 2), (mark_size - 2, mark_size - 2), width=2)
-                pygame.draw.line(mark, (240, 50, 50), (mark_size - 2, 2), (2, mark_size - 2), width=2)
+                stroke = max(2, size // 10)
+                pygame.draw.line(mark, color, (size * 0.25, size * 0.1), (size * 0.75, size * 0.9), width=stroke)
+                pygame.draw.line(mark, color, (size * 0.75, size * 0.1), (size * 0.25, size * 0.9), width=stroke)
                 screen.blit(mark, mark_rect)
             if getattr(z, "shield_hp", 0) > 0:
                 draw_shield_outline(screen, body)
