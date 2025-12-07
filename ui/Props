@@ -77,10 +77,16 @@ More effective with crit (shrapnel can crit).
 You can add a prop later that upgrades shrapnel size or count.
 
 1.5. Mark of Vulnerability
-Effect: Every X seconds, randomly “mark” an enemy, marked enemies take +20% damage from all sources.
-Synergy:
-Good vs elite / boss enemies.
-Pairs well with range and pierce so you can focus the marked target while hitting others.
+
+Type: Offensive debuff / mark (shop prop)
+Rarity: 3
+Base Price: $25
+Max Level: 3
+
+Core Fantasy
+You periodically “expose” a high-priority enemy,
+ making them take extra damage from all sources.
+
 
 1.6. Explosive Rounds
 
