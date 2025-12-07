@@ -3457,7 +3457,8 @@ def show_start_menu(screen, *, skip_intro: bool = False):
                     queue_menu_transition(screen.copy())
                     flush_events()
                     return ("new", None)
-                if drawn_rects["continue"].collidepoint(event.pos) and saved_exists:
+                cont_rect = drawn_rects.get("continue")
+                if cont_rect and saved_exists and cont_rect.collidepoint(event.pos):
                     data = load_save()
                     if data:
                         queue_menu_transition(screen.copy())
@@ -9867,8 +9868,8 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
                     thick_center = max(3.0, size_px * 0.22)
                     thin_tip = max(1.5, thick_center * 0.35)
                     # outline (larger)
-                    draw_tapered_line(surf, outline_col, (a, a), (b, b), thin_tip * 1.4, thick_center * 1.45)
-                    draw_tapered_line(surf, outline_col, (b, a), (a, b), thin_tip * 1.4, thick_center * 1.45)
+                    draw_tapered_line(surf, outline_col, (a, a), (b, b), thin_tip * 1.8, thick_center * 1.85)
+                    draw_tapered_line(surf, outline_col, (b, a), (a, b), thin_tip * 1.8, thick_center * 1.85)
                     # inner fill (smaller)
                     draw_tapered_line(surf, fill_col, (a, a), (b, b), thin_tip, thick_center)
                     draw_tapered_line(surf, fill_col, (b, a), (a, b), thin_tip, thick_center)
