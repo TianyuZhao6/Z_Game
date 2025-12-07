@@ -1029,6 +1029,11 @@ AEGIS_PULSE_EXPAND_DELTA = 0.06  # faster expansion per level
 AEGIS_PULSE_MIN_EXPAND_TIME = 0.45
 AEGIS_PULSE_RING_FADE = 0.20
 AEGIS_PULSE_MIN_START_R = 12
+# --- Mark of Vulnerability (offensive mark) ---
+VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
+VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
+VULN_MARK_DURATIONS = (5.0, 6.0, 7.0)  # mark lifetime per level
+SHOP_CATALOG_VERSION = 2  # bump to invalidate cached offers when catalog changes
 # persistent (per run) upgrades bought in shop
 META = {
     # —— 本轮累积资源 ——
@@ -1053,6 +1058,7 @@ META = {
     "stationary_turret_count": 0,
     "pierce_level": 0,  # 每发子弹可额外穿透的“击杀次数”
     "ricochet_level": 0,  # 每发子弹可弹射的次数
+    "vuln_mark_level": 0,  # Mark of Vulnerability level
     "carapace_level": 0,
     "bone_plating_level": 0,
     "shrapnel_level": 0,
@@ -1096,6 +1102,7 @@ def reset_run_state():
         "stationary_turret_count": 0,
         "pierce_level": 0,
         "ricochet_level": 0,
+        "vuln_mark_level": 0,
         "carapace_level": 0,
         "bone_plating_level": 0,
         "shrapnel_level": 0,
@@ -1128,6 +1135,50 @@ def reset_run_state():
     globals().pop("_resume_shop_cache", None)
     globals().pop("_intro_envelope", None)
     _clear_level_start_baseline()
+
+
+def _ensure_meta_defaults():
+    """Fill in newly added META keys when loading older saves."""
+    defaults = {
+        "vuln_mark_level": 0,
+    }
+    for k, v in defaults.items():
+        if k not in META:
+            META[k] = v
+
+
+def mark_of_vulnerability_stats(level: int) -> tuple[float, float, float]:
+    """Return (interval_s, bonus_mult, duration_s) for Mark of Vulnerability."""
+    lvl = max(1, min(int(level), len(VULN_MARK_INTERVALS)))
+    return (
+        VULN_MARK_INTERVALS[lvl - 1],
+        VULN_MARK_BONUS[lvl - 1],
+        VULN_MARK_DURATIONS[lvl - 1],
+    )
+
+
+def mark_bonus_for(z: "Zombie") -> float:
+    if getattr(z, "hp", 0) <= 0:
+        return 0.0
+    if float(getattr(z, "_vuln_mark_t", 0.0)) <= 0.0:
+        return 0.0
+    return max(0.0, float(getattr(z, "_vuln_mark_bonus", 0.0)))
+
+
+def apply_vuln_bonus(z: "Zombie", dmg: int) -> int:
+    """Scale incoming damage if the target is marked."""
+    base = int(max(0, dmg))
+    bonus = mark_bonus_for(z)
+    if base <= 0 or bonus <= 0.0:
+        return base
+    scaled = int(round(base * (1.0 + bonus)))
+    if scaled == base:
+        scaled = base + 1
+    try:
+        z._vuln_hit_flash = max(0.0, float(getattr(z, "_vuln_hit_flash", 0.0)) + 0.12)
+    except Exception:
+        pass
+    return max(0, scaled)
 
 
 def _aegis_pulse_damage_for(level: int, player_max_hp: int | float | None) -> int:
@@ -3735,6 +3786,17 @@ def show_pause_menu(screen, background_surf):
                 "max_level": LOCKBOX_MAX_LEVEL,
             },
             {
+                "id": "mark_vulnerability",
+                "name": "Mark of Vulnerability",
+                "desc": "Every 5/4/3s mark a priority enemy for 5/6/7s; marked take +15/22/30% damage.",
+                "cost": 25,
+                "rarity": 3,
+                "max_level": 3,
+                "apply": lambda: META.update(
+                    vuln_mark_level=min(3, int(META.get("vuln_mark_level", 0)) + 1)
+                ),
+            },
+            {
                 "id": "golden_interest",
                 "name": "Golden Interest",
                 "max_level": GOLDEN_INTEREST_MAX_LEVEL,
@@ -3756,6 +3818,15 @@ def show_pause_menu(screen, background_surf):
             },
         ]
         globals()["_pause_shop_catalog"] = catalog
+    # Invalidate cached shop offers when catalog changes
+    if globals().get("_shop_catalog_version") != SHOP_CATALOG_VERSION:
+        for key in (
+                "_shop_slot_ids_cache", "_shop_slots_cache",
+                "_shop_reroll_id_cache", "_shop_reroll_cache",
+                "_resume_shop_cache",
+        ):
+            globals().pop(key, None)
+        globals()["_shop_catalog_version"] = SHOP_CATALOG_VERSION
 
     def _pause_prop_level(item):
         iid = item.get("id")
@@ -3771,6 +3842,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("pierce_level", 0))
         if iid == "shrapnel_shells":
             return int(META.get("shrapnel_level", 0))
+        if iid == "mark_vulnerability":
+            return int(META.get("vuln_mark_level", 0))
         if iid == "bandit_radar":
             return int(META.get("bandit_radar_level", 0))
         if iid == "lockbox":
@@ -4359,6 +4432,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return int(META.get("ricochet_level", 0))
         if iid == "shrapnel_shells":
             return int(META.get("shrapnel_level", 0))
+        if iid == "mark_vulnerability":
+            return int(META.get("vuln_mark_level", 0))
         if iid == "stationary_turret":
             return int(META.get("stationary_turret_count", 0))
         if iid == "bandit_radar":
@@ -4417,6 +4492,10 @@ def show_shop_screen(screen) -> Optional[str]:
             per = 10
             chance = min(80, base + per * (lvl - 1))
             return f"{chance}% shrapnel on kill"
+        if iid == "mark_vulnerability":
+            interval, bonus, duration = mark_of_vulnerability_stats(lvl)
+            pct = int(bonus * 100)
+            return f"Mark {interval:.1f}s, +{pct}% dmg for {duration:.1f}s"
         if iid == "bandit_radar":
             lvl_idx = min(max(lvl, 1), len(BANDIT_RADAR_SLOW_MULT))
             slow_pct = int((1.0 - BANDIT_RADAR_SLOW_MULT[lvl_idx - 1]) * 100)
@@ -7291,6 +7370,7 @@ class Bullet:
                                             (z.rect.centery - self.y) / CELL_SIZE)
                     if dist_tiles >= MIST_RANGED_REDUCE_TILES:
                         dealt = int(dealt * MIST_RANGED_MULT)
+                dealt = apply_vuln_bonus(z, dealt)
                 # --- apply to shield first, overflow to HP ---
                 hp_before = z.hp
                 if getattr(z, "shield_hp", 0) > 0:
@@ -8064,6 +8144,7 @@ def _apply_aegis_pulse_damage(player, game_state: "GameState", zombies, cx: floa
                                     (z.rect.centery - cy) / CELL_SIZE)
             if dist_tiles >= MIST_RANGED_REDUCE_TILES:
                 dealt = int(dealt * MIST_RANGED_MULT)
+        dealt = apply_vuln_bonus(z, dealt)
         if getattr(z, "shield_hp", 0) > 0:
             blocked = min(dealt, z.shield_hp)
             z.shield_hp -= dealt
@@ -8758,6 +8839,8 @@ class GameState:
         self._ff_tacc = 0.0
         # bullets spawned during bullet update (e.g. shrapnel from on-kill effects)
         self.pending_bullets: List["Bullet"] = []
+        # Mark of Vulnerability state
+        self._vuln_mark_cd: float = 0.0
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -9105,6 +9188,60 @@ class GameState:
             d.step(dt)
             if not d.alive():
                 self.dmg_texts.remove(d)
+
+    def update_vulnerability_marks(self, zombies, dt: float):
+        lvl = int(META.get("vuln_mark_level", 0))
+        if lvl <= 0:
+            # clean stale marks if the prop is not owned
+            for z in zombies:
+                if hasattr(z, "_vuln_mark_t"):
+                    z._vuln_mark_t = 0.0
+            self._vuln_mark_cd = 0.0
+            return
+        interval, bonus, duration = mark_of_vulnerability_stats(lvl)
+        # decay marks and small hit flash
+        for z in zombies:
+            t = float(getattr(z, "_vuln_mark_t", 0.0))
+            if t > 0.0:
+                z._vuln_mark_t = max(0.0, t - dt)
+                z._vuln_mark_bonus = bonus
+                z._vuln_mark_level = lvl
+            flash = float(getattr(z, "_vuln_hit_flash", 0.0))
+            if flash > 0.0:
+                z._vuln_hit_flash = max(0.0, flash - dt * 4.0)
+        cd = float(getattr(self, "_vuln_mark_cd", 0.0))
+        cd -= dt
+        # allow multiple triggers in a long frame without runaway loops
+        triggers = 0
+        while cd <= 0.0 and triggers < 3:
+            triggers += 1
+            cd += interval
+            alive_unmarked = [
+                z for z in zombies
+                if getattr(z, "hp", 0) > 0 and float(getattr(z, "_vuln_mark_t", 0.0)) <= 0.0
+            ]
+            if not alive_unmarked:
+                continue
+
+            def _priority(z):
+                if getattr(z, "is_boss", False):
+                    return 0
+                if getattr(z, "is_elite", False):
+                    return 1
+                return 2
+
+            buckets = {0: [], 1: [], 2: []}
+            for z in alive_unmarked:
+                buckets[_priority(z)].append(z)
+            target_group = next((g for g in (buckets[0], buckets[1], buckets[2]) if g), None)
+            if not target_group:
+                continue
+            z = random.choice(target_group)
+            z._vuln_mark_t = duration
+            z._vuln_mark_bonus = bonus
+            z._vuln_mark_level = lvl
+            z._vuln_hit_flash = max(0.0, float(getattr(z, "_vuln_hit_flash", 0.0)))
+        self._vuln_mark_cd = cd
 
     def enable_fog_field(self):
         if self.fog_on:
@@ -9666,6 +9803,27 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
                 screen.blit(txt, txt.get_rect(midbottom=(cx, body.top - 4)))
             if z.is_boss: pygame.draw.rect(screen, (255, 215, 0), body.inflate(4, 4), 3)
             pygame.draw.rect(screen, col, body)
+            mark_t = float(getattr(z, "_vuln_mark_t", 0.0))
+            if mark_t > 0.0:
+                flash = float(getattr(z, "_vuln_hit_flash", 0.0))
+                overlay = pygame.Surface(body.size, pygame.SRCALPHA)
+                lvl_vis = int(getattr(z, "_vuln_mark_level", 1))
+                lvl_vis = max(1, min(lvl_vis, len(VULN_MARK_DURATIONS)))
+                dur_vis = VULN_MARK_DURATIONS[lvl_vis - 1]
+                base_alpha = 70 + int(90 * min(1.0, mark_t / max(0.001, dur_vis)))
+                alpha = min(200, base_alpha + int(140 * min(1.0, flash)))
+                pygame.draw.rect(overlay, (190, 40, 40, alpha), overlay.get_rect(), border_radius=6)
+                screen.blit(overlay, body.topleft)
+                mark_size = max(18, int(draw_size * 0.9))
+                mark_rect = pygame.Rect(0, 0, mark_size, mark_size)
+                mark_rect.midbottom = (cx, body.top - 6)
+                mark = pygame.Surface(mark_rect.size, pygame.SRCALPHA)
+                core_w = max(6, mark_size // 5)
+                pygame.draw.line(mark, (0, 0, 0, 210), (2, 2), (mark_size - 2, mark_size - 2), width=core_w)
+                pygame.draw.line(mark, (0, 0, 0, 210), (mark_size - 2, 2), (2, mark_size - 2), width=core_w)
+                pygame.draw.line(mark, (240, 50, 50), (2, 2), (mark_size - 2, mark_size - 2), width=2)
+                pygame.draw.line(mark, (240, 50, 50), (mark_size - 2, 2), (2, mark_size - 2), width=2)
+                screen.blit(mark, mark_rect)
             if getattr(z, "shield_hp", 0) > 0:
                 draw_shield_outline(screen, body)
         elif kind == "player":
@@ -10258,6 +10416,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
         game_state.update_telegraphs(dt)  # 到时生成酸池
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
+        game_state.update_vulnerability_marks(zombies, dt)
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
         # --- Flow field refresh (rebuild ~each 0.30s or when goal/obstacles changed)
@@ -10654,6 +10813,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
         game_state.update_telegraphs(dt)  # 到时生成酸池
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
+        game_state.update_vulnerability_marks(zombies, dt)
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
         game_state.collect_item(player.rect)
@@ -10809,6 +10969,7 @@ if __name__ == "__main__":
         # restore shop upgrades and carry for a fresh run at the stored level
         if save_data:
             META.update(save_data.get("meta", META))
+            _ensure_meta_defaults()
             globals()["_carry_player_state"] = save_data.get("carry_player", None)
             globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
             globals()["_next_biome"] = save_data.get("biome")
@@ -10852,6 +11013,7 @@ if __name__ == "__main__":
                 mode, save_data = selection
                 if mode == "continue" and save_data:
                     META.update(save_data.get("meta", META))
+                    _ensure_meta_defaults()
                     globals()["_carry_player_state"] = save_data.get("carry_player", None)
                     globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
                     globals()["_next_biome"] = save_data.get("biome")
