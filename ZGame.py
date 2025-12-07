@@ -9842,18 +9842,46 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
                     * rem_ratio
                 )
                 alpha = int(min(255, alpha + int(80 * min(1.0, flash))))
-                color = (
+                mark_rect = pygame.Rect(0, 0, size, size)
+                mark_rect.midbottom = (cx, body.top - 6)
+
+                def draw_tapered_line(surf, color_rgba, p0, p1, w0, w1):
+                    # build a quad whose width tapers from w0 at p0 to w1 at p1
+                    dx, dy = (p1[0] - p0[0], p1[1] - p0[1])
+                    L = (dx * dx + dy * dy) ** 0.5 or 1.0
+                    nx, ny = -dy / L, dx / L
+                    hw0 = w0 * 0.5
+                    hw1 = w1 * 0.5
+                    pts = [
+                        (p0[0] + nx * hw0, p0[1] + ny * hw0),
+                        (p0[0] - nx * hw0, p0[1] - ny * hw0),
+                        (p1[0] - nx * hw1, p1[1] - ny * hw1),
+                        (p1[0] + nx * hw1, p1[1] + ny * hw1),
+                    ]
+                    pygame.draw.polygon(surf, color_rgba, pts)
+
+                def draw_tapered_x(surf, size_px, outline_col, fill_col):
+                    c = size_px * 0.5
+                    a = size_px * 0.2
+                    b = size_px * 0.8
+                    thick_center = max(3.0, size_px * 0.22)
+                    thin_tip = max(1.5, thick_center * 0.35)
+                    # outline (larger)
+                    draw_tapered_line(surf, outline_col, (a, a), (b, b), thin_tip * 1.4, thick_center * 1.45)
+                    draw_tapered_line(surf, outline_col, (b, a), (a, b), thin_tip * 1.4, thick_center * 1.45)
+                    # inner fill (smaller)
+                    draw_tapered_line(surf, fill_col, (a, a), (b, b), thin_tip, thick_center)
+                    draw_tapered_line(surf, fill_col, (b, a), (a, b), thin_tip, thick_center)
+
+                red_col = (
                     int(MARK_PULSE_DARK[0] + (MARK_PULSE_BRIGHT[0] - MARK_PULSE_DARK[0]) * pulse),
                     int(MARK_PULSE_DARK[1] + (MARK_PULSE_BRIGHT[1] - MARK_PULSE_DARK[1]) * pulse),
                     int(MARK_PULSE_DARK[2] + (MARK_PULSE_BRIGHT[2] - MARK_PULSE_DARK[2]) * pulse),
                     max(0, min(255, alpha)),
                 )
-                mark_rect = pygame.Rect(0, 0, size, size)
-                mark_rect.midbottom = (cx, body.top - 6)
+                black_col = (0, 0, 0, max(0, min(255, alpha)))
                 mark = pygame.Surface(mark_rect.size, pygame.SRCALPHA)
-                stroke = max(2, size // 10)
-                pygame.draw.line(mark, color, (size * 0.25, size * 0.1), (size * 0.75, size * 0.9), width=stroke)
-                pygame.draw.line(mark, color, (size * 0.75, size * 0.1), (size * 0.25, size * 0.9), width=stroke)
+                draw_tapered_x(mark, size, black_col, red_col)
                 screen.blit(mark, mark_rect)
             if getattr(z, "shield_hp", 0) > 0:
                 draw_shield_outline(screen, body)
