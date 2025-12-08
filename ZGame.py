@@ -9926,7 +9926,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             if plating_hp > 0:
                 armor_rect = rect.inflate(16, 10)
                 armor = pygame.Surface(armor_rect.size, pygame.SRCALPHA)
-                glow_ratio = max(0.0, min(1.0, float(getattr(p, "_bone_plating_glow", 0.0))))
+                glow_ratio = max(0.43, min(1.0, float(getattr(p, "_bone_plating_glow", 0.0))))
                 edge_alpha = min(220, 80 + plating_hp // 2)
                 inner_alpha = int((BONE_PLATING_GLOW[3] if len(BONE_PLATING_GLOW) > 3 else 140) * glow_ratio)
                 pygame.draw.rect(
