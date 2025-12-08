@@ -965,7 +965,7 @@ BOSS_EVERY_N_LEVELS = 5
 BOSS_HP_MULT = 4.0
 BOSS_ATK_MULT = 2.0
 BOSS_SPD_ADD = 1
-# --- combat tuning (Brotato-like) ---
+# --- combat tuning  ---
 FIRE_RATE = None  # shots per second; if None, derive from BULLET_SPACING_PX
 # --- survival mode & player health ---
 LEVEL_TIME_LIMIT = 45.0  # seconds per run
@@ -1047,6 +1047,9 @@ HURRICANE_GROWTH_RATE = 12.0  # px/s
 HURRICANE_RANGE_MULT = 3.0
 HURRICANE_PULL_STRENGTH = 280.0  # px/s pull toward center
 HURRICANE_BULLET_PULL = 160.0
+HURRICANE_SPIN_BASE = 2.4  # rad/s target angular speed for swirling bullets
+HURRICANE_SPIN_VARIANCE = 0.35  # ±35% variance when spawning a vortex
+HURRICANE_BULLET_SPIN_STEER = 4.0  # how quickly bullet velocity is steered toward the spin
 HURRICANE_ESCAPE_SPEED = 6.0  # player speed to shrug most pull
 HURRICANE_ESCAPE_SIZE = CELL_SIZE * 1.0  # entities larger than this resist more
 HURRICANE_COLOR = (120, 200, 255)
@@ -9234,13 +9237,26 @@ class GameState:
             if not d.alive():
                 self.dmg_texts.remove(d)
 
-    def spawn_hurricane(self, x: float, y: float, r: float | None = None):
+    def spawn_hurricane(self, x: float, y: float, r: float | None = None,
+                        direction: float | str | None = None, spin: float | None = None):
         if not hasattr(self, "hurricanes"):
             self.hurricanes = []
+        dir_val = direction
+        if isinstance(direction, str):
+            d = direction.lower()
+            dir_val = -1.0 if d.startswith("ccw") or d.startswith("counter") else 1.0
+        if dir_val is None:
+            dir_val = random.choice((1.0, -1.0))
+        dir_val = -1.0 if float(dir_val) < 0 else 1.0
+        spin_rate = float(spin if spin is not None else HURRICANE_SPIN_BASE *
+                          random.uniform(1.0 - HURRICANE_SPIN_VARIANCE, 1.0 + HURRICANE_SPIN_VARIANCE))
+        spin_rate = max(0.05, spin_rate)
         self.hurricanes.append({
             "x": float(x),
             "y": float(y),
             "r": float(r if r is not None else HURRICANE_START_RADIUS),
+            "dir": dir_val,  # +1: clockwise, -1: counterclockwise
+            "spin": spin_rate,
         })
 
     def _apply_pull(self, pos_x, pos_y, radius, hx, hy, range_r, strength, dt, resist_scale=1.0):
@@ -9262,6 +9278,39 @@ class GameState:
             h["r"] = min(HURRICANE_MAX_RADIUS, float(h.get("r", HURRICANE_START_RADIUS)) + HURRICANE_GROWTH_RATE * dt)
             hx, hy = float(h.get("x", 0.0)), float(h.get("y", 0.0))
             range_r = h["r"] * HURRICANE_RANGE_MULT
+            dir_sign = 1.0 if float(h.get("dir", 1.0)) >= 0 else -1.0
+            h["dir"] = dir_sign
+            spin_rate = max(0.05, float(h.get("spin", HURRICANE_SPIN_BASE)))
+            h["spin"] = spin_rate
+
+            def _push_projectile(proj):
+                bx = getattr(proj, "x", None)
+                by = getattr(proj, "y", None)
+                if bx is None or by is None or not hasattr(proj, "vx") or not hasattr(proj, "vy"):
+                    return
+                dx = hx - bx
+                dy = hy - by
+                dist = math.hypot(dx, dy)
+                if dist <= 1e-3 or dist > range_r:
+                    return
+                influence = max(0.0, 1.0 - dist / range_r)
+                nx, ny = dx / dist, dy / dist
+                pull = HURRICANE_BULLET_PULL * influence
+                proj.vx += nx * pull * dt
+                proj.vy += ny * pull * dt
+                # tangential spin: steer velocity toward a rotating field
+                spin_scale = influence * influence
+                if spin_scale <= 0.0:
+                    return
+                tx, ty = ny, -nx  # clockwise tangent for dir_sign=+1
+                if dir_sign < 0:
+                    tx, ty = -tx, -ty
+                target_tan = spin_rate * dist * spin_scale
+                current_tan = proj.vx * tx + proj.vy * ty
+                delta = target_tan - current_tan
+                steer = delta * HURRICANE_BULLET_SPIN_STEER * dt
+                proj.vx += tx * steer
+                proj.vy += ty * steer
             # player pull
             speed = float(getattr(player, "speed", PLAYER_SPEED))
             resist = 0.3 if speed >= HURRICANE_ESCAPE_SPEED else 1.0
@@ -9313,27 +9362,11 @@ class GameState:
                     z._hurricane_slow_mult = 1.0
             # bullets (player)
             for b in bullets:
-                bx, by = b.x, b.y
-                dx = hx - bx
-                dy = hy - by
-                dist = math.hypot(dx, dy)
-                if dist <= 1e-3 or dist > range_r:
-                    continue
-                pull = HURRICANE_BULLET_PULL * max(0.0, 1.0 - dist / range_r)
-                b.vx += (dx / dist) * pull * dt
-                b.vy += (dy / dist) * pull * dt
+                _push_projectile(b)
             # enemy bullets
             if enemy_shots:
                 for es in enemy_shots:
-                    bx, by = es.x, es.y
-                    dx = hx - bx
-                    dy = hy - by
-                    dist = math.hypot(dx, dy)
-                    if dist <= 1e-3 or dist > range_r:
-                        continue
-                    pull = HURRICANE_BULLET_PULL * max(0.0, 1.0 - dist / range_r)
-                    es.vx += (dx / dist) * pull * dt
-                    es.vy += (dy / dist) * pull * dt
+                    _push_projectile(es)
 
     def update_vulnerability_marks(self, zombies, dt: float):
         lvl = int(META.get("vuln_mark_level", 0))
