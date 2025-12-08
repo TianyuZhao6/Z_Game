@@ -7418,10 +7418,10 @@ class Bullet:
                     if overflow > 0:
                         z.hp -= overflow
                         # 飘字：HP 伤害（红/金）
-                        game_state.add_damage_text(cx, cy - 10, overflow, crit=is_crit, kind="hp")
+                        game_state.add_damage_text(cx, cy - 10, overflow, crit=is_crit, kind="hp_player")
                 else:
                     z.hp -= dealt
-                    game_state.add_damage_text(cx, cy, dealt, crit=is_crit, kind="hp")
+                    game_state.add_damage_text(cx, cy, dealt, crit=is_crit, kind="hp_player")
                 hp_lost = max(0, hp_before - max(z.hp, 0))
                 if z.hp <= 0 and not getattr(z, "_death_processed", False):
                     z._death_processed = True  # Prevent duplicate death processing
@@ -7904,7 +7904,7 @@ class EnemyShot:
             if getattr(player, "hit_cd", 0.0) <= 0.0:
                 mult = getattr(game_state, "biome_zombie_contact_mult", 1.0)
                 dmg = int(round(self.dmg * max(1.0, mult)))
-                game_state.damage_player(player, dmg)
+                game_state.damage_player(player, dmg, kind="hp_enemy")
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
             self.alive = False
 
@@ -9079,7 +9079,7 @@ class GameState:
                 player._slow_frac = 0.0
         # 不在池里：不做直接伤害；离开后的 DoT 由主循环统一结算
 
-    def damage_player(self, player, dmg):
+    def damage_player(self, player, dmg, kind="hp"):
         dmg = int(max(0, dmg))
         if dmg <= 0:
             return 0
@@ -9140,7 +9140,7 @@ class GameState:
                 player.rect.centery,
                 dmg,
                 crit=False,
-                kind="hp",
+                kind=kind or "hp",
             )
         return dmg
 
@@ -9960,12 +9960,14 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
         sy += d.screen_offset_y()
         # 颜色：HP=红/白，护盾=蓝
-        if d.kind == "shield":
-            col = (120, 200, 255)
-        elif d.kind == "aegis":
-            col = AEGIS_PULSE_COLOR
-        else:
-            col = (255, 100, 100) if not d.crit else (255, 240, 120)
+        color_map = {
+            "shield": ((120, 200, 255), (120, 200, 255)),
+            "aegis": (AEGIS_PULSE_COLOR, AEGIS_PULSE_COLOR),
+            "hp_player": ((255, 255, 255), (255, 255, 220)),
+            "hp_enemy": ((255, 60, 60), (255, 140, 140)),
+        }
+        normal, crit = color_map.get(d.kind, ((255, 100, 100), (255, 240, 120)))
+        col = crit if d.crit else normal
         size = DMG_TEXT_SIZE_NORMAL if not d.crit else DMG_TEXT_SIZE_CRIT
         font = pygame.font.SysFont(None, size, bold=d.crit)
         surf = font.render(str(d.amount), True, col)
