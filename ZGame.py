@@ -543,6 +543,11 @@ def apply_domain_buffs_for_level(game_state, player):
     b = globals().get("_next_biome", None)
     game_state.biome_active = b
     globals()["_last_biome"] = b
+    # Clear prior biome-only player speed buff (preserve other speed changes)
+    prev_biome_mult = float(getattr(player, "_biome_speed_mult", 1.0))
+    if abs(prev_biome_mult - 1.0) > 1e-4:
+        player.speed = min(PLAYER_SPEED_CAP, max(1.0, player.speed / max(0.0001, prev_biome_mult)))
+    player._biome_speed_mult = 1.0
     # Reset per-level knobs
     game_state.biome_zombie_contact_mult = 1.0
     game_state.biome_boss_contact_mult = 1.0
@@ -578,6 +583,9 @@ def apply_domain_buffs_for_level(game_state, player):
         hx = GRID_SIZE * CELL_SIZE * 0.5
         hy = GRID_SIZE * CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
         game_state.spawn_hurricane(hx, hy)
+        # Temp speed buff for this level
+        player._biome_speed_mult = 1.12
+        player.speed = min(PLAYER_SPEED_CAP, max(1.0, player.speed * player._biome_speed_mult))
 
 
 def apply_biome_on_zombie_spawn(z, game_state):
@@ -655,6 +663,11 @@ ZOMBIE_ATTACK = 10
 # --- next-level scene buff cards ---
 SCENE_BIOMES = ["Domain of Wind", "Misty Forest", "Scorched Hell", "Bastion of Stone"]
 _next_biome = None  # 记录玩家本关在商店后选择的“下关场景”
+# === Wind Biome Tuning ===
+TORNADO_FUNNEL_HEIGHT = 140        # Visual height in pixels
+TORNADO_LAYER_COUNT = 12           # How many "slices" to draw for the 3D effect
+TORNADO_COLOR_CORE = (180, 200, 220)
+TORNADO_COLOR_EDGE = (100, 110, 130)
 # --- Splinter family tuning ---
 SPLINTER_CHILD_COUNT = 3
 SPLINTER_CHILD_HP_RATIO = 0.20  # each child = 20% of parent's MAX HP
@@ -1046,11 +1059,12 @@ HURRICANE_MAX_RADIUS = CELL_SIZE * 6.0
 HURRICANE_GROWTH_RATE = 12.0  # px/s
 HURRICANE_RANGE_MULT = 3.0
 HURRICANE_PULL_STRENGTH = 280.0  # px/s pull toward center
+HURRICANE_PULL_GROWTH_MULT = 2.75  # extra pull scaling as the vortex grows (0→+500% at max size)
 HURRICANE_BULLET_PULL = 160.0
 HURRICANE_SPIN_BASE = 2.4  # rad/s target angular speed for swirling bullets
 HURRICANE_SPIN_VARIANCE = 0.35  # ±35% variance when spawning a vortex
 HURRICANE_BULLET_SPIN_STEER = 4.0  # how quickly bullet velocity is steered toward the spin
-HURRICANE_ESCAPE_SPEED = 6.0  # player speed to shrug most pull
+HURRICANE_ESCAPE_SPEED = 3.8  # speed to shrug most pull
 HURRICANE_ESCAPE_SIZE = CELL_SIZE * 1.0  # entities larger than this resist more
 HURRICANE_COLOR = (120, 200, 255)
 SHOP_CATALOG_VERSION = 2  # bump to invalidate cached offers when catalog changes
@@ -2044,6 +2058,13 @@ def _capture_level_start_baseline(level_idx: int, player: "Player", game_state: 
         "bullet_damage": int(getattr(player, "bullet_damage", META.get("base_dmg", 0) + META.get("dmg", 0))),
         "max_hp": int(getattr(player, "max_hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
         "hp": int(getattr(player, "hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
+        # combat stats that may have been modified by level-up choices
+        "fire_rate_mult": float(getattr(player, "fire_rate_mult", 1.0)),
+        "range": float(getattr(player, "range", MAX_FIRE_RANGE)),
+        "range_base": float(getattr(player, "range_base", MAX_FIRE_RANGE)),
+        "crit_chance": float(getattr(player, "crit_chance", CRIT_CHANCE_BASE)),
+        "crit_mult": float(getattr(player, "crit_mult", CRIT_MULT_BASE)),
+        "speed": float(getattr(player, "speed", PLAYER_SPEED)),
     }
     try:
         base_spawn = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
@@ -2129,6 +2150,12 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
         player.bullet_damage = int(b.get("bullet_damage", player.bullet_damage))
         player.max_hp = int(b.get("max_hp", player.max_hp))
         player.hp = min(player.max_hp, int(b.get("hp", player.max_hp)))
+        player.fire_rate_mult = float(b.get("fire_rate_mult", getattr(player, "fire_rate_mult", 1.0)))
+        player.range_base = float(b.get("range_base", getattr(player, "range_base", MAX_FIRE_RANGE)))
+        player.range = float(b.get("range", getattr(player, "range", player.range_base)))
+        player.crit_chance = float(b.get("crit_chance", getattr(player, "crit_chance", CRIT_CHANCE_BASE)))
+        player.crit_mult = float(b.get("crit_mult", getattr(player, "crit_mult", CRIT_MULT_BASE)))
+        player.speed = float(b.get("speed", getattr(player, "speed", PLAYER_SPEED)))
 
 
 def has_save() -> bool:
@@ -8847,6 +8874,129 @@ def crush_blocks_in_rect(sweep_rect: pygame.Rect, game_state) -> int:
     return removed
 
 
+class TornadoEntity:
+    def __init__(self, x, y, r=HURRICANE_START_RADIUS, spin_rate=None, spin_dir=None):
+        self.x = float(x)
+        self.y = float(y)
+        self.r = float(r)
+        self.t = random.uniform(0, 100) # Animation phase
+        self.spin_dir = -1.0 if (spin_dir is not None and spin_dir < 0) else (1.0 if spin_dir is not None else random.choice((-1.0, 1.0)))
+        base_spin = float(spin_rate) if spin_rate is not None else HURRICANE_SPIN_BASE
+        jitter = random.uniform(1.0 - HURRICANE_SPIN_VARIANCE, 1.0 + HURRICANE_SPIN_VARIANCE)
+        self.spin_rate = max(0.05, base_spin * jitter)
+        # Particles: (angle, height_ratio, speed_offset, dist_offset)
+        self.particles = [] 
+        for _ in range(20):
+            self.particles.append({
+                "ang": random.uniform(0, math.tau),
+                "h": random.uniform(0.1, 1.0),
+                "spd": random.uniform(0.8, 1.2),
+                "dist": random.uniform(0.8, 1.3)
+            })
+
+    def update(self, dt):
+        self.r = min(HURRICANE_MAX_RADIUS, self.r + HURRICANE_GROWTH_RATE * dt)
+        self.t += dt * 4.0 # Animation speed
+        # Update particles
+        for p in self.particles:
+            # Particles spin faster at the bottom (smaller radius)
+            spin_speed = 6.0 * (1.5 - p['h'] * 0.5) 
+            p['ang'] += spin_speed * dt
+
+    def apply_vortex_physics(self, ent, dt, resist_scale=1.0):
+        """Applies spiral force: Rotates AROUND center while pulling INTO center; returns delta (dx, dy)."""
+        ecx, ecy = ent.rect.centerx, ent.rect.centery
+        dx = self.x - ecx
+        dy = self.y - ecy
+        dist = math.hypot(dx, dy)
+        
+        effect_radius = self.r * HURRICANE_RANGE_MULT
+        if dist <= 1.0 or dist > effect_radius:
+            return 0.0, 0.0
+
+        nx, ny = dx / dist, dy / dist
+        eff_dist = dist
+        if getattr(ent, "is_boss", False):
+            eff_dist = max(dist, float(getattr(ent, "size", CELL_SIZE)))
+        influence = max(0.0, 1.0 - eff_dist / effect_radius)
+        size_ratio = max(0.0, (self.r - HURRICANE_START_RADIUS) / max(1.0, (HURRICANE_MAX_RADIUS - HURRICANE_START_RADIUS)))
+        pull_growth = 1.0 + size_ratio * HURRICANE_PULL_GROWTH_MULT
+        
+        # 1. Radial Force (Suction) - Pulls inward
+        radial_speed = HURRICANE_PULL_STRENGTH * influence * pull_growth
+        vx_radial = nx * radial_speed
+        vy_radial = ny * radial_speed
+
+        # 2. Tangential Force (Rotation) - Pushes sideways
+        tx, ty = -ny, nx
+        if self.spin_dir < 0:
+            tx, ty = -tx, -ty
+        tangential_speed = self.spin_rate * eff_dist * influence
+        vx_tan = tx * tangential_speed
+        vy_tan = ty * tangential_speed
+
+        # Combine and Apply resistance (bosses/players resist more)
+        final_vx = (vx_radial + vx_tan) * resist_scale
+        final_vy = (vy_radial * 0.5 + vy_tan * 0.5) * resist_scale  # Flatten Y for ISO perspective
+
+        return final_vx * dt, final_vy * dt
+
+    def draw(self, screen, camx, camy):
+        """Draws a procedural stacked tornado to simulate 3D volume."""
+        cx, cy = iso_world_to_screen(self.x / CELL_SIZE, (self.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
+        
+        # Draw layers from bottom to top
+        base_w = self.r * 1.5  # Visual width scale
+        
+        for i in range(TORNADO_LAYER_COUNT):
+            # Ratio: 0 (bottom) to 1 (top)
+            ratio = i / float(TORNADO_LAYER_COUNT)
+            
+            # Funnel shape: Wide top, narrow bottom
+            # Curve equation: width = base * (0.4 + 0.6 * ratio^2)
+            width = base_w * (0.3 + 0.9 * (ratio ** 1.5))
+            
+            # Wobble effect: Sine wave offset based on time and height
+            wobble_x = math.sin(self.t + ratio * 3.0) * (20 * ratio)
+            
+            # Height offset (Iso Z-axis)
+            draw_y = cy - (ratio * TORNADO_FUNNEL_HEIGHT)
+            draw_x = cx + wobble_x
+            
+            # Convert world radius to screen ellipse dimensions
+            rx, ry = iso_circle_radii_screen(width * 0.5)
+            
+            # Alpha fade at top
+            alpha = 180 if i < TORNADO_LAYER_COUNT - 1 else 100
+            
+            # Draw Layer
+            s = pygame.Surface((rx*2, ry*2), pygame.SRCALPHA)
+            color = TORNADO_COLOR_EDGE if i % 2 == 0 else TORNADO_COLOR_CORE
+            pygame.draw.ellipse(s, (*color, alpha), s.get_rect())
+            screen.blit(s, (draw_x - rx, draw_y - ry))
+
+        # Draw Particles (Debris)
+        for p in self.particles:
+            h_px = p['h'] * TORNADO_FUNNEL_HEIGHT
+            w_at_h = base_w * (0.3 + 0.9 * (p['h'] ** 1.5)) * p['dist']
+            
+            # Orbit logic
+            px_off = math.cos(p['ang']) * (w_at_h * 0.5) # X orbit
+            py_off = math.sin(p['ang']) * (w_at_h * 0.25) # Y orbit (flattened for ISO)
+            
+            wobble_at_h = math.sin(self.t + p['h'] * 3.0) * (20 * p['h'])
+            
+            px = cx + wobble_at_h + px_off
+            py = cy - h_px + py_off
+            
+            # Z-sorting: only draw if "in front" of the funnel roughly
+            # (Simple hack: draw all, but darken the ones behind)
+            is_behind = math.sin(p['ang']) < 0
+            col = (40, 50, 60) if is_behind else (200, 220, 230)
+            size = 3 if is_behind else 5
+            
+            pygame.draw.circle(screen, col, (int(px), int(py)), size)
+
 class GameState:
     def __init__(self, obstacles: Dict, items: Set, main_item_pos: List[Tuple[int, int]], decorations: list):
         self.obstacles = obstacles
@@ -9237,27 +9387,11 @@ class GameState:
             if not d.alive():
                 self.dmg_texts.remove(d)
 
-    def spawn_hurricane(self, x: float, y: float, r: float | None = None,
-                        direction: float | str | None = None, spin: float | None = None):
+    def spawn_hurricane(self, x: float, y: float, r: float | None = None):
         if not hasattr(self, "hurricanes"):
             self.hurricanes = []
-        dir_val = direction
-        if isinstance(direction, str):
-            d = direction.lower()
-            dir_val = -1.0 if d.startswith("ccw") or d.startswith("counter") else 1.0
-        if dir_val is None:
-            dir_val = random.choice((1.0, -1.0))
-        dir_val = -1.0 if float(dir_val) < 0 else 1.0
-        spin_rate = float(spin if spin is not None else HURRICANE_SPIN_BASE *
-                          random.uniform(1.0 - HURRICANE_SPIN_VARIANCE, 1.0 + HURRICANE_SPIN_VARIANCE))
-        spin_rate = max(0.05, spin_rate)
-        self.hurricanes.append({
-            "x": float(x),
-            "y": float(y),
-            "r": float(r if r is not None else HURRICANE_START_RADIUS),
-            "dir": dir_val,  # +1: clockwise, -1: counterclockwise
-            "spin": spin_rate,
-        })
+        # Creates a class instance now, not a dict
+        self.hurricanes.append(TornadoEntity(x, y, r if r is not None else HURRICANE_START_RADIUS))
 
     def _apply_pull(self, pos_x, pos_y, radius, hx, hy, range_r, strength, dt, resist_scale=1.0):
         dx = hx - pos_x
@@ -9265,7 +9399,10 @@ class GameState:
         dist = math.hypot(dx, dy)
         if dist <= 1e-3 or dist > range_r:
             return pos_x, pos_y
-        pull = strength * max(0.0, 1.0 - dist / range_r) * resist_scale
+        influence = max(0.0, 1.0 - dist / range_r)
+        # Non-linear falloff so pull weakens more as you get farther away
+        influence *= influence
+        pull = strength * influence * resist_scale
         step = pull * dt
         step = min(step, dist * 0.95)
         nx, ny = dx / dist, dy / dist
@@ -9274,99 +9411,73 @@ class GameState:
     def update_hurricanes(self, dt: float, player, zombies, bullets, enemy_shots=None):
         if not getattr(self, "hurricanes", None):
             return
-        for h in list(self.hurricanes):
-            h["r"] = min(HURRICANE_MAX_RADIUS, float(h.get("r", HURRICANE_START_RADIUS)) + HURRICANE_GROWTH_RATE * dt)
-            hx, hy = float(h.get("x", 0.0)), float(h.get("y", 0.0))
-            range_r = h["r"] * HURRICANE_RANGE_MULT
-            dir_sign = 1.0 if float(h.get("dir", 1.0)) >= 0 else -1.0
-            h["dir"] = dir_sign
-            spin_rate = max(0.05, float(h.get("spin", HURRICANE_SPIN_BASE)))
-            h["spin"] = spin_rate
-
-            def _push_projectile(proj):
-                bx = getattr(proj, "x", None)
-                by = getattr(proj, "y", None)
-                if bx is None or by is None or not hasattr(proj, "vx") or not hasattr(proj, "vy"):
-                    return
-                dx = hx - bx
-                dy = hy - by
-                dist = math.hypot(dx, dy)
-                if dist <= 1e-3 or dist > range_r:
-                    return
-                influence = max(0.0, 1.0 - dist / range_r)
-                nx, ny = dx / dist, dy / dist
-                pull = HURRICANE_BULLET_PULL * influence
-                proj.vx += nx * pull * dt
-                proj.vy += ny * pull * dt
-                # tangential spin: steer velocity toward a rotating field
-                spin_scale = influence * influence
-                if spin_scale <= 0.0:
-                    return
-                tx, ty = ny, -nx  # clockwise tangent for dir_sign=+1
-                if dir_sign < 0:
-                    tx, ty = -tx, -ty
-                target_tan = spin_rate * dist * spin_scale
-                current_tan = proj.vx * tx + proj.vy * ty
-                delta = target_tan - current_tan
-                steer = delta * HURRICANE_BULLET_SPIN_STEER * dt
-                proj.vx += tx * steer
-                proj.vy += ty * steer
-            # player pull
-            speed = float(getattr(player, "speed", PLAYER_SPEED))
-            resist = 0.3 if speed >= HURRICANE_ESCAPE_SPEED else 1.0
-            if getattr(player, "size", CELL_SIZE) >= HURRICANE_ESCAPE_SIZE:
+        
+        def _vortex_resist(ent):
+            resist = 1.0
+            spd = float(getattr(ent, "speed", 0.0))
+            if spd >= HURRICANE_ESCAPE_SPEED:
                 resist *= 0.5
-            px_new, py_new = self._apply_pull(player.x + player.size * 0.5,
-                                              player.y + player.size * 0.5 + INFO_BAR_HEIGHT,
-                                              getattr(player, "radius", player.size * 0.5),
-                                              hx, hy, range_r, HURRICANE_PULL_STRENGTH, dt, resist_scale=resist)
-            # clamp within play bounds
+            size = float(getattr(ent, "size", CELL_SIZE * 0.6))
+            if size >= HURRICANE_ESCAPE_SIZE:
+                resist *= 0.7
+            if getattr(ent, "is_boss", False):
+                resist *= 0.2
+            return resist
+            
+        for h in list(self.hurricanes):
+            h.update(dt)
+            
+            # 1. Pull Player
+            resist = _vortex_resist(player)
+            dx_flow, dy_flow = h.apply_vortex_physics(player, dt, resist_scale=resist)
+            if dx_flow or dy_flow:
+                collide_and_slide_circle(player, self.obstacles.values(), dx_flow, dy_flow)
+            
+            # Clamp player to bounds
             bx_min, by_min, bx_max, by_max = play_bounds_for_circle(getattr(player, "radius", player.size * 0.5))
-            px_new = min(bx_max, max(bx_min, px_new))
-            py_new = min(by_max, max(by_min + INFO_BAR_HEIGHT, py_new))
-            player.x = px_new - player.size * 0.5
-            player.y = py_new - player.size * 0.5 - INFO_BAR_HEIGHT
-            player.rect.x = int(player.x)
-            player.rect.y = int(player.y + INFO_BAR_HEIGHT)
-            # zombies
+            player.x = max(bx_min, min(bx_max - player.size, player.x))
+            player.y = max(by_min, min(by_max - player.size - INFO_BAR_HEIGHT, player.y))
+
+            # 2. Pull Zombies
             for z in zombies:
-                zx = z.x + z.size * 0.5
-                zy = z.y + z.size * 0.5 + INFO_BAR_HEIGHT
-                resist_z = 1.0
-                if getattr(z, "speed", 0.0) >= HURRICANE_ESCAPE_SPEED:
-                    resist_z *= 0.4
-                if getattr(z, "size", CELL_SIZE * 0.6) >= HURRICANE_ESCAPE_SIZE:
-                    resist_z *= 0.5
-                eff_dist = math.hypot(hx - zx, hy - zy)
-                # Bosses cannot be fully absorbed; clamp effective distance by their size
-                if getattr(z, "is_boss", False):
-                    eff_dist = max(eff_dist, getattr(z, "size", CELL_SIZE))
-                    resist_z *= 0.35
-                zx_new, zy_new = self._apply_pull(zx, zy, getattr(z, "radius", z.size * 0.5),
-                                                  hx, hy, range_r, HURRICANE_PULL_STRENGTH, dt, resist_scale=resist_z)
-                # apply slow based on proximity (up to 20% at center)
-                if eff_dist <= range_r:
-                    slow_mult = 1.0 - 0.20 * max(0.0, 1.0 - eff_dist / range_r)
+                resist_z = _vortex_resist(z)
+                dx_flow, dy_flow = h.apply_vortex_physics(z, dt, resist_scale=resist_z)
+                if dx_flow or dy_flow:
+                    collide_and_slide_circle(z, self.obstacles.values(), dx_flow, dy_flow)
+                
+                # Apply slow effect if near center
+                dist = math.hypot(h.x - z.rect.centerx, h.y - z.rect.centery)
+                if dist < h.r * 1.5:
+                    z._hurricane_slow_mult = 0.7 # Slow down entities caught in the storm
                 else:
-                    slow_mult = 1.0
-                z._hurricane_slow_mult = slow_mult
-                z.x = zx_new - z.size * 0.5
-                z.y = zy_new - z.size * 0.5 - INFO_BAR_HEIGHT
-                z.rect.x = int(z.x)
-                z.rect.y = int(z.y + INFO_BAR_HEIGHT)
-            # reset slow for those outside influence
-            for z in zombies:
-                zx = z.x + z.size * 0.5
-                zy = z.y + z.size * 0.5 + INFO_BAR_HEIGHT
-                if math.hypot(hx - zx, hy - zy) > range_r:
                     z._hurricane_slow_mult = 1.0
-            # bullets (player)
-            for b in bullets:
-                _push_projectile(b)
-            # enemy bullets
-            if enemy_shots:
-                for es in enemy_shots:
-                    _push_projectile(es)
+
+            # 3. Pull Bullets (Visual spin)
+            all_shots = list(bullets)
+            if enemy_shots: all_shots.extend(enemy_shots)
+            
+            for b in all_shots:
+                dx, dy = h.x - b.x, h.y - b.y
+                dist = math.hypot(dx, dy)
+                effect_radius = h.r * HURRICANE_RANGE_MULT
+                if dist <= 1e-4 or dist > effect_radius:
+                    continue
+                influence = max(0.0, 1.0 - dist / effect_radius)
+                nx, ny = dx / dist, dy / dist
+                tx, ty = -ny, nx
+                if h.spin_dir < 0:
+                    tx, ty = -tx, -ty
+                # radial pull
+                pull = HURRICANE_BULLET_PULL * influence
+                b.vx += nx * pull * dt
+                b.vy += ny * pull * dt
+                # tangential swirl: steer toward target tangential speed
+                target_tan = h.spin_rate * dist * influence
+                current_tan = b.vx * tx + b.vy * ty
+                delta_tan = target_tan - current_tan
+                steer = delta_tan * HURRICANE_BULLET_SPIN_STEER * dt
+                b.vx += tx * steer
+                b.vy += ty * steer
 
     def update_vulnerability_marks(self, zombies, dt: float):
         lvl = int(META.get("vuln_mark_level", 0))
@@ -9741,24 +9852,27 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             camx=camx, camy=camy,
             fill=False, width=3
         )
-    # Hurricanes (wind biome)
+
+    # [UPDATED] Hurricanes (Wind Biome) - Now draws the 3D TornadoEntity
     for h in getattr(game_state, "hurricanes", []):
-        hx, hy = float(h.get("x", 0.0)), float(h.get("y", 0.0))
-        rr = float(h.get("r", HURRICANE_START_RADIUS))
-        pulse = 0.6 + 0.4 * math.sin(pygame.time.get_ticks() * 0.004)
-        alpha = int(70 + 120 * pulse)
+        # Draw the base ground shadow/influence ring
+        pulse = 0.6 + 0.4 * math.sin(pygame.time.get_ticks() * 0.008)
+        alpha = int(40 + 60 * pulse)
         draw_iso_ground_ellipse(
-            screen, hx, hy, rr * 1.05,
-            color=HURRICANE_COLOR, alpha=alpha,
+            screen, h.x, h.y, h.r * HURRICANE_RANGE_MULT,
+            color=(100, 120, 150), alpha=alpha,
             camx=camx, camy=camy,
-            fill=False, width=5
+            fill=False, width=2
         )
-        draw_iso_ground_ellipse(
-            screen, hx, hy, rr * 0.6,
-            color=(240, 240, 255), alpha=int(alpha * 0.8),
-            camx=camx, camy=camy,
-            fill=True
-        )
+        
+        # Delegate actual model drawing to the class
+        if hasattr(h, "draw"):
+            h.draw(screen, camx, camy)
+        else:
+            # Fallback for old save compatibility if h is a dict
+            hx, hy = float(h.get("x", 0)), float(h.get("y", 0))
+            draw_iso_ground_ellipse(screen, hx, hy, 40, (100,100,100), 200, camx, camy)
+
     # Aegis Pulse rings (ground-level hexes)
     for p in getattr(game_state, "aegis_pulses", []):
         age = max(0.0, float(getattr(p, "age", 0.0)))
