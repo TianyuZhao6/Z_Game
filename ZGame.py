@@ -551,6 +551,7 @@ def apply_domain_buffs_for_level(game_state, player):
     game_state.biome_bandit_hp_mult = 1.0
     game_state._fog_biome_forced = False
     player.xp_gain_mult = 1.0
+    game_state.hurricanes = []
     if b == "Misty Forest":
         # Same fog feel as Lv10
         game_state.request_fog_field(player)
@@ -570,14 +571,13 @@ def apply_domain_buffs_for_level(game_state, player):
         # New spawns this level: mark Stone so we add shields on spawn
         game_state.biome_active = b
     elif b == "Domain of Wind":
-        # placeholder: no effect for now for testing
-        player.shield_hp = int(round(player.max_hp * 0.50))
-        player.shield_max = player.shield_hp
-        total_shield = player.shield_hp + max(0, getattr(player, "carapace_hp", 0))
-        player._hud_shield_vis = total_shield / float(max(1, player.max_hp))
-        # New spawns this level: mark Stone so we add shields on spawn
         game_state.biome_active = b
-        pass
+        if not hasattr(game_state, "hurricanes"):
+            game_state.hurricanes = []
+        game_state.hurricanes.clear()
+        hx = GRID_SIZE * CELL_SIZE * 0.5
+        hy = GRID_SIZE * CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
+        game_state.spawn_hurricane(hx, hy)
 
 
 def apply_biome_on_zombie_spawn(z, game_state):
@@ -1041,6 +1041,15 @@ MARK_PULSE_MAX_ALPHA = 255
 MARK_PULSE_DARK = (60, 0, 0)
 MARK_PULSE_BRIGHT = (255, 40, 40)
 mark_pulse_time = 0.0  # global pulse accumulator
+HURRICANE_START_RADIUS = CELL_SIZE * 1.2
+HURRICANE_MAX_RADIUS = CELL_SIZE * 6.0
+HURRICANE_GROWTH_RATE = 12.0  # px/s
+HURRICANE_RANGE_MULT = 3.0
+HURRICANE_PULL_STRENGTH = 280.0  # px/s pull toward center
+HURRICANE_BULLET_PULL = 160.0
+HURRICANE_ESCAPE_SPEED = 6.0  # player speed to shrug most pull
+HURRICANE_ESCAPE_SIZE = CELL_SIZE * 1.0  # entities larger than this resist more
+HURRICANE_COLOR = (120, 200, 255)
 SHOP_CATALOG_VERSION = 2  # bump to invalidate cached offers when catalog changes
 # persistent (per run) upgrades bought in shop
 META = {
@@ -5926,6 +5935,7 @@ class Zombie:
             base_attack = int(base_attack * getattr(self, "buff_atk_mult", 1.0))
             base_speed = float(base_speed) + float(getattr(self, "buff_spd_add", 0))
             self.buff_t = max(0.0, self.buff_t - dt)
+        base_speed *= float(getattr(self, "_hurricane_slow_mult", 1.0))
         speed = float(min(Z_SPOIL_SPD_CAP, max(0.5, base_speed)))
         is_bandit = (getattr(self, "type", "") == "bandit")
         bandit_break_t = 0.0
@@ -8874,6 +8884,8 @@ class GameState:
         self.pending_bullets: List["Bullet"] = []
         # Mark of Vulnerability state
         self._vuln_mark_cd: float = 0.0
+        # Wind biome: hurricanes (vortices)
+        self.hurricanes: list[dict] = []
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -9221,6 +9233,107 @@ class GameState:
             d.step(dt)
             if not d.alive():
                 self.dmg_texts.remove(d)
+
+    def spawn_hurricane(self, x: float, y: float, r: float | None = None):
+        if not hasattr(self, "hurricanes"):
+            self.hurricanes = []
+        self.hurricanes.append({
+            "x": float(x),
+            "y": float(y),
+            "r": float(r if r is not None else HURRICANE_START_RADIUS),
+        })
+
+    def _apply_pull(self, pos_x, pos_y, radius, hx, hy, range_r, strength, dt, resist_scale=1.0):
+        dx = hx - pos_x
+        dy = hy - pos_y
+        dist = math.hypot(dx, dy)
+        if dist <= 1e-3 or dist > range_r:
+            return pos_x, pos_y
+        pull = strength * max(0.0, 1.0 - dist / range_r) * resist_scale
+        step = pull * dt
+        step = min(step, dist * 0.95)
+        nx, ny = dx / dist, dy / dist
+        return pos_x + nx * step, pos_y + ny * step
+
+    def update_hurricanes(self, dt: float, player, zombies, bullets, enemy_shots=None):
+        if not getattr(self, "hurricanes", None):
+            return
+        for h in list(self.hurricanes):
+            h["r"] = min(HURRICANE_MAX_RADIUS, float(h.get("r", HURRICANE_START_RADIUS)) + HURRICANE_GROWTH_RATE * dt)
+            hx, hy = float(h.get("x", 0.0)), float(h.get("y", 0.0))
+            range_r = h["r"] * HURRICANE_RANGE_MULT
+            # player pull
+            speed = float(getattr(player, "speed", PLAYER_SPEED))
+            resist = 0.3 if speed >= HURRICANE_ESCAPE_SPEED else 1.0
+            if getattr(player, "size", CELL_SIZE) >= HURRICANE_ESCAPE_SIZE:
+                resist *= 0.5
+            px_new, py_new = self._apply_pull(player.x + player.size * 0.5,
+                                              player.y + player.size * 0.5 + INFO_BAR_HEIGHT,
+                                              getattr(player, "radius", player.size * 0.5),
+                                              hx, hy, range_r, HURRICANE_PULL_STRENGTH, dt, resist_scale=resist)
+            # clamp within play bounds
+            bx_min, by_min, bx_max, by_max = play_bounds_for_circle(getattr(player, "radius", player.size * 0.5))
+            px_new = min(bx_max, max(bx_min, px_new))
+            py_new = min(by_max, max(by_min + INFO_BAR_HEIGHT, py_new))
+            player.x = px_new - player.size * 0.5
+            player.y = py_new - player.size * 0.5 - INFO_BAR_HEIGHT
+            player.rect.x = int(player.x)
+            player.rect.y = int(player.y + INFO_BAR_HEIGHT)
+            # zombies
+            for z in zombies:
+                zx = z.x + z.size * 0.5
+                zy = z.y + z.size * 0.5 + INFO_BAR_HEIGHT
+                resist_z = 1.0
+                if getattr(z, "speed", 0.0) >= HURRICANE_ESCAPE_SPEED:
+                    resist_z *= 0.4
+                if getattr(z, "size", CELL_SIZE * 0.6) >= HURRICANE_ESCAPE_SIZE:
+                    resist_z *= 0.5
+                eff_dist = math.hypot(hx - zx, hy - zy)
+                # Bosses cannot be fully absorbed; clamp effective distance by their size
+                if getattr(z, "is_boss", False):
+                    eff_dist = max(eff_dist, getattr(z, "size", CELL_SIZE))
+                    resist_z *= 0.35
+                zx_new, zy_new = self._apply_pull(zx, zy, getattr(z, "radius", z.size * 0.5),
+                                                  hx, hy, range_r, HURRICANE_PULL_STRENGTH, dt, resist_scale=resist_z)
+                # apply slow based on proximity (up to 20% at center)
+                if eff_dist <= range_r:
+                    slow_mult = 1.0 - 0.20 * max(0.0, 1.0 - eff_dist / range_r)
+                else:
+                    slow_mult = 1.0
+                z._hurricane_slow_mult = slow_mult
+                z.x = zx_new - z.size * 0.5
+                z.y = zy_new - z.size * 0.5 - INFO_BAR_HEIGHT
+                z.rect.x = int(z.x)
+                z.rect.y = int(z.y + INFO_BAR_HEIGHT)
+            # reset slow for those outside influence
+            for z in zombies:
+                zx = z.x + z.size * 0.5
+                zy = z.y + z.size * 0.5 + INFO_BAR_HEIGHT
+                if math.hypot(hx - zx, hy - zy) > range_r:
+                    z._hurricane_slow_mult = 1.0
+            # bullets (player)
+            for b in bullets:
+                bx, by = b.x, b.y
+                dx = hx - bx
+                dy = hy - by
+                dist = math.hypot(dx, dy)
+                if dist <= 1e-3 or dist > range_r:
+                    continue
+                pull = HURRICANE_BULLET_PULL * max(0.0, 1.0 - dist / range_r)
+                b.vx += (dx / dist) * pull * dt
+                b.vy += (dy / dist) * pull * dt
+            # enemy bullets
+            if enemy_shots:
+                for es in enemy_shots:
+                    bx, by = es.x, es.y
+                    dx = hx - bx
+                    dy = hy - by
+                    dist = math.hypot(dx, dy)
+                    if dist <= 1e-3 or dist > range_r:
+                        continue
+                    pull = HURRICANE_BULLET_PULL * max(0.0, 1.0 - dist / range_r)
+                    es.vx += (dx / dist) * pull * dt
+                    es.vy += (dy / dist) * pull * dt
 
     def update_vulnerability_marks(self, zombies, dt: float):
         lvl = int(META.get("vuln_mark_level", 0))
@@ -9594,6 +9707,24 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             color=t.color, alpha=180,
             camx=camx, camy=camy,
             fill=False, width=3
+        )
+    # Hurricanes (wind biome)
+    for h in getattr(game_state, "hurricanes", []):
+        hx, hy = float(h.get("x", 0.0)), float(h.get("y", 0.0))
+        rr = float(h.get("r", HURRICANE_START_RADIUS))
+        pulse = 0.6 + 0.4 * math.sin(pygame.time.get_ticks() * 0.004)
+        alpha = int(70 + 120 * pulse)
+        draw_iso_ground_ellipse(
+            screen, hx, hy, rr * 1.05,
+            color=HURRICANE_COLOR, alpha=alpha,
+            camx=camx, camy=camy,
+            fill=False, width=5
+        )
+        draw_iso_ground_ellipse(
+            screen, hx, hy, rr * 0.6,
+            color=(240, 240, 255), alpha=int(alpha * 0.8),
+            camx=camx, camy=camy,
+            fill=True
         )
     # Aegis Pulse rings (ground-level hexes)
     for p in getattr(game_state, "aegis_pulses", []):
@@ -10491,6 +10622,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.update_telegraphs(dt)  # 到时生成酸池
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
         game_state.update_vulnerability_marks(zombies, dt)
+        game_state.update_hurricanes(dt, player, zombies, bullets, enemy_shots)
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
         # --- Flow field refresh (rebuild ~each 0.30s or when goal/obstacles changed)
