@@ -2642,9 +2642,9 @@ class HexTransition:
         self.OUTLINE_WIDTH = 2
         
         # --- Timing ---
-        self.duration_in = 0.32    # Grow time
-        self.duration_hold = 0.14  # Time to stay fully black
-        self.duration_out = 0.32   # Shrink time 
+        self.duration_in = 0.25    # Grow time
+        self.duration_hold = 0.10  # Time to stay fully black
+        self.duration_out = 0.25   # Shrink time 
        
         # State
         self.timer = 0.0
@@ -2652,13 +2652,21 @@ class HexTransition:
         self.midpoint_triggered = False
 
     def _get_delay(self, cell):
-        # Distance from center (Circle wipe)
-        cx, cy = VIEW_W // 2, VIEW_H // 2
-        dist = abs(cell.cy - cy)  # vertical banding: center row triggers first
-        max_dist = (VIEW_H / 2.0) or 1.0
-        norm_band = min(1.0, dist / max_dist)
-        # bias so center row fires first, edges last, with small jitter
-        return norm_band * 0.55 + random.random() * 0.06
+        # Randomize between vertical band and radial circle wipes for variety
+        if random.random() < 0.5:
+            # vertical banding: center row triggers first
+            cx, cy = VIEW_W // 2, VIEW_H // 2
+            dist = abs(cell.cy - cy)
+            max_dist = (VIEW_H / 2.0) or 1.0
+            norm_band = min(1.0, dist / max_dist)
+            return norm_band * 0.55 + random.random() * 0.06
+        else:
+            # radial wipe: center triggers first
+            cx, cy = VIEW_W // 2, VIEW_H // 2
+            dist = math.hypot(cell.cx - cx, cell.cy - cy)
+            max_dist = math.hypot(VIEW_W, VIEW_H) / 2.0
+            norm_dist = min(1.0, dist / max_dist)
+            return norm_dist * 0.55 + random.uniform(0, 0.08)
 
     def start(self):
         self.timer = 0.0
@@ -2754,13 +2762,18 @@ class HexTransition:
                 py = cy + cell.max_r * math.sin(ang)
                 fill_points.append((cx + (px - cx) * draw_scale, cy + (py - cy) * draw_scale))
 
-            # band factor for center-first sequencing (brighter in middle rows)
-            band_factor = 1.0 - min(1.0, abs(cell.cy - center_y) / max_band)
-            # 3. Draw Fill (The "Shutter") with gradient alpha
-            fill_alpha = int(max(0, min(255, 255 * max(0.6, draw_scale) * (0.9 + 0.1 * band_factor))))
+            # 修改点：高亮因子改为径向计算，中心亮四周暗
+            dist_center = math.hypot(cell.cx - VIEW_W // 2, cell.cy - VIEW_H // 2)
+            band_factor = 1.0 - min(1.0, dist_center / (VIEW_H * 0.6))
+
+            # 3. Draw Fill
+            # 稍微降低填充不透明度，让背景在动画早期稍微透一点点气
+            fill_alpha = int(max(0, min(255, 255 * max(0.6, draw_scale))))
             pygame.draw.polygon(overlay, (*self.COLOR_FILL, fill_alpha), fill_points)
             
-            # 4. Draw Outline (The Neon Edge) always on; stronger when shrinking
+            # 4. Draw Outline
+            # 修改点：大幅降低描边透明度(220 -> 160)，防止小格子密集时过于刺眼
+            outline_base = 160 * (0.4 + 0.6 * band_factor)
             outline_alpha = int(max(0, min(255, 220 * (0.5 + 0.5 * band_factor) * max(0.3, draw_scale))))
             pygame.draw.polygon(overlay, (*self.COLOR_OUTLINE, outline_alpha), outline_points, self.OUTLINE_WIDTH)
         screen.blit(overlay, (0, 0))
@@ -2772,11 +2785,10 @@ _hex_bg_surface: pygame.Surface | None = None
 _menu_transition_frame: pygame.Surface | None = None
 _skip_intro_once = False
 
-
 def ensure_hex_transition():
     global _hex_grid_cache, _hex_transition
     if _hex_grid_cache is None:
-        _hex_grid_cache = build_hex_grid(VIEW_W, VIEW_H, r=int(max(90, VIEW_W * 0.08)))
+        _hex_grid_cache = build_hex_grid(VIEW_W, VIEW_H, r=int(max(90, VIEW_W * 0.075)))
     # upgrade any existing cells to have points for static outlines
     for cell in _hex_grid_cache:
         if not hasattr(cell, "points"):
