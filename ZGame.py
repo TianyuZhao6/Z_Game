@@ -2058,6 +2058,7 @@ def _capture_level_start_baseline(level_idx: int, player: "Player", game_state: 
         "bullet_damage": int(getattr(player, "bullet_damage", META.get("base_dmg", 0) + META.get("dmg", 0))),
         "max_hp": int(getattr(player, "max_hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
         "hp": int(getattr(player, "hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
+        "biome": getattr(game_state, "biome_active", globals().get("_next_biome")),
         # combat stats that may have been modified by level-up choices
         "fire_rate_mult": float(getattr(player, "fire_rate_mult", 1.0)),
         "range": float(getattr(player, "range", MAX_FIRE_RANGE)),
@@ -2065,6 +2066,15 @@ def _capture_level_start_baseline(level_idx: int, player: "Player", game_state: 
         "crit_chance": float(getattr(player, "crit_chance", CRIT_CHANCE_BASE)),
         "crit_mult": float(getattr(player, "crit_mult", CRIT_MULT_BASE)),
         "speed": float(getattr(player, "speed", PLAYER_SPEED)),
+        # snapshot the META stat multipliers so restarts don't re-stack level-up perks
+        "meta_stats": {
+            "dmg": int(META.get("dmg", 0)),
+            "firerate_mult": float(META.get("firerate_mult", 1.0)),
+            "range_mult": float(META.get("range_mult", 1.0)),
+            "speed_mult": float(META.get("speed_mult", 1.0)),
+            "crit": float(META.get("crit", 0.0)),
+            "maxhp": int(META.get("maxhp", 0)),
+        },
     }
     try:
         base_spawn = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
@@ -2144,18 +2154,30 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
     # 3) Restore the player's baseline snapshot (unchanged logic)
     b = globals().get("_player_level_baseline", None)
     if isinstance(b, dict):
+        # restore META stat multipliers first, so downstream calculations align with the baseline
+        meta_stats = b.get("meta_stats", {})
+        if isinstance(meta_stats, dict):
+            for k in ("dmg", "firerate_mult", "range_mult", "speed_mult", "crit", "maxhp"):
+                if k in meta_stats:
+                    META[k] = meta_stats[k]
         player.level = int(b.get("level", 1))
         player.xp = int(b.get("xp", 0))
         player.xp_to_next = int(b.get("xp_to_next", player_xp_required(player.level)))
         player.bullet_damage = int(b.get("bullet_damage", player.bullet_damage))
         player.max_hp = int(b.get("max_hp", player.max_hp))
         player.hp = min(player.max_hp, int(b.get("hp", player.max_hp)))
-        player.fire_rate_mult = float(b.get("fire_rate_mult", getattr(player, "fire_rate_mult", 1.0)))
+        player.fire_rate_mult = float(b.get("fire_rate_mult", META.get("firerate_mult", getattr(player, "fire_rate_mult", 1.0))))
         player.range_base = float(b.get("range_base", getattr(player, "range_base", MAX_FIRE_RANGE)))
-        player.range = float(b.get("range", getattr(player, "range", player.range_base)))
+        # re-derive range from baseline base + current (restored) META multiplier to avoid cumulative drift
+        player.range = float(player.range_base) * float(META.get("range_mult", 1.0))
         player.crit_chance = float(b.get("crit_chance", getattr(player, "crit_chance", CRIT_CHANCE_BASE)))
         player.crit_mult = float(b.get("crit_mult", getattr(player, "crit_mult", CRIT_MULT_BASE)))
         player.speed = float(b.get("speed", getattr(player, "speed", PLAYER_SPEED)))
+        # ensure biome is consistent on restore (helps downstream logic that reads game_state.biome_active)
+        if b.get("biome") is not None:
+            game_state.biome_active = b.get("biome")
+        # clean any queued level-up picks on a restart to prevent double-application
+        player.levelup_pending = 0
 
 
 def has_save() -> bool:
@@ -10515,6 +10537,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     player = Player(player_start, speed=PLAYER_SPEED)
     player.fire_cd = 0.0
     apply_player_carry(player, globals().get("_carry_player_state"))
+    # If we're re-entering the same level, reuse its biome so restarts keep the environment/buffs
+    if int(globals().get("_baseline_for_level", -1)) == int(current_level):
+        baseline = globals().get("_player_level_baseline", None)
+        if isinstance(baseline, dict) and baseline.get("biome") is not None:
+            globals()["_next_biome"] = baseline.get("biome")
     apply_domain_buffs_for_level(game_state, player)
     if hasattr(player, "on_level_start"):
         player.on_level_start()
@@ -11463,6 +11490,33 @@ if __name__ == "__main__":
             META["spoils"] += int(globals().get("_last_spoils", 0))
             globals()["_last_spoils"] = 0
             action = show_success_screen(screen, bg, [])
+            if action == "home":
+                flush_events()
+                selection = show_start_menu(screen, skip_intro=True)
+                if not selection:
+                    sys.exit()
+                mode, save_data = selection
+                if mode == "continue" and save_data:
+                    if save_data:
+                        META.update(save_data.get("meta", META))
+                        globals()["_carry_player_state"] = save_data.get("carry_player", None)
+                        globals()["_next_biome"] = save_data.get("biome")
+                    else:
+                        globals()["_carry_player_state"] = None
+                    if save_data.get("mode") == "snapshot":
+                        meta = save_data.get("meta", {})
+                        current_level = int(meta.get("current_level", 0))
+                    else:
+                        current_level = int(save_data.get("current_level", 0))
+                    globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
+                else:
+                    clear_save()
+                    reset_run_state()
+                    current_level = 0
+                    globals()["_carry_player_state"] = None
+                    globals()["_pending_shop"] = False
+                    globals().pop("_last_spoils", None)
+                continue
             # if player pressed Restart on the success page, do NOT enter the shop.
             if action in ("restart", "retry"):
                 META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
