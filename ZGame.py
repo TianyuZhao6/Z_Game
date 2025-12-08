@@ -2014,7 +2014,25 @@ def load_save() -> Optional[dict]:
                     except Exception:
                         pass
                 if isinstance(b.get("player"), dict):
-                    globals()["_player_level_baseline"] = dict(b["player"])
+                    _pbase = dict(b["player"])
+                    # Back-compat: if meta_stats missing, seed from save meta
+                    if "meta_stats" not in _pbase and isinstance(data.get("meta"), dict):
+                        meta = data["meta"]
+                        try:
+                            rng_base = float(_pbase.get("range_base", meta.get("base_range", MAX_FIRE_RANGE)))
+                            rng_val = float(_pbase.get("range", rng_base))
+                            rng_mult_est = rng_val / rng_base if rng_base else meta.get("range_mult", 1.0)
+                        except Exception:
+                            rng_mult_est = meta.get("range_mult", 1.0)
+                        _pbase["meta_stats"] = {
+                            "dmg": int(meta.get("dmg", 0)),
+                            "firerate_mult": float(meta.get("firerate_mult", 1.0)),
+                            "range_mult": float(meta.get("range_mult", rng_mult_est)),
+                            "speed_mult": float(meta.get("speed_mult", 1.0)),
+                            "crit": float(meta.get("crit", 0.0)),
+                            "maxhp": int(meta.get("maxhp", 0)),
+                        }
+                    globals()["_player_level_baseline"] = _pbase
         except Exception as e:
             print(f"[Save] Baseline hydrate failed: {e}", file=sys.stderr)
         # hydrate shop cache so exiting doesn't reroll offers for free
@@ -2156,10 +2174,25 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
     if isinstance(b, dict):
         # restore META stat multipliers first, so downstream calculations align with the baseline
         meta_stats = b.get("meta_stats", {})
-        if isinstance(meta_stats, dict):
-            for k in ("dmg", "firerate_mult", "range_mult", "speed_mult", "crit", "maxhp"):
-                if k in meta_stats:
-                    META[k] = meta_stats[k]
+        if not isinstance(meta_stats, dict):
+            # Back-compat: derive a best-effort snapshot from baseline + current META
+            try:
+                rng_base = float(b.get("range_base", getattr(player, "range_base", MAX_FIRE_RANGE)))
+                rng_val = float(b.get("range", rng_base))
+                rng_mult_est = rng_val / rng_base if rng_base else META.get("range_mult", 1.0)
+            except Exception:
+                rng_mult_est = META.get("range_mult", 1.0)
+            meta_stats = {
+                "dmg": int(META.get("dmg", 0)),
+                "firerate_mult": float(b.get("fire_rate_mult", META.get("firerate_mult", 1.0))),
+                "range_mult": float(META.get("range_mult", rng_mult_est)),
+                "speed_mult": float(META.get("speed_mult", 1.0)),
+                "crit": float(META.get("crit", 0.0)),
+                "maxhp": int(META.get("maxhp", 0)),
+            }
+        for k in ("dmg", "firerate_mult", "range_mult", "speed_mult", "crit", "maxhp"):
+            if k in meta_stats:
+                META[k] = meta_stats[k]
         player.level = int(b.get("level", 1))
         player.xp = int(b.get("xp", 0))
         player.xp_to_next = int(b.get("xp_to_next", player_xp_required(player.level)))
