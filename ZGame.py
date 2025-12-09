@@ -580,8 +580,18 @@ def apply_domain_buffs_for_level(game_state, player):
         if not hasattr(game_state, "hurricanes"):
             game_state.hurricanes = []
         game_state.hurricanes.clear()
-        hx = GRID_SIZE * CELL_SIZE * 0.5
-        hy = GRID_SIZE * CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
+        map_w = GRID_SIZE * CELL_SIZE
+        map_h = GRID_SIZE * CELL_SIZE
+        px, py = player.rect.center
+        min_dist = CELL_SIZE * 6  # keep away from player birth area
+        margin = HURRICANE_MAX_RADIUS * 1.2
+        hx, hy = map_w * 0.5, map_h * 0.5 + INFO_BAR_HEIGHT
+        for _ in range(40):
+            tx = random.uniform(margin, map_w - margin)
+            ty = INFO_BAR_HEIGHT + random.uniform(margin, map_h - margin)
+            if math.hypot(tx - px, ty - py) >= min_dist:
+                hx, hy = tx, ty
+                break
         game_state.spawn_hurricane(hx, hy)
         # Temp speed buff for this level
         player._biome_speed_mult = 1.12
@@ -8953,21 +8963,45 @@ class TornadoEntity:
         self.r = float(r)
         self.t = random.uniform(0, 100) # Animation phase
         self.spin_dir = random.choice([-1.0, 1.0]) # Random rotation direction
+        ang = random.uniform(0, math.tau)
+        self.move_speed = random.uniform(10.0, 24.0)
+        self.vx = math.cos(ang) * self.move_speed
+        self.vy = math.sin(ang) * self.move_speed
+        self._bound_margin = HURRICANE_MAX_RADIUS * 1.2
 
         # Initialize Wind Particles (Debris + Wind Streaks)
         self._base_particles = 35
         self._extra_particles = 30  # only affects visuals (outer wind gets busier as it grows)
         self.particles = [self._make_particle() for _ in range(self._base_particles)]
+        # Swoosh arcs that randomly appear in the outer influence ring (purely visual)
+        self._ring_swooshes = [self._make_swoosh() for _ in range(9)]
 
     def _make_particle(self):
         return {
             "type": "wind" if random.random() < 0.7 else "debris",
             "ang": random.uniform(0, math.tau),
             "h": random.uniform(0.05, 1.2), # Height ratio
-            "dist": random.uniform(0.6, 1.5), # Distance from funnel center (1.0+ sits in the influence ring)
+            "dist": random.uniform(0.6, 1.6), # Distance from funnel center (1.0+ sits in the influence ring)
             "speed": random.uniform(3.0, 6.0),
             "len": random.uniform(0.15, 0.45),
             "color": random.choice(WIND_PARTICLE_COLORS)
+        }
+
+    def _make_swoosh(self):
+        swoosh_colors = [
+            (200, 240, 255),  # white
+            (160, 210, 230),  # grey-blue
+            (120, 210, 255),  # cyan
+        ]
+        return {
+            "ang": random.uniform(0, math.tau),
+            "rad_ratio": random.uniform(0.3, 1.05),   # placement anywhere inside the influence ring
+            "len_ratio": random.uniform(0.12, 0.20),  # shorter max length (half previous max)
+            "thick": random.randint(2, 4),
+            "alpha": random.randint(140, 210),
+            "color": random.choice(swoosh_colors),
+            "t": 0.0,
+            "ttl": random.uniform(0.7, 1.3),
         }
 
     def update(self, dt):
@@ -8982,12 +9016,38 @@ class TornadoEntity:
         if len(self.particles) > target:
             self.particles = self.particles[:target]
 
+        # Slow drift across the map; bounce off bounds to stay inside
+        map_w = GRID_SIZE * CELL_SIZE
+        map_h = GRID_SIZE * CELL_SIZE
+        min_x = self._bound_margin
+        max_x = map_w - self._bound_margin
+        min_y = INFO_BAR_HEIGHT + self._bound_margin
+        max_y = INFO_BAR_HEIGHT + map_h - self._bound_margin
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        if self.x < min_x or self.x > max_x:
+            self.x = max(min_x, min(self.x, max_x))
+            self.vx *= -1
+        if self.y < min_y or self.y > max_y:
+            self.y = max(min_y, min(self.y, max_y))
+            self.vy *= -1
+
         # Update particles (orbiting)
         vis_dir = -self.spin_dir  # visuals swirl opposite if physics feels reversed
+        spin_growth = min(1.0, self.r / HURRICANE_MAX_RADIUS)
+        vis_spin_scale = 0.6 + 0.9 * spin_growth  # start slower, speed up as it grows
         for p in self.particles:
             # Physics: Spin faster near the bottom (conservation of angular momentum feel)
             spin = p['speed'] * (1.8 - min(1.0, p['h']))
-            p['ang'] += spin * dt * vis_dir
+            p['ang'] += spin * dt * vis_dir * vis_spin_scale
+
+        # Update ring swooshes (outer influence band streaks)
+        for s in list(self._ring_swooshes):
+            s["t"] += dt
+            if s["t"] >= s["ttl"]:
+                self._ring_swooshes.remove(s)
+        while len(self._ring_swooshes) < 9:
+            self._ring_swooshes.append(self._make_swoosh())
 
     def apply_vortex_physics(self, ent, dt, resist_scale=1.0):
         """
@@ -9037,6 +9097,8 @@ class TornadoEntity:
         cx, cy = iso_world_to_screen(self.x / CELL_SIZE, (self.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
 
         vis_dir = -self.spin_dir  # visuals follow the perceived rotation direction
+        spin_growth = min(1.0, self.r / HURRICANE_MAX_RADIUS)
+        vis_spin_scale = 0.6 + 0.9 * spin_growth
         base_w = self.r * 1.6
 
         # Influence ring: ground glow + cyan rim to highlight the affected zone
@@ -9049,12 +9111,50 @@ class TornadoEntity:
         # Rotating ground streaks follow the hurricane spin direction
         streaks = 8
         for i in range(streaks):
-            ang = self.t * 0.6 * vis_dir + i * (math.tau / streaks)
+            ang = self.t * 0.6 * vis_spin_scale * vis_dir + i * (math.tau / streaks)
             px = rx_zone + math.cos(ang) * rx_zone * 0.82
             py = ry_zone + math.sin(ang) * ry_zone * 0.82
             tx = -math.sin(ang) * 10 * vis_dir
             ty = math.cos(ang) * 6 * vis_dir
             pygame.draw.line(zone, (140, 220, 255, 140), (px - tx, py - ty), (px + tx, py + ty), 2)
+
+        # Brighter swoosh arcs randomly scattered in the influence ring
+        for s in self._ring_swooshes:
+            fade = max(0.0, 1.0 - (s["t"] / max(0.001, s["ttl"])))
+            if fade <= 0:
+                continue
+            arc_ang = s["ang"] + math.pi + self.t * 0.35 * vis_dir  # reversed arc direction
+            r_ratio = s["rad_ratio"]
+            arc_len = rx_zone * s["len_ratio"]
+            x0 = rx_zone + math.cos(arc_ang) * rx_zone * r_ratio
+            y0 = ry_zone + math.sin(arc_ang) * ry_zone * r_ratio
+            tx = -math.sin(arc_ang) * arc_len * vis_dir
+            ty = math.cos(arc_ang) * arc_len * 0.55 * vis_dir
+
+            # Quadratic bezier-like curve, tapered ends (thin) with thicker mid
+            start = (x0 - tx * 0.5, y0 - ty * 0.5)
+            end = (x0 + tx * 0.5, y0 + ty * 0.5)
+            curve_mag = arc_len * 0.25
+            cx_mid = x0 + (-ty) * 0.2 + math.cos(arc_ang) * 4
+            cy_mid = y0 + (tx) * 0.2 + math.sin(arc_ang) * 2
+
+            steps = 12
+            col = s["color"]
+            alpha = int(s["alpha"] * fade)
+            for j in range(steps):
+                t = j / (steps - 1)
+                # Quadratic interpolation
+                ax = (1 - t) * start[0] + t * cx_mid
+                ay = (1 - t) * start[1] + t * cy_mid
+                bx = (1 - t) * cx_mid + t * end[0]
+                by = (1 - t) * cy_mid + t * end[1]
+                px = (1 - t) * ax + t * bx
+                py = (1 - t) * ay + t * by
+
+                # Thickness taper: thin at ends, thickest at center
+                taper = 1.0 - abs(t * 2 - 1)
+                radius = max(1, int(s["thick"] * (0.5 + 0.8 * taper)))
+                pygame.draw.circle(zone, (*col, alpha), (px, py), radius)
 
         screen.blit(zone, (cx - rx_zone, cy - ry_zone))
 
@@ -9128,16 +9228,23 @@ class TornadoEntity:
             is_behind = math.sin(p['ang']) < 0
 
             if p['type'] == 'wind':
-                # Draw "Wind Streaks" (Curved lines)
+                # Draw "Wind Streaks" (Curved, multi-point swoosh)
                 size_scale = 1.0 + 0.6 * min(1.0, self.r / HURRICANE_MAX_RADIUS)
                 length = 12 * size_scale * (0.6 + 0.4 * p.get("len", 0.25))
                 # Calculate tail based on rotation direction
-                tail_x = px - math.cos(p['ang'] + math.pi/2 * vis_dir) * length
-                tail_y = py - math.sin(p['ang'] + math.pi/2 * vis_dir) * (length * 0.5)
+                dir_ang = p['ang'] + math.pi/2 * vis_dir
+                tail_x = px - math.cos(dir_ang) * length
+                tail_y = py - math.sin(dir_ang) * (length * 0.5)
+                mid_x = (px + tail_x) * 0.5
+                mid_y = (py + tail_y) * 0.5
+                # Bend outward slightly for a tapered curve
+                bend = 6 * size_scale
+                bx = mid_x + math.cos(dir_ang + math.pi/2) * bend
+                by = mid_y + math.sin(dir_ang + math.pi/2) * (bend * 0.6)
 
                 col = p['color']
                 alpha = 90 if is_behind else 230
-                pygame.draw.line(screen, (*col, alpha), (px, py), (tail_x, tail_y), 2)
+                pygame.draw.lines(screen, (*col, alpha), False, [(px, py), (bx, by), (tail_x, tail_y)], 2)
 
             else:
                 # Draw Debris (Rocks)
