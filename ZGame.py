@@ -8983,10 +8983,11 @@ class TornadoEntity:
             self.particles = self.particles[:target]
 
         # Update particles (orbiting)
+        vis_dir = -self.spin_dir  # visuals swirl opposite if physics feels reversed
         for p in self.particles:
             # Physics: Spin faster near the bottom (conservation of angular momentum feel)
             spin = p['speed'] * (1.8 - min(1.0, p['h']))
-            p['ang'] += spin * dt * self.spin_dir
+            p['ang'] += spin * dt * vis_dir
 
     def apply_vortex_physics(self, ent, dt, resist_scale=1.0):
         """
@@ -9035,6 +9036,7 @@ class TornadoEntity:
         # Base screen coordinates
         cx, cy = iso_world_to_screen(self.x / CELL_SIZE, (self.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
 
+        vis_dir = -self.spin_dir  # visuals follow the perceived rotation direction
         base_w = self.r * 1.6
 
         # Influence ring: ground glow + cyan rim to highlight the affected zone
@@ -9047,11 +9049,11 @@ class TornadoEntity:
         # Rotating ground streaks follow the hurricane spin direction
         streaks = 8
         for i in range(streaks):
-            ang = self.t * 0.6 * self.spin_dir + i * (math.tau / streaks)
+            ang = self.t * 0.6 * vis_dir + i * (math.tau / streaks)
             px = rx_zone + math.cos(ang) * rx_zone * 0.82
             py = ry_zone + math.sin(ang) * ry_zone * 0.82
-            tx = -math.sin(ang) * 10 * self.spin_dir
-            ty = math.cos(ang) * 6 * self.spin_dir
+            tx = -math.sin(ang) * 10 * vis_dir
+            ty = math.cos(ang) * 6 * vis_dir
             pygame.draw.line(zone, (140, 220, 255, 140), (px - tx, py - ty), (px + tx, py + ty), 2)
 
         screen.blit(zone, (cx - rx_zone, cy - ry_zone))
@@ -9130,8 +9132,8 @@ class TornadoEntity:
                 size_scale = 1.0 + 0.6 * min(1.0, self.r / HURRICANE_MAX_RADIUS)
                 length = 12 * size_scale * (0.6 + 0.4 * p.get("len", 0.25))
                 # Calculate tail based on rotation direction
-                tail_x = px - math.cos(p['ang'] + math.pi/2 * self.spin_dir) * length
-                tail_y = py - math.sin(p['ang'] + math.pi/2 * self.spin_dir) * (length * 0.5)
+                tail_x = px - math.cos(p['ang'] + math.pi/2 * vis_dir) * length
+                tail_y = py - math.sin(p['ang'] + math.pi/2 * vis_dir) * (length * 0.5)
 
                 col = p['color']
                 alpha = 90 if is_behind else 230
