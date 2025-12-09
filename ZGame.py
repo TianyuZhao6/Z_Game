@@ -8964,7 +8964,7 @@ class TornadoEntity:
         self.t = random.uniform(0, 100) # Animation phase
         self.spin_dir = random.choice([-1.0, 1.0]) # Random rotation direction
         ang = random.uniform(0, math.tau)
-        self.move_speed = random.uniform(10.0, 24.0)
+        self.move_speed = random.uniform(16.0, 40.0)  # slight speed boost for drifting
         self.vx = math.cos(ang) * self.move_speed
         self.vy = math.sin(ang) * self.move_speed
         self._bound_margin = HURRICANE_MAX_RADIUS * 1.2
