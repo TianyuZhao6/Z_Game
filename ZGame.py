@@ -8953,28 +8953,39 @@ class TornadoEntity:
         self.r = float(r)
         self.t = random.uniform(0, 100) # Animation phase
         self.spin_dir = random.choice([-1.0, 1.0]) # Random rotation direction
-        
+
         # Initialize Wind Particles (Debris + Wind Streaks)
-        self.particles = [] 
-        for _ in range(35):
-            self.particles.append({
-                "type": "wind" if random.random() < 0.7 else "debris",
-                "ang": random.uniform(0, math.tau),
-                "h": random.uniform(0.05, 1.2), # Height ratio
-                "dist": random.uniform(0.6, 1.5), # Distance from funnel center
-                "speed": random.uniform(3.0, 6.0),
-                "color": random.choice(WIND_PARTICLE_COLORS)
-            })
+        self._base_particles = 35
+        self._extra_particles = 30  # only affects visuals (outer wind gets busier as it grows)
+        self.particles = [self._make_particle() for _ in range(self._base_particles)]
+
+    def _make_particle(self):
+        return {
+            "type": "wind" if random.random() < 0.7 else "debris",
+            "ang": random.uniform(0, math.tau),
+            "h": random.uniform(0.05, 1.2), # Height ratio
+            "dist": random.uniform(0.6, 1.5), # Distance from funnel center (1.0+ sits in the influence ring)
+            "speed": random.uniform(3.0, 6.0),
+            "len": random.uniform(0.15, 0.45),
+            "color": random.choice(WIND_PARTICLE_COLORS)
+        }
 
     def update(self, dt):
         # Grow to max radius
         self.r = min(HURRICANE_MAX_RADIUS, self.r + HURRICANE_GROWTH_RATE * dt)
         self.t += dt * 5.0 # Animation speed
-        
+
+        # Cosmetics only: scale wind particle count with the influence ring size
+        target = int(self._base_particles + self._extra_particles * min(1.0, self.r / HURRICANE_MAX_RADIUS))
+        while len(self.particles) < target:
+            self.particles.append(self._make_particle())
+        if len(self.particles) > target:
+            self.particles = self.particles[:target]
+
         # Update particles (orbiting)
         for p in self.particles:
             # Physics: Spin faster near the bottom (conservation of angular momentum feel)
-            spin = p['speed'] * (1.8 - min(1.0, p['h'])) 
+            spin = p['speed'] * (1.8 - min(1.0, p['h']))
             p['ang'] += spin * dt * self.spin_dir
 
     def apply_vortex_physics(self, ent, dt, resist_scale=1.0):
@@ -9023,13 +9034,32 @@ class TornadoEntity:
         """Draws the Neuro-styled tornado with glitch effects and wind streaks."""
         # Base screen coordinates
         cx, cy = iso_world_to_screen(self.x / CELL_SIZE, (self.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
-        
+
         base_w = self.r * 1.6
-        
+
+        # Influence ring: ground glow + cyan rim to highlight the affected zone
+        effect_radius = self.r * HURRICANE_RANGE_MULT
+        rx_zone, ry_zone = iso_circle_radii_screen(effect_radius)
+        zone = pygame.Surface((rx_zone * 2, ry_zone * 2), pygame.SRCALPHA)
+        pygame.draw.ellipse(zone, (40, 60, 80, 50), zone.get_rect())  # subtle ground fill
+        pygame.draw.ellipse(zone, (120, 220, 255, 110), zone.get_rect(), width=3)  # cyan rim
+
+        # Rotating ground streaks follow the hurricane spin direction
+        streaks = 8
+        for i in range(streaks):
+            ang = self.t * 0.6 * self.spin_dir + i * (math.tau / streaks)
+            px = rx_zone + math.cos(ang) * rx_zone * 0.82
+            py = ry_zone + math.sin(ang) * ry_zone * 0.82
+            tx = -math.sin(ang) * 10 * self.spin_dir
+            ty = math.cos(ang) * 6 * self.spin_dir
+            pygame.draw.line(zone, (140, 220, 255, 140), (px - tx, py - ty), (px + tx, py + ty), 2)
+
+        screen.blit(zone, (cx - rx_zone, cy - ry_zone))
+
         # --- 1. Draw Funnel Layers (Bottom to Top) ---
         for i in range(TORNADO_LAYER_COUNT):
             ratio = i / float(TORNADO_LAYER_COUNT) # 0.0 (bottom) -> 1.0 (top)
-            
+
             # Non-linear width: Wide top, narrow base
             width = base_w * (0.25 + 0.8 * (ratio ** 1.8))
             
@@ -9048,16 +9078,33 @@ class TornadoEntity:
             rx, ry = iso_circle_radii_screen(width * 0.5)
             
             # Color Gradient: Dark Blue (Edge) -> Light Blue (Center) -> Alpha Fade
-            alpha = 160 if i < TORNADO_LAYER_COUNT - 1 else 80
-            color = TORNADO_EDGE_COLOR if i % 2 == 0 else TORNADO_CORE_COLOR
-            
+            alpha = 170 if i < TORNADO_LAYER_COUNT - 1 else 90
+            color = (
+                int(TORNADO_EDGE_COLOR[0] + (TORNADO_CORE_COLOR[0] - TORNADO_EDGE_COLOR[0]) * ratio),
+                int(TORNADO_EDGE_COLOR[1] + (TORNADO_CORE_COLOR[1] - TORNADO_EDGE_COLOR[1]) * ratio),
+                int(TORNADO_EDGE_COLOR[2] + (TORNADO_CORE_COLOR[2] - TORNADO_EDGE_COLOR[2]) * ratio),
+            )
+
             s = pygame.Surface((rx*2, ry*2), pygame.SRCALPHA)
             pygame.draw.ellipse(s, (*color, alpha), s.get_rect())
-            
-            # Add a bright "Neuro" rim light
-            pygame.draw.ellipse(s, (200, 240, 255, alpha), s.get_rect(), width=2)
-            
+
+            # Add a cyan rim to highlight each slice and fill space between layers
+            pygame.draw.ellipse(s, (120, 220, 255, int(alpha * 0.9)), s.get_rect(), width=2)
+
             screen.blit(s, (draw_x - rx, draw_y - ry))
+
+        # Cyan contour rings to emphasize internal layers
+        for r_ratio in (0.2, 0.45, 0.7, 0.9):
+            width = base_w * (0.25 + 0.75 * (r_ratio ** 1.5))
+            rx, ry = iso_circle_radii_screen(width * 0.5)
+            y = cy - (r_ratio * TORNADO_FUNNEL_HEIGHT)
+            pulse = 0.7 + 0.3 * math.sin(self.t * 0.8 + r_ratio * 4.0)
+            pygame.draw.ellipse(
+                screen,
+                (140, 230, 255, int(80 * pulse)),
+                pygame.Rect(cx - rx, y - ry, rx * 2, ry * 2),
+                width=2,
+            )
 
         # --- 2. Draw Wind Particles (Debris & Streaks) ---
         for p in self.particles:
@@ -9077,18 +9124,19 @@ class TornadoEntity:
             
             # Z-Sort: Darker/smaller if "behind" the tornado
             is_behind = math.sin(p['ang']) < 0
-            
+
             if p['type'] == 'wind':
                 # Draw "Wind Streaks" (Curved lines)
-                length = 12
+                size_scale = 1.0 + 0.6 * min(1.0, self.r / HURRICANE_MAX_RADIUS)
+                length = 12 * size_scale * (0.6 + 0.4 * p.get("len", 0.25))
                 # Calculate tail based on rotation direction
                 tail_x = px - math.cos(p['ang'] + math.pi/2 * self.spin_dir) * length
                 tail_y = py - math.sin(p['ang'] + math.pi/2 * self.spin_dir) * (length * 0.5)
-                
+
                 col = p['color']
-                alpha = 100 if is_behind else 220
+                alpha = 90 if is_behind else 230
                 pygame.draw.line(screen, (*col, alpha), (px, py), (tail_x, tail_y), 2)
-                
+
             else:
                 # Draw Debris (Rocks)
                 col = (40, 50, 60) if is_behind else (200, 220, 230)
