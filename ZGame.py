@@ -649,6 +649,17 @@ ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
 SPATIAL_CELL = int(CELL_SIZE * 1.25)  # 统一网格大小
 WALL_STYLE = "hybrid"  # "billboard" | "prism" | "hybrid"
 ISO_EQ_GAIN = math.sqrt(2) * (ISO_CELL_W * 0.5)
+# --- unified UI palette (matches homepage style) ---
+UI_BG = (16, 19, 26)
+UI_PANEL = (24, 28, 38)
+UI_PANEL_DARK = (18, 21, 30)
+UI_BORDER = (88, 140, 200)
+UI_BORDER_HOVER = (140, 200, 255)
+UI_ACCENT = (120, 220, 255)
+UI_ACCENT_WARM = (255, 140, 120)
+UI_TEXT = (235, 240, 245)
+MAP_BG = UI_BG
+MAP_GRID = (44, 50, 60)
 # 角色圆形碰撞半径
 PLAYER_RADIUS = int(CELL_SIZE * 0.30)  # matches 0.6×CELL_SIZE footprint
 ZOMBIE_RADIUS = int(CELL_SIZE * 0.30)
@@ -1457,7 +1468,7 @@ def show_golden_interest_popup(screen, gain: int, new_total: int) -> None:
     spawn_fountain = gain > 0
     # dim overlay
     dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-    dim.fill((0, 0, 0, 170))
+    dim.fill((4, 6, 10, 170))
     # panel
     panel_w, panel_h = 520, 260
     panel = pygame.Rect(0, 0, panel_w, panel_h)
@@ -3318,7 +3329,8 @@ def draw_neuro_hover_spike(target: pygame.Surface, rect: pygame.Rect, t: float):
 
 
 def draw_neuro_button(surface: pygame.Surface, rect: pygame.Rect, label: str, font,
-                      *, hovered: bool, disabled: bool, t: float) -> pygame.Rect:
+                      *, hovered: bool, disabled: bool, t: float,
+                      fill_col=None, border_col=None, text_col=None, show_spike: bool = True) -> pygame.Rect:
     scale = 1.04 if hovered and not disabled else 1.0
     scaled = pygame.Rect(0, 0, int(rect.width * scale), int(rect.height * scale))
     scaled.center = rect.center
@@ -3326,20 +3338,23 @@ def draw_neuro_button(surface: pygame.Surface, rect: pygame.Rect, label: str, fo
     fill_alpha = 150 if hovered and not disabled else 110
     if disabled:
         fill_alpha = 65
-    pygame.draw.rect(panel, (14, 32, 50, fill_alpha), panel.get_rect(), border_radius=16)
-    border_col = (80, 200, 255, 220 if hovered and not disabled else 150)
+    base_fill = fill_col if fill_col is not None else (14, 32, 50)
+    base_border = border_col if border_col is not None else (80, 200, 255)
+    txt_col = text_col if text_col is not None else (220, 240, 255)
+    pygame.draw.rect(panel, (*base_fill, fill_alpha), panel.get_rect(), border_radius=16)
+    border_rgba = (*base_border, 220 if hovered and not disabled else 150)
     if disabled:
-        border_col = (90, 110, 130, 120)
-    pygame.draw.rect(panel, border_col, panel.get_rect(), width=2, border_radius=16)
+        border_rgba = (90, 110, 130, 120)
+    pygame.draw.rect(panel, border_rgba, panel.get_rect(), width=2, border_radius=16)
     glow_alpha = 90 if hovered and not disabled else 40
     glow = pygame.Surface((scaled.width + 12, scaled.height + 12), pygame.SRCALPHA)
     pygame.draw.rect(glow, (40, 180, 255, glow_alpha), glow.get_rect(), border_radius=18)
     surface.blit(glow, scaled.inflate(12, 12).topleft)
     surface.blit(panel, scaled.topleft)
-    text_col = (220, 240, 255) if not disabled else (130, 140, 150)
-    text = font.render(label, True, text_col)
+    draw_text_col = txt_col if not disabled else (130, 140, 150)
+    text = font.render(label, True, draw_text_col)
     surface.blit(text, text.get_rect(center=scaled.center))
-    if hovered and not disabled:
+    if hovered and not disabled and show_spike:
         draw_neuro_hover_spike(surface, scaled, t)
     return scaled
 
@@ -3773,7 +3788,7 @@ def show_pause_menu(screen, background_surf):
     """Draw pause overlay with build info in the dimmed background, keeping buttons centered."""
     # 创建半透明背景
     dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-    dim.fill((0, 0, 0, 170))
+    dim.fill((4, 6, 10, 180))
     bg_scaled = pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H))
     screen.blit(bg_scaled, (0, 0))
     screen.blit(dim, (0, 0))
@@ -3785,7 +3800,7 @@ def show_pause_menu(screen, background_surf):
     top_margin = 30
     y_offset = top_margin
     # 标题
-    title = font_small.render("Player Stats", True, (230, 230, 230))
+    title = font_small.render("Player Stats", True, UI_TEXT)
     screen.blit(title, (left_margin, y_offset))
     y_offset += 40
     # ======= CURRENT + BASED-ON-LV1 READOUT =======
@@ -3864,7 +3879,7 @@ def show_pause_menu(screen, background_surf):
     # --- right column: possessions / inventory summary ---
     right_margin = VIEW_W - 30
     y_offset = top_margin
-    title = font_small.render("Possessions", True, (230, 230, 230))
+    title = font_small.render("Possessions", True, UI_TEXT)
     title_rect = title.get_rect(right=right_margin, top=y_offset)
     screen.blit(title, title_rect)
     y_offset += 40
@@ -4017,41 +4032,52 @@ def show_pause_menu(screen, background_surf):
         for name, lvl, max_lvl in owned:
             lvl_str = f"{lvl}/{max_lvl}" if max_lvl else f"x{lvl}"
             text = f"{name}: {lvl_str}"
-            surf = pos_font.render(text, True, (215, 215, 215))
+            surf = pos_font.render(text, True, UI_TEXT)
             rect = surf.get_rect(right=right_margin, top=y_offset)
             screen.blit(surf, rect)
             y_offset += 24
     panel_w, panel_h = min(520, VIEW_W - 80), min(500, VIEW_H - 160)
     panel = pygame.Rect(0, 0, panel_w, panel_h)
     panel.center = (VIEW_W // 2, VIEW_H // 2)
-    pygame.draw.rect(screen, (30, 30, 30), panel, border_radius=16)
-    pygame.draw.rect(screen, (60, 60, 60), panel, width=3, border_radius=16)
-    title = pygame.font.SysFont(None, 72).render("Paused", True, (230, 230, 230))
-    screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 58)))
-    # 按钮保持原有位置和样式
+    title_surf = pygame.font.SysFont(None, 72).render("Paused", True, UI_TEXT)
+    # 按钮
     btn_w, btn_h = 300, 56
     spacing = 14
     start_y = panel.top + 110
-    btns = []
     labels = [("CONTINUE", "continue"),
               ("RESTART", "restart"),
               ("SETTINGS", "settings"),
               ("BACK TO HOMEPAGE", "home"),
               ("EXIT GAME (Save & Quit)", "exit")]
-    for i, (label, tag) in enumerate(labels):
-        x = panel.centerx - btn_w // 2
-        y = start_y + i * (btn_h + spacing)
-        rect = pygame.Rect(x, y, btn_w, btn_h)
-        pygame.draw.rect(screen, (15, 15, 15), rect.inflate(6, 6), border_radius=10)
-        if tag == "exit":
-            pygame.draw.rect(screen, (120, 40, 40), rect, border_radius=10)
-        else:
-            pygame.draw.rect(screen, (50, 50, 50), rect, border_radius=10)
-        txt = pygame.font.SysFont(None, 32).render(label, True, (235, 235, 235))
-        screen.blit(txt, txt.get_rect(center=rect.center))
-        btns.append((rect, tag))
+    btns = [(pygame.Rect(panel.centerx - btn_w // 2, start_y + i * (btn_h + spacing), btn_w, btn_h), tag, label)
+            for i, (label, tag) in enumerate(labels)]
+    def redraw(hover_tag: str | None):
+        # redraw panel & buttons (hover animation)
+        pygame.draw.rect(screen, UI_PANEL, panel, border_radius=16)
+        pygame.draw.rect(screen, UI_BORDER, panel, width=3, border_radius=16)
+        screen.blit(title_surf, title_surf.get_rect(center=(panel.centerx, panel.top + 58)))
+        for rect, tag, label in btns:
+            hover = (tag == hover_tag)
+            fill = None
+            border = None
+            if tag == "exit":
+                fill = (90, 28, 28)
+                border = (200, 80, 80)
+            draw_neuro_button(
+                screen, rect, label, pygame.font.SysFont(None, 32),
+                hovered=hover, disabled=False, t=pygame.time.get_ticks() * 0.001,
+                fill_col=fill, border_col=border, show_spike=False
+            )
     pygame.display.flip()
     while True:
+        mx, my = pygame.mouse.get_pos()
+        hover_tag = None
+        for rect, tag, _ in btns:
+            if rect.collidepoint((mx, my)):
+                hover_tag = tag
+                break
+        redraw(hover_tag)
+        pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -4060,7 +4086,7 @@ def show_pause_menu(screen, background_surf):
                 flush_events()
                 return "continue"
             if event.type == pygame.MOUSEBUTTONDOWN:
-                for rect, tag in btns:
+                for rect, tag, _ in btns:
                     if rect.collidepoint(event.pos):
                         flush_events()
                         return tag
@@ -4246,25 +4272,25 @@ def show_settings_popup(screen, background_surf):
 
     def draw_slider(label, value, top_y):
         # label
-        screen.blit(font.render(f"{label}: {value}", True, (230, 230, 230)), (panel.left + 40, top_y))
+        screen.blit(font.render(f"{label}: {value}", True, UI_TEXT), (panel.left + 40, top_y))
         # bar
         bar = pygame.Rect(panel.left + 40, top_y + 26, panel_w - 80, 10)
         knob_x = bar.x + int((value / 100) * bar.width)
-        pygame.draw.rect(screen, (80, 80, 80), bar, border_radius=6)
-        pygame.draw.circle(screen, (220, 220, 220), (knob_x, bar.y + 5), 8)
+        pygame.draw.rect(screen, (60, 70, 90), bar, border_radius=6)
+        pygame.draw.circle(screen, UI_ACCENT, (knob_x, bar.y + 5), 8)
         return bar
 
     def val_from_bar(bar, mx):
         return max(0, min(100, int(((mx - bar.x) / max(1, bar.width)) * 100)))
 
-    def draw_ui():
+    def draw_ui(hover_close: bool):
         # background & panel
         screen.blit(bg_scaled, (0, 0))
         screen.blit(dim, (0, 0))
-        pygame.draw.rect(screen, (30, 30, 30), panel, border_radius=16)
-        pygame.draw.rect(screen, (60, 60, 60), panel, width=3, border_radius=16)
+        pygame.draw.rect(screen, UI_PANEL, panel, border_radius=16)
+        pygame.draw.rect(screen, UI_BORDER, panel, width=3, border_radius=16)
         # title
-        screen.blit(title_font.render("Settings", True, (230, 230, 230)),
+        screen.blit(title_font.render("Settings", True, UI_TEXT),
                     (panel.centerx - 110, panel.top + 40))
         # sliders
         nonlocal fx_bar, bgm_bar, close_btn
@@ -4274,16 +4300,18 @@ def show_settings_popup(screen, background_surf):
         btn_w, btn_h = 200, 56
         close_btn = pygame.Rect(0, 0, btn_w, btn_h)
         close_btn.center = (panel.centerx, panel.bottom - 50)
-        pygame.draw.rect(screen, (15, 15, 15), close_btn.inflate(6, 6), border_radius=10)
-        pygame.draw.rect(screen, (50, 50, 50), close_btn, border_radius=10)
-        ctxt = btn_font.render("CLOSE", True, (235, 235, 235))
-        screen.blit(ctxt, ctxt.get_rect(center=close_btn.center))
+        draw_neuro_button(screen, close_btn, "CLOSE", btn_font,
+                          hovered=hover_close, disabled=False, t=pygame.time.get_ticks() * 0.001,
+                          show_spike=False)
         pygame.display.flip()
 
     # initial draw
     fx_bar = bgm_bar = close_btn = None
-    draw_ui()
+    draw_ui(False)
     while True:
+        mx, my = pygame.mouse.get_pos()
+        hover_close = close_btn and close_btn.collidepoint((mx, my))
+        draw_ui(hover_close)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit();
@@ -4328,7 +4356,8 @@ def show_settings_popup(screen, background_surf):
                     if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
                         _bgm.set_volume(BGM_VOLUME / 100.0)  # LIVE apply
         # redraw each frame for smooth knob follow
-        draw_ui()
+        hover_close = close_btn and close_btn.collidepoint(pygame.mouse.get_pos())
+        draw_ui(bool(hover_close))
         clock.tick(60)
 
 
@@ -4350,12 +4379,12 @@ def show_shop_screen(screen) -> Optional[str]:
         btn_font = pygame.font.SysFont(None, 32)
         did_menu_hex = False
         # --- shared shop box style  ---
-        SHOP_BOX_BG = (35, 40, 48)  # base background (Reroll style)
-        SHOP_BOX_BORDER = (130, 160, 210)  # base border
-        SHOP_BOX_BG_HOVER = (55, 60, 80)  # when hovered
-        SHOP_BOX_BORDER_HOVER = (170, 190, 230)
-        SHOP_BOX_BG_DISABLED = (25, 28, 34)  # capped / disabled
-        SHOP_BOX_BORDER_DISABLED = (90, 110, 150)
+        SHOP_BOX_BG = UI_PANEL  # base background (Reroll style)
+        SHOP_BOX_BORDER = UI_BORDER  # base border
+        SHOP_BOX_BG_HOVER = (32, 40, 56)  # when hovered
+        SHOP_BOX_BORDER_HOVER = UI_BORDER_HOVER
+        SHOP_BOX_BG_DISABLED = UI_PANEL_DARK  # capped / disabled
+        SHOP_BOX_BORDER_DISABLED = (70, 90, 120)
       
         # --- catalog of shop props ---
         catalog = [
@@ -10109,7 +10138,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
     else:
         camx, camy = calculate_iso_camera(player.x + player.size * 0.5,
                                           player.y + player.size * 0.5 + INFO_BAR_HEIGHT)
-    screen.fill((22, 22, 22))
+    screen.fill(MAP_BG)
     # 2) 画“地面网格”（只画视口周围一圈，避免全图遍历）
     #   估算可见格范围
     margin = 3
@@ -10118,7 +10147,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
     gx_max = min(GRID_SIZE - 1, int(px_grid + VIEW_W // ISO_CELL_W) + margin)
     gy_min = max(0, int(py_grid - VIEW_H // ISO_CELL_H) - margin)
     gy_max = min(GRID_SIZE - 1, int(py_grid + VIEW_H // ISO_CELL_H) + margin)
-    grid_col = (46, 48, 46)
+    grid_col = MAP_GRID
     for gx in range(gx_min, gx_max + 1):
         for gy in range(gy_min, gy_max + 1):
             draw_iso_tile(screen, gx, gy, grid_col, camx, camy, border=1)
