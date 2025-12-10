@@ -10288,9 +10288,9 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             shadow = pygame.Surface((r * 4, r * 2), pygame.SRCALPHA)
             pygame.draw.ellipse(shadow, (0, 0, 0, ISO_SHADOW_ALPHA), shadow.get_rect())
             screen.blit(shadow, shadow.get_rect(center=(cx, cy + 6)))
-            pygame.draw.circle(screen, (220, 60, 60), (cx, cy), r)
-            pygame.draw.rect(screen, (255, 255, 255), pygame.Rect(cx - 2, cy - r + 3, 4, r * 2 - 6))
-            pygame.draw.rect(screen, (255, 255, 255), pygame.Rect(cx - r + 3, cy - 2, r * 2 - 6, 4))
+            pygame.draw.circle(screen, (225, 225, 225), (cx, cy), r)
+            pygame.draw.rect(screen, (220, 60, 60), pygame.Rect(cx - 2, cy - r + 3, 4, r * 2 - 6))
+            pygame.draw.rect(screen, (200, 40, 40), pygame.Rect(cx - r + 3, cy - 2, r * 2 - 6, 4))
         elif kind == "item":
             cx, cy, r = data["cx"], data["cy"], data["r"]
             shadow = pygame.Surface((r * 4, r * 2), pygame.SRCALPHA)
