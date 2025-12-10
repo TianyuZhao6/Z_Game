@@ -6972,20 +6972,30 @@ class Zombie:
             # 吸附由 BOSS 侧发起，这里只负责寿命记录
         # 记忆吞噬者（boss_mem）
         if getattr(self, "is_boss", False) and getattr(self, "type", "") == "boss_mem":
+            enraged = bool(getattr(self, "is_enraged", False))
             hp_pct = max(0.0, self.hp / max(1, self.max_hp))
+            hp_pct_effective = 0.0 if enraged else hp_pct  # enraged: ignore HP gates for skills
             cd_mult = float(getattr(self, "_enrage_cd_mult", 1.0))
             # 阶段切换
-            if hp_pct > 0.70:
-                self.phase = 1
-            elif hp_pct > 0.40:
-                self.phase = 2
-            else:
+            if enraged:
                 self.phase = 3
+            else:
+                if hp_pct > 0.70:
+                    self.phase = 1
+                elif hp_pct > 0.40:
+                    self.phase = 2
+                else:
+                    self.phase = 3
             # 基础冷却
             self._spit_cd = max(0.0, getattr(self, "_spit_cd", 0.0) - dt)
             self._split_cd = max(0.0, getattr(self, "_split_cd", 0.0) - dt)
+
+            # Higher stages retain lower-stage skills (2 keeps 1; 3 keeps 1+2)
+            phase1_ok = enraged or self.phase >= 1
+            phase2_ok = enraged or self.phase >= 2
+            phase3_ok = enraged or self.phase >= 3
             # 阶段1：腐蚀喷吐 + 小怪 2 个/20s
-            if self.phase == 1:
+            if phase1_ok:
                 if self._spit_cd <= 0.0:
                     # 以玩家方向的扇形在地面“预警→落酸”
                     px, py = player.rect.centerx, player.rect.centery
@@ -7005,7 +7015,7 @@ class Zombie:
                         zombies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
                     self._split_cd = SPLIT_CD_P1 * cd_mult
             # 阶段2：移动略快；喷吐“连续两次”；召唤 3 个/15s；吸附融合
-            if self.phase == 2:
+            if phase2_ok:
                 self.speed = max(MEMDEV_SPEED, MEMDEV_SPEED + 0.5)
                 if self._spit_cd <= 0.0:
                     for _ in range(2):  # 连续两次
@@ -7038,10 +7048,10 @@ class Zombie:
                     # 可选：加一个小数字飘字：+HP
                     game_state.add_damage_text(cx, cy, +FUSION_HEAL, crit=False, kind="shield")  # 蓝色表示护盾/回复
             # 阶段3：全屏酸爆(每降 10%一次) + 继续召唤；<10% 濒死冲锋
-            if self.phase == 3:
+            if phase3_ok:
                 # 全屏酸爆：按阈值触发
                 next_pct = getattr(self, "_rain_next_pct", 0.40)
-                while hp_pct <= next_pct and next_pct >= 0.0:
+                while hp_pct_effective <= next_pct and next_pct >= 0.0:
                     # 随机铺点（带预警）
                     pts = []
                     for _ in range(RAIN_PUDDLES):
@@ -7059,7 +7069,7 @@ class Zombie:
                         zombies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
                     self._split_cd = 12.0 * cd_mult
                 # 濒死冲锋
-                if hp_pct <= CHARGE_THRESH and not getattr(self, "_charging", False):
+                if hp_pct_effective <= CHARGE_THRESH and not getattr(self, "_charging", False):
                     self._charging = True
                     # 直接朝玩家方向加速移动，不受可破坏物阻挡（移动层会处理破坏）
                     self.speed = CHARGE_SPEED
