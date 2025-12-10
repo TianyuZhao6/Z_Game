@@ -10368,6 +10368,9 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             base_col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
             col = getattr(z, "_current_color", getattr(z, "color", base_col))
             pygame.draw.rect(screen, col, body)
+            if not getattr(z, "is_boss", False):
+                outline_rect = body.inflate(6, 6)
+                pygame.draw.rect(screen, (230, 210, 230), outline_rect, 2, border_radius=4)
             if getattr(z, "shield_hp", 0) > 0:
                 draw_shield_outline(screen, body)
             # 强化视觉：持币较多时加金色外轮廓
@@ -10467,6 +10470,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             rect.midbottom = (cx, cy)
             col = (240, 80, 80) if (p.hit_cd > 0 and (pygame.time.get_ticks() // 80) % 2 == 0) else (0, 255, 0)
             pygame.draw.rect(screen, col, rect)
+            pygame.draw.rect(screen, (80, 220, 255), rect.inflate(6, 6), 2, border_radius=4)
             carapace_hp = int(getattr(p, "carapace_hp", 0))
             total_shield = int(getattr(p, "shield_hp", 0)) + carapace_hp
             if total_shield > 0:
