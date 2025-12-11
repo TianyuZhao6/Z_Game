@@ -3142,38 +3142,234 @@ _NEURO_SYSTEM_MESSAGES = [
     "diagnostics clean. no corruption detected.",
     "entropy pool topped. firing neurons.",
 ]
+_intro_star_far: list[tuple[float, float, float, int]] = []
+_intro_star_near: list[tuple[float, float, float, int]] = []
+_intro_columns: list[tuple[float, float, float]] = []
+
+
+def _seed_intro_layers():
+    """Lazily build procedural starfield/column seeds so the intro stays image-free."""
+    global _intro_star_far, _intro_star_near, _intro_columns
+    rng = random.Random(_neuro_log_seed ^ 0xA51D)
+    if not _intro_star_far:
+        _intro_star_far = [
+            (rng.uniform(0, VIEW_W), rng.uniform(0, VIEW_H), rng.random() * math.tau, rng.choice([1, 1, 2]))
+            for _ in range(180)
+        ]
+    if not _intro_star_near:
+        _intro_star_near = [
+            (rng.uniform(0, VIEW_W), rng.uniform(0, VIEW_H), rng.random() * math.tau, rng.choice([2, 3]))
+            for _ in range(110)
+        ]
+    if not _intro_columns:
+        _intro_columns = [
+            (rng.uniform(0.05, 0.95) * VIEW_W, rng.uniform(0.45, 0.75), rng.random() * math.tau)
+            for _ in range(11)
+        ]
 
 
 def ensure_neuro_background():
-    """One-time soft grid/dot matrix background (no hex)."""
+    """Procedural neon backdrop; no external art required."""
     global _neuro_bg_surface
     if _neuro_bg_surface is not None:
         return _neuro_bg_surface
+    _seed_intro_layers()
     surf = pygame.Surface((VIEW_W, VIEW_H))
-    # subtle vertical gradient
+    # vertical gradient with a glowing horizon
     for y in range(VIEW_H):
         t = y / max(1, VIEW_H - 1)
         col = (
-            int(8 + 18 * t),
-            int(18 + 46 * t),
-            int(28 + 74 * t),
+            int(6 + 14 * (1 - t) + 6 * t),
+            int(12 + 44 * t),
+            int(24 + 82 * t),
         )
         pygame.draw.line(surf, col, (0, y), (VIEW_W, y))
-    # dot matrix / grid overlay
+    horizon = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    glow_center = (VIEW_W // 2, int(VIEW_H * 0.70))
+    max_r = int(math.hypot(VIEW_W, VIEW_H) * 0.60)
+    for r in range(max_r, 0, -12):
+        fade = max(0.0, 1.0 - r / max_r)
+        alpha = int(110 * (fade ** 1.25))
+        if alpha <= 0:
+            continue
+        color = (20, 90 + int(60 * fade), 190 + int(26 * fade), alpha)
+        pygame.draw.circle(horizon, color, glow_center, r)
+    surf.blit(horizon, (0, 0), special_flags=pygame.BLEND_ADD)
+    # aurora-style ribbons
+    ribbon = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    rng = random.Random(_neuro_log_seed ^ 0x8A11)
+    for i in range(7):
+        x0 = int(-VIEW_W * 0.25 + i * VIEW_W * 0.22 + rng.randint(-30, 30))
+        x1 = x0 + int(VIEW_W * 0.65)
+        y0 = int(VIEW_H * (0.15 + 0.02 * i))
+        y1 = int(VIEW_H * 0.9)
+        col = (38 + i * 6, 140 + i * 8, 220, 16 + i * 5)
+        pygame.draw.polygon(ribbon, col, [(x0, y0), (x1, y0 + 40), (x1 - 120, y1), (x0 - 80, y1 - 60)])
+    surf.blit(ribbon, (0, 0), special_flags=pygame.BLEND_ADD)
+    # soft techno grid
     grid = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-    spacing = 28
-    for y in range(-spacing, VIEW_H + spacing, spacing):
-        alpha = max(14, int(34 * (1 - abs((y - VIEW_H * 0.5) / (VIEW_H * 0.65)))))
-        pygame.draw.line(grid, (20, 90, 120, alpha), (0, y), (VIEW_W, y))
-    for x in range(-spacing, VIEW_W + spacing, spacing):
-        alpha = max(12, int(30 * (1 - abs((x - VIEW_W * 0.5) / (VIEW_W * 0.65)))))
-        pygame.draw.line(grid, (20, 90, 120, alpha), (x, 0), (x, VIEW_H))
+    spacing = 32
     for y in range(0, VIEW_H, spacing):
-        for x in range(0, VIEW_W, spacing):
-            pygame.draw.circle(grid, (70, 150, 190, 36), (x, y), 1)
+        alpha = max(10, int(36 * (1 - abs((y - VIEW_H * 0.55) / (VIEW_H * 0.7)))))
+        pygame.draw.line(grid, (18, 60, 86, alpha), (0, y), (VIEW_W, y))
+    for x in range(0, VIEW_W, spacing):
+        alpha = max(8, int(32 * (1 - abs((x - VIEW_W * 0.5) / (VIEW_W * 0.7)))))
+        pygame.draw.line(grid, (18, 60, 86, alpha), (x, 0), (x, VIEW_H))
     surf.blit(grid, (0, 0))
+    # star specks for depth
+    dust = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    for _ in range(180):
+        px, py = rng.randrange(VIEW_W), rng.randrange(VIEW_H)
+        alpha = rng.randrange(12, 44)
+        pygame.draw.circle(dust, (60, 150, 210, alpha), (px, py), 1)
+    surf.blit(dust, (0, 0), special_flags=pygame.BLEND_ADD)
+    # subtle depth darkening to avoid flat layering
+    depth_mask = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    for y in range(VIEW_H):
+        fade = abs((y - VIEW_H * 0.55) / (VIEW_H * 0.55))
+        alpha = int(95 * (fade ** 1.25))
+        if alpha <= 0:
+            continue
+        pygame.draw.line(depth_mask, (0, 0, 0, alpha), (0, y), (VIEW_W, y))
+    surf.blit(depth_mask, (0, 0))
+    vignette = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    edge_r = int(math.hypot(VIEW_W * 0.5, VIEW_H * 0.5))
+    for r in range(edge_r, 0, -28):
+        fade = 1.0 - r / edge_r
+        alpha = int(120 * (fade ** 1.35))
+        if alpha <= 0:
+            continue
+        pygame.draw.circle(vignette, (0, 0, 0, alpha), (VIEW_W // 2, VIEW_H // 2), r)
+    surf.blit(vignette, (0, 0))
     _neuro_bg_surface = surf
     return _neuro_bg_surface
+
+
+def _draw_intro_starfield(surface: pygame.Surface, t: float) -> None:
+    """Animated parallax starfield for the intro."""
+    _seed_intro_layers()
+    overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    for x, y, phase, size in _intro_star_far:
+        px = (x + t * 12.0) % VIEW_W
+        twinkle = 0.4 + 0.6 * (0.5 + 0.5 * math.sin(phase + t * 0.55))
+        alpha = int(48 * twinkle)
+        pygame.draw.circle(overlay, (70, 130, 180, alpha), (int(px), int(y)), size)
+    for x, y, phase, size in _intro_star_near:
+        px = (x - t * 26.0) % VIEW_W
+        twinkle = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(phase + t * 1.1))
+        alpha = int(118 * twinkle)
+        col = (120, 210, 240, alpha)
+        pygame.draw.circle(overlay, col, (int(px), int(y)), size)
+        tail_len = 10 + size * 2
+        pygame.draw.line(
+            overlay,
+            (col[0], col[1], col[2], int(alpha * 0.6)),
+            (int(px - tail_len * 0.6), int(y - 2)),
+            (int(px + tail_len * 0.4), int(y + 2)),
+            1,
+        )
+    surface.blit(overlay, (0, 0), special_flags=pygame.BLEND_ADD)
+
+
+def _draw_intro_datastreams(surface: pygame.Surface, t: float) -> None:
+    """Tall, translucent pillars that feel like stacked neural towers."""
+    _seed_intro_layers()
+    overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    base_col = (60, 170, 220)
+    for idx, (x0, h_factor, phase) in enumerate(_intro_columns):
+        sway = math.sin(t * (0.7 + idx * 0.05) + phase) * (24 + idx * 1.5)
+        x = int(x0 + sway)
+        h = int(VIEW_H * h_factor)
+        top = VIEW_H - h
+        width = 14 + (idx % 3) * 6
+        alpha = max(40, min(140, int(100 + 60 * math.sin(t * 1.4 + phase * 1.7))))
+        col = (base_col[0] - idx * 2, base_col[1], 235, alpha)
+        pts = [
+            (x - width, VIEW_H),
+            (x + width, VIEW_H),
+            (x + int(width * 1.4), top + 32),
+            (x - int(width * 1.4), top),
+        ]
+        pygame.draw.polygon(overlay, col, pts)
+        pygame.draw.polygon(overlay, (col[0], col[1], col[2], min(200, alpha + 20)), pts, 2)
+        pygame.draw.rect(
+            overlay,
+            (190, 230, 240, max(30, alpha // 2)),
+            pygame.Rect(x - width + 2, top + 8, width * 2 - 4, 6),
+            border_radius=4,
+        )
+    surface.blit(overlay, (0, 0))
+
+
+def _draw_intro_holo_core(surface: pygame.Surface, t: float) -> None:
+    """Central holographic orb with orbiting shards."""
+    cx, cy = VIEW_W // 2, int(VIEW_H * 0.46)
+    orb_size = 520
+    orb = pygame.Surface((orb_size, orb_size), pygame.SRCALPHA)
+    oc = orb_size // 2
+    base_r = 150 + 12 * math.sin(t * 0.8)
+    for i in range(12):
+        r = int(base_r - i * 7)
+        if r <= 0:
+            break
+        alpha = max(0, 150 - i * 12)
+        color = (30 + i * 5, 150 + i * 4, 230, alpha)
+        pygame.draw.circle(orb, color, (oc, oc), r, 1)
+    # meridians
+    for i in range(6):
+        ang = (i / 6.0) * math.pi + 0.4 * math.sin(t * 0.45 + i)
+        pts = []
+        for j in range(-50, 51):
+            lat = j / 50.0
+            rr = base_r * math.cos(lat * 0.9)
+            x = oc + math.cos(ang) * rr
+            y = oc + math.sin(lat) * base_r * 0.65
+            pts.append((x, y))
+        pygame.draw.aalines(orb, (100, 210, 235, 72), False, pts, 1)
+    # latitudes
+    for i in range(-2, 3):
+        ry = base_r * (0.35 + 0.22 * (2 - abs(i)))
+        rx = base_r * 1.02
+        col_a = 90 + i * 10
+        pygame.draw.ellipse(orb, (80, 180, 230, col_a), pygame.Rect(oc - rx, oc - ry, rx * 2, ry * 2), 1)
+    ring_radii = [int(base_r + 28), int(base_r + 58), int(base_r + 96)]
+    for idx, r in enumerate(ring_radii):
+        start = (t * (0.6 + idx * 0.18) + idx * 0.9) % (2 * math.pi)
+        span = math.pi * (1.1 + 0.08 * math.sin(t * 0.7 + idx))
+        col = (120, 230 - idx * 14, 240, 130 - idx * 16)
+        pygame.draw.arc(orb, col, (oc - r, oc - r, 2 * r, 2 * r), start, start + span, 3)
+        pygame.draw.arc(orb, col, (oc - r, oc - r, 2 * r, 2 * r), start + math.pi * 1.05, start + math.pi * 1.05 + span * 0.7, 2)
+    # orbiting shards
+    shards = 12
+    for i in range(shards):
+        ang = t * 0.65 + i * (math.tau / shards)
+        rad = base_r + 80 + 26 * math.sin(t * 1.3 + i)
+        px = oc + math.cos(ang) * rad
+        py = oc + math.sin(ang) * rad * 0.55
+        sz = 14 + (i % 4) * 3
+        tri = [
+            (px + math.cos(ang) * sz, py + math.sin(ang) * sz),
+            (px + math.cos(ang + 2.1) * sz * 0.6, py + math.sin(ang + 2.1) * sz * 0.6),
+            (px + math.cos(ang - 2.1) * sz * 0.6, py + math.sin(ang - 2.1) * sz * 0.6),
+        ]
+        pygame.draw.polygon(orb, (70 + (i * 12) % 90, 190, 235, 130), tri, 1)
+    surface.blit(orb, (cx - oc, cy - oc), special_flags=pygame.BLEND_PREMULTIPLIED)
+    beam = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    pygame.draw.line(beam, (90, 200, 255, 130), (cx, cy + int(base_r * 0.2)), (cx, VIEW_H), 2)
+    pygame.draw.line(beam, (60, 160, 240, 90), (cx - 8, cy + int(base_r * 0.3)), (cx - 8, VIEW_H), 1)
+    pygame.draw.line(beam, (60, 160, 240, 90), (cx + 8, cy + int(base_r * 0.3)), (cx + 8, VIEW_H), 1)
+    surface.blit(beam, (0, 0), special_flags=pygame.BLEND_ADD)
+
+
+def _draw_intro_scanlines(surface: pygame.Surface, t: float) -> None:
+    """Sweeping scan strip to make the scene feel like a live console feed."""
+    overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+    stripe_h = 90
+    sweep_y = (t * 120.0) % (VIEW_H + stripe_h) - stripe_h
+    rect = pygame.Rect(0, int(sweep_y), VIEW_W, stripe_h)
+    pygame.draw.rect(overlay, (20, 80, 120, 38), rect)
+    pygame.draw.rect(overlay, (80, 200, 255, 48), rect, 2)
+    surface.blit(overlay, (0, 0), special_flags=pygame.BLEND_ADD)
 
 
 def _neuro_outline_points(cx: int, cy: int) -> list[tuple[float, float]]:
@@ -3445,17 +3641,49 @@ def draw_neuro_info_column(surface: pygame.Surface, font, t: float, saved_exists
 
 
 def draw_neuro_title_intro(surface: pygame.Surface, title_font, prompt_font, t: float):
-    """Intro screen: centered title + pulsing prompt."""
-    title = title_font.render(GAME_TITLE.upper(), True, (220, 240, 255))
+    """Intro screen: holographic title capsule + animated prompt."""
+    title_text = GAME_TITLE.upper()
+    title = title_font.render(title_text, True, (230, 242, 255))
+    ghost = title_font.render(title_text, True, (80, 200, 255))
     title_rect = title.get_rect(center=(VIEW_W // 2, int(VIEW_H * 0.32)))
-    glow = pygame.Surface((title_rect.width + 60, title_rect.height + 40), pygame.SRCALPHA)
-    pygame.draw.rect(glow, (60, 150, 220, 90), glow.get_rect(), border_radius=22)
-    surface.blit(glow, glow.get_rect(center=title_rect.center).topleft)
+    glow_rect = pygame.Rect(0, 0, title_rect.width + 140, title_rect.height + 72)
+    glow = pygame.Surface(glow_rect.size, pygame.SRCALPHA)
+    pygame.draw.rect(glow, (24, 80, 120, 110), glow.get_rect(), border_radius=28)
+    pygame.draw.rect(glow, (90, 200, 255, 180), glow.get_rect(), width=2, border_radius=28)
+    surface.blit(glow, glow.get_rect(center=title_rect.center))
+    jitter_x = int(2 * math.sin(t * 5.2))
+    jitter_y = int(2 * math.sin(t * 3.6 + 1.3))
+    surface.blit(ghost, title_rect.move(jitter_x + 3, jitter_y + 3))
     surface.blit(title, title_rect)
+    # neon underline pulses beneath the title
+    underline = pygame.Surface((title_rect.width, 8), pygame.SRCALPHA)
+    for x in range(0, underline.get_width(), 6):
+        alpha = 90 + int(60 * math.sin(t * 3.5 + x * 0.08))
+        pygame.draw.rect(underline, (90, 220, 255, alpha), pygame.Rect(x, 0, 4, 3))
+    surface.blit(underline, (title_rect.left, title_rect.bottom + 8))
+    # keep the original prompt text but seat it inside a holographic pill
     pulse = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(t * 3.0))
     prompt_color = (120 + int(110 * pulse), 220, 255)
     prompt = prompt_font.render("PRESS ANY KEY TO LINK", True, prompt_color)
-    surface.blit(prompt, prompt.get_rect(center=(VIEW_W // 2, int(VIEW_H * 0.52))))
+    capsule = pygame.Surface((prompt.get_width() + 52, prompt.get_height() + 18), pygame.SRCALPHA)
+    pygame.draw.rect(capsule, (10, 40, 60, 120), capsule.get_rect(), border_radius=16)
+    pygame.draw.rect(
+        capsule,
+        (prompt_color[0], prompt_color[1], prompt_color[2], 190),
+        capsule.get_rect(),
+        width=2,
+        border_radius=16,
+    )
+    for i in range(4):
+        dot_alpha = int(120 + 100 * math.sin(t * 4.2 + i))
+        pygame.draw.circle(
+            capsule,
+            (prompt_color[0], prompt_color[1], prompt_color[2], dot_alpha),
+            (18 + i * 14, capsule.get_height() // 2),
+            3,
+        )
+    capsule.blit(prompt, prompt.get_rect(center=capsule.get_rect().center))
+    surface.blit(capsule, capsule.get_rect(center=(VIEW_W // 2, int(VIEW_H * 0.56))).topleft)
 
 
 def draw_neuro_home_header(surface: pygame.Surface, font):
@@ -3511,7 +3739,11 @@ def run_neuro_intro(screen: pygame.Surface):
         dt = clock.tick(60) / 1000.0
         t += dt
         screen.blit(ensure_neuro_background(), (0, 0))
+        _draw_intro_starfield(screen, t)
+        _draw_intro_datastreams(screen, t)
         draw_intro_waves(screen, t)
+        _draw_intro_holo_core(screen, t)
+        _draw_intro_scanlines(screen, t)
         draw_neuro_title_intro(screen, title_font, prompt_font, t)
         pygame.display.flip()
         for event in pygame.event.get():
@@ -12002,6 +12234,6 @@ if __name__ == "__main__":
 # 3.4. Golden Interest
 # 3.5. Bandit Radar
 # 4.1. Time Dilation Boots
-#
-#
-#
+# ============World View==========================
+# Unfolds the memory of AD patient
+# With different ending for this game.
