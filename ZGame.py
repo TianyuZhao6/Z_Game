@@ -3645,6 +3645,12 @@ def draw_neuro_title_intro(surface: pygame.Surface, title_font, prompt_font, t: 
     title_rect = title.get_rect(center=(cx_core, cy_core - 12))
     surface.blit(ghost, title_rect.move(3, 3))
     surface.blit(title, title_rect)
+    # neon underline pulses beneath the title
+    underline = pygame.Surface((title_rect.width, 8), pygame.SRCALPHA)
+    for x in range(0, underline.get_width(), 6):
+        alpha = 90 + int(60 * math.sin(t * 3.5 + x * 0.08))
+        pygame.draw.rect(underline, (90, 220, 255, alpha), pygame.Rect(x, 0, 4, 3))
+    surface.blit(underline, (title_rect.left, title_rect.bottom + 8))
     
     # Gradient prompt on a pulsing neon line
     pulse = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(t * 2.6))
@@ -3665,16 +3671,25 @@ def draw_neuro_title_intro(surface: pygame.Surface, title_font, prompt_font, t: 
         pygame.draw.line(grad, col, (0, y), (w, y))
     grad.blit(prompt_base, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
     line_y = title_rect.bottom + 42
-    line_len = grad.get_width() + 120
-    line_col = (col_a[0], col_a[1], col_a[2], 160)
-    pygame.draw.line(
-        surface,
-        line_col,
-        (cx_core - line_len // 2, line_y),
-        (cx_core + line_len // 2, line_y),
-        3 + int(2 * pulse),
-    )
     prompt_rect = grad.get_rect(center=(cx_core, line_y))
+    side_len = max(80, grad.get_width() // 2)
+    gap = prompt_rect.width // 2 + 20
+    line_col = (col_a[0], col_a[1], col_a[2])
+    seg_h = 8
+    seg_w = 4
+    seg_gap = 6
+    # left pulsing segments
+    left_line = pygame.Surface((side_len, seg_h), pygame.SRCALPHA)
+    for x in range(0, side_len, seg_gap):
+        alpha = 80 + int(70 * math.sin(t * 3.5 + x * 0.09))
+        pygame.draw.rect(left_line, (*line_col, alpha), pygame.Rect(x, 2, seg_w, 3))
+    surface.blit(left_line, (cx_core - gap - side_len, line_y - seg_h // 2))
+    # right pulsing segments
+    right_line = pygame.Surface((side_len, seg_h), pygame.SRCALPHA)
+    for x in range(0, side_len, seg_gap):
+        alpha = 80 + int(70 * math.sin(t * 3.5 + (side_len - x) * 0.09))
+        pygame.draw.rect(right_line, (*line_col, alpha), pygame.Rect(x, 2, seg_w, 3))
+    surface.blit(right_line, (cx_core + gap, line_y - seg_h // 2))
     surface.blit(grad, prompt_rect.topleft)
 
 
