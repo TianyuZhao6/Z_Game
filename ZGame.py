@@ -660,6 +660,27 @@ UI_ACCENT_WARM = (255, 140, 120)
 UI_TEXT = (235, 240, 245)
 MAP_BG = UI_BG
 MAP_GRID = (44, 50, 60)
+_SEKUYA_FONT_CACHE: dict[int, pygame.font.Font] = {}
+
+
+def _get_sekuya_font(size: int) -> pygame.font.Font:
+    """Load Sekuya font from assets/fonts; fallback to default if missing."""
+    if size in _SEKUYA_FONT_CACHE:
+        return _SEKUYA_FONT_CACHE[size]
+    try:
+        base_dir = os.path.dirname(__file__)
+        candidates = [
+            os.path.join(base_dir, "assets", "fonts", "Sekuya-Regular.ttf"),
+            os.path.join(base_dir, "assets", "fonts", "Sekuya.ttf"),
+        ]
+        path = next((p for p in candidates if os.path.exists(p)), None)
+        if not path:
+            raise FileNotFoundError("Sekuya font not found")
+        font = pygame.font.Font(path, size)
+    except Exception:
+        font = pygame.font.SysFont(None, size)
+    _SEKUYA_FONT_CACHE[size] = font
+    return font
 # 角色圆形碰撞半径
 PLAYER_RADIUS = int(CELL_SIZE * 0.30)  # matches 0.6×CELL_SIZE footprint
 ZOMBIE_RADIUS = int(CELL_SIZE * 0.30)
@@ -3439,7 +3460,12 @@ def draw_neuro_title_intro(surface: pygame.Surface, title_font, prompt_font, t: 
 
 def draw_neuro_home_header(surface: pygame.Surface, font):
     """Homepage header: small console-style label."""
-    surface.blit(font.render("> NEUROSCAPE: MIND SURVIVOR", True, (170, 230, 255)), (50, 70))
+    # Use Sekuya font for the main title; fall back to provided font if load fails
+    try:
+        sekuya = _get_sekuya_font(font.get_height())
+    except Exception:
+        sekuya = font
+    surface.blit(sekuya.render("> NEUROSCAPE: MIND SURVIVOR", True, (170, 230, 255)), (50, 70))
 
 
 def _current_music_pos_ms() -> int | None:
@@ -3478,7 +3504,7 @@ def animate_menu_exit(screen: pygame.Surface, snapshot: pygame.Surface, duration
 def run_neuro_intro(screen: pygame.Surface):
     """Show one-time minimal intro (background + link prompt)."""
     clock = pygame.time.Clock()
-    title_font = pygame.font.SysFont("Consolas", 48, bold=True)
+    title_font = _get_sekuya_font(52)
     prompt_font = pygame.font.SysFont("Consolas", 24)
     t = 0.0
     while True:
@@ -3503,7 +3529,7 @@ def render_start_menu_surface(saved_exists: bool):
     surf = ensure_neuro_background().copy()
     wave_t = 0.0
     draw_neuro_waves(surf, wave_t)
-    header_font = pygame.font.SysFont("Consolas", 22)
+    header_font = _get_sekuya_font(26)
     btn_font = pygame.font.SysFont(None, 30)
     info_font = pygame.font.SysFont("Consolas", 18)
     draw_neuro_home_header(surf, header_font)
@@ -3541,7 +3567,7 @@ def show_start_menu(screen, *, skip_intro: bool = False):
         except Exception:
             pass
     clock = pygame.time.Clock()
-    header_font = pygame.font.SysFont("Consolas", 22)
+    header_font = _get_sekuya_font(22)
     btn_font = pygame.font.SysFont(None, 30)
     info_font = pygame.font.SysFont("Consolas", 18)
     t = 0.0
