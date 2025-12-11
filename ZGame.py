@@ -3354,11 +3354,6 @@ def _draw_intro_holo_core(surface: pygame.Surface, t: float) -> None:
         ]
         pygame.draw.polygon(orb, (70 + (i * 12) % 90, 190, 235, 130), tri, 1)
     surface.blit(orb, (cx - oc, cy - oc), special_flags=pygame.BLEND_PREMULTIPLIED)
-    beam = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-    pygame.draw.line(beam, (90, 200, 255, 130), (cx, cy + int(base_r * 0.2)), (cx, VIEW_H), 2)
-    pygame.draw.line(beam, (60, 160, 240, 90), (cx - 8, cy + int(base_r * 0.3)), (cx - 8, VIEW_H), 1)
-    pygame.draw.line(beam, (60, 160, 240, 90), (cx + 8, cy + int(base_r * 0.3)), (cx + 8, VIEW_H), 1)
-    surface.blit(beam, (0, 0), special_flags=pygame.BLEND_ADD)
 
 
 def _draw_intro_scanlines(surface: pygame.Surface, t: float) -> None:
@@ -3641,49 +3636,46 @@ def draw_neuro_info_column(surface: pygame.Surface, font, t: float, saved_exists
 
 
 def draw_neuro_title_intro(surface: pygame.Surface, title_font, prompt_font, t: float):
-    """Intro screen: holographic title capsule + animated prompt."""
+    """Intro screen: center title aligned to holo core, with a neon pulse line prompt."""
+    cx_core = VIEW_W // 2
+    cy_core = int(VIEW_H * 0.46)
     title_text = GAME_TITLE.upper()
-    title = title_font.render(title_text, True, (230, 242, 255))
-    ghost = title_font.render(title_text, True, (80, 200, 255))
-    title_rect = title.get_rect(center=(VIEW_W // 2, int(VIEW_H * 0.32)))
-    glow_rect = pygame.Rect(0, 0, title_rect.width + 140, title_rect.height + 72)
-    glow = pygame.Surface(glow_rect.size, pygame.SRCALPHA)
-    pygame.draw.rect(glow, (24, 80, 120, 110), glow.get_rect(), border_radius=28)
-    pygame.draw.rect(glow, (90, 200, 255, 180), glow.get_rect(), width=2, border_radius=28)
-    surface.blit(glow, glow.get_rect(center=title_rect.center))
-    jitter_x = int(2 * math.sin(t * 5.2))
-    jitter_y = int(2 * math.sin(t * 3.6 + 1.3))
-    surface.blit(ghost, title_rect.move(jitter_x + 3, jitter_y + 3))
+    title = title_font.render(title_text, True, (220, 236, 250))
+    ghost = title_font.render(title_text, True, (60, 160, 210))
+    title_rect = title.get_rect(center=(cx_core, cy_core - 12))
+    surface.blit(ghost, title_rect.move(3, 3))
     surface.blit(title, title_rect)
-    # neon underline pulses beneath the title
-    underline = pygame.Surface((title_rect.width, 8), pygame.SRCALPHA)
-    for x in range(0, underline.get_width(), 6):
-        alpha = 90 + int(60 * math.sin(t * 3.5 + x * 0.08))
-        pygame.draw.rect(underline, (90, 220, 255, alpha), pygame.Rect(x, 0, 4, 3))
-    surface.blit(underline, (title_rect.left, title_rect.bottom + 8))
-    # keep the original prompt text but seat it inside a holographic pill
-    pulse = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(t * 3.0))
-    prompt_color = (120 + int(110 * pulse), 220, 255)
-    prompt = prompt_font.render("PRESS ANY KEY TO LINK", True, prompt_color)
-    capsule = pygame.Surface((prompt.get_width() + 52, prompt.get_height() + 18), pygame.SRCALPHA)
-    pygame.draw.rect(capsule, (10, 40, 60, 120), capsule.get_rect(), border_radius=16)
-    pygame.draw.rect(
-        capsule,
-        (prompt_color[0], prompt_color[1], prompt_color[2], 190),
-        capsule.get_rect(),
-        width=2,
-        border_radius=16,
-    )
-    for i in range(4):
-        dot_alpha = int(120 + 100 * math.sin(t * 4.2 + i))
-        pygame.draw.circle(
-            capsule,
-            (prompt_color[0], prompt_color[1], prompt_color[2], dot_alpha),
-            (18 + i * 14, capsule.get_height() // 2),
-            3,
+    
+    # Gradient prompt on a pulsing neon line
+    pulse = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(t * 2.6))
+    col_a = (120 + int(100 * pulse), 230, 255)
+    col_b = (60, 160 + int(80 * pulse), 230)
+    prompt_text = "PRESS ANY KEY TO LINK"
+    prompt_base = prompt_font.render(prompt_text, True, (255, 255, 255))
+    grad = pygame.Surface(prompt_base.get_size(), pygame.SRCALPHA)
+    w, h = grad.get_size()
+    for y in range(h):
+        mix = y / max(1, h - 1)
+        col = (
+            int(col_a[0] * (1 - mix) + col_b[0] * mix),
+            int(col_a[1] * (1 - mix) + col_b[1] * mix),
+            int(col_a[2] * (1 - mix) + col_b[2] * mix),
+            255,
         )
-    capsule.blit(prompt, prompt.get_rect(center=capsule.get_rect().center))
-    surface.blit(capsule, capsule.get_rect(center=(VIEW_W // 2, int(VIEW_H * 0.56))).topleft)
+        pygame.draw.line(grad, col, (0, y), (w, y))
+    grad.blit(prompt_base, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    line_y = title_rect.bottom + 42
+    line_len = grad.get_width() + 120
+    line_col = (col_a[0], col_a[1], col_a[2], 160)
+    pygame.draw.line(
+        surface,
+        line_col,
+        (cx_core - line_len // 2, line_y),
+        (cx_core + line_len // 2, line_y),
+        3 + int(2 * pulse),
+    )
+    prompt_rect = grad.get_rect(center=(cx_core, line_y))
+    surface.blit(grad, prompt_rect.topleft)
 
 
 def draw_neuro_home_header(surface: pygame.Surface, font):
@@ -12235,5 +12227,6 @@ if __name__ == "__main__":
 # 3.5. Bandit Radar
 # 4.1. Time Dilation Boots
 # ============World View==========================
+# MNEURONVIVOR short for memory neuron survivor
 # Unfolds the memory of AD patient
-# With different ending for this game.
+# With different ending for this game
