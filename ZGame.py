@@ -3439,7 +3439,7 @@ def draw_neuro_title_intro(surface: pygame.Surface, title_font, prompt_font, t: 
 
 def draw_neuro_home_header(surface: pygame.Surface, font):
     """Homepage header: small console-style label."""
-    surface.blit(font.render("> NEUROSCAPE: MIND RUNNER", True, (170, 230, 255)), (50, 70))
+    surface.blit(font.render("> NEUROSCAPE: MIND SURVIVOR", True, (170, 230, 255)), (50, 70))
 
 
 def _current_music_pos_ms() -> int | None:
@@ -4061,8 +4061,8 @@ def show_pause_menu(screen, background_surf):
             fill = None
             border = None
             if tag == "exit":
-                fill = (90, 28, 28)
-                border = (200, 80, 80)
+                fill = (200, 50, 50)
+                border = (255, 120, 120)
             draw_neuro_button(
                 screen, rect, label, pygame.font.SysFont(None, 32),
                 hovered=hover, disabled=False, t=pygame.time.get_ticks() * 0.001,
