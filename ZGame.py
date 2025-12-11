@@ -3670,7 +3670,7 @@ def draw_neuro_title_intro(surface: pygame.Surface, title_font, prompt_font, t: 
         )
         pygame.draw.line(grad, col, (0, y), (w, y))
     grad.blit(prompt_base, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-    line_y = title_rect.bottom + 42
+    line_y = title_rect.bottom + 64
     prompt_rect = grad.get_rect(center=(cx_core, line_y))
     side_len = max(80, grad.get_width() // 2)
     gap = prompt_rect.width // 2 + 20
@@ -3739,7 +3739,7 @@ def animate_menu_exit(screen: pygame.Surface, snapshot: pygame.Surface, duration
 def run_neuro_intro(screen: pygame.Surface):
     """Show one-time minimal intro (background + link prompt)."""
     clock = pygame.time.Clock()
-    title_font = _get_sekuya_font(52)
+    title_font = _get_sekuya_font(64)
     prompt_font = pygame.font.SysFont("Consolas", 24)
     t = 0.0
     while True:
