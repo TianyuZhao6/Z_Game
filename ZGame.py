@@ -629,7 +629,7 @@ def draw_shield_outline(screen, rect):
 # - Card system UI polish (later pass)
 # - Sprite/animation pipeline to be added
 # - Balance obstacle density via OBSTACLE_DENSITY/DECOR_DENSITY
-GAME_TITLE = "Neuroscape: Mind Survivor"
+GAME_TITLE = "NEURONVIVOR"
 INFO_BAR_HEIGHT = 40
 GRID_SIZE = 36
 CELL_SIZE = 40
@@ -3727,7 +3727,7 @@ def draw_neuro_home_header(surface: pygame.Surface, font):
         sekuya = _get_sekuya_font(font.get_height())
     except Exception:
         sekuya = font
-    surface.blit(sekuya.render("> NEUROSCAPE: MIND SURVIVOR", True, (170, 230, 255)), (50, 70))
+    surface.blit(sekuya.render("> NEURONVIVOR", True, (170, 230, 255)), (50, 70))
 
 
 def _current_music_pos_ms() -> int | None:
