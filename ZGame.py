@@ -3923,10 +3923,6 @@ def _compute_skill_target(player, game_state, mouse_pos, skill_id: str):
     tx, ty = iso_screen_to_world_px(mouse_pos[0], mouse_pos[1], camx, camy)
     cast_range = float(getattr(player, "range", MAX_FIRE_RANGE)) if skill_id == "blast" else float(TELEPORT_RANGE)
     tx, ty = _clamp_point_within_radius(px, py, tx, ty, cast_range)
-    # keep within viewport bounds
-    half = max(1, player.size // 2)
-    tx = min(max(half, int(tx)), VIEW_W - half)
-    ty = min(max(INFO_BAR_HEIGHT + half, int(ty)), VIEW_H - half)
     valid = True
     if skill_id == "teleport":
         new_rect = player.rect.copy()
@@ -3944,9 +3940,6 @@ def _update_skill_target(player, game_state):
         return
     skill_id = player.targeting_skill
     mx, my = pygame.mouse.get_pos()
-    # Clamp mouse to screen bounds so target never disappears when cursor leaves the map
-    mx = min(max(0, mx), VIEW_W - 1)
-    my = min(max(0, my), VIEW_H - 1)
     tx, ty, valid, camx, camy = _compute_skill_target(player, game_state, (mx, my), skill_id)
     player.skill_target_pos = (tx, ty)
     player.skill_target_valid = bool(valid)
