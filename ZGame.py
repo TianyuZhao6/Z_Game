@@ -260,44 +260,82 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
             plate_txt += f" (Lv {plating_lvl})"
         plate_img = mono_small.render(plate_txt, True, BONE_PLATING_COLOR)
         screen.blit(plate_img, (plate_bx, plate_by + plate_bar_h + 2))
-    # Active skill icons (top-right)
-    def _draw_skill_icon(x, y, w, h, label, key_txt, cd, cd_total, active, flash_t):
+    # Active skill icons (bottom-right)
+    def _draw_skill_icon(x, y, w, h, label, key_txt, cd, cd_total, active, flash_t, palette):
         base = pygame.Surface((w, h), pygame.SRCALPHA)
-        bg = (24, 36, 48)
-        border = (90, 180, 255) if active else (70, 110, 150)
-        pygame.draw.rect(base, bg, base.get_rect(), border_radius=8)
-        pygame.draw.rect(base, border, base.get_rect(), width=2, border_radius=8)
-        # label
-        lfont = pygame.font.SysFont("Consolas", 16, bold=True)
-        kfont = pygame.font.SysFont("Consolas", 14, bold=True)
-        base.blit(lfont.render(label, True, (210, 230, 255)), (8, 6))
-        base.blit(kfont.render(key_txt, True, (180, 220, 255)), (8, h - 20))
+        bg = palette["bg"]
+        border = palette["border_active"] if active else palette["border"]
+        pygame.draw.rect(base, bg, base.get_rect(), border_radius=10)
+        pygame.draw.rect(base, border, base.get_rect(), width=2, border_radius=10)
+        # icon glyph
+        glyph = pygame.Surface((w, h), pygame.SRCALPHA)
+        if label == "BLAST":
+            # crosshair icon
+            pygame.draw.circle(glyph, palette["accent"], (w // 2, h // 2), 12, 2)
+            pygame.draw.line(glyph, palette["accent"], (w // 2, 6), (w // 2, h - 6), 2)
+            pygame.draw.line(glyph, palette["accent"], (6, h // 2), (w - 6, h // 2), 2)
+            pygame.draw.circle(glyph, palette["accent"], (w // 2, h // 2), 3)
+        else:
+            # teleport plus icon
+            pygame.draw.rect(glyph, palette["accent"], (w // 2 - 2, 8, 4, h - 16))
+            pygame.draw.rect(glyph, palette["accent"], (8, h // 2 - 2, w - 16, 4))
+            pygame.draw.circle(glyph, palette["accent_dim"], (w // 2, h // 2), 10, 2)
+        base.blit(glyph, (0, 0))
+        # labels
+        lfont = pygame.font.SysFont("Consolas", 14, bold=True)
+        keyfont = pygame.font.SysFont("Consolas", 14, bold=True)
+        base.blit(lfont.render(label, True, palette["text"]), (8, h - 30))
+        base.blit(keyfont.render(key_txt, True, palette["key"]), (8, h - 16))
         # cooldown overlay
         if cd > 0 and cd_total > 0:
             ratio = max(0.0, min(1.0, cd / cd_total))
             overlay = pygame.Surface((w, h), pygame.SRCALPHA)
-            pygame.draw.rect(overlay, (0, 0, 0, 180), (0, 0, w, int(h * ratio)))
+            pygame.draw.rect(overlay, (0, 0, 0, 190), (0, 0, w, int(h * ratio)))
             base.blit(overlay, (0, 0))
-            num = kfont.render(f"{int(math.ceil(cd))}", True, (255, 200, 200))
-            base.blit(num, num.get_rect(center=(w - 16, h // 2)))
+            num = keyfont.render(f"{int(math.ceil(cd))}", True, palette["text"])
+            base.blit(num, num.get_rect(center=(w - 14, h // 2)))
         if flash_t > 0:
-            pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.02)
+            pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.025)
             fx = pygame.Surface((w, h), pygame.SRCALPHA)
-            pygame.draw.rect(fx, (255, 80, 80, int(80 + 80 * pulse)), fx.get_rect(), border_radius=10)
+            pygame.draw.rect(fx, (*palette["accent"], int(70 + 80 * pulse)), fx.get_rect(), border_radius=12)
             base.blit(fx, (0, 0))
         screen.blit(base, (x, y))
-    icon_w, icon_h = 80, 52
+    icon_w, icon_h = 92, 64
     margin = 12
     right_x = VIEW_W - icon_w - margin
-    top_y = 12
-    _draw_skill_icon(right_x, top_y, icon_w, icon_h, "BLAST", "Q",
-                     float(getattr(player, "blast_cd", 0.0)), BLAST_COOLDOWN,
-                     getattr(player, "targeting_skill", None) == "blast",
-                     float(player.skill_flash.get("blast", 0.0)))
-    _draw_skill_icon(right_x, top_y + icon_h + 8, icon_w, icon_h, "TELEPORT", "E",
-                     float(getattr(player, "teleport_cd", 0.0)), TELEPORT_COOLDOWN,
-                     getattr(player, "targeting_skill", None) == "teleport",
-                     float(player.skill_flash.get("teleport", 0.0)))
+    bottom_y = VIEW_H - icon_h - margin
+    blast_palette = {
+        "bg": (30, 16, 16),
+        "border": (180, 80, 40),
+        "border_active": (255, 140, 60),
+        "accent": (255, 120, 60),
+        "accent_dim": (190, 90, 50),
+        "text": (240, 200, 180),
+        "key": (255, 170, 120),
+    }
+    tele_palette = {
+        "bg": (16, 26, 38),
+        "border": (60, 140, 200),
+        "border_active": (100, 200, 255),
+        "accent": (90, 200, 255),
+        "accent_dim": (70, 150, 210),
+        "text": (210, 230, 250),
+        "key": (140, 210, 255),
+    }
+    _draw_skill_icon(
+        right_x, bottom_y - icon_h - 8, icon_w, icon_h, "BLAST", "Q",
+        float(getattr(player, "blast_cd", 0.0)), BLAST_COOLDOWN,
+        getattr(player, "targeting_skill", None) == "blast",
+        float(player.skill_flash.get("blast", 0.0)),
+        blast_palette,
+    )
+    _draw_skill_icon(
+        right_x, bottom_y, icon_w, icon_h, "TELEPORT", "E",
+        float(getattr(player, "teleport_cd", 0.0)), TELEPORT_COOLDOWN,
+        getattr(player, "targeting_skill", None) == "teleport",
+        float(player.skill_flash.get("teleport", 0.0)),
+        tele_palette,
+    )
     # 数字覆盖在进度条中间
     hp_text = f"{int(getattr(player, 'hp', 0))}/{int(getattr(player, 'max_hp', 0))}"
     hp_img = font_hp.render(hp_text, True, (20, 20, 20))
@@ -3827,6 +3865,31 @@ def _cast_fixed_point_blast(player, game_state, zombies, target_pos) -> bool:
             z.hp = max(0, z.hp - total)
             game_state.add_damage_text(zx, zy - 10, total, crit=False, kind="skill")
             did_hit = True
+    # Damage destructible obstacles in the blast
+    for gp, ob in list(getattr(game_state, "obstacles", {}).items()):
+        if getattr(ob, "type", "") != "Destructible":
+            continue
+        if getattr(ob, "health", None) is None or ob.health <= 0:
+            continue
+        rect = ob.rect
+        cx = min(max(tx, rect.left), rect.right)
+        cy = min(max(ty, rect.top), rect.bottom)
+        dx = cx - tx
+        dy = cy - ty
+        if dx * dx + dy * dy > r2:
+            continue
+        hits = random.randint(BLAST_HITS_MIN, BLAST_HITS_MAX)
+        dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ZOMBIE) * BLAST_DMG_MULT))
+        total = hits * dmg_per
+        ob.health = (ob.health or 0) - total
+        did_hit = True
+        if ob.health <= 0:
+            bx, by = rect.centerx, rect.centery
+            del game_state.obstacles[gp]
+            if random.random() < SPOILS_BLOCK_DROP_CHANCE:
+                game_state.spawn_spoils(bx, by, 1)
+            if player:
+                player.add_xp(XP_PLAYER_BLOCK)
     # Show a center marker even if nothing was hit
     game_state.add_damage_text(int(tx), int(ty), "BLAST", crit=True, kind="skill")
     return True
@@ -3855,7 +3918,8 @@ def _teleport_player_to(player, game_state, target_pos) -> bool:
 def _compute_skill_target(player, game_state, mouse_pos, skill_id: str):
     """Return (tx, ty, valid, camx, camy) where tx/ty are clamped world pixels."""
     px, py = player.rect.center
-    camx, camy = calculate_iso_camera(px, py)
+    # camera tracks current player position so the mouse mapping stays accurate
+    camx, camy = calculate_iso_camera(player.rect.centerx, player.rect.centery)
     tx, ty = iso_screen_to_world_px(mouse_pos[0], mouse_pos[1], camx, camy)
     cast_range = float(getattr(player, "range", MAX_FIRE_RANGE)) if skill_id == "blast" else float(TELEPORT_RANGE)
     tx, ty = _clamp_point_within_radius(px, py, tx, ty, cast_range)
@@ -3879,10 +3943,50 @@ def _update_skill_target(player, game_state):
     if getattr(player, "targeting_skill", None) is None:
         return
     skill_id = player.targeting_skill
-    tx, ty, valid, camx, camy = _compute_skill_target(player, game_state, pygame.mouse.get_pos(), skill_id)
+    mx, my = pygame.mouse.get_pos()
+    # Clamp mouse to screen bounds so target never disappears when cursor leaves the map
+    mx = min(max(0, mx), VIEW_W - 1)
+    my = min(max(0, my), VIEW_H - 1)
+    tx, ty, valid, camx, camy = _compute_skill_target(player, game_state, (mx, my), skill_id)
     player.skill_target_pos = (tx, ty)
     player.skill_target_valid = bool(valid)
     player._last_cam_for_skill = (camx, camy)
+
+
+def _draw_skill_overlay(surface, player, camx, camy):
+    """Draw targeting rings; should be called after world draw so obstacles don't cover it."""
+    if getattr(player, "targeting_skill", None):
+        skill = player.targeting_skill
+        px, py = player.rect.center
+        cast_range = float(getattr(player, "range", MAX_FIRE_RANGE)) if skill == "blast" else float(TELEPORT_RANGE)
+        ring_col = (255, 140, 70) if skill == "blast" else (90, 190, 255)
+        draw_iso_ground_ellipse(surface, px, py, cast_range, ring_col, 60, camx, camy, fill=False, width=3)
+        tx, ty = getattr(player, "skill_target_pos", (px, py))
+        valid = bool(getattr(player, "skill_target_valid", False))
+        col_valid = (255, 120, 60) if skill == "blast" else (80, 210, 255)
+        col_invalid = (230, 60, 60)
+        col = col_valid if valid else col_invalid
+        if skill == "blast":
+            # Seed-of-life style: 1 center + 6 orbiting circles (60 deg apart), rotated over time
+            t = pygame.time.get_ticks() * 0.001
+            rot = t * 0.6  # radians
+            orbit_r = BLAST_RADIUS * 0.5
+            # outer ring
+            draw_iso_ground_ellipse(surface, tx, ty, BLAST_RADIUS, col, 80 if valid else 50, camx, camy, fill=False,
+                                    width=4)
+            # center circle
+            draw_iso_ground_ellipse(surface, tx, ty, orbit_r, col, 70 if valid else 40, camx, camy, fill=False,
+                                    width=3)
+            # six orbiting circles at 60° intervals
+            for i in range(6):
+                ang = rot + math.tau * i / 6.0
+                ox = tx + math.cos(ang) * orbit_r
+                oy = ty + math.sin(ang) * orbit_r
+                draw_iso_ground_ellipse(surface, ox, oy, orbit_r, col, 70 if valid else 40, camx, camy, fill=False,
+                                        width=3)
+        else:
+            draw_iso_ground_ellipse(surface, tx, ty, max(20, player.size), col, 80 if valid else 50, camx, camy,
+                                    fill=False, width=4)
 
 
 
@@ -6113,6 +6217,7 @@ class Player:
         self.targeting_skill = None  # "blast" | "teleport" | None
         self.skill_target_pos = (self.rect.centerx, self.rect.centery)
         self.skill_target_valid = False
+        self.skill_target_origin = None  # anchor for range clamp (blast stays stable vs forces)
         self.skill_flash = {"blast": 0.0, "teleport": 0.0}
 
     @property
@@ -10608,17 +10713,21 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
     # Skill targeting overlay (range + target marker)
     if getattr(player, "targeting_skill", None):
         skill = player.targeting_skill
-        px, py = player.rect.center
+        origin = getattr(player, "skill_target_origin", None)
+        px, py = origin if (skill == "blast" and origin) else player.rect.center
         cast_range = float(getattr(player, "range", MAX_FIRE_RANGE)) if skill == "blast" else float(TELEPORT_RANGE)
-        draw_iso_ground_ellipse(screen, px, py, cast_range, (90, 160, 255), 60, camx, camy, fill=False, width=3)
+        ring_col = (255, 140, 70) if skill == "blast" else (90, 190, 255)
+        draw_iso_ground_ellipse(screen, px, py, cast_range, ring_col, 60, camx, camy, fill=False, width=3)
         tx, ty = getattr(player, "skill_target_pos", (px, py))
         valid = bool(getattr(player, "skill_target_valid", False))
-        col = (90, 220, 140) if valid else (230, 80, 80)
+        col_valid = (255, 120, 60) if skill == "blast" else (80, 210, 255)
+        col_invalid = (230, 60, 60)
+        col = col_valid if valid else col_invalid
         if skill == "blast":
-            draw_iso_ground_ellipse(screen, tx, ty, BLAST_RADIUS, col, 80 if valid else 50, camx, camy, fill=False, width=4)
-            draw_iso_ground_ellipse(screen, tx, ty, BLAST_RADIUS * 0.4, col, 70 if valid else 40, camx, camy, fill=True)
+            draw_iso_ground_ellipse(screen, tx, ty, BLAST_RADIUS, col, 90 if valid else 60, camx, camy, fill=False, width=4)
+            draw_iso_ground_ellipse(screen, tx, ty, BLAST_RADIUS * 0.4, col, 80 if valid else 50, camx, camy, fill=True)
         else:
-            draw_iso_ground_ellipse(screen, tx, ty, max(20, player.size), col, 70 if valid else 40, camx, camy, fill=False, width=4)
+            draw_iso_ground_ellipse(screen, tx, ty, max(20, player.size), col, 80 if valid else 50, camx, camy, fill=False, width=4)
 
     # [UPDATED] Hurricanes (Wind Biome) - Now draws the 3D TornadoEntity
     for h in getattr(game_state, "hurricanes", []):
@@ -11022,6 +11131,8 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         surf = font.render(str(d.amount), True, col)
         surf.set_alpha(d.alpha())
         screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
+    # Skill targeting overlay drawn on top of obstacles so it never appears blocked
+    _draw_skill_overlay(screen, player, camx, camy)
     for g in getattr(game_state, "ghosts", []):
         g.draw_iso(screen, camx, camy)
     game_state.draw_hazards_iso(screen, camx, camy)
@@ -11516,6 +11627,14 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_q and getattr(player, "targeting_skill", None) == "blast":
+                player.targeting_skill = None
+                player.skill_target_origin = None
+                continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_e and getattr(player, "targeting_skill", None) == "teleport":
+                player.targeting_skill = None
+                player.skill_target_origin = None
+                continue
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, "targeting_skill", None):
                 player.targeting_skill = None
                 continue
@@ -11545,12 +11664,14 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if event.type == pygame.KEYDOWN and event.key == pygame.K_q:
                 if getattr(player, "blast_cd", 0.0) <= 0.0:
                     player.targeting_skill = "blast"
+                    player.skill_target_origin = None
                     _update_skill_target(player, game_state)
                 else:
                     player.skill_flash["blast"] = 0.35
             if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
                 if getattr(player, "teleport_cd", 0.0) <= 0.0:
                     player.targeting_skill = "teleport"
+                    player.skill_target_origin = None
                     _update_skill_target(player, game_state)
                 else:
                     player.skill_flash["teleport"] = 0.35
@@ -11566,6 +11687,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     if player.skill_target_valid and _teleport_player_to(player, game_state, player.skill_target_pos):
                         player.teleport_cd = float(TELEPORT_COOLDOWN)
                         player.targeting_skill = None
+                        player.skill_target_origin = None
                     else:
                         player.skill_flash["teleport"] = 0.35
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and getattr(player, "targeting_skill", None):
@@ -11951,6 +12073,12 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         # input
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_q and getattr(player, "targeting_skill", None) == "blast":
+                player.targeting_skill = None
+                continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_e and getattr(player, "targeting_skill", None) == "teleport":
+                player.targeting_skill = None
+                continue
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, "targeting_skill", None):
                 player.targeting_skill = None
                 continue
