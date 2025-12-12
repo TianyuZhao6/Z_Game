@@ -1163,6 +1163,7 @@ META = {
     "shady_loan_defaulted": False,
     "shady_loan_status": None,  # None/active/repaid/defaulted
     "shady_loan_last_level": 0,
+    "shady_loan_grace_level": -1,
     "wanted_poster_waves": 0,
     "wanted_active": False,
     "lockbox_level": 0,
@@ -1207,6 +1208,7 @@ def reset_run_state():
         "shady_loan_defaulted": False,
         "shady_loan_status": None,
         "shady_loan_last_level": 0,
+        "shady_loan_grace_level": -1,
         "wanted_poster_waves": 0,
         "wanted_active": False,
         "lockbox_level": 0,
@@ -1599,6 +1601,8 @@ def purchase_shady_loan() -> dict:
     prev_lvl = int(META.get("shady_loan_level", 0))
     prev_debt = max(0, int(META.get("shady_loan_remaining_debt", 0)))
     META["shady_loan_status"] = "active"
+    # Grace current level so repayment starts next level, not immediately.
+    META["shady_loan_grace_level"] = int(globals().get("current_level", -1))
     # If the previous loan was fully repaid and we were at cap, restart at Lv1.
     if prev_lvl >= SHADY_LOAN_MAX_LEVEL and prev_debt <= 0:
         purchase_level = 1
@@ -1664,13 +1668,31 @@ def apply_shady_loan_repayment() -> Optional[dict]:
     level = int(META.get("shady_loan_level", 0))
     debt_left = int(META.get("shady_loan_remaining_debt", 0))
     waves_left = int(META.get("shady_loan_waves_remaining", 0))
+    coins_before = max(0, int(META.get("spoils", 0)))
+    current_level = int(globals().get("current_level", -1))
+    grace_level = int(META.get("shady_loan_grace_level", -1))
+    if META.get("shady_loan_status") == "active" and debt_left > 0 and current_level == grace_level:
+        return {
+            "level": level,
+            "raw_payment": 0,
+            "capped_payment": 0,
+            "actual_payment": 0,
+            "coins_before": coins_before,
+            "coins_after": coins_before,
+            "debt_left": debt_left,
+            "waves_left": waves_left,
+            "defaulted": False,
+            "hp_penalty_pct": 0.0,
+            "new_max_hp": None,
+            "cleared": False,
+            "deferred": True,
+        }  # skip repayment on the purchase level, but show a notice
     if level <= 0:
         return None
     if debt_left <= 0:
         META["shady_loan_waves_remaining"] = 0
         return None
     idx = _shady_loan_level_idx(level)
-    coins_before = max(0, int(META.get("spoils", 0)))
     penalty_ratio = SHADY_LOAN_HP_PENALTIES[idx]
     lockbox_lvl = int(META.get("lockbox_level", 0))
     # Already overdue -> apply default immediately
@@ -1799,6 +1821,11 @@ def show_shady_loan_popup(screen, outcome: dict) -> None:
     elif outcome.get("cleared"):
         title_txt = "Shady Loan Repaid"
         lines.append(f"Loan fully repaid at Lv{outcome.get('level', 1)}.")
+        lines.append(f"Coins now: {outcome.get('coins_after', META.get('spoils', 0))}.")
+    elif outcome.get("deferred"):
+        title_txt = "Shady Loan"
+        lines.append("Repayment starts next level. No coins taken this wave.")
+        lines.append(f"Debt left: {outcome.get('debt_left', 0)} | Waves left: {outcome.get('waves_left', 0)}")
         lines.append(f"Coins now: {outcome.get('coins_after', META.get('spoils', 0))}.")
     else:
         payment = outcome.get("actual_payment", 0)
@@ -3670,7 +3697,7 @@ def draw_neuro_title_intro(surface: pygame.Surface, title_font, prompt_font, t: 
         )
         pygame.draw.line(grad, col, (0, y), (w, y))
     grad.blit(prompt_base, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-    line_y = title_rect.bottom + 64
+    line_y = title_rect.bottom + 172
     prompt_rect = grad.get_rect(center=(cx_core, line_y))
     side_len = max(80, grad.get_width() // 2)
     gap = prompt_rect.width // 2 + 20
