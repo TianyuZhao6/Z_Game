@@ -4806,7 +4806,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 "id": "shady_loan",
                 "name": "Shady Loan",
                 "desc": "Risky loan: upfront gold now, pay it back over a few waves or lose max HP.",
-                "cost": 5,
+                "cost": 0,
                 "rarity": 3,
                 "max_level": SHADY_LOAN_MAX_LEVEL,
                 "apply": purchase_shady_loan,
@@ -4998,6 +4998,8 @@ def show_shop_screen(screen) -> Optional[str]:
                 return f"Defaulted: -{pct}% max HP"
             if status == "repaid" and debt <= 0:
                 return "Loan repaid"
+            if status == "active" and debt > 0 and waves == 1:
+                return "The loan settlement happens after this shop!"
             return f"Debt {debt}, {max(0, waves)} waves left (final clears remainder)"
         if iid == "coin_magnet":
             radius = int(META.get("coin_magnet_radius", 0))
