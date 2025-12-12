@@ -1131,7 +1131,9 @@ BULLET_RADIUS_MAX = 16
 BULLET_DAMAGE_ZOMBIE = 12
 BULLET_DAMAGE_BLOCK = 10
 ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
-MAX_FIRE_RANGE = 800.0  # pixels
+PLAYER_RANGE_DEFAULT = 400.0  # pixels; baseline player shooting range
+PLAYER_RANGE_MAX = 800.0  # pixels; hard cap on player targeting/shooting range
+MAX_FIRE_RANGE = PLAYER_RANGE_DEFAULT  # legacy alias for the baseline range
 # --- Auto-turret tuning ---
 AUTO_TURRET_BASE_DAMAGE = max(1, BULLET_DAMAGE_ZOMBIE // 3)  # weak-ish bullets
 AUTO_TURRET_FIRE_INTERVAL = 0.9  # seconds between shots
@@ -1139,8 +1141,38 @@ AUTO_TURRET_RANGE_MULT = 0.8  # fraction of player range
 AUTO_TURRET_OFFSET_RADIUS = 40.0  # distance from player center
 AUTO_TURRET_ORBIT_SPEED = 2.0  # radians per second
 # --- targeting / auto-aim (new) ---
-PLAYER_TARGET_RANGE = MAX_FIRE_RANGE  # 射程内才会当候选（默认=子弹射程）
+PLAYER_TARGET_RANGE = PLAYER_RANGE_DEFAULT  # 射程内才会当候选（默认=子弹射程）
 PLAYER_BLOCK_FORCE_RANGE_TILES = 2  # 玩家两格内遇到可破坏物 → 强制优先
+
+# Range helpers keep player targeting/shooting within the intended cap.
+def clamp_player_range(range_val: float) -> float:
+    try:
+        val = float(range_val)
+    except Exception:
+        return PLAYER_RANGE_DEFAULT
+    return max(0.0, min(PLAYER_RANGE_MAX, val))
+
+
+def compute_player_range(base_range: float, mult: float = 1.0) -> float:
+    base = clamp_player_range(base_range)
+    return clamp_player_range(base * float(mult))
+
+
+def sanitize_meta_range(meta: dict) -> None:
+    """Normalize META/base range to the intended defaults/caps."""
+    if not isinstance(meta, dict):
+        return
+    base = clamp_player_range(meta.get("base_range", PLAYER_RANGE_DEFAULT))
+    if base <= 0.0:
+        base = PLAYER_RANGE_DEFAULT
+    meta["base_range"] = base
+    max_mult = PLAYER_RANGE_MAX / max(1.0, base)
+    try:
+        mult = float(meta.get("range_mult", 1.0))
+    except Exception:
+        mult = 1.0
+    meta["range_mult"] = max(0.0, min(mult, max_mult))
+
 # --- CRIT & damage text ---
 CRIT_CHANCE_BASE = 0.05  # 基础暴击率=5%
 CRIT_MULT_BASE = 1.8  # 暴击伤害倍数，后续可以做商店项
@@ -1155,6 +1187,7 @@ BLAST_HITS_MIN = 8
 BLAST_HITS_MAX = 14
 BLAST_DMG_MULT = 0.70
 BLAST_COOLDOWN = 10.0
+BLAST_CAST_RANGE = 400.0  # baseline blast placement range (at least basic attack range)
 TELEPORT_RANGE = 320.0  # max distance from player center
 TELEPORT_COOLDOWN = 6.0
 # --- Bone Plating ---
@@ -1218,7 +1251,7 @@ META = {
     # —— 初始（基准）数值 ——（来自常量）
     "base_dmg": BULLET_DAMAGE_ZOMBIE,
     "base_fire_cd": MIN_FIRE_COOLDOWN,  # 以冷却秒数作为基准
-    "base_range": float(MAX_FIRE_RANGE),
+    "base_range": float(PLAYER_RANGE_DEFAULT),
     "base_speed": float(PLAYER_SPEED),
     "base_maxhp": int(PLAYER_MAX_HP),
     "base_crit": float(CRIT_CHANCE_BASE),
@@ -1264,7 +1297,7 @@ def reset_run_state():
         "spoils": 0,
         "base_dmg": BULLET_DAMAGE_ZOMBIE,
         "base_fire_cd": FIRE_COOLDOWN,
-        "base_range": float(MAX_FIRE_RANGE),
+        "base_range": float(PLAYER_RANGE_DEFAULT),
         "base_speed": float(PLAYER_SPEED),
         "base_maxhp": int(PLAYER_MAX_HP),
         "base_crit": float(CRIT_CHANCE_BASE),
@@ -1324,6 +1357,17 @@ def _ensure_meta_defaults():
     for k, v in defaults.items():
         if k not in META:
             META[k] = v
+
+
+def _load_meta_from_save(save_data: dict | None) -> None:
+    """Apply saved META with range sanitization and fill missing defaults."""
+    if not save_data:
+        return
+    meta_in = dict(save_data.get("meta", {}))
+    sanitize_meta_range(meta_in)
+    save_data["meta"] = meta_in
+    META.update(meta_in)
+    _ensure_meta_defaults()
 
 
 def mark_of_vulnerability_stats(level: int) -> tuple[float, float, float]:
@@ -2189,8 +2233,8 @@ def load_save() -> Optional[dict]:
                     if "meta_stats" not in _pbase and isinstance(data.get("meta"), dict):
                         meta = data["meta"]
                         try:
-                            rng_base = float(_pbase.get("range_base", meta.get("base_range", MAX_FIRE_RANGE)))
-                            rng_val = float(_pbase.get("range", rng_base))
+                            rng_base = clamp_player_range(_pbase.get("range_base", meta.get("base_range", PLAYER_RANGE_DEFAULT)))
+                            rng_val = clamp_player_range(_pbase.get("range", rng_base))
                             rng_mult_est = rng_val / rng_base if rng_base else meta.get("range_mult", 1.0)
                         except Exception:
                             rng_mult_est = meta.get("range_mult", 1.0)
@@ -2249,8 +2293,8 @@ def _capture_level_start_baseline(level_idx: int, player: "Player", game_state: 
         "biome": getattr(game_state, "biome_active", globals().get("_next_biome")),
         # combat stats that may have been modified by level-up choices
         "fire_rate_mult": float(getattr(player, "fire_rate_mult", 1.0)),
-        "range": float(getattr(player, "range", MAX_FIRE_RANGE)),
-        "range_base": float(getattr(player, "range_base", MAX_FIRE_RANGE)),
+        "range": clamp_player_range(getattr(player, "range", PLAYER_RANGE_DEFAULT)),
+        "range_base": clamp_player_range(getattr(player, "range_base", PLAYER_RANGE_DEFAULT)),
         "crit_chance": float(getattr(player, "crit_chance", CRIT_CHANCE_BASE)),
         "crit_mult": float(getattr(player, "crit_mult", CRIT_MULT_BASE)),
         "speed": float(getattr(player, "speed", PLAYER_SPEED)),
@@ -2347,8 +2391,8 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
         if not isinstance(meta_stats, dict):
             # Back-compat: derive a best-effort snapshot from baseline + current META
             try:
-                rng_base = float(b.get("range_base", getattr(player, "range_base", MAX_FIRE_RANGE)))
-                rng_val = float(b.get("range", rng_base))
+                rng_base = clamp_player_range(b.get("range_base", getattr(player, "range_base", PLAYER_RANGE_DEFAULT)))
+                rng_val = clamp_player_range(b.get("range", rng_base))
                 rng_mult_est = rng_val / rng_base if rng_base else META.get("range_mult", 1.0)
             except Exception:
                 rng_mult_est = META.get("range_mult", 1.0)
@@ -2370,9 +2414,9 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
         player.max_hp = int(b.get("max_hp", player.max_hp))
         player.hp = min(player.max_hp, int(b.get("hp", player.max_hp)))
         player.fire_rate_mult = float(b.get("fire_rate_mult", META.get("firerate_mult", getattr(player, "fire_rate_mult", 1.0))))
-        player.range_base = float(b.get("range_base", getattr(player, "range_base", MAX_FIRE_RANGE)))
+        player.range_base = clamp_player_range(b.get("range_base", getattr(player, "range_base", PLAYER_RANGE_DEFAULT)))
         # re-derive range from baseline base + current (restored) META multiplier to avoid cumulative drift
-        player.range = float(player.range_base) * float(META.get("range_mult", 1.0))
+        player.range = compute_player_range(player.range_base, float(META.get("range_mult", 1.0)))
         player.crit_chance = float(b.get("crit_chance", getattr(player, "crit_chance", CRIT_CHANCE_BASE)))
         player.crit_mult = float(b.get("crit_mult", getattr(player, "crit_mult", CRIT_MULT_BASE)))
         player.speed = float(b.get("speed", getattr(player, "speed", PLAYER_SPEED)))
@@ -3825,6 +3869,13 @@ def _current_music_pos_ms() -> int | None:
         return None
 
 
+def _skill_cast_range(skill_id: str, player) -> float:
+    if skill_id == "blast":
+        base_range = clamp_player_range(getattr(player, "range", PLAYER_RANGE_DEFAULT))
+        return max(float(BLAST_CAST_RANGE), base_range)
+    return float(TELEPORT_RANGE)
+
+
 def _clamp_point_within_radius(px: float, py: float, tx: float, ty: float, limit: float) -> tuple[float, float]:
     dx, dy = tx - px, ty - py
     dist = math.hypot(dx, dy)
@@ -3921,7 +3972,7 @@ def _compute_skill_target(player, game_state, mouse_pos, skill_id: str):
     # camera tracks current player position so the mouse mapping stays accurate
     camx, camy = calculate_iso_camera(player.rect.centerx, player.rect.centery)
     tx, ty = iso_screen_to_world_px(mouse_pos[0], mouse_pos[1], camx, camy)
-    cast_range = float(getattr(player, "range", MAX_FIRE_RANGE)) if skill_id == "blast" else float(TELEPORT_RANGE)
+    cast_range = _skill_cast_range(skill_id, player)
     tx, ty = _clamp_point_within_radius(px, py, tx, ty, cast_range)
     valid = True
     if skill_id == "teleport":
@@ -3951,7 +4002,7 @@ def _draw_skill_overlay(surface, player, camx, camy):
     if getattr(player, "targeting_skill", None):
         skill = player.targeting_skill
         px, py = player.rect.center
-        cast_range = float(getattr(player, "range", MAX_FIRE_RANGE)) if skill == "blast" else float(TELEPORT_RANGE)
+        cast_range = _skill_cast_range(skill, player)
         ring_col = (255, 140, 70) if skill == "blast" else (90, 190, 255)
         draw_iso_ground_ellipse(surface, px, py, cast_range, ring_col, 60, camx, camy, fill=False, width=3)
         tx, ty = getattr(player, "skill_target_pos", (px, py))
@@ -4340,7 +4391,7 @@ def show_pause_menu(screen, background_surf):
     p = globals().get("_pause_player_ref", None)
     base_dmg = int(META.get("base_dmg", BULLET_DAMAGE_ZOMBIE))
     base_cd = float(META.get("base_fire_cd", FIRE_COOLDOWN))
-    base_range = float(META.get("base_range", MAX_FIRE_RANGE))
+    base_range = clamp_player_range(META.get("base_range", PLAYER_RANGE_DEFAULT))
     base_speed = float(META.get("base_speed", PLAYER_SPEED))
     base_hp = int(META.get("base_maxhp", PLAYER_MAX_HP))
     base_crit = float(META.get("base_crit", CRIT_CHANCE_BASE))
@@ -4370,10 +4421,11 @@ def show_pause_menu(screen, background_surf):
     screen.blit(fr_text, (left_margin, y_offset));
     y_offset += 30
     # --- range ---
-    cur_range = float(getattr(p, "range", base_range * META.get("range_mult", 1.0)))
     rng_mult = float(META.get("range_mult", 1.0))
+    cur_range = clamp_player_range(getattr(p, "range", compute_player_range(base_range, rng_mult)))
+    eff_rng_mult = cur_range / base_range if base_range else rng_mult
     rng_text = font_tiny.render(
-        f"Range: {rng_mult:.2f}x  ({int(cur_range)} px, Lv1 {int(base_range)} px)",
+        f"Range: {eff_rng_mult:.2f}x  ({int(cur_range)} px, Lv1 {int(base_range)} px)",
         True, (200, 200, 100)
     )
     screen.blit(rng_text, (left_margin, y_offset));
@@ -4634,9 +4686,15 @@ def _apply_levelup_choice(player, key: str):
         META["firerate_mult"] = float(META.get("firerate_mult", 1.0)) * 1.05
         player.fire_rate_mult *= 1.05
     elif key == "range":
-        META["range_mult"] = float(META.get("range_mult", 1.0)) * 1.10
-        # player.range is base * mult
-        player.range = float(player.range_base) * float(META["range_mult"])
+        base_range = clamp_player_range(META.get("base_range", PLAYER_RANGE_DEFAULT))
+        META["base_range"] = base_range  # sanitize any persisted value
+        new_mult = float(META.get("range_mult", 1.0)) * 1.10
+        max_mult = PLAYER_RANGE_MAX / max(1.0, base_range)
+        META["range_mult"] = min(new_mult, max_mult)
+        # player.range is base * mult (clamped to the hard cap)
+        if player is not None:
+            player.range_base = clamp_player_range(getattr(player, "range_base", base_range))
+            player.range = compute_player_range(player.range_base, META["range_mult"])
     elif key == "speed":
         META["speed_mult"] = float(META.get("speed_mult", 1.0)) * 1.05
         base_spd = float(META.get("base_speed", 2.6))
@@ -6177,8 +6235,8 @@ class Player:
         else:
             self._aegis_pulse_cd = 0.0
         # 射程：base × mult
-        self.range_base = float(META.get("base_range", MAX_FIRE_RANGE))
-        self.range = float(self.range_base * META.get("range_mult", 1.0))
+        self.range_base = clamp_player_range(META.get("base_range", PLAYER_RANGE_DEFAULT))
+        self.range = compute_player_range(self.range_base, META.get("range_mult", 1.0))
         spd0 = float(META.get("base_speed", PLAYER_SPEED))
         spd_mult = float(META.get("speed_mult", 1.0))
         spd_add = float(META.get("speed", 0))
@@ -8023,7 +8081,7 @@ class Bullet:
         self.vy = vy
         self.alive = True
         self.traveled = 0.0
-        self.max_dist = max_dist
+        self.max_dist = clamp_player_range(max_dist)
         self.damage = int(damage)
         self.r = bullet_radius_for_damage(self.damage)
         self.source = source
@@ -8336,7 +8394,8 @@ class AutoTurret:
         if self.cd > 0.0:
             return
         # Turret firing range based on player's range
-        max_range = float(getattr(self.owner, "range", MAX_FIRE_RANGE)) * self.range_mult
+        owner_range = clamp_player_range(getattr(self.owner, "range", PLAYER_RANGE_DEFAULT))
+        max_range = clamp_player_range(owner_range * self.range_mult)
         max_r2 = max_range * max_range
         # Find nearest zombie in range
         best = None
@@ -8395,8 +8454,9 @@ class StationaryTurret:
         if self.cd > 0.0:
             return
         # use player's base range + range_mult so it scales with range upgrades
-        base_range = float(META.get("base_range", MAX_FIRE_RANGE))
-        total_range = base_range * float(META.get("range_mult", 1.0)) * self.range_mult
+        base_range = clamp_player_range(META.get("base_range", PLAYER_RANGE_DEFAULT))
+        player_range = compute_player_range(base_range, float(META.get("range_mult", 1.0)))
+        total_range = clamp_player_range(player_range * self.range_mult)
         max_r2 = total_range * total_range
         # find nearest zombie in range around this turret
         best = None
@@ -10708,7 +10768,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         skill = player.targeting_skill
         origin = getattr(player, "skill_target_origin", None)
         px, py = origin if (skill == "blast" and origin) else player.rect.center
-        cast_range = float(getattr(player, "range", MAX_FIRE_RANGE)) if skill == "blast" else float(TELEPORT_RANGE)
+        cast_range = _skill_cast_range(skill, player) if skill == "blast" else float(TELEPORT_RANGE)
         ring_col = (255, 140, 70) if skill == "blast" else (90, 190, 255)
         draw_iso_ground_ellipse(screen, px, py, cast_range, ring_col, 60, camx, camy, fill=False, width=3)
         tx, ty = getattr(player, "skill_target_pos", (px, py))
@@ -11500,7 +11560,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             d = (force_blocks[0][0]) ** 0.5
             return best_tuple, d
         # 2) 正常权重选择（仅考虑“射程内”的目标）
-        R2 = float(getattr(player, "range", MAX_FIRE_RANGE)) ** 2
+        cur_range = clamp_player_range(getattr(player, "range", PLAYER_RANGE_DEFAULT))
+        R2 = cur_range ** 2
         # 收集候选：僵尸（射程内）
         z_cands = []
         for z in zombies:
@@ -11958,7 +12019,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     for b in snap.get("bullets", []):
         bobj = Bullet(float(b.get("x", 0.0)), float(b.get("y", 0.0)),
                       float(b.get("vx", 0.0)), float(b.get("vy", 0.0)),
-                      getattr(player, "range", MAX_FIRE_RANGE))
+                      clamp_player_range(getattr(player, "range", PLAYER_RANGE_DEFAULT)))
         bobj.traveled = float(b.get("traveled", 0.0))
         # approximate current upgrades
         bobj.pierce_left = int(getattr(player, "bullet_pierce", 0))
@@ -12003,7 +12064,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             d = (force_blocks[0][0]) ** 0.5
             return best_tuple, d
         # 2) 正常权重选择（仅考虑“射程内”的目标）
-        R2 = float(getattr(player, "range", MAX_FIRE_RANGE)) ** 2
+        cur_range = clamp_player_range(getattr(player, "range", PLAYER_RANGE_DEFAULT))
+        R2 = cur_range ** 2
         # 收集候选：僵尸（射程内）
         z_cands = []
         for z in zombies:
@@ -12298,8 +12360,7 @@ if __name__ == "__main__":
     if mode == "continue" and save_data:
         # restore shop upgrades and carry for a fresh run at the stored level
         if save_data:
-            META.update(save_data.get("meta", META))
-            _ensure_meta_defaults()
+            _load_meta_from_save(save_data)
             globals()["_carry_player_state"] = save_data.get("carry_player", None)
             globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
             globals()["_next_biome"] = save_data.get("biome")
@@ -12342,8 +12403,7 @@ if __name__ == "__main__":
                 if not selection: sys.exit()
                 mode, save_data = selection
                 if mode == "continue" and save_data:
-                    META.update(save_data.get("meta", META))
-                    _ensure_meta_defaults()
+                    _load_meta_from_save(save_data)
                     globals()["_carry_player_state"] = save_data.get("carry_player", None)
                     globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
                     globals()["_next_biome"] = save_data.get("biome")
@@ -12390,7 +12450,7 @@ if __name__ == "__main__":
             if mode == "continue" and save_data:
                 # restore shop upgrades and carry for a fresh run at the stored level
                 if save_data:
-                    META.update(save_data.get("meta", META))
+                    _load_meta_from_save(save_data)
                     globals()["_carry_player_state"] = save_data.get("carry_player", None)
                     globals()["_next_biome"] = save_data.get("biome")
                 else:
@@ -12448,7 +12508,7 @@ if __name__ == "__main__":
                 mode, save_data = selection
                 if mode == "continue" and save_data:
                     if save_data:
-                        META.update(save_data.get("meta", META))
+                        _load_meta_from_save(save_data)
                         globals()["_carry_player_state"] = save_data.get("carry_player", None)
                         globals()["_next_biome"] = save_data.get("biome")
                     else:
@@ -12487,7 +12547,7 @@ if __name__ == "__main__":
                 if mode == "continue" and save_data:
                     # restore shop upgrades and carry for a fresh run at the stored level
                     if save_data:
-                        META.update(save_data.get("meta", META))
+                        _load_meta_from_save(save_data)
                         globals()["_carry_player_state"] = save_data.get("carry_player", None)
                     else:
                         globals()["_carry_player_state"] = None
@@ -12530,7 +12590,7 @@ if __name__ == "__main__":
             if mode == "continue" and save_data:
                 # restore shop upgrades and carry for a fresh run at the stored level
                 if save_data:
-                    META.update(save_data.get("meta", META))
+                    _load_meta_from_save(save_data)
                     globals()["_carry_player_state"] = save_data.get("carry_player", None)
                 else:
                     globals()["_carry_player_state"] = None
