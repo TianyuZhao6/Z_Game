@@ -260,6 +260,44 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
             plate_txt += f" (Lv {plating_lvl})"
         plate_img = mono_small.render(plate_txt, True, BONE_PLATING_COLOR)
         screen.blit(plate_img, (plate_bx, plate_by + plate_bar_h + 2))
+    # Active skill icons (top-right)
+    def _draw_skill_icon(x, y, w, h, label, key_txt, cd, cd_total, active, flash_t):
+        base = pygame.Surface((w, h), pygame.SRCALPHA)
+        bg = (24, 36, 48)
+        border = (90, 180, 255) if active else (70, 110, 150)
+        pygame.draw.rect(base, bg, base.get_rect(), border_radius=8)
+        pygame.draw.rect(base, border, base.get_rect(), width=2, border_radius=8)
+        # label
+        lfont = pygame.font.SysFont("Consolas", 16, bold=True)
+        kfont = pygame.font.SysFont("Consolas", 14, bold=True)
+        base.blit(lfont.render(label, True, (210, 230, 255)), (8, 6))
+        base.blit(kfont.render(key_txt, True, (180, 220, 255)), (8, h - 20))
+        # cooldown overlay
+        if cd > 0 and cd_total > 0:
+            ratio = max(0.0, min(1.0, cd / cd_total))
+            overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.rect(overlay, (0, 0, 0, 180), (0, 0, w, int(h * ratio)))
+            base.blit(overlay, (0, 0))
+            num = kfont.render(f"{int(math.ceil(cd))}", True, (255, 200, 200))
+            base.blit(num, num.get_rect(center=(w - 16, h // 2)))
+        if flash_t > 0:
+            pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.02)
+            fx = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.rect(fx, (255, 80, 80, int(80 + 80 * pulse)), fx.get_rect(), border_radius=10)
+            base.blit(fx, (0, 0))
+        screen.blit(base, (x, y))
+    icon_w, icon_h = 80, 52
+    margin = 12
+    right_x = VIEW_W - icon_w - margin
+    top_y = 12
+    _draw_skill_icon(right_x, top_y, icon_w, icon_h, "BLAST", "Q",
+                     float(getattr(player, "blast_cd", 0.0)), BLAST_COOLDOWN,
+                     getattr(player, "targeting_skill", None) == "blast",
+                     float(player.skill_flash.get("blast", 0.0)))
+    _draw_skill_icon(right_x, top_y + icon_h + 8, icon_w, icon_h, "TELEPORT", "E",
+                     float(getattr(player, "teleport_cd", 0.0)), TELEPORT_COOLDOWN,
+                     getattr(player, "targeting_skill", None) == "teleport",
+                     float(player.skill_flash.get("teleport", 0.0)))
     # 数字覆盖在进度条中间
     hp_text = f"{int(getattr(player, 'hp', 0))}/{int(getattr(player, 'max_hp', 0))}"
     hp_img = font_hp.render(hp_text, True, (20, 20, 20))
@@ -1073,6 +1111,14 @@ DMG_TEXT_RISE = 42.0  # 垂直上升速度（像素/秒）
 DMG_TEXT_FADE = 0.25  # 尾段淡出比例（最后 25% 时间开始透明）
 DMG_TEXT_SIZE_NORMAL = 28
 DMG_TEXT_SIZE_CRIT = 38
+# --- Active skills (player) ---
+BLAST_RADIUS = 140  # px radius for fixed-point blast
+BLAST_HITS_MIN = 8
+BLAST_HITS_MAX = 14
+BLAST_DMG_MULT = 0.70
+BLAST_COOLDOWN = 10.0
+TELEPORT_RANGE = 320.0  # max distance from player center
+TELEPORT_COOLDOWN = 6.0
 # --- Bone Plating ---
 BONE_PLATING_STACK_HP = 2
 BONE_PLATING_GAIN_INTERVAL = 6.0
@@ -3741,6 +3787,104 @@ def _current_music_pos_ms() -> int | None:
         return None
 
 
+def _clamp_point_within_radius(px: float, py: float, tx: float, ty: float, limit: float) -> tuple[float, float]:
+    dx, dy = tx - px, ty - py
+    dist = math.hypot(dx, dy)
+    if dist <= 1e-6 or dist <= limit:
+        return float(tx), float(ty)
+    scale = limit / dist
+    return float(px + dx * scale), float(py + dy * scale)
+
+
+def iso_screen_to_world_px(sx: float, sy: float, camx: float, camy: float) -> tuple[float, float]:
+    """
+    Inverse of iso_world_to_screen for wz=0.
+    Returns world pixel coordinates (with INFO_BAR_HEIGHT baked in).
+    """
+    half_w = ISO_CELL_W * 0.5
+    half_h = ISO_CELL_H * 0.5
+    sxp = sx + camx
+    syp = sy + camy - INFO_BAR_HEIGHT
+    wx = (sxp / half_w + syp / half_h) * 0.5
+    wy = (syp / half_h - sxp / half_w) * 0.5
+    return float(wx * CELL_SIZE), float(wy * CELL_SIZE + INFO_BAR_HEIGHT)
+
+
+def _cast_fixed_point_blast(player, game_state, zombies, target_pos) -> bool:
+    """Q-skill: rain bullets in a circle within player range. Returns True if fired."""
+    if player is None or game_state is None or target_pos is None:
+        return False
+    tx, ty = target_pos
+    r2 = float(BLAST_RADIUS) * float(BLAST_RADIUS)
+    did_hit = False
+    for z in list(zombies):
+        zx, zy = z.rect.center
+        dx, dy = zx - tx, zy - ty
+        if dx * dx + dy * dy <= r2:
+            hits = random.randint(BLAST_HITS_MIN, BLAST_HITS_MAX)
+            dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ZOMBIE) * BLAST_DMG_MULT))
+            total = hits * dmg_per
+            z.hp = max(0, z.hp - total)
+            game_state.add_damage_text(zx, zy - 10, total, crit=False, kind="skill")
+            did_hit = True
+    # Show a center marker even if nothing was hit
+    game_state.add_damage_text(int(tx), int(ty), "BLAST", crit=True, kind="skill")
+    return True
+
+
+def _teleport_player_to(player, game_state, target_pos) -> bool:
+    """E-skill: blink within TELEPORT_RANGE, ignoring walls but not landing on obstacles."""
+    if player is None or game_state is None or target_pos is None:
+        return False
+    tx, ty = target_pos
+    # keep within screen bounds
+    half = max(1, player.size // 2)
+    tx = min(max(half, int(tx)), VIEW_W - half)
+    ty = min(max(INFO_BAR_HEIGHT + half, int(ty)), VIEW_H - half)
+    new_rect = player.rect.copy()
+    new_rect.center = (tx, ty)
+    for ob in game_state.obstacles.values():
+        if new_rect.colliderect(ob.rect):
+            return False  # cannot land on an obstacle
+    player.rect = new_rect
+    player.x = float(player.rect.x)
+    player.y = float(player.rect.y - INFO_BAR_HEIGHT)
+    return True
+
+
+def _compute_skill_target(player, game_state, mouse_pos, skill_id: str):
+    """Return (tx, ty, valid, camx, camy) where tx/ty are clamped world pixels."""
+    px, py = player.rect.center
+    camx, camy = calculate_iso_camera(px, py)
+    tx, ty = iso_screen_to_world_px(mouse_pos[0], mouse_pos[1], camx, camy)
+    cast_range = float(getattr(player, "range", MAX_FIRE_RANGE)) if skill_id == "blast" else float(TELEPORT_RANGE)
+    tx, ty = _clamp_point_within_radius(px, py, tx, ty, cast_range)
+    # keep within viewport bounds
+    half = max(1, player.size // 2)
+    tx = min(max(half, int(tx)), VIEW_W - half)
+    ty = min(max(INFO_BAR_HEIGHT + half, int(ty)), VIEW_H - half)
+    valid = True
+    if skill_id == "teleport":
+        new_rect = player.rect.copy()
+        new_rect.center = (int(tx), int(ty))
+        for ob in game_state.obstacles.values():
+            if new_rect.colliderect(ob.rect):
+                valid = False
+                break
+    return (float(tx), float(ty), bool(valid), camx, camy)
+
+
+def _update_skill_target(player, game_state):
+    """Refresh targeting point/validity based on current mouse position."""
+    if getattr(player, "targeting_skill", None) is None:
+        return
+    skill_id = player.targeting_skill
+    tx, ty, valid, camx, camy = _compute_skill_target(player, game_state, pygame.mouse.get_pos(), skill_id)
+    player.skill_target_pos = (tx, ty)
+    player.skill_target_valid = bool(valid)
+    player._last_cam_for_skill = (camx, camy)
+
+
 
 def animate_menu_exit(screen: pygame.Surface, snapshot: pygame.Surface, duration: int = 450):
     """Slide/fade the menu upward before entering the run."""
@@ -5963,6 +6107,13 @@ class Player:
         self._acid_dot_accum = 0.0  # 离开池后DoT的累计伤害缓存
         self.dot_ticks = []  # list[(dps, t_left)]
         self.apply_slow_extra = 0.0  # extra slow gathered each frame (hazards add to this)
+        # Active skills
+        self.blast_cd = 0.0
+        self.teleport_cd = 0.0
+        self.targeting_skill = None  # "blast" | "teleport" | None
+        self.skill_target_pos = (self.rect.centerx, self.rect.centery)
+        self.skill_target_valid = False
+        self.skill_flash = {"blast": 0.0, "teleport": 0.0}
 
     @property
     def pos(self):
@@ -10454,6 +10605,20 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             camx=camx, camy=camy,
             fill=False, width=3
         )
+    # Skill targeting overlay (range + target marker)
+    if getattr(player, "targeting_skill", None):
+        skill = player.targeting_skill
+        px, py = player.rect.center
+        cast_range = float(getattr(player, "range", MAX_FIRE_RANGE)) if skill == "blast" else float(TELEPORT_RANGE)
+        draw_iso_ground_ellipse(screen, px, py, cast_range, (90, 160, 255), 60, camx, camy, fill=False, width=3)
+        tx, ty = getattr(player, "skill_target_pos", (px, py))
+        valid = bool(getattr(player, "skill_target_valid", False))
+        col = (90, 220, 140) if valid else (230, 80, 80)
+        if skill == "blast":
+            draw_iso_ground_ellipse(screen, tx, ty, BLAST_RADIUS, col, 80 if valid else 50, camx, camy, fill=False, width=4)
+            draw_iso_ground_ellipse(screen, tx, ty, BLAST_RADIUS * 0.4, col, 70 if valid else 40, camx, camy, fill=True)
+        else:
+            draw_iso_ground_ellipse(screen, tx, ty, max(20, player.size), col, 70 if valid else 40, camx, camy, fill=False, width=4)
 
     # [UPDATED] Hurricanes (Wind Biome) - Now draws the 3D TornadoEntity
     for h in getattr(game_state, "hurricanes", []):
@@ -11351,6 +11516,9 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, "targeting_skill", None):
+                player.targeting_skill = None
+                continue
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
                                                    obstacles=game_state.obstacles)
@@ -11374,6 +11542,38 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     save_progress(current_level=current_level,
                                   max_wave_reached=wave_index)
                     return 'exit', config.get('reward', None), bg
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                if getattr(player, "blast_cd", 0.0) <= 0.0:
+                    player.targeting_skill = "blast"
+                    _update_skill_target(player, game_state)
+                else:
+                    player.skill_flash["blast"] = 0.35
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+                if getattr(player, "teleport_cd", 0.0) <= 0.0:
+                    player.targeting_skill = "teleport"
+                    _update_skill_target(player, game_state)
+                else:
+                    player.skill_flash["teleport"] = 0.35
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and getattr(player, "targeting_skill", None):
+                _update_skill_target(player, game_state)
+                if player.targeting_skill == "blast":
+                    if player.skill_target_valid and _cast_fixed_point_blast(player, game_state, zombies, player.skill_target_pos):
+                        player.blast_cd = float(BLAST_COOLDOWN)
+                        player.targeting_skill = None
+                    else:
+                        player.skill_flash["blast"] = 0.35
+                elif player.targeting_skill == "teleport":
+                    if player.skill_target_valid and _teleport_player_to(player, game_state, player.skill_target_pos):
+                        player.teleport_cd = float(TELEPORT_COOLDOWN)
+                        player.targeting_skill = None
+                    else:
+                        player.skill_flash["teleport"] = 0.35
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and getattr(player, "targeting_skill", None):
+                player.targeting_skill = None
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, "targeting_skill", None):
+                player.targeting_skill = None
+        if getattr(player, "targeting_skill", None):
+            _update_skill_target(player, game_state)
         keys = pygame.key.get_pressed()
         # ---- slow 计时衰减 + 电告圈与酸池更新（在移动之前）----
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
@@ -11401,6 +11601,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.update_aegis_pulses(dt, player, zombies)
         game_state.collect_heals(player)
         player.update_bone_plating(dt)
+        # Active skill cooldowns
+        player.blast_cd = max(0.0, getattr(player, "blast_cd", 0.0) - dt)
+        player.teleport_cd = max(0.0, getattr(player, "teleport_cd", 0.0) - dt)
+        player.skill_flash["blast"] = max(0.0, float(player.skill_flash.get("blast", 0.0)) - dt)
+        player.skill_flash["teleport"] = max(0.0, float(player.skill_flash.get("teleport", 0.0)) - dt)
         # --- NEW: Telegraph/Acid 更新 + 减速衰减 ---
         game_state.update_telegraphs(dt)  # 倒计时→到时生成酸池
         game_state.update_acids(dt, player)  # 酸池伤害&施加 slow_t
@@ -11746,6 +11951,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         # input
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, "targeting_skill", None):
+                player.targeting_skill = None
+                continue
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
                                                    obstacles=game_state.obstacles)
@@ -11771,7 +11979,39 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         max_wave_reached=wave_index
                     )
                     return 'exit', None, bg
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                if getattr(player, "blast_cd", 0.0) <= 0.0:
+                    player.targeting_skill = "blast"
+                    _update_skill_target(player, game_state)
+                else:
+                    player.skill_flash["blast"] = 0.35
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+                if getattr(player, "teleport_cd", 0.0) <= 0.0:
+                    player.targeting_skill = "teleport"
+                    _update_skill_target(player, game_state)
+                else:
+                    player.skill_flash["teleport"] = 0.35
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and getattr(player, "targeting_skill", None):
+                _update_skill_target(player, game_state)
+                if player.targeting_skill == "blast":
+                    if player.skill_target_valid and _cast_fixed_point_blast(player, game_state, zombies, player.skill_target_pos):
+                        player.blast_cd = float(BLAST_COOLDOWN)
+                        player.targeting_skill = None
+                    else:
+                        player.skill_flash["blast"] = 0.35
+                elif player.targeting_skill == "teleport":
+                    if player.skill_target_valid and _teleport_player_to(player, game_state, player.skill_target_pos):
+                        player.teleport_cd = float(TELEPORT_COOLDOWN)
+                        player.targeting_skill = None
+                    else:
+                        player.skill_flash["teleport"] = 0.35
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and getattr(player, "targeting_skill", None):
+                player.targeting_skill = None
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, "targeting_skill", None):
+                player.targeting_skill = None
         # movement & pickups
+        if getattr(player, "targeting_skill", None):
+            _update_skill_target(player, game_state)
         keys = pygame.key.get_pressed()
         # ---- slow 计时衰减 + 电告圈与酸池更新（在移动之前）----
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
@@ -11788,6 +12028,11 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         game_state.update_aegis_pulses(dt, player, zombies)
         game_state.collect_heals(player)
         tick_aegis_pulse(player, game_state, zombies, dt)
+        # Active skill cooldowns
+        player.blast_cd = max(0.0, getattr(player, "blast_cd", 0.0) - dt)
+        player.teleport_cd = max(0.0, getattr(player, "teleport_cd", 0.0) - dt)
+        player.skill_flash["blast"] = max(0.0, float(player.skill_flash.get("blast", 0.0)) - dt)
+        player.skill_flash["teleport"] = max(0.0, float(player.skill_flash.get("teleport", 0.0)) - dt)
         # Autofire
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
         target, dist = find_target()
