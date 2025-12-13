@@ -12381,6 +12381,7 @@ if __name__ == "__main__":
         globals()["_pending_shop"] = False
         globals().pop("_last_spoils", None)
         globals().pop("_next_biome", None)
+        globals().pop("_last_biome", None)
     while True:
         # If we saved while in the shop last time, reopen the shop first
         if globals().get("_pending_shop", False):
@@ -12415,6 +12416,10 @@ if __name__ == "__main__":
                     globals()["_carry_player_state"] = None
                     globals()["_pending_shop"] = False
                     globals().pop("_last_spoils", None)
+                    globals().pop("_next_biome", None)
+                    globals().pop("_last_biome", None)
+                    globals().pop("_last_biome", None)
+                    globals().pop("_next_biome", None)
                 continue  # back to loop top
             elif action == "restart":
                 META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
@@ -12559,8 +12564,12 @@ if __name__ == "__main__":
                     globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
                 else:
                     clear_save()
+                    reset_run_state()
                     current_level = 0
                     globals()["_carry_player_state"] = None
+                    globals()["_pending_shop"] = False
+                    globals().pop("_next_biome", None)
+                    globals().pop("_last_biome", None)
                 continue  # back to the top-level loop
             elif action in ("restart", "retry"):
                 # restart this level as a fresh run
@@ -12602,8 +12611,11 @@ if __name__ == "__main__":
                     current_level = int(save_data.get("current_level", 0))
             else:
                 clear_save()
+                reset_run_state()
                 current_level = 0
                 globals()["_carry_player_state"] = None
+                globals().pop("_next_biome", None)
+                globals().pop("_last_biome", None)
 # TODO
 # Attack MODE need to figure out
 # The item collection system can be hugely impact this game to next level
