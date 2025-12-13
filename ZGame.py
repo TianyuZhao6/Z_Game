@@ -1012,7 +1012,7 @@ CHARGE_SPEED = 3.0
 # ===== Coin Bandit（金币大盗）常量 =====
 BANDIT_MIN_LEVEL_IDX = 2  # 前两关不出现（0基索引：2=第三关）
 BANDIT_SPAWN_CHANCE_PER_WAVE = 0.28  # 每个非Boss波次独立检定（每关最多1只）
-BANDIT_BASE_HP = 150
+BANDIT_BASE_HP = 150  
 BANDIT_BASE_SPEED = 2.35  # 相对普通僵尸更快（再叠加z_level等成长）
 BANDIT_ESCAPE_TIME_BASE = 18.0  # 逃跑倒计时（秒）
 BANDIT_ESCAPE_TIME_MIN = 10.0  # 下限
@@ -9236,7 +9236,7 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, playe
     z.escape_timer = 0.0
     # --- 生命值 = max(基础血, 玩家DPS × 4) ---
     dps = float(player_dps) if player_dps is not None else float(compute_player_dps(None))
-    target_hp = int(math.ceil(BANDIT_BASE_HP + dps * 4.0))
+    target_hp = int(math.ceil(BANDIT_BASE_HP + dps * 3.5))
     z.max_hp = target_hp
     z.hp = target_hp
     z.attack = 1  # 不是用来打人的
