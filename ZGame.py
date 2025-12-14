@@ -8136,6 +8136,9 @@ class Bullet:
         # 1) zombies
         for z in list(zombies):
             if r.colliderect(z.rect):
+                # --- HIT SPARK ---
+                # Cyan/White sparks on hit
+                game_state.fx.spawn_explosion(self.x, self.y, (0, 255, 255), count=6)
                 # --- crit roll (use player's stats if available) ---
                 crit_p = float(getattr(player, "crit_chance", CRIT_CHANCE_BASE))
                 crit_m = float(getattr(player, "crit_mult", CRIT_MULT_BASE))
@@ -8188,7 +8191,16 @@ class Bullet:
                 hp_lost = max(0, hp_before - max(z.hp, 0))
                 if z.hp <= 0 and not getattr(z, "_death_processed", False):
                     z._death_processed = True  # Prevent duplicate death processing
+                    # --- DEATH EXPLOSION ---
                     cx, cy = z.rect.centerx, z.rect.centery
+                    if getattr(z, "is_boss", False):
+                        # Huge Red/Gold explosion for boss
+                        game_state.fx.spawn_explosion(cx, cy, (255, 100, 50), count=150)
+                    else:
+                        # Standard enemy death (Green/Purple)
+                        game_state.fx.spawn_explosion(cx, cy, z.color, count=25)
+                        
+                    # cx, cy = z.rect.centerx, z.rect.centery
                     # --- Shrapnel Shells: on enemy death, spawn shrapnel splashes ---
                     shrap_lvl = int(META.get("shrapnel_level", 0))
                     if (shrap_lvl > 0
@@ -9937,6 +9949,8 @@ class GameState:
         self._vuln_mark_cd: float = 0.0
         # Wind biome: hurricanes (vortices)
         self.hurricanes: list[dict] = []
+        # --- PARTICLE SYSTEM ---
+        self.fx = ParticleSystem()
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -11196,6 +11210,26 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         game_state.draw_lanterns_iso(screen, camx, camy)
     else:
         game_state.draw_lanterns_topdown(screen, camx, camy)
+    # --- DRAW PARTICLES (ISO CORRECTED) ---
+    if hasattr(game_state, "fx"):
+        # We manually iterate particles to apply Isometric Projection
+        for p in game_state.fx.particles:
+            if p.size < 1: continue
+            
+            # 1. Convert World Pixels -> Grid Coordinates
+            gx = p.x / CELL_SIZE
+            gy = (p.y - INFO_BAR_HEIGHT) / CELL_SIZE
+            
+            # 2. Project Grid -> Isometric Screen Coordinates
+            # (Using the same function your walls/zombies use)
+            sx, sy = iso_world_to_screen(gx, gy, 0, camx, camy)
+            
+            # 3. Draw the glow
+            # We access GlowCache directly (imported from effects)
+            glow = GlowCache.get_glow_surf(p.size, p.color)
+            
+            # Center the particle image at the projected screen coordinates
+            screen.blit(glow, (sx - p.size, sy - p.size), special_flags=pygame.BLEND_ADD)
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
     #    —— 为避免重复代码，可以把那段 HUD 抽成一个小函数，这里调用即可。
@@ -11760,6 +11794,9 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.update_hurricanes(dt, player, zombies, bullets, enemy_shots)
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
+
+        # --- UPDATE PARTICLES ---
+        game_state.fx.update(dt)
         # --- Flow field refresh (rebuild ~each 0.30s or when goal/obstacles changed)
         ptile = (int(player.rect.centerx // CELL_SIZE),
                  int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE))
