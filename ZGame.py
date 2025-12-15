@@ -8690,6 +8690,43 @@ class CometCorpse:
             p.draw(screen, camx, camy)
 
 
+_comet_sfx = None
+
+
+def _play_comet_sfx():
+    """Load once and play the comet impact SFX if present."""
+    global _comet_sfx
+    try:
+        if not pygame.mixer.get_init():
+            pygame.mixer.init()
+    except Exception:
+        pass
+    if _comet_sfx is None:
+        here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
+        candidates = [
+            os.path.join(here, "assets", "comet.wav"),
+            os.path.join(os.getcwd(), "assets", "comet.wav"),
+            os.path.join(here, "Z_Game", "assets", "comet.wav"),
+            os.path.join(os.getcwd(), "Z_Game", "assets", "comet.wav"),
+        ]
+        _comet_sfx = False
+        for p in candidates:
+            if p and os.path.exists(p):
+                try:
+                    _comet_sfx = pygame.mixer.Sound(p)
+                    break
+                except Exception:
+                    _comet_sfx = False
+        # Keep _comet_sfx as False to skip future lookups if load failed
+    if _comet_sfx is False:
+        return
+    try:
+        _comet_sfx.set_volume(max(0.0, min(1.0, float(FX_VOLUME) / 100.0)))
+        _comet_sfx.play()
+    except Exception:
+        pass
+
+
 class CometBlast:
     """
     The 'Q' Skill. 
@@ -8770,6 +8807,7 @@ class CometBlast:
 
     def _do_impact(self):
         self.state = "impact"
+        _play_comet_sfx()
         if self._impact_cb: self._impact_cb()
         
         # 1. Ground Shockwaves (Purely visual rings)
