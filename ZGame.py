@@ -3900,23 +3900,28 @@ def iso_screen_to_world_px(sx: float, sy: float, camx: float, camy: float) -> tu
     return float(wx * CELL_SIZE), float(wy * CELL_SIZE + INFO_BAR_HEIGHT)
 
 
-def _cast_fixed_point_blast(player, game_state, zombies, target_pos) -> bool:
-    """Q-skill: rain bullets in a circle within player range. Returns True if fired."""
-    if player is None or game_state is None or target_pos is None:
-        return False
+def _apply_comet_blast_damage(player, game_state, zombies, target_pos) -> dict:
+    """Apply AoE damage at the locked blast point; returns stats for VFX intensity."""
     tx, ty = target_pos
     r2 = float(BLAST_RADIUS) * float(BLAST_RADIUS)
-    did_hit = False
+    hits = 0
+    kills = 0
     for z in list(zombies):
         zx, zy = z.rect.center
         dx, dy = zx - tx, zy - ty
         if dx * dx + dy * dy <= r2:
-            hits = random.randint(BLAST_HITS_MIN, BLAST_HITS_MAX)
+            hits += 1
+            hit_n = random.randint(BLAST_HITS_MIN, BLAST_HITS_MAX)
             dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ZOMBIE) * BLAST_DMG_MULT))
-            total = hits * dmg_per
-            z.hp = max(0, z.hp - total)
+            total = hit_n * dmg_per
+            before = int(getattr(z, "hp", 0))
+            z.hp = max(0, before - total)
+            z._comet_flash = max(0.2, float(getattr(z, "_comet_flash", 0.0)))
+            z._comet_shake = max(0.25, float(getattr(z, "_comet_shake", 0.0)))
             game_state.add_damage_text(zx, zy - 10, total, crit=False, kind="skill")
-            did_hit = True
+            if z.hp <= 0:
+                kills += 1
+                z._comet_death = True
     # Damage destructible obstacles in the blast
     for gp, ob in list(getattr(game_state, "obstacles", {}).items()):
         if getattr(ob, "type", "") != "Destructible":
@@ -3930,11 +3935,10 @@ def _cast_fixed_point_blast(player, game_state, zombies, target_pos) -> bool:
         dy = cy - ty
         if dx * dx + dy * dy > r2:
             continue
-        hits = random.randint(BLAST_HITS_MIN, BLAST_HITS_MAX)
+        hit_n = random.randint(BLAST_HITS_MIN, BLAST_HITS_MAX)
         dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ZOMBIE) * BLAST_DMG_MULT))
-        total = hits * dmg_per
+        total = hit_n * dmg_per
         ob.health = (ob.health or 0) - total
-        did_hit = True
         if ob.health <= 0:
             bx, by = rect.centerx, rect.centery
             del game_state.obstacles[gp]
@@ -3942,8 +3946,32 @@ def _cast_fixed_point_blast(player, game_state, zombies, target_pos) -> bool:
                 game_state.spawn_spoils(bx, by, 1)
             if player:
                 player.add_xp(XP_PLAYER_BLOCK)
-    # Show a center marker even if nothing was hit
     game_state.add_damage_text(int(tx), int(ty), "BLAST", crit=True, kind="skill")
+    # Camera shake intensity falls with distance to player
+    if player is not None and hasattr(game_state, "add_cam_shake"):
+        px, py = player.rect.center
+        dist = math.hypot(px - tx, py - ty)
+        near = max(0.0, 1.0 - dist / max(1.0, BLAST_CAST_RANGE * 1.25))
+        game_state.add_cam_shake(8.0 + 18.0 * near, duration=0.30 + 0.10 * near)
+    return {"hits": hits, "kills": kills}
+
+
+def _cast_fixed_point_blast(player, game_state, zombies, target_pos) -> bool:
+    """Q-skill: lock a target and drop a comet; damage is applied on impact."""
+    if player is None or game_state is None or target_pos is None:
+        return False
+    tx, ty = target_pos
+    # Spawn comet off-screen (left/right) and arc into the target
+    side = random.choice([-1, 1])
+    start_x = tx + side * (VIEW_W * 0.7 + BLAST_RADIUS * 0.5)
+    start_y = ty - VIEW_H * 0.8
+    travel = random.uniform(0.55, 0.80)
+    game_state.spawn_comet_blast(
+        (tx, ty),
+        (start_x, start_y),
+        travel,
+        impact_cb=lambda: _apply_comet_blast_damage(player, game_state, zombies, (tx, ty))
+    )
     return True
 
 
@@ -4008,7 +4036,7 @@ def _draw_skill_overlay(surface, player, camx, camy):
         draw_iso_ground_ellipse(surface, px, py, cast_range, ring_col, 60, camx, camy, fill=False, width=3)
         tx, ty = getattr(player, "skill_target_pos", (px, py))
         valid = bool(getattr(player, "skill_target_valid", False))
-        col_valid = (255, 120, 60) if skill == "blast" else (80, 210, 255)
+        col_valid = (255, 140, 70) if skill == "blast" else (80, 210, 255)
         col_invalid = (230, 60, 60)
         col = col_valid if valid else col_invalid
         if skill == "blast":
@@ -4017,17 +4045,17 @@ def _draw_skill_overlay(surface, player, camx, camy):
             rot = t * 0.6  # radians
             orbit_r = BLAST_RADIUS * 0.5
             # outer ring
-            draw_iso_ground_ellipse(surface, tx, ty, BLAST_RADIUS, col, 80 if valid else 50, camx, camy, fill=False,
+            draw_iso_ground_ellipse(surface, tx, ty, BLAST_RADIUS, col, 90 if valid else 50, camx, camy, fill=False,
                                     width=4)
             # center circle
-            draw_iso_ground_ellipse(surface, tx, ty, orbit_r, col, 70 if valid else 40, camx, camy, fill=False,
+            draw_iso_ground_ellipse(surface, tx, ty, orbit_r, col, 80 if valid else 40, camx, camy, fill=False,
                                     width=3)
             # six orbiting circles at 60° intervals
             for i in range(6):
                 ang = rot + math.tau * i / 6.0
                 ox = tx + math.cos(ang) * orbit_r
                 oy = ty + math.sin(ang) * orbit_r
-                draw_iso_ground_ellipse(surface, ox, oy, orbit_r, col, 70 if valid else 40, camx, camy, fill=False,
+                draw_iso_ground_ellipse(surface, ox, oy, orbit_r, col, 80 if valid else 40, camx, camy, fill=False,
                                         width=3)
         else:
             draw_iso_ground_ellipse(surface, tx, ty, max(20, player.size), col, 80 if valid else 50, camx, camy,
@@ -8582,6 +8610,248 @@ class TelegraphCircle:
         self.color = color
 
 
+# ==================== NEW HIGH-FIDELITY COMET SYSTEM ====================
+
+class NeuroParticle:
+    """
+    A 3D-aware particle for the comet system. 
+    Tracks x,y (ground) and z (height) separately for proper Iso projection.
+    """
+    __slots__ = ('x', 'y', 'z', 'vx', 'vy', 'vz', 'life', 'life0', 'size', 'color', 'drag')
+
+    def __init__(self, x, y, z, vx, vy, vz, life, size, color, drag=0.0):
+        self.x, self.y, self.z = float(x), float(y), float(z)
+        self.vx, self.vy, self.vz = float(vx), float(vy), float(vz)
+        self.life, self.life0 = float(life), float(life)
+        self.size = float(size)
+        self.color = color
+        self.drag = drag
+
+    def update(self, dt: float) -> bool:
+        self.life -= dt
+        if self.life <= 0: return False
+        
+        # Physics
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self.z += self.vz * dt
+        
+        # Gravity/Drag
+        if self.z > 0: self.vz -= 980.0 * dt # Heavy gravity
+        if self.z < 0: self.z = 0 # Floor bounce (optional, usually kill)
+        
+        if self.drag > 0:
+            self.vx *= (1.0 - self.drag * dt)
+            self.vy *= (1.0 - self.drag * dt)
+            
+        return True
+
+    def draw(self, screen, camx, camy):
+        # Calculate fade ratio
+        prog = self.life / self.life0
+        cur_size = int(self.size * prog)
+        if cur_size < 1: return
+
+        # ISO PROJECTION WITH Z-HEIGHT
+        # Convert world pixels -> grid coords
+        gx = self.x / CELL_SIZE
+        gy = (self.y - INFO_BAR_HEIGHT) / CELL_SIZE
+        # Project using the Z parameter
+        sx, sy = iso_world_to_screen(gx, gy, self.z, camx, camy)
+
+        # Draw Glow
+        # We assume GlowCache is available from your effects module
+        glow = GlowCache.get_glow_surf(cur_size, self.color)
+        screen.blit(glow, (sx - cur_size, sy - cur_size), special_flags=pygame.BLEND_ADD)
+
+
+class CometCorpse:
+    """Replaces the old corpse with a digital dissolution effect."""
+    def __init__(self, x, y, color, size):
+        self.particles = []
+        # Explode into digital cubes/pixels
+        for _ in range(15):
+            angle = random.uniform(0, 6.28)
+            speed = random.uniform(50, 180)
+            self.particles.append(NeuroParticle(
+                x, y, 10, # Start slightly off ground
+                math.cos(angle)*speed, math.sin(angle)*speed, random.uniform(100, 300),
+                life=random.uniform(0.4, 0.7),
+                size=random.uniform(4, 8),
+                color=color
+            ))
+
+    def update(self, dt):
+        self.particles = [p for p in self.particles if p.update(dt)]
+        return len(self.particles) > 0
+
+    def draw_iso(self, screen, camx, camy):
+        for p in self.particles:
+            p.draw(screen, camx, camy)
+
+
+class CometBlast:
+    """
+    The 'Q' Skill. 
+    Visually represents a high-energy neural packet arcing through the air.
+    """
+    def __init__(self, target: tuple[float, float], start: tuple[float, float],
+                 travel: float, on_impact=None, fx=None):
+        self.tx, self.ty = target # Ground target
+        self.sx, self.sy = start  # Ground start (virtual)
+        self.travel = max(0.1, float(travel))
+        self.elapsed = 0.0
+        self.state = "flight"
+        self._impact_cb = on_impact
+        self.fx = fx
+        
+        # Flight Physics
+        self.arc_height = 350.0 # Peak height in pixels
+        
+        # Visuals
+        self.particles = [] # Tail particles
+        self.impact_rings = [] # Expanding shockwaves on ground
+
+    @staticmethod
+    def _lerp(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
+        t = max(0.0, min(1.0, float(t)))
+        return tuple(int(aa + (bb - aa) * t) for aa, bb in zip(a, b))
+        
+    def get_current_pos_3d(self):
+        t = self.elapsed / self.travel
+        # Linear Ground movement
+        cx = self.sx + (self.tx - self.sx) * t
+        cy = self.sy + (self.ty - self.sy) * t
+        # Parabolic Z arc: sin(pi * t) * height
+        cz = math.sin(t * math.pi) * self.arc_height
+        return cx, cy, cz
+
+    def update(self, dt):
+        self.elapsed += dt
+        
+        if self.state == "flight":
+            cx, cy, cz = self.get_current_pos_3d()
+            
+            # Spawn Trail (High density for smooth look)
+            # We spawn multiple per frame to fill gaps
+            steps = 2
+            for i in range(steps):
+                # Interpolate slightly back in time to fill gaps
+                sub_t = dt * (i / steps)
+                # Jitter
+                jx = random.uniform(-5, 5)
+                jy = random.uniform(-5, 5)
+                jz = random.uniform(-5, 5)
+                
+                # Core (White/Cyan)
+                self.particles.append(NeuroParticle(
+                    cx + jx, cy + jy, cz + jz,
+                    0, 0, 0, # Stationary relative to world
+                    life=0.25, size=14, color=(200, 255, 255)
+                ))
+                # Outer Glow (Blue)
+                self.particles.append(NeuroParticle(
+                    cx + jx*2, cy + jy*2, cz + jz*2,
+                    random.uniform(-20,20), random.uniform(-20,20), random.uniform(-20,20),
+                    life=0.4, size=20, color=(0, 100, 255)
+                ))
+
+            if self.elapsed >= self.travel:
+                self._do_impact()
+
+        # Update particles
+        self.particles = [p for p in self.particles if p.update(dt)]
+        
+        # Update shockwaves
+        for r in self.impact_rings:
+            r['r'] += r['speed'] * dt
+            r['life'] -= dt
+        self.impact_rings = [r for r in self.impact_rings if r['life'] > 0]
+
+    def _do_impact(self):
+        self.state = "impact"
+        if self._impact_cb: self._impact_cb()
+        
+        # 1. Ground Shockwaves (Purely visual rings)
+        self.impact_rings.append({'r': 10, 'speed': 600, 'life': 0.4, 'w': 6, 'col': (0, 255, 255)})
+        self.impact_rings.append({'r': 10, 'speed': 300, 'life': 0.6, 'w': 3, 'col': (0, 100, 255)})
+        
+        # 2. Vertical Energy Pillar (Particles shooting UP)
+        for _ in range(40):
+            self.particles.append(NeuroParticle(
+                self.tx, self.ty, 10,
+                random.uniform(-150, 150), random.uniform(-150, 150), random.uniform(200, 800), # High Z velocity
+                life=random.uniform(0.5, 1.0),
+                size=random.uniform(6, 16),
+                color=(150, 255, 255),
+                drag=1.5
+            ))
+            
+        # 3. Ground debris
+        for _ in range(30):
+            angle = random.uniform(0, 6.28)
+            speed = random.uniform(200, 500)
+            self.particles.append(NeuroParticle(
+                self.tx, self.ty, 5,
+                math.cos(angle)*speed, math.sin(angle)*speed, random.uniform(50, 200),
+                life=random.uniform(0.3, 0.6),
+                size=random.uniform(4, 10),
+                color=(0, 200, 255)
+            ))
+
+    def done(self) -> bool:
+        return self.state == "impact" and len(self.particles) == 0 and len(self.impact_rings) == 0
+
+    def draw(self, screen, camx, camy):
+        # 1. Draw Targeting Ring (Ground Level)
+        # Pulse alpha
+        pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.01)
+        
+        # Only draw target ring if still flying (comet color seed-of-life)
+        if self.state == "flight":
+            comet_col = (80, 210, 255)
+            t = pygame.time.get_ticks() * 0.001
+            rot = t * 0.6
+            orbit_r = BLAST_RADIUS * 0.5
+            draw_iso_ground_ellipse(screen, self.tx, self.ty, BLAST_RADIUS, comet_col, 110 + 70 * pulse,
+                                    camx, camy, fill=False, width=4)
+            draw_iso_ground_ellipse(screen, self.tx, self.ty, orbit_r, comet_col, 90, camx, camy,
+                                    fill=False, width=3)
+            for i in range(6):
+                ang = rot + math.tau * i / 6.0
+                ox = self.tx + math.cos(ang) * orbit_r
+                oy = self.ty + math.sin(ang) * orbit_r
+                draw_iso_ground_ellipse(screen, ox, oy, orbit_r, comet_col, 90, camx, camy, fill=False, width=3)
+
+        # 2. Draw Impact Shockwaves (Ground Level)
+        for r in self.impact_rings:
+            alpha = int(255 * (r['life'] / 0.5))
+            alpha = max(0, min(255, alpha))
+            seed_col = self._lerp((70, 210, 255), (255, 120, 60), 1.0)
+            col = r.get('col', seed_col)
+            if not isinstance(col, (tuple, list)) or len(col) < 3:
+                col = seed_col
+            col = tuple(max(0, min(255, int(c))) for c in col[:3])
+            draw_iso_ground_ellipse(screen, self.tx, self.ty, r.get('r', BLAST_RADIUS),
+                                    col, alpha, camx, camy, fill=False, width=int(max(1, r.get('w', 3))))
+
+        # 3. Draw Comet Head (If flying)
+        if self.state == "flight":
+            cx, cy, cz = self.get_current_pos_3d()
+            # Draw Head Glow
+            head_size = 40
+            gx = cx / CELL_SIZE
+            gy = (cy - INFO_BAR_HEIGHT) / CELL_SIZE
+            sx, sy = iso_world_to_screen(gx, gy, cz, camx, camy)
+            
+            glow = GlowCache.get_glow_surf(head_size, (200, 255, 255))
+            screen.blit(glow, (sx - head_size, sy - head_size), special_flags=pygame.BLEND_ADD)
+
+        # 4. Draw Particles (Trails, Explosion Debris)
+        # Z-sorting particles makes it look better, but standard painter's algo is fine for add-blend
+        for p in self.particles:
+            p.draw(screen, camx, camy)
+
 class AegisPulseRing:
     """Lightweight visual token for recent Aegis Pulse waves."""
     def __init__(self, x: float, y: float, r: float, delay: float, expand_time: float,
@@ -9951,6 +10221,12 @@ class GameState:
         self.hurricanes: list[dict] = []
         # --- PARTICLE SYSTEM ---
         self.fx = ParticleSystem()
+        # --- Comet Blast VFX ---
+        self.comet_blasts: list[CometBlast] = []
+        self.comet_corpses: list[CometCorpse] = []
+        self._cam_shake_t = 0.0
+        self._cam_shake_total = 0.001
+        self._cam_shake_mag = 0.0
 
     def count_destructible_obstacles(self) -> int:
         return sum(1 for obs in self.obstacles.values() if obs.type == "Destructible")
@@ -10298,6 +10574,60 @@ class GameState:
             d.step(dt)
             if not d.alive():
                 self.dmg_texts.remove(d)
+
+    # --- Comet Blast helpers ---
+    def add_cam_shake(self, magnitude: float, duration: float = 0.25):
+        mag = max(0.0, float(magnitude))
+        dur = max(0.05, float(duration))
+        self._cam_shake_mag = max(self._cam_shake_mag, mag)
+        self._cam_shake_t = max(self._cam_shake_t, dur)
+        self._cam_shake_total = max(self._cam_shake_total, dur)
+
+    def update_camera_shake(self, dt: float):
+        self._cam_shake_t = max(0.0, float(getattr(self, "_cam_shake_t", 0.0)) - dt)
+        if self._cam_shake_t <= 0.0:
+            self._cam_shake_mag = 0.0
+
+    def camera_shake_offset(self) -> tuple[int, int]:
+        t = float(getattr(self, "_cam_shake_t", 0.0))
+        mag = float(getattr(self, "_cam_shake_mag", 0.0))
+        tot = float(getattr(self, "_cam_shake_total", 0.001))
+        if t <= 0.0 or mag <= 0.0:
+            return 0, 0
+        strength = mag * (t / max(0.001, tot))
+        ang = random.random() * math.tau
+        return int(math.cos(ang) * strength), int(math.sin(ang) * strength)
+
+    def spawn_comet_blast(self, target_pos: tuple[float, float], start_pos: tuple[float, float],
+                          travel: float, impact_cb=None) -> CometBlast:
+        cb = CometBlast(target_pos, start_pos, travel, on_impact=impact_cb, fx=self.fx)
+        self.comet_blasts.append(cb)
+        return cb
+
+    def update_comet_blasts(self, dt: float, player=None, zombies=None):
+        for b in list(self.comet_blasts):
+            b.update(dt)
+            if b.done():
+                self.comet_blasts.remove(b)
+        # decay comet hit flash/shake on zombies
+        if zombies is not None:
+            for z in zombies:
+                flash = float(getattr(z, "_comet_flash", 0.0))
+                if flash > 0.0:
+                    z._comet_flash = max(0.0, flash - dt * 4.5)
+                shake = float(getattr(z, "_comet_shake", 0.0))
+                if shake > 0.0:
+                    z._comet_shake = max(0.0, shake - dt * 4.0)
+        # corpses
+        self.comet_corpses = [c for c in self.comet_corpses if c.update(dt)]
+
+    def draw_comet_blasts(self, screen: pygame.Surface, camx: float, camy: float):
+        for b in getattr(self, "comet_blasts", []):
+            b.draw(screen, camx, camy)
+
+    def draw_comet_corpses(self, screen: pygame.Surface, camx: float, camy: float):
+        for c in getattr(self, "comet_corpses", []):
+            c.draw_iso(screen, camx, camy)
 
     def spawn_hurricane(self, x: float, y: float, r: float | None = None):
         if not hasattr(self, "hurricanes"):
@@ -10756,6 +11086,10 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
     else:
         camx, camy = calculate_iso_camera(player.x + player.size * 0.5,
                                           player.y + player.size * 0.5 + INFO_BAR_HEIGHT)
+    if hasattr(game_state, "camera_shake_offset"):
+        dx, dy = game_state.camera_shake_offset()
+        camx += dx
+        camy += dy
     screen.fill(MAP_BG)
     # 2) 画“地面网格”（只画视口周围一圈，避免全图遍历）
     #   估算可见格范围
@@ -10992,7 +11326,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             col = getattr(es, "color", HAZARD_STYLES["mist"]["ring"])
             pygame.draw.circle(screen, col, (data["cx"], data["cy"]), rad)
         elif kind == "zombie":
-            z, cx, cy = data["z"], data["cx"], data["cy"]
+            z, cx, cy = data["z"], float(data["cx"]), float(data["cy"])
             if getattr(z, "type", "") == "bandit" and getattr(z, "radar_tagged", False):
                 base_rr = max(24, int(getattr(z, "radius", 0) * 4.0))
                 phase = float(getattr(z, "radar_ring_phase", 0.0))
@@ -11010,6 +11344,14 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
                     fill=False,
                     width=4,
                 )
+            shake = float(getattr(z, "_comet_shake", 0.0))
+            if shake > 0.0:
+                amp = min(6.0, 10.0 * shake)
+                t = pygame.time.get_ticks() * 0.02 + z.rect.x * 0.03 + z.rect.y * 0.01
+                cx += math.sin(t) * amp
+                cy += math.cos(t * 1.4) * amp * 0.6
+            cx = int(round(cx))
+            cy = int(round(cy))
             player_size = int(CELL_SIZE * 0.6)
             if getattr(z, "is_boss", False) or getattr(z, "type", "") == "ravager":
                 draw_size = max(player_size, int(z.rect.w))
@@ -11032,6 +11374,14 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             # 本体
             base_col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
             col = getattr(z, "_current_color", getattr(z, "color", base_col))
+            flash = float(getattr(z, "_comet_flash", 0.0))
+            if flash > 0.0:
+                f = min(1.0, flash * 2.8)
+                col = (
+                    min(255, int(col[0] + (255 - col[0]) * f)),
+                    min(255, int(col[1] + (255 - col[1]) * f)),
+                    min(255, int(col[2] + (255 - col[2]) * f)),
+                )
             pygame.draw.rect(screen, col, body)
             if not getattr(z, "is_boss", False):
                 outline_rect = body.inflate(6, 6)
@@ -11204,6 +11554,10 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
     for g in getattr(game_state, "ghosts", []):
         g.draw_iso(screen, camx, camy)
     game_state.draw_hazards_iso(screen, camx, camy)
+    if hasattr(game_state, "draw_comet_blasts"):
+        game_state.draw_comet_blasts(screen, camx, camy)
+    if hasattr(game_state, "draw_comet_corpses"):
+        game_state.draw_comet_corpses(screen, camx, camy)
     if getattr(game_state, "fog_enabled", False):
         game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)
     if USE_ISO:
@@ -11797,6 +12151,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
 
         # --- UPDATE PARTICLES ---
         game_state.fx.update(dt)
+        game_state.update_comet_blasts(dt, player, zombies)
+        game_state.update_camera_shake(dt)
         # --- Flow field refresh (rebuild ~each 0.30s or when goal/obstacles changed)
         ptile = (int(player.rect.centerx // CELL_SIZE),
                  int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE))
@@ -11889,6 +12245,14 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             z.update_special(dt, player, zombies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):
                 z._death_processed = True  # Prevent duplicate death processing
+                if getattr(z, "_comet_death", False) and not getattr(z, "_comet_fx_done", False):
+                    z._comet_fx_done = True
+                    if hasattr(game_state, "comet_corpses"):
+                        body_size = max(int(z.rect.w), int(z.rect.h))
+                        game_state.comet_corpses.append(
+                            CometCorpse(z.rect.centerx, z.rect.centery, getattr(z, "color", (255, 60, 60)),
+                                        body_size)
+                        )
                 if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) is not None:
                     trigger_twin_enrage(z, zombies, game_state)
                 total_drop = int(SPOILS_PER_KILL) + int(getattr(z, "spoils", 0))
@@ -12241,6 +12605,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         game_state.update_vulnerability_marks(zombies, dt)
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
+        game_state.fx.update(dt)
+        game_state.update_comet_blasts(dt, player, zombies)
+        game_state.update_camera_shake(dt)
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt, player)
         game_state.collect_spoils(player.rect)
@@ -12323,6 +12690,14 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             z.update_special(dt, player, zombies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):
                 z._death_processed = True  # Prevent duplicate death processing
+                if getattr(z, "_comet_death", False) and not getattr(z, "_comet_fx_done", False):
+                    z._comet_fx_done = True
+                    if hasattr(game_state, "comet_corpses"):
+                        body_size = max(int(z.rect.w), int(z.rect.h))
+                        game_state.comet_corpses.append(
+                            CometCorpse(z.rect.centerx, z.rect.centery, getattr(z, "color", (255, 60, 60)),
+                                        body_size)
+                        )
                 total_drop = int(SPOILS_PER_KILL) + int(getattr(z, "spoils", 0))
                 if total_drop > 0:
                     game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
