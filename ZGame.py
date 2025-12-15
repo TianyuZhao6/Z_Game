@@ -3992,6 +3992,7 @@ def _teleport_player_to(player, game_state, target_pos) -> bool:
     player.rect = new_rect
     player.x = float(player.rect.x)
     player.y = float(player.rect.y - INFO_BAR_HEIGHT)
+    _play_teleport_sfx()
     return True
 
 
@@ -8690,41 +8691,60 @@ class CometCorpse:
             p.draw(screen, camx, camy)
 
 
-_comet_sfx = None
+_effect_sfx_cache: dict[str, pygame.mixer.Sound | bool] = {}
 
 
-def _play_comet_sfx():
-    """Load once and play the comet impact SFX if present."""
-    global _comet_sfx
+def _init_effect_mixer():
+    """Ensure mixer is ready before attempting to play SFX."""
     try:
         if not pygame.mixer.get_init():
             pygame.mixer.init()
     except Exception:
         pass
-    if _comet_sfx is None:
-        here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
-        candidates = [
-            os.path.join(here, "assets", "comet.wav"),
-            os.path.join(os.getcwd(), "assets", "comet.wav"),
-            os.path.join(here, "Z_Game", "assets", "comet.wav"),
-            os.path.join(os.getcwd(), "Z_Game", "assets", "comet.wav"),
-        ]
-        _comet_sfx = False
-        for p in candidates:
-            if p and os.path.exists(p):
-                try:
-                    _comet_sfx = pygame.mixer.Sound(p)
-                    break
-                except Exception:
-                    _comet_sfx = False
-        # Keep _comet_sfx as False to skip future lookups if load failed
-    if _comet_sfx is False:
+
+
+def _load_effect_sound(filename: str):
+    """Look up an effect sound under assets/Effect (fallback to legacy paths)."""
+    _init_effect_mixer()
+    if filename in _effect_sfx_cache:
+        return _effect_sfx_cache[filename]
+    candidates = [
+        os.path.join(BASE_DIR, "assets", "Effect", filename),
+        os.path.join(os.getcwd(), "assets", "Effect", filename),
+        os.path.join(BASE_DIR, "assets", filename),  # legacy fallback
+        os.path.join(os.getcwd(), "assets", filename),
+    ]
+    _effect_sfx_cache[filename] = False
+    for p in candidates:
+        if p and os.path.exists(p):
+            try:
+                _effect_sfx_cache[filename] = pygame.mixer.Sound(p)
+                break
+            except Exception:
+                _effect_sfx_cache[filename] = False
+    return _effect_sfx_cache[filename]
+
+
+def _play_effect_sfx(filename: str):
+    """Play an effect sound respecting the global FX volume slider."""
+    snd = _load_effect_sound(filename)
+    if not snd:
         return
     try:
-        _comet_sfx.set_volume(max(0.0, min(1.0, float(FX_VOLUME) / 100.0)))
-        _comet_sfx.play()
+        snd.set_volume(max(0.0, min(1.0, float(FX_VOLUME) / 100.0)))
+        snd.play()
     except Exception:
         pass
+
+
+def _play_comet_sfx():
+    """Play the comet impact SFX if present."""
+    _play_effect_sfx("comet.wav")
+
+
+def _play_teleport_sfx():
+    """Play the teleport confirm SFX if present."""
+    _play_effect_sfx("teleport.wav")
 
 
 class CometBlast:
