@@ -971,7 +971,7 @@ BOSS_ATK_MULT_EXTRA = 2.0
 BOSS_SPD_ADD_EXTRA = 1
 # ===== Boss1: Memory Devourer (腐蚀集群之心) =====
 # 数值：显著增厚血量与接触伤害
-MEMDEV_BASE_HP = 5300  # 以第5关为基准
+MEMDEV_BASE_HP = 2000  # 基于第5关
 MEMDEV_CONTACT_DAMAGE = 60  # 接触伤害提高
 MEMDEV_SPEED = 1.5  # 很慢（后续阶段再涨）
 # Boss 外形/占格（仅碰撞与显示，不改变地图阻挡规则）
@@ -7543,16 +7543,17 @@ class Zombie:
                 self.shield_t -= dt
                 if self.shield_t <= 0:
                     self.shield_hp = 0
-            if self.shield_cd <= 0.0:
-                cx, cy = self.rect.centerx, self.rect.centery
-                for z in zombies:
-                    zx, zy = z.rect.centerx, z.rect.centery
-                    if (zx - cx) ** 2 + (zy - cy) ** 2 <= SHIELD_RADIUS ** 2:
-                        z.shield_hp = SHIELD_AMOUNT
-                        z.shield_t = SHIELD_DURATION
-                self.shield_cd = SHIELD_COOLDOWN
+                if self.shield_cd <= 0.0:
+                    cx, cy = self.rect.centerx, self.rect.centery
+                    for z in zombies:
+                        zx, zy = z.rect.centerx, z.rect.centery
+                        if (zx - cx) ** 2 + (zy - cy) ** 2 <= SHIELD_RADIUS ** 2:
+                            z.shield_hp = SHIELD_AMOUNT
+                            z.shield_t = SHIELD_DURATION
+                    self.shield_cd = SHIELD_COOLDOWN
         # ==== 金币大盗：持续偷钱、计时逃脱 ====
         if getattr(self, "type", "") == "bandit":
+            bandit_wind_trapped = bool(getattr(self, "_wind_trapped", False))
             # 光环动画相位（1.2s 一次完整扩散）
             self._aura_t = (getattr(self, "_aura_t", 0.0) + dt / 1.2) % 1.0
             # 持续闪金光（维持金色淡晕）
