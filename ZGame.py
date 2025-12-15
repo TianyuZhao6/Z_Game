@@ -790,7 +790,7 @@ _next_biome = None  # 记录玩家本关在商店后选择的“下关场景”
 
 # Physics
 HURRICANE_ROTATION_SPEED = 6.0     # Radians/sec (Spin speed)
-HURRICANE_PULL_STRENGTH = 320.0    # Suction speed (pixels/sec)
+HURRICANE_PULL_STRENGTH = 180.0    # Suction speed (pixels/sec) — gentler pull
 HURRICANE_VORTEX_POWER = 450.0     # Orbital force (how hard it spins enemies)
 # Visuals
 TORNADO_FUNNEL_HEIGHT = 160        # Taller funnel
@@ -1233,11 +1233,11 @@ MARK_PULSE_BRIGHT = (255, 40, 40)
 mark_pulse_time = 0.0  # global pulse accumulator
 HURRICANE_START_RADIUS = CELL_SIZE * 1.2
 HURRICANE_MAX_RADIUS = CELL_SIZE * 6.0
-HURRICANE_GROWTH_RATE = 12.0  # px/s
-HURRICANE_RANGE_MULT = 3.0
-HURRICANE_PULL_STRENGTH = 280.0  # px/s pull toward center
-HURRICANE_PULL_GROWTH_MULT = 2.75  # extra pull scaling as the vortex grows (0→+500% at max size)
-HURRICANE_BULLET_PULL = 160.0
+HURRICANE_GROWTH_RATE = 8.0  # px/s (slower buildup)
+HURRICANE_RANGE_MULT = 2.6
+HURRICANE_PULL_STRENGTH = 180.0  # px/s pull toward center (reduced suction)
+HURRICANE_PULL_GROWTH_MULT = 2.0  # extra pull scaling as the vortex grows
+HURRICANE_BULLET_PULL = 140.0
 HURRICANE_SPIN_BASE = 2.4  # rad/s target angular speed for swirling bullets
 HURRICANE_SPIN_VARIANCE = 0.35  # ±35% variance when spawning a vortex
 HURRICANE_BULLET_SPIN_STEER = 4.0  # how quickly bullet velocity is steered toward the spin
@@ -10714,7 +10714,7 @@ class GameState:
         
         # --- Helper for mass-based resistance ---
         def _vortex_resist(ent):
-            resist = 1.0
+            resist = 0.8  # base dampening so pull feels lighter for everyone
             # Faster/larger entities resist more
             if float(getattr(ent, "speed", 0.0)) >= HURRICANE_ESCAPE_SPEED:
                 resist *= 0.4
