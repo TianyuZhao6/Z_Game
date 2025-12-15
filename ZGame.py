@@ -6711,9 +6711,11 @@ class Zombie:
         speed = float(min(Z_SPOIL_SPD_CAP, max(0.5, base_speed)))
         is_bandit = (getattr(self, "type", "") == "bandit")
         bandit_break_t = 0.0
+        bandit_wind_trapped = False
         if is_bandit:
             bandit_break_t = max(0.0, float(getattr(self, "bandit_break_t", 0.0)) - dt)
             self.bandit_break_t = bandit_break_t
+            bandit_wind_trapped = bool(getattr(self, "_wind_trapped", False))
         bandit_prev_pos = getattr(self, "_bandit_last_pos", (self.x, self.y))
         if not hasattr(self, "attack_timer"): self.attack_timer = 0.0
         self.attack_timer += dt
@@ -7596,8 +7598,13 @@ class Zombie:
                     cx, cy = self.rect.centerx, self.rect.centery
                     game_state.add_damage_text(cx, cy - 18, f"-{got}", crit=True, kind="hp")
             # 逃跑计时
-            self.escape_t = max(0.0, float(getattr(self, "escape_t", BANDIT_ESCAPE_TIME_BASE)) - dt)
-            if self.escape_t <= 0.0:
+            current_escape = float(getattr(self, "escape_t", BANDIT_ESCAPE_TIME_BASE))
+            if bandit_wind_trapped:
+                # Freeze the escape timer while trapped in wind to prevent fleeing
+                self.escape_t = max(0.0, current_escape)
+            else:
+                self.escape_t = max(0.0, current_escape - dt)
+            if self.escape_t <= 0.0 and not bandit_wind_trapped:
                 if game_state is not None:
                     # 小飘字（保留）
                     game_state.add_damage_text(self.rect.centerx, self.rect.centery, "ESCAPED", crit=False,
@@ -10709,6 +10716,10 @@ class GameState:
         return pos_x + nx * step, pos_y + ny * step
 
     def update_hurricanes(self, dt: float, player, zombies, bullets, enemy_shots=None):
+        # reset per-frame bandit trap flag; only re-enabled if actually in a wind influence ring this frame
+        for z in zombies:
+            if getattr(z, "type", "") == "bandit":
+                z._wind_trapped = False
         if not getattr(self, "hurricanes", None):
             return
         
@@ -10741,6 +10752,7 @@ class GameState:
             if not hasattr(h, "spin_dir"):
                 h.spin_dir = random.choice((-1.0, 1.0))
             h.update(dt)
+            effect_radius = h.r * HURRICANE_RANGE_MULT
             
             # 1. Pull Player
             dx, dy = h.apply_vortex_physics(player, dt, resist_scale=_vortex_resist(player))
@@ -10749,6 +10761,10 @@ class GameState:
             
             # 2. Pull Zombies
             for z in zombies:
+                if getattr(z, "type", "") == "bandit":
+                    dist_bandit = math.hypot(h.x - z.rect.centerx, h.y - z.rect.centery)
+                    if dist_bandit <= effect_radius:
+                        z._wind_trapped = True
                 dx, dy = h.apply_vortex_physics(z, dt, resist_scale=_vortex_resist(z))
                 if dx or dy:
                     collide_and_slide_circle(z, self.obstacles.values(), dx, dy)
