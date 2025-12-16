@@ -1335,6 +1335,7 @@ def reset_run_state():
         "aegis_pulse_level": 0,
         "run_items_spawned": 0,
         "run_items_collected": 0,
+        "bindings": dict(META.get("bindings", DEFAULT_BINDINGS)),
     })
     globals()["_carry_player_state"] = None
     globals()["_pending_shop"] = False
@@ -1354,6 +1355,7 @@ def _ensure_meta_defaults():
     """Fill in newly added META keys when loading older saves."""
     defaults = {
         "vuln_mark_level": 0,
+        "bindings": {},
     }
     for k, v in defaults.items():
         if k not in META:
@@ -1369,6 +1371,7 @@ def _load_meta_from_save(save_data: dict | None) -> None:
     save_data["meta"] = meta_in
     META.update(meta_in)
     _ensure_meta_defaults()
+    _apply_meta_bindings(meta_in)
 
 
 def mark_of_vulnerability_stats(level: int) -> tuple[float, float, float]:
@@ -1570,6 +1573,116 @@ DIRECTIONS = {
     pygame.K_w: (0, -1),
     pygame.K_s: (0, 1),
 }
+
+# === Input bindings (customizable) ===
+DEFAULT_BINDINGS = {
+    "move_up": pygame.K_w,
+    "move_down": pygame.K_s,
+    "move_left": pygame.K_a,
+    "move_right": pygame.K_d,
+    "blast": pygame.K_q,
+    "teleport": pygame.K_e,
+}
+# Live bindings the game uses
+BINDINGS = dict(DEFAULT_BINDINGS)
+BINDING_SCANCODES = {}
+_MANUAL_SCANCODES = {
+    pygame.K_UP: 82,
+    pygame.K_DOWN: 81,
+    pygame.K_LEFT: 80,
+    pygame.K_RIGHT: 79,
+}
+
+
+def _compute_scancode(keycode: int) -> int | None:
+    """Return a scancode for a pygame keycode, or None if unknown."""
+    sc = _MANUAL_SCANCODES.get(keycode)
+    try:
+        sc = sc if sc is not None else pygame.key.get_scancode_from_key(keycode)
+    except Exception:
+        sc = sc if sc is not None else None
+    if sc is None or sc < 0:
+        try:
+            sc = pygame.key.get_scancode_from_name(pygame.key.name(keycode))
+        except Exception:
+            sc = sc if sc is not None else None
+    if sc is not None and sc >= 0:
+        return sc
+    return None
+
+
+def _refresh_scancodes():
+    BINDING_SCANCODES.clear()
+    for action, keycode in BINDINGS.items():
+        sc = _compute_scancode(int(keycode))
+        if sc is not None:
+            BINDING_SCANCODES[action] = sc
+    # mirror into META for persistence
+    META["bindings"] = {k: int(v) for k, v in BINDINGS.items()}
+
+
+_refresh_scancodes()
+
+
+def _apply_meta_bindings(meta: dict):
+    """Load saved bindings from META into live bindings."""
+    saved = meta.get("bindings") if meta else None
+    if not isinstance(saved, dict):
+        return
+    for action, keycode in saved.items():
+        try:
+            set_binding(action, int(keycode))
+        except Exception:
+            continue
+    _refresh_scancodes()
+
+
+def action_key(action: str) -> int | None:
+    """Return the pygame keycode for a named action."""
+    return BINDINGS.get(action)
+
+
+def set_binding(action: str, keycode: int) -> None:
+    """Update the live binding for an action."""
+    if action in DEFAULT_BINDINGS and isinstance(keycode, int):
+        BINDINGS[action] = keycode
+        sc = _compute_scancode(keycode)
+        if sc is not None:
+            BINDING_SCANCODES[action] = sc
+        elif action in BINDING_SCANCODES:
+            BINDING_SCANCODES.pop(action, None)
+        META.setdefault("bindings", {})[action] = int(keycode)
+
+
+def binding_name(action: str) -> str:
+    """Human-friendly key name."""
+    key = action_key(action)
+    try:
+        return pygame.key.name(key).upper() if key is not None else "UNBOUND"
+    except Exception:
+        return "UNBOUND"
+
+
+def binding_pressed(keys, action: str) -> bool:
+    """Check if a binding is pressed given pygame.key.get_pressed().
+    Uses scancode mapping so large keycodes (e.g., arrow keys) still work."""
+    key = action_key(action)
+    if key is None:
+        return False
+    pressed = pygame.key.get_pressed()  # ensures we use pygame's full key mapping
+    sc = BINDING_SCANCODES.get(action)
+    if sc is not None and 0 <= sc < len(pressed) and pressed[sc]:
+        return True
+    # Fallback to pygame's keycode indexing (handles arrow key keycodes internally)
+    try:
+        return bool(pressed[key])
+    except Exception:
+        return False
+
+
+def is_action_event(event, action: str) -> bool:
+    """Shortcut for KEYDOWN on a given action binding."""
+    return event.type == pygame.KEYDOWN and event.key == action_key(action)
 # ==================== Save/Load Helpers ====================
 BASE_DIR = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
 SAVE_DIR = os.path.join(BASE_DIR, "TEMP")
@@ -4873,29 +4986,39 @@ def levelup_modal(screen, bg_surface, clock, time_left, player):
 
 
 def show_settings_popup(screen, background_surf):
-    """Volume settings with LIVE BGM updates and proper slider dragging/visual refresh."""
+    """Settings hub with category buttons and rebinding for core controls."""
     global FX_VOLUME, BGM_VOLUME
     clock = pygame.time.Clock()
-    # background overlay
     dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
     dim.fill((0, 0, 0, 170))
     bg_scaled = pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H))
-    panel_w, panel_h = min(520, VIEW_W - 80), min(360, VIEW_H - 160)
+    panel_w, panel_h = min(520, VIEW_W - 80), min(520, VIEW_H - 160)
     panel = pygame.Rect(0, 0, panel_w, panel_h)
     panel.center = (VIEW_W // 2, VIEW_H // 2)
     title_font = pygame.font.SysFont(None, 56)
-    font = pygame.font.SysFont(None, 30)
+    font = pygame.font.SysFont(None, 26)
+    section_font = pygame.font.SysFont(None, 28, bold=True)
     btn_font = pygame.font.SysFont(None, 32)
-    # local working values
+    # working values
     fx_val = int(FX_VOLUME)
     bgm_val = int(BGM_VOLUME)
     dragging = None  # None | "fx" | "bgm"
+    page = "root"  # "root" | "audio" | "controls"
+    waiting_action = None
+    ctrl_buttons: list[tuple[pygame.Rect, str]] = []
+
+    control_actions = [
+        ("Move Up", "move_up"),
+        ("Move Left", "move_left"),
+        ("Move Down", "move_down"),
+        ("Move Right", "move_right"),
+        ("Blast", "blast"),
+        ("Teleport", "teleport"),
+    ]
 
     def draw_slider(label, value, top_y):
-        # label
         screen.blit(font.render(f"{label}: {value}", True, UI_TEXT), (panel.left + 40, top_y))
-        # bar
-        bar = pygame.Rect(panel.left + 40, top_y + 26, panel_w - 80, 10)
+        bar = pygame.Rect(panel.left + 40, top_y + 24, panel_w - 80, 10)
         knob_x = bar.x + int((value / 100) * bar.width)
         pygame.draw.rect(screen, (60, 70, 90), bar, border_radius=6)
         pygame.draw.circle(screen, UI_ACCENT, (knob_x, bar.y + 5), 8)
@@ -4904,81 +5027,196 @@ def show_settings_popup(screen, background_surf):
     def val_from_bar(bar, mx):
         return max(0, min(100, int(((mx - bar.x) / max(1, bar.width)) * 100)))
 
-    def draw_ui(hover_close: bool):
-        # background & panel
+    def draw_root():
         screen.blit(bg_scaled, (0, 0))
         screen.blit(dim, (0, 0))
         pygame.draw.rect(screen, UI_PANEL, panel, border_radius=16)
         pygame.draw.rect(screen, UI_BORDER, panel, width=3, border_radius=16)
-        # title
-        screen.blit(title_font.render("Settings", True, UI_TEXT),
-                    (panel.centerx - 110, panel.top + 40))
-        # sliders
-        nonlocal fx_bar, bgm_bar, close_btn
-        fx_bar = draw_slider("Effects Volume", fx_val, panel.top + 110)
-        bgm_bar = draw_slider("BGM Volume", bgm_val, panel.top + 160)
-        # close button
-        btn_w, btn_h = 200, 56
+        title = title_font.render("Settings", True, UI_TEXT)
+        screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 60)))
+        btn_w, btn_h = 220, 56
+        audio_btn = pygame.Rect(0, 0, btn_w, btn_h)
+        ctrl_btn = pygame.Rect(0, 0, btn_w, btn_h)
         close_btn = pygame.Rect(0, 0, btn_w, btn_h)
-        close_btn.center = (panel.centerx, panel.bottom - 50)
-        draw_neuro_button(screen, close_btn, "CLOSE", btn_font,
-                          hovered=hover_close, disabled=False, t=pygame.time.get_ticks() * 0.001,
-                          show_spike=False)
+        audio_btn.center = (panel.centerx, panel.top + 160)
+        ctrl_btn.center = (panel.centerx, panel.top + 230)
+        close_btn.center = (panel.centerx, panel.bottom - 60)
+        draw_neuro_button(screen, audio_btn, "Audio", btn_font,
+                          hovered=audio_btn.collidepoint(pygame.mouse.get_pos()),
+                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
+        draw_neuro_button(screen, ctrl_btn, "Controls", btn_font,
+                          hovered=ctrl_btn.collidepoint(pygame.mouse.get_pos()),
+                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
+        draw_neuro_button(screen, close_btn, "Close", btn_font,
+                          hovered=close_btn.collidepoint(pygame.mouse.get_pos()),
+                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
         pygame.display.flip()
+        return audio_btn, ctrl_btn, close_btn
 
-    # initial draw
-    fx_bar = bgm_bar = close_btn = None
-    draw_ui(False)
+    def draw_audio():
+        screen.blit(bg_scaled, (0, 0))
+        screen.blit(dim, (0, 0))
+        pygame.draw.rect(screen, UI_PANEL, panel, border_radius=16)
+        pygame.draw.rect(screen, UI_BORDER, panel, width=3, border_radius=16)
+        title = title_font.render("Audio", True, UI_TEXT)
+        screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 60)))
+        nonlocal fx_bar, bgm_bar
+        fx_bar = draw_slider("Effects Volume", fx_val, panel.top + 120)
+        bgm_bar = draw_slider("BGM Volume", bgm_val, panel.top + 180)
+        btn_w, btn_h = 180, 52
+        back_btn = pygame.Rect(0, 0, btn_w, btn_h)
+        close_btn = pygame.Rect(0, 0, btn_w, btn_h)
+        back_btn.center = (panel.centerx - 100, panel.bottom - 60)
+        close_btn.center = (panel.centerx + 100, panel.bottom - 60)
+        draw_neuro_button(screen, back_btn, "Back", btn_font,
+                          hovered=back_btn.collidepoint(pygame.mouse.get_pos()),
+                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
+        draw_neuro_button(screen, close_btn, "Close", btn_font,
+                          hovered=close_btn.collidepoint(pygame.mouse.get_pos()),
+                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
+        pygame.display.flip()
+        return back_btn, close_btn
+
+    def draw_controls():
+        screen.blit(bg_scaled, (0, 0))
+        screen.blit(dim, (0, 0))
+        pygame.draw.rect(screen, UI_PANEL, panel, border_radius=16)
+        pygame.draw.rect(screen, UI_BORDER, panel, width=3, border_radius=16)
+        title = title_font.render("Controls", True, UI_TEXT)
+        screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 52)))
+        hint = font.render("Click an action, then press a key to rebind.", True, UI_TEXT)
+        screen.blit(hint, hint.get_rect(center=(panel.centerx, panel.top + 92)))
+        ctrl_buttons.clear()
+        start_y = panel.top + 130
+        row_h = 46
+        btn_w, btn_h = 180, 34
+        for idx, (label, action) in enumerate(control_actions):
+            y = start_y + idx * row_h
+            screen.blit(font.render(label, True, UI_TEXT), (panel.left + 36, y))
+            btn = pygame.Rect(0, 0, btn_w, btn_h)
+            btn.center = (panel.centerx + 80, y + btn_h // 2)
+            ctrl_buttons.append((btn, action))
+            text = "Press a key..." if waiting_action == action else binding_name(action)
+            draw_neuro_button(screen, btn, text, font,
+                              hovered=btn.collidepoint(pygame.mouse.get_pos()),
+                              disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
+        back_btn = pygame.Rect(0, 0, 160, 48)
+        close_btn = pygame.Rect(0, 0, 160, 48)
+        back_btn.center = (panel.centerx - 90, panel.bottom - 60)
+        close_btn.center = (panel.centerx + 90, panel.bottom - 60)
+        draw_neuro_button(screen, back_btn, "Back", btn_font,
+                          hovered=back_btn.collidepoint(pygame.mouse.get_pos()),
+                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
+        draw_neuro_button(screen, close_btn, "Close", btn_font,
+                          hovered=close_btn.collidepoint(pygame.mouse.get_pos()),
+                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
+        pygame.display.flip()
+        return back_btn, close_btn
+
+    # initial draw placeholders
+    fx_bar = bgm_bar = None
+    audio_btn = ctrl_btn = close_btn = None
     while True:
-        mx, my = pygame.mouse.get_pos()
-        hover_close = close_btn and close_btn.collidepoint((mx, my))
-        draw_ui(hover_close)
+        if page == "root":
+            audio_btn, ctrl_btn, close_btn = draw_root()
+        elif page == "audio":
+            back_btn, close_btn = draw_audio()
+        elif page == "controls":
+            back_btn, close_btn = draw_controls()
+        else:
+            page = "root"
+            continue
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit();
-                sys.exit()
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and waiting_action:
+                waiting_action = None
+                continue
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                # keep current values and exit
-                FX_VOLUME = fx_val;
+                FX_VOLUME = fx_val
                 BGM_VOLUME = bgm_val
                 if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
                     _bgm.set_volume(BGM_VOLUME / 100.0)
                 flush_events()
                 return "close"
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                mx, my = event.pos
-                if fx_bar and fx_bar.collidepoint((mx, my)):
-                    fx_val = val_from_bar(fx_bar, mx)
-                    FX_VOLUME = fx_val  # live apply for future SFX
-                    dragging = "fx"
-                elif bgm_bar and bgm_bar.collidepoint((mx, my)):
-                    bgm_val = val_from_bar(bgm_bar, mx)
-                    BGM_VOLUME = bgm_val
-                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                        _bgm.set_volume(BGM_VOLUME / 100.0)  # LIVE apply
-                    dragging = "bgm"
-                elif close_btn and close_btn.collidepoint((mx, my)):
-                    FX_VOLUME = fx_val;
-                    BGM_VOLUME = bgm_val
-                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                        _bgm.set_volume(BGM_VOLUME / 100.0)
-                    flush_events()
-                    return "close"
-            if event.type == pygame.MOUSEBUTTONUP:
-                dragging = None
-            if event.type == pygame.MOUSEMOTION and dragging:
-                mx, my = event.pos
-                if dragging == "fx" and fx_bar:
-                    fx_val = val_from_bar(fx_bar, mx)
-                    FX_VOLUME = fx_val
-                elif dragging == "bgm" and bgm_bar:
-                    bgm_val = val_from_bar(bgm_bar, mx)
-                    BGM_VOLUME = bgm_val
-                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                        _bgm.set_volume(BGM_VOLUME / 100.0)  # LIVE apply
-        # redraw each frame for smooth knob follow
-        hover_close = close_btn and close_btn.collidepoint(pygame.mouse.get_pos())
-        draw_ui(bool(hover_close))
+
+            if page == "root":
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mx, my = event.pos
+                    if audio_btn and audio_btn.collidepoint((mx, my)):
+                        page = "audio"; dragging = None
+                    elif ctrl_btn and ctrl_btn.collidepoint((mx, my)):
+                        page = "controls"; waiting_action = None
+                    elif close_btn and close_btn.collidepoint((mx, my)):
+                        FX_VOLUME = fx_val; BGM_VOLUME = bgm_val
+                        if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                            _bgm.set_volume(BGM_VOLUME / 100.0)
+                        flush_events()
+                        return "close"
+
+            elif page == "audio":
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mx, my = event.pos
+                    if fx_bar and fx_bar.collidepoint((mx, my)):
+                        fx_val = val_from_bar(fx_bar, mx)
+                        FX_VOLUME = fx_val
+                        dragging = "fx"
+                    elif bgm_bar and bgm_bar.collidepoint((mx, my)):
+                        bgm_val = val_from_bar(bgm_bar, mx)
+                        BGM_VOLUME = bgm_val
+                        if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                            _bgm.set_volume(BGM_VOLUME / 100.0)
+                        dragging = "bgm"
+                    elif back_btn and back_btn.collidepoint((mx, my)):
+                        page = "root"; dragging = None
+                    elif close_btn and close_btn.collidepoint((mx, my)):
+                        FX_VOLUME = fx_val; BGM_VOLUME = bgm_val
+                        if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                            _bgm.set_volume(BGM_VOLUME / 100.0)
+                        flush_events()
+                        return "close"
+                if event.type == pygame.MOUSEBUTTONUP:
+                    dragging = None
+                if event.type == pygame.MOUSEMOTION and dragging:
+                    mx, my = event.pos
+                    if dragging == "fx" and fx_bar:
+                        fx_val = val_from_bar(fx_bar, mx)
+                        FX_VOLUME = fx_val
+                    elif dragging == "bgm" and bgm_bar:
+                        bgm_val = val_from_bar(bgm_bar, mx)
+                        BGM_VOLUME = bgm_val
+                        if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                            _bgm.set_volume(BGM_VOLUME / 100.0)
+
+            elif page == "controls":
+                if waiting_action and event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        waiting_action = None
+                    else:
+                        set_binding(waiting_action, event.key)
+                        waiting_action = None
+                    continue
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    mx, my = event.pos
+                    clicked_any = False
+                    for rect, action in ctrl_buttons:
+                        if rect.collidepoint((mx, my)):
+                            waiting_action = action
+                            clicked_any = True
+                            break
+                    if clicked_any:
+                        continue
+                    if back_btn and back_btn.collidepoint((mx, my)):
+                        waiting_action = None
+                        page = "root"
+                    elif close_btn and close_btn.collidepoint((mx, my)):
+                        FX_VOLUME = fx_val; BGM_VOLUME = bgm_val
+                        if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                            _bgm.set_volume(BGM_VOLUME / 100.0)
+                        flush_events()
+                        return "close"
+
         clock.tick(60)
 
 
@@ -6366,16 +6604,16 @@ class Player:
                 self.hp = max(0, self.hp - int(total))
         # --- ISO 控制映射---
         mx = my = 0
-        if keys[pygame.K_w]:
+        if binding_pressed(keys, "move_up"):
             mx -= 1;
             my -= 1  # 屏幕↑
-        if keys[pygame.K_s]:
+        if binding_pressed(keys, "move_down"):
             mx += 1;
             my += 1  # 屏幕↓
-        if keys[pygame.K_a]:
+        if binding_pressed(keys, "move_left"):
             mx -= 1;
             my += 1  # 屏幕←
-        if keys[pygame.K_d]:
+        if binding_pressed(keys, "move_right"):
             mx += 1;
             my -= 1  # 屏幕→
         if mx != 0 or my != 0:
@@ -12145,11 +12383,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_q and getattr(player, "targeting_skill", None) == "blast":
+            if is_action_event(event, "blast") and getattr(player, "targeting_skill", None) == "blast":
                 player.targeting_skill = None
                 player.skill_target_origin = None
                 continue
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_e and getattr(player, "targeting_skill", None) == "teleport":
+            if is_action_event(event, "teleport") and getattr(player, "targeting_skill", None) == "teleport":
                 player.targeting_skill = None
                 player.skill_target_origin = None
                 continue
@@ -12179,14 +12417,14 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     save_progress(current_level=current_level,
                                   max_wave_reached=wave_index)
                     return 'exit', config.get('reward', None), bg
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+            if is_action_event(event, "blast"):
                 if getattr(player, "blast_cd", 0.0) <= 0.0:
                     player.targeting_skill = "blast"
                     player.skill_target_origin = None
                     _update_skill_target(player, game_state)
                 else:
                     player.skill_flash["blast"] = 0.35
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+            if is_action_event(event, "teleport"):
                 if getattr(player, "teleport_cd", 0.0) <= 0.0:
                     player.targeting_skill = "teleport"
                     player.skill_target_origin = None
@@ -12605,10 +12843,10 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         # input
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_q and getattr(player, "targeting_skill", None) == "blast":
+            if is_action_event(event, "blast") and getattr(player, "targeting_skill", None) == "blast":
                 player.targeting_skill = None
                 continue
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_e and getattr(player, "targeting_skill", None) == "teleport":
+            if is_action_event(event, "teleport") and getattr(player, "targeting_skill", None) == "teleport":
                 player.targeting_skill = None
                 continue
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, "targeting_skill", None):
@@ -12639,13 +12877,13 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         max_wave_reached=wave_index
                     )
                     return 'exit', None, bg
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+            if is_action_event(event, "blast"):
                 if getattr(player, "blast_cd", 0.0) <= 0.0:
                     player.targeting_skill = "blast"
                     _update_skill_target(player, game_state)
                 else:
                     player.skill_flash["blast"] = 0.35
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+            if is_action_event(event, "teleport"):
                 if getattr(player, "teleport_cd", 0.0) <= 0.0:
                     player.targeting_skill = "teleport"
                     _update_skill_target(player, game_state)
