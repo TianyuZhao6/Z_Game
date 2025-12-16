@@ -2423,7 +2423,10 @@ def _clear_level_start_baseline():
 def _capture_level_start_baseline(level_idx: int, player: "Player", game_state: "GameState" | None = None):
     """Record the exact state the first time we enter this level in this run."""
     globals()["_baseline_for_level"] = int(level_idx)
-    globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
+    # Snapshot level-start coins once per level so bandit thefts don't persist across restarts
+    if (globals().get("_baseline_for_level", None) != level_idx
+            or "_coins_at_level_start" not in globals()):
+        globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
     globals()["_player_level_baseline"] = {
         "level": int(getattr(player, "level", 1)),
         "xp": int(getattr(player, "xp", 0)),
@@ -2523,6 +2526,8 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
         game_state.spoils_gained = 0
     if hasattr(game_state, "_bandit_stolen"):
         game_state._bandit_stolen = 0
+    if hasattr(game_state, "level_coin_delta"):
+        game_state.level_coin_delta = 0
     if hasattr(game_state, "bandit_spawned_this_level"):
         game_state.bandit_spawned_this_level = False
     # 3) Restore the player's baseline snapshot (unchanged logic)
@@ -10553,6 +10558,7 @@ class GameState:
         self._fog_pulse_t: float = 0.0  # 呼吸脉冲
         self.spoils_gained = 0  # 本关临时获得
         self._bandit_stolen = 0  # 本关被盗总额（只用于提示）
+        self.level_coin_delta = 0  # 本关净金币变化（拾取-流失），仅用于内部计算
         self._spoils_settled = False  # 本关是否已完成“成功结算”
         self.bandit_spawned_this_level = False
         self.banner_text = None  # 当前横幅文字
@@ -10642,6 +10648,7 @@ class GameState:
             if pickup_rect.colliderect(s.rect):
                 self.spoils.remove(s)
                 self.spoils_gained += s.value
+                self.level_coin_delta += s.value
                 gained += s.value
         return gained
 
@@ -10686,6 +10693,10 @@ class GameState:
             rest = min(max(0, bank), amt)
             meta["spoils"] = bank - rest
             taken += rest
+        try:
+            self.level_coin_delta -= taken
+        except Exception:
+            pass
         return taken
 
     def spawn_heal(self, x_px: float, y_px: float, amount: int = HEAL_POTION_AMOUNT):
