@@ -1680,6 +1680,28 @@ def binding_pressed(keys, action: str) -> bool:
         return False
 
 
+def _bandit_death_notice(z, game_state):
+    """Fire a one-time banner/text when a bandit dies, regardless of damage source."""
+    if getattr(z, "type", "") != "bandit":
+        return
+    if getattr(z, "_bandit_notice_done", False):
+        return
+    z._bandit_notice_done = True
+    stolen = int(getattr(z, "_stolen_total", 0))
+    bonus = (int(stolen * BANDIT_BONUS_RATE) + int(BANDIT_BONUS_FLAT)) if stolen > 0 else 0
+    refund = stolen + bonus
+    if hasattr(game_state, "flash_banner"):
+        if refund > 0:
+            game_state.flash_banner(f"BANDIT DOWN — COINS +{refund}", sec=1.2)
+        else:
+            game_state.flash_banner("BANDIT DOWN", sec=1.2)
+    game_state.add_damage_text(
+        z.rect.centerx, z.rect.centery,
+        f"+{refund}" if refund > 0 else "BANDIT DOWN",
+        crit=True, kind="shield"
+    )
+
+
 def is_action_event(event, action: str) -> bool:
     """Shortcut for KEYDOWN on a given action binding."""
     return event.type == pygame.KEYDOWN and event.key == action_key(action)
@@ -6243,8 +6265,10 @@ def spawn_wave_with_budget(game_state: "GameState",
         zombies.append(bandit)
         game_state.bandit_spawned_this_level = True
         game_state.pending_focus = ("bandit", (cx, cy))
-        # 视觉提示 + 飘字
+        # 视觉提示 + 飘字 + 屏幕横幅，确保玩家注意到 Bandit 出现
         game_state.add_damage_text(cx, cy, "COIN BANDIT!", crit=True, kind="shield")
+        if hasattr(game_state, "flash_banner"):
+            game_state.flash_banner("COIN BANDIT!", sec=1.2)
         # 可选：地面金色提示圈（用 TelegraphCircle）
         if hasattr(game_state, "telegraphs"):
             game_state.telegraphs.append(
@@ -8471,15 +8495,16 @@ class Bullet:
                     if getattr(z, "is_boss", False):
                         # Huge Red/Gold explosion for boss
                         game_state.fx.spawn_explosion(cx, cy, (255, 100, 50), count=150)
-                    else:
-                        # Standard enemy death (Green/Purple)
-                        game_state.fx.spawn_explosion(cx, cy, z.color, count=25)
-                        
-                    # cx, cy = z.rect.centerx, z.rect.centery
-                    # --- Shrapnel Shells: on enemy death, spawn shrapnel splashes ---
-                    shrap_lvl = int(META.get("shrapnel_level", 0))
-                    if (shrap_lvl > 0
-                            and hp_lost > 0
+                else:
+                    # Standard enemy death (Green/Purple)
+                    game_state.fx.spawn_explosion(cx, cy, z.color, count=25)
+                    
+                _bandit_death_notice(z, game_state)
+                # cx, cy = z.rect.centerx, z.rect.centery
+                # --- Shrapnel Shells: on enemy death, spawn shrapnel splashes ---
+                shrap_lvl = int(META.get("shrapnel_level", 0))
+                if (shrap_lvl > 0
+                        and hp_lost > 0
                             and getattr(self, "source", "player") == "player"):
                         # chance scaling per level: 25%, 35%, 45% (cap at 80% if you later increase max_level)
                         base_chance = 0.25
@@ -12558,6 +12583,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             z.update_special(dt, player, zombies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):
                 z._death_processed = True  # Prevent duplicate death processing
+                _bandit_death_notice(z, game_state)
                 if getattr(z, "_comet_death", False) and not getattr(z, "_comet_fx_done", False):
                     z._comet_fx_done = True
                     if hasattr(game_state, "comet_corpses"):
@@ -13003,6 +13029,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             z.update_special(dt, player, zombies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):
                 z._death_processed = True  # Prevent duplicate death processing
+                _bandit_death_notice(z, game_state)
                 if getattr(z, "_comet_death", False) and not getattr(z, "_comet_fx_done", False):
                     z._comet_fx_done = True
                     if hasattr(game_state, "comet_corpses"):
