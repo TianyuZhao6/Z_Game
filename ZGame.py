@@ -1684,9 +1684,15 @@ def _bandit_death_notice(z, game_state):
     """Fire a one-time banner/text when a bandit dies, regardless of damage source."""
     if getattr(z, "type", "") != "bandit":
         return
+    if getattr(z, "hp", 1) > 0:
+        return
     if getattr(z, "_bandit_notice_done", False):
         return
     z._bandit_notice_done = True
+    # If a wanted poster is active, let the bounty banner take over.
+    wanted_active = bool(META.get("wanted_active", False) or getattr(game_state, "wanted_wave_active", False))
+    if wanted_active:
+        return
     stolen = int(getattr(z, "_stolen_total", 0))
     bonus = (int(stolen * BANDIT_BONUS_RATE) + int(BANDIT_BONUS_FLAT)) if stolen > 0 else 0
     refund = stolen + bonus
@@ -6265,10 +6271,11 @@ def spawn_wave_with_budget(game_state: "GameState",
         zombies.append(bandit)
         game_state.bandit_spawned_this_level = True
         game_state.pending_focus = ("bandit", (cx, cy))
-        # 视觉提示 + 飘字 + 屏幕横幅，确保玩家注意到 Bandit 出现
-        game_state.add_damage_text(cx, cy, "COIN BANDIT!", crit=True, kind="shield")
+        # 视觉提示：使用屏幕横幅确保可见；若不可用则退化为飘字
         if hasattr(game_state, "flash_banner"):
-            game_state.flash_banner("COIN BANDIT!", sec=1.2)
+            game_state.flash_banner("COIN BANDIT!", sec=1.5)
+        else:
+            game_state.add_damage_text(cx, cy, "COIN BANDIT!", crit=True, kind="shield")
         # 可选：地面金色提示圈（用 TelegraphCircle）
         if hasattr(game_state, "telegraphs"):
             game_state.telegraphs.append(
@@ -8495,16 +8502,15 @@ class Bullet:
                     if getattr(z, "is_boss", False):
                         # Huge Red/Gold explosion for boss
                         game_state.fx.spawn_explosion(cx, cy, (255, 100, 50), count=150)
-                else:
-                    # Standard enemy death (Green/Purple)
-                    game_state.fx.spawn_explosion(cx, cy, z.color, count=25)
-                    
-                _bandit_death_notice(z, game_state)
-                # cx, cy = z.rect.centerx, z.rect.centery
-                # --- Shrapnel Shells: on enemy death, spawn shrapnel splashes ---
-                shrap_lvl = int(META.get("shrapnel_level", 0))
-                if (shrap_lvl > 0
-                        and hp_lost > 0
+                    else:
+                        # Standard enemy death (Green/Purple)
+                        game_state.fx.spawn_explosion(cx, cy, z.color, count=25)
+
+                    _bandit_death_notice(z, game_state)
+                    # --- Shrapnel Shells: on enemy death, spawn shrapnel splashes ---
+                    shrap_lvl = int(META.get("shrapnel_level", 0))
+                    if (shrap_lvl > 0
+                            and hp_lost > 0
                             and getattr(self, "source", "player") == "player"):
                         # chance scaling per level: 25%, 35%, 45% (cap at 80% if you later increase max_level)
                         base_chance = 0.25
@@ -8536,25 +8542,27 @@ class Bullet:
                     if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) is not None:
                         trigger_twin_enrage(z, zombies, game_state)
                     # --- Splinter: if not yet split, split on death instead of dropping loot now ---
-                    if getattr(z, "_can_split", False) and not getattr(z, "_split_done", False) and getattr(z, "type",
-                                                                                                            "") == "splinter":
+                # --- Death-only handling: split, bandit refund, or normal loot/xp ---
+                if z.hp <= 0:
+                    # --- Splinter: if not yet split, split on death instead of dropping loot now ---
+                    if getattr(z, "_can_split", False) and not getattr(z, "_split_done", False) and getattr(z, "type", "") == "splinter":
                         z._split_done = True
                         z._can_split = False
                         # 生成子体；父体不掉落金币（避免三倍通胀），XP也交给后续击杀子体获得
                         spawn_splinter_children(z, zombies, game_state, level_idx=0, wave_index=0)
                         # 从场上移除父体
-                        zombies.remove(z)
+                        if z in zombies:
+                            zombies.remove(z)
                         self.alive = False
                         return
                     # ==== Coin Bandit：返还所有已偷 META 币 + 奖励 ====
-                    if getattr(z, "type", "") == "bandit":
+                    elif getattr(z, "type", "") == "bandit":
                         stolen = int(getattr(z, "_stolen_total", 0))
                         bonus = (int(stolen * BANDIT_BONUS_RATE) + int(BANDIT_BONUS_FLAT)) if stolen > 0 else 0
                         refund = stolen + bonus
-                        # ✨ Bandit 被击杀时给横幅
-                        game_state.flash_banner(f"BANDIT DOWN — COINS +{refund}", sec=1.0)
-                        game_state.add_damage_text(z.rect.centerx, z.rect.centery, f"+{refund}", crit=True,
-                                                   kind="shield")
+                        # Ensure death banner runs once (skips if wanted poster is active)
+                        if not getattr(z, "_bandit_notice_done", False):
+                            _bandit_death_notice(z, game_state)
                         if refund > 0:
                             game_state.spawn_spoils(cx, cy, refund)  # 掉一袋钱：玩家自己去捡
                         if META.get("wanted_active", False):
@@ -8572,7 +8580,21 @@ class Bullet:
                             player.add_xp(base_xp)
                             setattr(z, "_xp_awarded", True)
                         transfer_xp_to_neighbors(z, zombies)
-                        zombies.remove(z)
+                        if z in zombies:
+                            zombies.remove(z)
+                        # Bullet fate after a kill (pierce/ricochet handling matches normal deaths)
+                        if getattr(self, "source", "player") == "player":
+                            used_ricochet = False
+                            if try_ricochet(cx, cy):
+                                used_ricochet = True
+                            remaining_pierce = int(getattr(self, "pierce_left", 0))
+                            if remaining_pierce > 0:
+                                self.pierce_left = remaining_pierce - 1
+                                break
+                            if used_ricochet:
+                                break
+                        self.alive = False
+                        return
                     else:
                         # --- normal death (non-splinter or already split) ---
                         drop_n = roll_spoils_for_zombie(z)
@@ -8598,7 +8620,8 @@ class Bullet:
                             if getattr(z, "is_boss", False):
                                 trigger_twin_enrage(z, zombies, game_state)
                         transfer_xp_to_neighbors(z, zombies)
-                        zombies.remove(z)
+                        if z in zombies:
+                            zombies.remove(z)
                         # --- Bullet fate after hitting this enemy (hit, not just kill) ---
                         if getattr(self, "source", "player") == "player":
                             used_ricochet = False
