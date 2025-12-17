@@ -2207,6 +2207,11 @@ def save_progress(current_level: int,
             baseline_bundle["items"] = ib
         except Exception:
             pass
+    if "_consumable_baseline" in globals() and isinstance(globals()["_consumable_baseline"], dict):
+        try:
+            baseline_bundle["consumables"] = dict(globals()["_consumable_baseline"])
+        except Exception:
+            pass
     data = {
         "mode": "progress",
         "current_level": int(current_level),
@@ -2369,6 +2374,16 @@ def load_save() -> Optional[dict]:
                         }
                     except Exception:
                         pass
+                if isinstance(b.get("consumables"), dict):
+                    try:
+                        cb = b.get("consumables", {})
+                        globals()["_consumable_baseline"] = {
+                            "carapace_shield_hp": int(cb.get("carapace_shield_hp", 0)),
+                            "wanted_poster_waves": int(cb.get("wanted_poster_waves", 0)),
+                            "wanted_active": bool(cb.get("wanted_active", False)),
+                        }
+                    except Exception:
+                        pass
                 if isinstance(b.get("player"), dict):
                     _pbase = dict(b["player"])
                     # Back-compat: if meta_stats missing, seed from save meta
@@ -2416,6 +2431,7 @@ def _clear_level_start_baseline():
     globals().pop("_coins_at_shop_entry", None)
     globals().pop("_player_level_baseline", None)
     globals().pop("_items_run_baseline", None)
+    globals().pop("_consumable_baseline", None)
     globals().pop("_items_counted_level", None)
     globals().pop("_restart_from_shop", None)
 
@@ -2474,6 +2490,12 @@ def _capture_level_start_baseline(level_idx: int, player: "Player", game_state: 
         "spawned": base_spawn,
         "collected": base_collect,
         "count_this_level": lvl_items,
+    }
+    # Snapshot consumable props that can be depleted mid-level (e.g., Carapace shield, Wanted Poster charge)
+    globals()["_consumable_baseline"] = {
+        "carapace_shield_hp": int(META.get("carapace_shield_hp", 0)),
+        "wanted_poster_waves": int(META.get("wanted_poster_waves", 0)),
+        "wanted_active": bool(META.get("wanted_active", False)),
     }
 
 
@@ -2572,6 +2594,19 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
             game_state.biome_active = b.get("biome")
         # clean any queued level-up picks on a restart to prevent double-application
         player.levelup_pending = 0
+    # Restore consumable props to their level-start snapshot so retries don't stay depleted
+    consumables = globals().get("_consumable_baseline")
+    if isinstance(consumables, dict):
+        if "carapace_shield_hp" in consumables:
+            cap_hp = max(0, int(consumables.get("carapace_shield_hp", 0)))
+            META["carapace_shield_hp"] = cap_hp
+            player.carapace_hp = cap_hp
+            player._hud_shield_vis = cap_hp / float(max(1, player.max_hp)) if cap_hp > 0 else 0.0
+        if "wanted_poster_waves" in consumables:
+            META["wanted_poster_waves"] = max(0, int(consumables.get("wanted_poster_waves", 0)))
+        if "wanted_active" in consumables:
+            META["wanted_active"] = bool(consumables.get("wanted_active", False))
+            game_state.wanted_wave_active = bool(META.get("wanted_active", False))
 
 
 def has_save() -> bool:
@@ -12369,6 +12404,16 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         kind, gp_or_none, obj, cx, cy, d2 = best
         return (kind, gp_or_none, obj, cx, cy), (d2 ** 0.5)
 
+    # Back-compat: if we have a baseline for this level but no consumable snapshot (older saves),
+    # seed it from current META so restarts can still restore shields/charges.
+    if (int(globals().get("_baseline_for_level", -999)) == int(current_level)
+            and "_consumable_baseline" not in globals()):
+        globals()["_consumable_baseline"] = {
+            "carapace_shield_hp": int(META.get("carapace_shield_hp", 0)),
+            "wanted_poster_waves": int(META.get("wanted_poster_waves", 0)),
+            "wanted_active": bool(META.get("wanted_active", False)),
+        }
+
     # Assume current_level is the 0-based level index used everywhere else
     if int(globals().get("_baseline_for_level", -999)) != int(current_level):
         # First time entering this level in this run → capture
@@ -13229,6 +13274,11 @@ if __name__ == "__main__":
             META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
             META["run_items_spawned"] = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
             META["run_items_collected"] = int(globals().get("_run_items_collected_start", META.get("run_items_collected", 0)))
+            cb = globals().get("_consumable_baseline", {})
+            if isinstance(cb, dict):
+                META["carapace_shield_hp"] = int(cb.get("carapace_shield_hp", META.get("carapace_shield_hp", 0)))
+                META["wanted_poster_waves"] = int(cb.get("wanted_poster_waves", META.get("wanted_poster_waves", 0)))
+                META["wanted_active"] = bool(cb.get("wanted_active", False))
             globals().pop("_items_counted_level", None)
             globals().pop("_last_spoils", None)
             flush_events()
@@ -13278,13 +13328,18 @@ if __name__ == "__main__":
                 if not selection:
                     sys.exit()
                 mode, save_data = selection
-                # After a fail we always start fresh…
+                # After a fail we always start fresh
                 clear_save()
                 reset_run_state()
                 current_level = 0
                 continue
             else:
-                # action == "retry" → restart this level as a fresh run
+                # action == "retry" -> restart this level as a fresh run
+                cb = globals().get("_consumable_baseline", {})
+                if isinstance(cb, dict):
+                    META["carapace_shield_hp"] = int(cb.get("carapace_shield_hp", META.get("carapace_shield_hp", 0)))
+                    META["wanted_poster_waves"] = int(cb.get("wanted_poster_waves", META.get("wanted_poster_waves", 0)))
+                    META["wanted_active"] = bool(cb.get("wanted_active", False))
                 # globals()["_carry_player_state"] = capture_player_carry(player)
                 continue
         elif result == "success":
