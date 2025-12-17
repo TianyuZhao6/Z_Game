@@ -403,9 +403,9 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
             game_state.banner_text = None
 
 
-def _find_current_boss(zombies):
+def _find_current_boss(enemies):
     # 约定：任意 is_boss=True 的单位都当作 BOSS
-    for z in zombies:
+    for z in enemies:
         if getattr(z, "is_boss", False):
             return z
     return None
@@ -467,8 +467,8 @@ def draw_boss_hp_bar(screen, boss):
     screen.blit(vals, vals.get_rect(midleft=(bx + 8, by + bar_h + 4)))
 
 
-def _find_all_bosses(zombies):
-    return [z for z in zombies if getattr(z, "is_boss", False)]
+def _find_all_bosses(enemies):
+    return [z for z in enemies if getattr(z, "is_boss", False)]
 
 
 def draw_boss_hp_bars_twin(screen, bosses):
@@ -626,9 +626,9 @@ def apply_domain_buffs_for_level(game_state, player):
         player.speed = min(PLAYER_SPEED_CAP, max(1.0, player.speed / max(0.0001, prev_biome_mult)))
     player._biome_speed_mult = 1.0
     # Reset per-level knobs
-    game_state.biome_zombie_contact_mult = 1.0
+    game_state.biome_enemy_contact_mult = 1.0
     game_state.biome_boss_contact_mult = 1.0
-    game_state.biome_zombie_hp_mult = 1.0
+    game_state.biome_enemy_hp_mult = 1.0
     game_state.biome_boss_hp_mult = 1.0
     game_state.biome_bandit_hp_mult = 1.0
     game_state._fog_biome_forced = False
@@ -641,9 +641,9 @@ def apply_domain_buffs_for_level(game_state, player):
         # Tradeoff: foggy vision but +30% XP gains
         player.xp_gain_mult = 1.3
     elif b == "Scorched Hell":
-        # Player ×2; zombies ×2; bosses ×1.5
+        # Player ×2; enemies ×2; bosses ×1.5
         player.bullet_damage = int(player.bullet_damage * 2)
-        game_state.biome_zombie_contact_mult = 2.0
+        game_state.biome_enemy_contact_mult = 2.0
         game_state.biome_boss_contact_mult = 1.5
     elif b == "Bastion of Stone":
         player.shield_hp = int(round(player.max_hp * 0.50))
@@ -675,9 +675,9 @@ def apply_domain_buffs_for_level(game_state, player):
         player.speed = min(PLAYER_SPEED_CAP, max(1.0, player.speed * player._biome_speed_mult))
 
 
-def apply_biome_on_zombie_spawn(z, game_state):
+def apply_biome_on_enemy_spawn(z, game_state):
     """
-    Called right after a zombie (or bandit/boss) is created & appended.
+    Called right after a enemy (or bandit/boss) is created & appended.
     Only affects Bastion of Stone HP bump for now.
     """
     b = getattr(game_state, "biome_active", None)
@@ -760,7 +760,7 @@ def _get_sekuya_font(size: int) -> pygame.font.Font:
     return font
 # 角色圆形碰撞半径
 PLAYER_RADIUS = int(CELL_SIZE * 0.30)  # matches 0.6×CELL_SIZE footprint
-ZOMBIE_RADIUS = int(CELL_SIZE * 0.30)
+ENEMY_RADIUS = int(CELL_SIZE * 0.30)
 # 成长模式：'linear'（当前默认）或 'exp'（推荐）
 MON_SCALE_MODE = "exp"  # "linear" / "exp"
 MON_HP_GROWTH_PER_LEVEL = 0.08  # HP 每关 +8% 复利到软帽
@@ -776,9 +776,9 @@ MIN_ITEMS = 8  # ensure enough items on larger maps
 DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 4.5
 PLAYER_SPEED_CAP = 6.5
-ZOMBIE_SPEED = 2
-ZOMBIE_SPEED_MAX = 4.5
-ZOMBIE_ATTACK = 10
+ENEMY_SPEED = 2
+ENEMY_SPEED_MAX = 4.5
+ENEMY_ATTACK = 10
 # --- next-level scene buff cards ---
 SCENE_BIOMES = ["Domain of Wind", "Misty Forest", "Scorched Hell", "Bastion of Stone"]
 _next_biome = None  # 记录玩家本关在商店后选择的“下关场景”
@@ -814,9 +814,9 @@ SPLINTER_UNLOCK_LEVEL = 2  # 0-based: unlock at Lv3 (after level 2)
 SPOILS_PER_KILL = 3
 SPOILS_PER_BLOCK = 1
 # ----- spoils UI & drop tuning -----
-SPOILS_DROP_CHANCE = 0.35  # 35% drop chance on zombie deaths
+SPOILS_DROP_CHANCE = 0.35  # 35% drop chance on enemy deaths
 SPOILS_BLOCK_DROP_CHANCE = 0.50  # 50% 概率掉 1 枚（必要时再调）
-SPOILS_PER_TYPE = {  # average coins per zombie type (rounded when spawning)
+SPOILS_PER_TYPE = {  # average coins per enemy type (rounded when spawning)
     "basic": (1, 1),  # min, max
     "fast": (1, 2),
     "strong": (2, 3),
@@ -887,7 +887,7 @@ RAVAGER_DASH_TIME = 0.65
 RAVAGER_DASH_SPEED_MULT = 2.0
 XP_PLAYER_KILL = 6
 XP_PLAYER_BLOCK = 2
-XP_ZOMBIE_BLOCK = 3
+XP_ENEMY_BLOCK = 3
 XP_TRANSFER_RATIO = 0.7  # special → survivors
 # --- shop pricing (level-scaled) ---
 SHOP_PRICE_EXP = 1.12  # 每关指数涨幅（与 roguelite 节奏接近，10 关≈3.1x）
@@ -914,12 +914,12 @@ LOCKBOX_MAX_LEVEL = len(LOCKBOX_PROTECT_RATES)
 BANDIT_RADAR_SLOW_MULT = (0.92, 0.88, 0.84, 0.80)
 BANDIT_RADAR_SLOW_DUR = (2.0, 3.0, 4.0, 5.0)
 # ----- healing drop tuning -----
-HEAL_DROP_CHANCE_ZOMBIE = 0.08  # 8% when a zombie dies
+HEAL_DROP_CHANCE_ENEMY = 0.08  # 8% when a enemy dies
 HEAL_DROP_CHANCE_BLOCK = 0.03  # 3% when a destructible block is broken
 HEAL_POTION_AMOUNT = 6  # HP restored on pickup (capped to player.max_hp)
 HEAL_MAX_ON_FIELD = 18  # cap active heals to avoid clutter spikes (e.g., long boss waves)
-# ----- player XP rewards by zombie type -----
-XP_PER_ZOMBIE_TYPE = {
+# ----- player XP rewards by enemy type -----
+XP_PER_ENEMY_TYPE = {
     "basic": 6,
     "fast": 7,
     "ranged": 7,
@@ -931,15 +931,15 @@ XP_PER_ZOMBIE_TYPE = {
     "splinter": 8,
     "splinterling": 4,
 }
-XP_ZLEVEL_BONUS = 2  # bonus XP per zombie level above 1
-ZOMBIE_XP_TO_LEVEL = 15  # per level step for monsters
+XP_ZLEVEL_BONUS = 2  # bonus XP per enemy level above 1
+ENEMY_XP_TO_LEVEL = 15  # per level step for monsters
 PLAYER_XP_TO_LEVEL = 30  # base; scales by +20%
-# --- zombie spoils empowerment ---
+# --- enemy spoils empowerment ---
 Z_SPOIL_HP_PER = 1  # 每 1 金币：+1 MaxHP & +1 当期HP
 Z_SPOIL_ATK_STEP = 5  # 每 5 金币：+1 攻击
 Z_SPOIL_SPD_STEP = 10  # 每 10 金币：+0.5 速度
 Z_SPOIL_SPD_ADD = 0.5
-Z_SPOIL_SPD_CAP = float(ZOMBIE_SPEED_MAX)  # 速度上限（保持与你总上限一致）
+Z_SPOIL_SPD_CAP = float(ENEMY_SPEED_MAX)  # 速度上限（保持与你总上限一致）
 Z_SPOIL_XP_BONUS_PER = 1  # 击杀时额外经验=每枚金币+1 XP
 Z_GLOW_TIME = 0.35  # 捡到金币时金色光晕持续时间（秒）
 # ----- player XP curve tuning -----
@@ -1035,7 +1035,7 @@ MISTLING_BLAST_RADIUS = 70
 MISTLING_BLAST_DAMAGE = 18
 MISTLING_PULL_RADIUS = int(7.5 * CELL_SIZE)
 MISTLING_HEAL = 120
-XP_PER_ZOMBIE_TYPE["mistling"] = 5
+XP_PER_ENEMY_TYPE["mistling"] = 5
 MIST_RING_BURSTS = 3
 MIST_RING_PROJECTILES = 28
 MIST_RING_SPEED = 420.0
@@ -1107,7 +1107,7 @@ AFFIX_CHANCE_PER_LEVEL = 0.02
 AFFIX_CHANCE_MAX = 0.45
 # ----- spoils & XP inheritance tuning -----
 XP_INHERIT_RADIUS = 240  # px: who is "nearby" to inherit XP
-ZOMBIE_SIZE_MAX = int(CELL_SIZE * 1.8)  # cap size when buffed by XP
+ENEMY_SIZE_MAX = int(CELL_SIZE * 1.8)  # cap size when buffed by XP
 SPOIL_POP_VY = -30  # initial pop-up velocity for coin
 SPOIL_GRAVITY = 80  # settle speed for coin pop
 BOSS_EVERY_N_LEVELS = 5
@@ -1120,7 +1120,7 @@ FIRE_RATE = None  # shots per second; if None, derive from BULLET_SPACING_PX
 LEVEL_TIME_LIMIT = 45.0  # seconds per run
 BOSS_TIME_LIMIT = 60.0  # seconds for boss levels
 PLAYER_MAX_HP = 40  # player total health
-ZOMBIE_CONTACT_DAMAGE = 18  # damage per contact tick
+ENEMY_CONTACT_DAMAGE = 18  # damage per contact tick
 PLAYER_HIT_COOLDOWN = 0.6  # seconds of i-frames after taking contact damage
 # Fire-rate balance caps
 MAX_FIRERATE_MULT = 2.0  # hard cap on multiplier (≈2x base)
@@ -1129,14 +1129,14 @@ BULLET_SPEED = 1000.0  # pixels per second (controls travel speed)
 BULLET_SPACING_PX = 260.0  # desired spacing between bullets along their path
 BULLET_RADIUS = 4
 BULLET_RADIUS_MAX = 16
-BULLET_DAMAGE_ZOMBIE = 12
+BULLET_DAMAGE_ENEMY = 12
 BULLET_DAMAGE_BLOCK = 10
 ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
 PLAYER_RANGE_DEFAULT = 400.0  # pixels; baseline player shooting range
 PLAYER_RANGE_MAX = 800.0  # pixels; hard cap on player targeting/shooting range
 MAX_FIRE_RANGE = PLAYER_RANGE_DEFAULT  # legacy alias for the baseline range
 # --- Auto-turret tuning ---
-AUTO_TURRET_BASE_DAMAGE = max(1, BULLET_DAMAGE_ZOMBIE // 3)  # weak-ish bullets
+AUTO_TURRET_BASE_DAMAGE = max(1, BULLET_DAMAGE_ENEMY // 3)  # weak-ish bullets
 AUTO_TURRET_FIRE_INTERVAL = 0.9  # seconds between shots
 AUTO_TURRET_RANGE_MULT = 0.8  # fraction of player range
 AUTO_TURRET_OFFSET_RADIUS = 40.0  # distance from player center
@@ -1250,7 +1250,7 @@ META = {
     # —— 本轮累积资源 ——
     "spoils": 0,
     # —— 初始（基准）数值 ——（来自常量）
-    "base_dmg": BULLET_DAMAGE_ZOMBIE,
+    "base_dmg": BULLET_DAMAGE_ENEMY,
     "base_fire_cd": MIN_FIRE_COOLDOWN,  # 以冷却秒数作为基准
     "base_range": float(PLAYER_RANGE_DEFAULT),
     "base_speed": float(PLAYER_SPEED),
@@ -1296,7 +1296,7 @@ META = {
 def reset_run_state():
     META.update({
         "spoils": 0,
-        "base_dmg": BULLET_DAMAGE_ZOMBIE,
+        "base_dmg": BULLET_DAMAGE_ENEMY,
         "base_fire_cd": FIRE_COOLDOWN,
         "base_range": float(PLAYER_RANGE_DEFAULT),
         "base_speed": float(PLAYER_SPEED),
@@ -1384,7 +1384,7 @@ def mark_of_vulnerability_stats(level: int) -> tuple[float, float, float]:
     )
 
 
-def mark_bonus_for(z: "Zombie") -> float:
+def mark_bonus_for(z: "Enemy") -> float:
     if getattr(z, "hp", 0) <= 0:
         return 0.0
     if float(getattr(z, "_vuln_mark_t", 0.0)) <= 0.0:
@@ -1392,7 +1392,7 @@ def mark_bonus_for(z: "Zombie") -> float:
     return max(0.0, float(getattr(z, "_vuln_mark_bonus", 0.0)))
 
 
-def apply_vuln_bonus(z: "Zombie", dmg: int) -> int:
+def apply_vuln_bonus(z: "Enemy", dmg: int) -> int:
     """Scale incoming damage if the target is marked."""
     base = int(max(0, dmg))
     bonus = mark_bonus_for(z)
@@ -1465,8 +1465,8 @@ def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
 
 # resume flags
 _pending_shop = False  # if True, CONTINUE should open the shop first
-# --- zombie type colors (for rendering) ---
-ZOMBIE_COLORS = {
+# --- enemy type colors (for rendering) ---
+ENEMY_COLORS = {
     "basic": (200, 70, 70),
     "fast": (255, 160, 60),
     "tank": (120, 180, 255),
@@ -1483,26 +1483,26 @@ ZOMBIE_COLORS = {
 }
 # --- colors (add) ---
 BOSS_MEM_ENRAGED_COLOR = (102, 0, 102)
-ZOMBIE_COLORS.update({
+ENEMY_COLORS.update({
     "boss_mem": (170, 40, 200),  # 明亮紫色
     "boss_mem_enraged": (102, 0, 102),  # 暗紫色
     "corruptling": (120, 220, 120),  # 浅绿
     "boss_mist": (150, 140, 220),  # 冷紫
     "mist_clone": (180, 170, 240),  # 更浅，便于区分
 })
-ZOMBIE_COLORS["ravager"] = (120, 200, 230)  # dash-heavy brute
+ENEMY_COLORS["ravager"] = (120, 200, 230)  # dash-heavy brute
 # --- XP rewards (add) ---
-XP_PER_ZOMBIE_TYPE.update({
+XP_PER_ENEMY_TYPE.update({
     "boss_mem": 40,  # base 给足奖励；击杀时还有 is_boss 3x 乘区
     "corruptling": 5,
 })
-XP_PER_ZOMBIE_TYPE["ravager"] = 12
+XP_PER_ENEMY_TYPE["ravager"] = 12
 # --- wave spawning ---
 SPAWN_INTERVAL = 8.0
 SPAWN_BASE = 3
 SPAWN_GROWTH = 1
-ZOMBIE_CAP = 30
-# --- new zombie types tuning ---
+ENEMY_CAP = 30
+# --- new enemy types tuning ---
 RANGED_COOLDOWN = 1.2  # 远程怪开火间隔
 RANGED_PROJ_SPEED = 520.0
 RANGED_PROJ_DAMAGE = 12
@@ -1525,7 +1525,7 @@ THREAT_BUDGET_BASE = 6  # base points for level 0 (Lv1 in UI)
 THREAT_BUDGET_EXP = 1.18  # exponential growth per level (≈+18%/lvl feels roguelite)
 THREAT_BUDGET_MIN = 5  # never below this
 THREAT_BOSS_BONUS = 1.5  # first spawn on boss level gets +50% budget
-# cost per zombie type (integer points)
+# cost per enemy type (integer points)
 THREAT_COSTS = {
     "basic": 1,
     "fast": 2,
@@ -1561,10 +1561,10 @@ FX_VOLUME = 70  # 0-100
 BGM_VOLUME = 60  # 0-100
 
 LEVELS = [
-    {"obstacle_count": 15, "item_count": 3, "zombie_count": 1, "block_hp": 10, "zombie_types": ["basic"],
-     "reward": "zombie_fast"},
-    {"obstacle_count": 18, "item_count": 4, "zombie_count": 2, "block_hp": 15, "zombie_types": ["basic", "strong"],
-     "reward": "zombie_strong"},
+    {"obstacle_count": 15, "item_count": 3, "enemy_count": 1, "block_hp": 10, "enemy_types": ["basic"],
+     "reward": "enemy_fast"},
+    {"obstacle_count": 18, "item_count": 4, "enemy_count": 2, "block_hp": 15, "enemy_types": ["basic", "strong"],
+     "reward": "enemy_strong"},
 ]
 # 方向向量
 DIRECTIONS = {
@@ -2249,15 +2249,15 @@ def save_progress(current_level: int,
         print("save_progress error:", e)
 
 
-def capture_snapshot(game_state, player, zombies, current_level: int,
-                     chosen_zombie_type: str = "basic", bullets: Optional[List['Bullet']] = None) -> dict:
+def capture_snapshot(game_state, player, enemies, current_level: int,
+                     chosen_enemy_type: str = "basic", bullets: Optional[List['Bullet']] = None) -> dict:
     """Create a full mid-run snapshot of the current game state."""
     snap = {
         "mode": "snapshot",
         "version": 3,
         "meta": {
             "current_level": int(current_level),
-            "chosen_zombie_type": str(chosen_zombie_type or "basic"),
+            "chosen_enemy_type": str(chosen_enemy_type or "basic"),
             "biome": getattr(game_state, "biome_active", globals().get("_next_biome"))
         },
         "snapshot": {
@@ -2272,7 +2272,7 @@ def capture_snapshot(game_state, player, zombies, current_level: int,
                        "bone_plating_hp": int(getattr(player, "bone_plating_hp", 0)),
                        "bone_plating_cd": float(getattr(player, "_bone_plating_cd", BONE_PLATING_GAIN_INTERVAL)),
                        "aegis_pulse_cd": float(getattr(player, "_aegis_pulse_cd", 0.0))},
-            "zombies": [{
+            "enemies": [{
                 "x": float(z.x), "y": float(z.y),
                 "attack": int(getattr(z, "attack", 10)),
                 "speed": int(getattr(z, "speed", 2)),
@@ -2281,7 +2281,7 @@ def capture_snapshot(game_state, player, zombies, current_level: int,
                 "max_hp": int(getattr(z, "max_hp", getattr(z, "hp", 30))),
                 "spawn_elapsed": float(getattr(z, "_spawn_elapsed", 0.0)),
                 "attack_timer": float(getattr(z, "attack_timer", 0.0)),
-            } for z in zombies],
+            } for z in enemies],
             "obstacles": [{
                 "x": int(ob.rect.x // CELL_SIZE),
                 "y": int((ob.rect.y - INFO_BAR_HEIGHT) // CELL_SIZE),
@@ -2346,7 +2346,7 @@ def load_save() -> Optional[dict]:
         elif data["mode"] == "snapshot":
             data.setdefault("meta", {})
             data["meta"].setdefault("current_level", 0)
-            data["meta"].setdefault("chosen_zombie_type", "basic")
+            data["meta"].setdefault("chosen_enemy_type", "basic")
             data.setdefault("snapshot", {})
         # --- Hydrate baseline globals so CONTINUE can restore on level entry ---
         try:
@@ -2645,7 +2645,7 @@ def bullet_radius_for_damage(dmg: int) -> int:
     Base damage -> BULLET_RADIUS. As damage rises, the bonus eases in and
     asymptotically approaches BULLET_RADIUS_MAX.
     """
-    base = float(META.get("base_dmg", BULLET_DAMAGE_ZOMBIE)) or 1.0
+    base = float(META.get("base_dmg", BULLET_DAMAGE_ENEMY)) or 1.0
     ratio = max(0.0, float(dmg) / base)
     if ratio <= 1.0:
         r = BULLET_RADIUS
@@ -3384,13 +3384,13 @@ def compute_player_dps(p: "Player" | None) -> float:
     # Add a exeution CG like scenefor bosses(slow time, whole scene become red in backgrounf and black in figures)
     if p is None:
         # 兜底：用 META 粗估
-        base_dmg = BULLET_DAMAGE_ZOMBIE + float(META.get("dmg", 0))
+        base_dmg = BULLET_DAMAGE_ENEMY + float(META.get("dmg", 0))
         # 使用玩家默认冷却推导攻速
         dummy = 1.0 / max(1e-6, FIRE_COOLDOWN / max(0.1, float(META.get("firerate_mult", 1.0))))
         cc = float(META.get("crit", 0.0))
         cm = float(CRIT_MULT_BASE)
         return base_dmg * dummy * (1.0 + max(0.0, min(1.0, cc)) * (cm - 1.0))
-    dmg = float(getattr(p, "bullet_damage", BULLET_DAMAGE_ZOMBIE + META.get("dmg", 0)))
+    dmg = float(getattr(p, "bullet_damage", BULLET_DAMAGE_ENEMY + META.get("dmg", 0)))
     sps = 1.0 / max(1e-6, p.fire_cooldown())  # 用 Player 的实际冷却（含攻速加成）
     cc = max(0.0, min(1.0, float(getattr(p, "crit_chance", 0.0))))
     cm = float(getattr(p, "crit_mult", CRIT_MULT_BASE))
@@ -3419,7 +3419,7 @@ def draw_settings_gear(screen, x, y):
 INSTRUCTION_LINES = [
     "WASD to move. Survive until the timer hits 00:00 to win.",
     "Break yellow blocks to reach hidden fragments.",
-    "Zombies deal contact damage. Avoid or kite them.",
+    "Enemies deal contact damage. Avoid or kite them.",
     "Auto-fire targets the closest enemy/block in range.",
     "Bandits: Radar tags them in red; intercept before they flee.",
     "Shop between levels to upgrade (turrets, bullets, economy).",
@@ -4081,19 +4081,19 @@ def iso_screen_to_world_px(sx: float, sy: float, camx: float, camy: float) -> tu
     return float(wx * CELL_SIZE), float(wy * CELL_SIZE + INFO_BAR_HEIGHT)
 
 
-def _apply_comet_blast_damage(player, game_state, zombies, target_pos) -> dict:
+def _apply_comet_blast_damage(player, game_state, enemies, target_pos) -> dict:
     """Apply AoE damage at the locked blast point; returns stats for VFX intensity."""
     tx, ty = target_pos
     r2 = float(BLAST_RADIUS) * float(BLAST_RADIUS)
     hits = 0
     kills = 0
-    for z in list(zombies):
+    for z in list(enemies):
         zx, zy = z.rect.center
         dx, dy = zx - tx, zy - ty
         if dx * dx + dy * dy <= r2:
             hits += 1
             hit_n = random.randint(BLAST_HITS_MIN, BLAST_HITS_MAX)
-            dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ZOMBIE) * BLAST_DMG_MULT))
+            dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ENEMY) * BLAST_DMG_MULT))
             total = hit_n * dmg_per
             before = int(getattr(z, "hp", 0))
             z.hp = max(0, before - total)
@@ -4117,7 +4117,7 @@ def _apply_comet_blast_damage(player, game_state, zombies, target_pos) -> dict:
         if dx * dx + dy * dy > r2:
             continue
         hit_n = random.randint(BLAST_HITS_MIN, BLAST_HITS_MAX)
-        dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ZOMBIE) * BLAST_DMG_MULT))
+        dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ENEMY) * BLAST_DMG_MULT))
         total = hit_n * dmg_per
         ob.health = (ob.health or 0) - total
         if ob.health <= 0:
@@ -4137,7 +4137,7 @@ def _apply_comet_blast_damage(player, game_state, zombies, target_pos) -> dict:
     return {"hits": hits, "kills": kills}
 
 
-def _cast_fixed_point_blast(player, game_state, zombies, target_pos) -> bool:
+def _cast_fixed_point_blast(player, game_state, enemies, target_pos) -> bool:
     """Q-skill: lock a target and drop a comet; damage is applied on impact."""
     if player is None or game_state is None or target_pos is None:
         return False
@@ -4151,7 +4151,7 @@ def _cast_fixed_point_blast(player, game_state, zombies, target_pos) -> bool:
         (tx, ty),
         (start_x, start_y),
         travel,
-        impact_cb=lambda: _apply_comet_blast_damage(player, game_state, zombies, (tx, ty))
+        impact_cb=lambda: _apply_comet_blast_damage(player, game_state, enemies, (tx, ty))
     )
     return True
 
@@ -4600,7 +4600,7 @@ def show_pause_menu(screen, background_surf):
     y_offset += 40
     # ======= CURRENT + BASED-ON-LV1 READOUT =======
     p = globals().get("_pause_player_ref", None)
-    base_dmg = int(META.get("base_dmg", BULLET_DAMAGE_ZOMBIE))
+    base_dmg = int(META.get("base_dmg", BULLET_DAMAGE_ENEMY))
     base_cd = float(META.get("base_fire_cd", FIRE_COOLDOWN))
     base_range = clamp_player_range(META.get("base_range", PLAYER_RANGE_DEFAULT))
     base_speed = float(META.get("base_speed", PLAYER_SPEED))
@@ -6213,16 +6213,16 @@ def _pick_type_by_budget(rem: int, level_idx_zero_based: int) -> Optional[str]:
     return choices[-1][0]
 
 
-def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Zombie"], want: int) -> List[
+def _spawn_positions(game_state: "GameState", player: "Player", enemies: List["Enemy"], want: int) -> List[
     Tuple[int, int]]:
-    """Reuse your existing constraints: not blocked, not too close to player, not overlapping zombies."""
+    """Reuse your existing constraints: not blocked, not too close to player, not overlapping enemies."""
     all_pos = [(x, y) for x in range(GRID_SIZE) for y in range(GRID_SIZE)]
     blocked = set(game_state.obstacles.keys()) | set((i.x, i.y) for i in getattr(game_state, "items", []))
     px, py = int(player.rect.centerx // CELL_SIZE), int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE)
     # Manhattan ≥ 6 tiles from player like before
     cand = [p for p in all_pos if p not in blocked and abs(p[0] - px) + abs(p[1] - py) >= 6]
     random.shuffle(cand)
-    zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in zombies}
+    zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in enemies}
     out = []
     for p in cand:
         if p in zcells:
@@ -6233,8 +6233,8 @@ def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Z
     return out
 
 
-def promote_to_boss(z: "Zombie"):
-    """Promote a single zombie instance to boss (stats on top of current scaling)."""
+def promote_to_boss(z: "Enemy"):
+    """Promote a single enemy instance to boss (stats on top of current scaling)."""
     z.is_boss = True
     z.max_hp = int(z.max_hp * BOSS_HP_MULT_EXTRA)
     z.hp = z.max_hp
@@ -6255,13 +6255,13 @@ def spawn_wave_with_budget(game_state: "GameState",
                            player: "Player",
                            current_level: int,
                            wave_index: int,
-                           zombies: List["Zombie"],
+                           enemies: List["Enemy"],
                            cap: int) -> int:
     """
-    Spend the per-level budget on new zombies, respecting cap.
+    Spend the per-level budget on new enemies, respecting cap.
     Returns the number spawned.
     """
-    if len(zombies) >= cap:
+    if len(enemies) >= cap:
         return 0
     # base budget for this level (identical every spawn this level)
     budget = budget_for_level(current_level)
@@ -6270,7 +6270,7 @@ def spawn_wave_with_budget(game_state: "GameState",
     if force_boss:
         budget = int(budget * THREAT_BOSS_BONUS)
     # optimistic position pool (ask for up to budget cells)
-    spots = _spawn_positions(game_state, player, zombies, want=budget)
+    spots = _spawn_positions(game_state, player, enemies, want=budget)
     spawned = 0
     boss_done = False
     # ==== 金币大盗：随机在非Boss关卡与波次出现（每关最多一只；Lv1-2不出现）====
@@ -6308,7 +6308,7 @@ def spawn_wave_with_budget(game_state: "GameState",
             bandit.radar_slow_left = float(dur)
             bandit.radar_ring_period = 2.0
             bandit.radar_ring_phase = 0.0
-        zombies.append(bandit)
+        enemies.append(bandit)
         game_state.bandit_spawned_this_level = True
         game_state.pending_focus = ("bandit", (cx, cy))
         # 视觉提示：使用屏幕横幅确保可见；若不可用则退化为飘字
@@ -6320,10 +6320,10 @@ def spawn_wave_with_budget(game_state: "GameState",
         if hasattr(game_state, "telegraphs"):
             game_state.telegraphs.append(
                 TelegraphCircle(cx, cy, int(CELL_SIZE * 1.1), 0.9, kind="bandit", color=(255, 215, 0)))
-        apply_biome_on_zombie_spawn(bandit, game_state)
+        apply_biome_on_enemy_spawn(bandit, game_state)
     # spend budget until no type fits or cap/positions exhausted
     i = 0
-    while i < len(spots) and len(zombies) < cap:
+    while i < len(spots) and len(enemies) < cap:
         gx, gy = spots[i]
         i += 1
         # if we must place a boss, do it once, then continue budget spending
@@ -6352,8 +6352,8 @@ def spawn_wave_with_budget(game_state: "GameState",
                 _clear_footprint(b1)
                 _clear_footprint(b2)
                 # domain spawn effects (Stone shields, etc.)
-                apply_biome_on_zombie_spawn(b1, game_state)
-                apply_biome_on_zombie_spawn(b2, game_state)
+                apply_biome_on_enemy_spawn(b1, game_state)
+                apply_biome_on_enemy_spawn(b2, game_state)
                 # (optional) start the HUD smoothing at the current fraction
                 for _b in (b1, b2):
                     if getattr(_b, "shield_hp", 0) > 0 and getattr(_b, "max_hp", 0) > 0:
@@ -6377,8 +6377,8 @@ def spawn_wave_with_budget(game_state: "GameState",
                     c2 = (int((gx2 + 1.0) * CELL_SIZE), int((gy2 + 1.0) * CELL_SIZE + INFO_BAR_HEIGHT))
                 game_state.focus_queue = getattr(game_state, "focus_queue", [])
                 game_state.focus_queue += [("boss", c1), ("boss", c2)]
-                zombies.append(b1);
-                zombies.append(b2)
+                enemies.append(b1);
+                enemies.append(b2)
                 boss_done = True
             elif current_level in MISTWEAVER_LEVELS:
                 # Mistweaver：第10关
@@ -6387,11 +6387,11 @@ def spawn_wave_with_budget(game_state: "GameState",
                 for gp, ob in list(game_state.obstacles.items()):
                     if ob.rect.colliderect(r):
                         del game_state.obstacles[gp]
-                apply_biome_on_zombie_spawn(z, game_state)
+                apply_biome_on_enemy_spawn(z, game_state)
                 z._hud_shield_vis = (z.shield_hp / float(max(1, z.max_hp))) if getattr(z, "shield_hp", 0) > 0 else 0.0
                 z._spawn_wave_tag = wave_index
-                zombies.append(z)
-                # After zombies.append(mist)
+                enemies.append(z)
+                # After enemies.append(mist)
                 cx, cy = (int(z.rect.centerx), int(z.rect.centery))
                 game_state.focus_queue = getattr(game_state, "focus_queue", [])
                 game_state.focus_queue.append(("boss", (cx, cy)))
@@ -6406,7 +6406,7 @@ def spawn_wave_with_budget(game_state: "GameState",
                 for gp, ob in list(game_state.obstacles.items()):
                     if ob.rect.colliderect(r):
                         del game_state.obstacles[gp]
-                apply_biome_on_zombie_spawn(z, game_state)
+                apply_biome_on_enemy_spawn(z, game_state)
                 z._hud_shield_vis = (z.shield_hp / float(max(1, z.max_hp))) if getattr(z, "shield_hp", 0) > 0 else 0.0
                 z._spawn_wave_tag = wave_index
                 # NEW: queue single boss focus
@@ -6416,29 +6416,29 @@ def spawn_wave_with_budget(game_state: "GameState",
                     c = (int((gx0 + 1.0) * CELL_SIZE), int((gy0 + 1.0) * CELL_SIZE + INFO_BAR_HEIGHT))
                 game_state.focus_queue = getattr(game_state, "focus_queue", [])
                 game_state.focus_queue.append(("boss", c))
-                zombies.append(z)
+                enemies.append(z)
                 boss_done = True
             continue
         # choose a type that fits remaining budget
-        remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in zombies if
+        remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in enemies if
                                  getattr(z, "_spawn_wave_tag", -1) == wave_index)
         t = _pick_type_by_budget(max(1, remaining), current_level)
         if not t:
             break  # can't afford any type
-        z = make_scaled_zombie((gx, gy), t,
+        z = make_scaled_enemy((gx, gy), t,
                                current_level,
                                # IMPORTANT: if this is a boss level first wave,
                                # pass wave_index=1 for non-boss spawns to avoid accidental boss flag in older code
                                (1 if (is_boss_level(current_level) and wave_index == 0) else wave_index))
-        # mark which wave inserted this zombie (used above to compute remaining)
+        # mark which wave inserted this enemy (used above to compute remaining)
         z._spawn_wave_tag = wave_index
-        apply_biome_on_zombie_spawn(z, game_state)
-        zombies.append(z)
+        apply_biome_on_enemy_spawn(z, game_state)
+        enemies.append(z)
         spawned += 1
     return spawned
 
 
-def trigger_twin_enrage(dead_boss, zombies, game_state):
+def trigger_twin_enrage(dead_boss, enemies, game_state):
     """当一只 Twin Boss 死亡时，令存活的孪生体回满血并进入狂暴。"""
     if not getattr(dead_boss, "is_boss", False):
         return
@@ -6454,7 +6454,7 @@ def trigger_twin_enrage(dead_boss, zombies, game_state):
             partner = ref()
         if partner is None:
             # 在场上按 twin_id 搜索另一只
-            for z in zombies:
+            for z in enemies:
                 if z is not dead_boss and getattr(z, "is_boss", False) and getattr(z, "twin_id", None) == tid:
                     partner = z
                     break
@@ -6560,7 +6560,7 @@ class Player:
         self.levelup_pending = 0  # NEW: # of level-up selections to show
         self.xp_gain_mult = 1.0
         # per-run upgrades from shop (applied on spawn)
-        self.bullet_damage = int(META.get("base_dmg", BULLET_DAMAGE_ZOMBIE)) + int(META.get("dmg", 0))
+        self.bullet_damage = int(META.get("base_dmg", BULLET_DAMAGE_ENEMY)) + int(META.get("dmg", 0))
         self.fire_rate_mult = float(META.get("firerate_mult", 1.0))
         # bullet behavior
         self.bullet_pierce = int(META.get("pierce_level", 0))
@@ -6730,8 +6730,8 @@ class Player:
 
 
 # --- module-level helper: split parent into 3 splinterlings ---
-def spawn_splinter_children(parent: "Zombie",
-                            zombies: list,
+def spawn_splinter_children(parent: "Enemy",
+                            enemies: list,
                             game_state: "GameState",
                             level_idx: int,
                             wave_index: int):
@@ -6741,7 +6741,7 @@ def spawn_splinter_children(parent: "Zombie",
     random.shuffle(neighbors)
     child_hp = max(1, int(parent.max_hp * SPLINTER_CHILD_HP_RATIO))
     child_atk = max(1, int(parent.attack * SPLINTERLING_ATK_RATIO))
-    child_speed = min(ZOMBIE_SPEED_MAX, int(parent.speed) + int(SPLINTERLING_SPD_ADD))
+    child_speed = min(ENEMY_SPEED_MAX, int(parent.speed) + int(SPLINTERLING_SPD_ADD))
     spawned = 0
     for nx, ny in neighbors:
         if spawned >= SPLINTER_CHILD_COUNT:
@@ -6751,7 +6751,7 @@ def spawn_splinter_children(parent: "Zombie",
         if (nx, ny) in game_state.obstacles:
             continue
         occupied = False
-        for z in zombies:
+        for z in enemies:
             zx = int((z.x + z.size * 0.5) // CELL_SIZE)
             zy = int((z.y + z.size * 0.5) // CELL_SIZE)
             if zx == nx and zy == ny:
@@ -6759,10 +6759,10 @@ def spawn_splinter_children(parent: "Zombie",
                 break
         if occupied:
             continue
-        child = Zombie((nx, ny), attack=child_atk, speed=child_speed, ztype="splinterling", hp=child_hp)
+        child = Enemy((nx, ny), attack=child_atk, speed=child_speed, ztype="splinterling", hp=child_hp)
         child._can_split = False
         child._split_done = True
-        zombies.append(child)
+        enemies.append(child)
         spawned += 1
     return spawned
 
@@ -6814,8 +6814,8 @@ class AfterImageGhost:
         pass
 
 
-class Zombie:
-    def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED,
+class Enemy:
+    def __init__(self, pos: Tuple[int, int], attack: int = ENEMY_ATTACK, speed: int = ENEMY_SPEED,
                  ztype: str = "basic", hp: Optional[int] = None):
         self.x = pos[0] * CELL_SIZE
         self.y = pos[1] * CELL_SIZE
@@ -6824,7 +6824,7 @@ class Zombie:
         self.attack = attack
         self.speed = speed
         self.type = ztype
-        self.color = ZOMBIE_COLORS.get(self.type, (255, 60, 60))
+        self.color = ENEMY_COLORS.get(self.type, (255, 60, 60))
         # === special type state ===
         # Suicide types start unarmed; fuse begins when near the player
         self.fuse = None
@@ -6840,10 +6840,10 @@ class Zombie:
         # XP & rank
         self.z_level = 1
         self.xp = 0
-        self.xp_to_next = ZOMBIE_XP_TO_LEVEL
+        self.xp_to_next = ENEMY_XP_TO_LEVEL
         self.is_elite = False
         self.is_boss = False
-        self.radius = ZOMBIE_RADIUS
+        self.radius = ENEMY_RADIUS
         # ABS
         self._stuck_t = 0.0  # 被卡住累计时长
         self._avoid_t = 0.0  # 侧移剩余时间
@@ -7055,7 +7055,7 @@ class Zombie:
             self._bypass_t = 0.0
             self._bypass_cell = None
         # 目标（默认追玩家；若锁定了一块挡路的可破坏物，则追它的中心）
-        zx, zy = Zombie.feet_xy(self)
+        zx, zy = Enemy.feet_xy(self)
         px, py = player.rect.centerx, player.rect.centery
         player_move_dx, player_move_dy = getattr(player, "_last_move_vec", (0.0, 0.0))
         target_cx, target_cy = px, py
@@ -7224,7 +7224,7 @@ class Zombie:
                             if (gx, ny) in game_state.obstacles or (nx, gy) in game_state.obstacles:
                                 continue
                         d = fd[ny][nx]
-                        if d > bestd and not Zombie.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
+                        if d > bestd and not Enemy.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
                             bestd = d
                             best = (nx, ny)
                 bandit_escape_step = best
@@ -7253,7 +7253,7 @@ class Zombie:
                                 if ((gx, ny) in game_state.obstacles) and ((nx, gy) in game_state.obstacles):
                                     continue
                                 # existing “no-hidden-corner” / LoS check
-                            if not Zombie.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
+                            if not Enemy.first_obstacle_on_grid_line((gx, gy), (nx, ny), game_state.obstacles):
                                 bestd = d
                                 best = (nx, ny)
                 step = best
@@ -7281,7 +7281,7 @@ class Zombie:
                 # else:
                 #     # bosses take simple-chase path (ignore FF)
                 #     step = step if not is_boss_simple else None
-            # Simple-bypass override for regular zombies
+            # Simple-bypass override for regular enemies
             if getattr(self, "_bypass_t", 0.0) > 0.0 and getattr(self, "_bypass_cell", None) is not None:
                 # drop it if we already reached the side cell or LoS is now clear
                 if (gx, gy) == self._bypass_cell or not self.first_obstacle_on_grid_line((gx, gy), gp,
@@ -7390,7 +7390,7 @@ class Zombie:
                 cx2, cy2 = ob.rect.centerx, ob.rect.centery
                 if random.random() < SPOILS_BLOCK_DROP_CHANCE:
                     game_state.spawn_spoils(cx2, cy2, 1)
-                self.gain_xp(XP_ZOMBIE_BLOCK)
+                self.gain_xp(XP_ENEMY_BLOCK)
                 if random.random() < HEAL_DROP_CHANCE_BLOCK:
                     game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
                 self.bandit_break_t = max(float(getattr(self, "bandit_break_t", 0.0)), BANDIT_BREAK_SLOW_TIME)
@@ -7459,7 +7459,7 @@ class Zombie:
                         if getattr(ob, "type", "") == "Destructible":
                             if random.random() < SPOILS_BLOCK_DROP_CHANCE:
                                 game_state.spawn_spoils(ob.rect.centerx, ob.rect.centery, 1)
-                            self.gain_xp(XP_ZOMBIE_BLOCK)
+                            self.gain_xp(XP_ENEMY_BLOCK)
                     if random.random() < HEAL_DROP_CHANCE_BLOCK:
                         game_state.spawn_heal(ob.rect.centerx, ob.rect.centery, HEAL_POTION_AMOUNT)
                 if crushed_any:
@@ -7611,8 +7611,8 @@ class Zombie:
             ob_contact = getattr(self, "_hit_ob", None)
             if ob_contact and getattr(ob_contact, "type", "") == "Destructible" and getattr(ob_contact, "health",
                                                                                             None) is not None:
-                mult = getattr(game_state, "biome_zombie_contact_mult", 1.0)
-                block_dmg = int(round(ZOMBIE_CONTACT_DAMAGE * max(1.0, mult)))
+                mult = getattr(game_state, "biome_enemy_contact_mult", 1.0)
+                block_dmg = int(round(ENEMY_CONTACT_DAMAGE * max(1.0, mult)))
                 ob_contact.health -= block_dmg
                 self._block_contact_cd = float(PLAYER_HIT_COOLDOWN)
                 if ob_contact.health <= 0:
@@ -7622,7 +7622,7 @@ class Zombie:
                     cx2, cy2 = ob_contact.rect.centerx, ob_contact.rect.centery
                     if random.random() < SPOILS_BLOCK_DROP_CHANCE:
                         game_state.spawn_spoils(cx2, cy2, 1)
-                    self.gain_xp(XP_ZOMBIE_BLOCK)
+                    self.gain_xp(XP_ENEMY_BLOCK)
                     if random.random() < HEAL_DROP_CHANCE_BLOCK:
                         game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
                     self._focus_block = None
@@ -7642,7 +7642,7 @@ class Zombie:
                             cx2, cy2 = ob.rect.centerx, ob.rect.centery
                             if random.random() < SPOILS_BLOCK_DROP_CHANCE:
                                 game_state.spawn_spoils(cx2, cy2, 1)
-                            self.gain_xp(XP_ZOMBIE_BLOCK)
+                            self.gain_xp(XP_ENEMY_BLOCK)
                             if random.random() < HEAL_DROP_CHANCE_BLOCK:
                                 game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
                         self.attack_timer = 0.0
@@ -7658,12 +7658,12 @@ class Zombie:
                                 cx2, cy2 = ob.rect.centerx, ob.rect.centery
                                 if random.random() < SPOILS_BLOCK_DROP_CHANCE:
                                     game_state.spawn_spoils(cx2, cy2, 1)
-                                self.gain_xp(XP_ZOMBIE_BLOCK)
+                                self.gain_xp(XP_ENEMY_BLOCK)
                                 if random.random() < HEAL_DROP_CHANCE_BLOCK:
                                     game_state.spawn_heal(cx2, cy2, HEAL_POTION_AMOUNT)
                     break
 
-    def update_special(self, dt: float, player: 'Player', zombies: List['Zombie'],
+    def update_special(self, dt: float, player: 'Player', enemies: List['Enemy'],
                        enemy_shots: List['EnemyShot'], game_state: 'GameState' = None):
         # --- frame-local centers (avoid UnboundLocal on cx/cy/px/py) ---
         cx, cy = self.rect.centerx, self.rect.centery
@@ -7674,7 +7674,7 @@ class Zombie:
             self._split_done = True
             self._can_split = False
             spawn_splinter_children(
-                self, zombies, game_state,
+                self, enemies, game_state,
                 level_idx=getattr(game_state, "current_level", 0),
                 wave_index=0
             )
@@ -7732,7 +7732,7 @@ class Zombie:
                         gx = f0[0] * (1 - t) + f1[0] * t
                         gy = f0[1] * (1 - t) + f1[1] * t
                         game_state.ghosts.append(
-                            AfterImageGhost(gx, gy, self.size, self.size, ZOMBIE_COLORS.get("ravager", self.color),
+                            AfterImageGhost(gx, gy, self.size, self.size, ENEMY_COLORS.get("ravager", self.color),
                                             ttl=AFTERIMAGE_TTL))
                 if self._dash_t <= 0.0:
                     self._dash_state = "idle"
@@ -7740,7 +7740,7 @@ class Zombie:
             else:
                 self.can_crush_all_blocks = False
         if getattr(self, "is_boss", False) and getattr(self, "hp", 0) <= 0:
-            trigger_twin_enrage(self, zombies, game_state)
+            trigger_twin_enrage(self, enemies, game_state)
         # 远程怪：发射投射物
         if self.type in ("ranged", "spitter"):
             self.ranged_cd = max(0.0, (self.ranged_cd or 0.0) - dt)
@@ -7823,7 +7823,7 @@ class Zombie:
                         gx = f0[0] * (1 - t) + f1[0] * t
                         gy = f0[1] * (1 - t) + f1[1] * t
                         game_state.ghosts.append(
-                            AfterImageGhost(gx, gy, self.size, self.size, ZOMBIE_COLORS.get("ravager", self.color),
+                            AfterImageGhost(gx, gy, self.size, self.size, ENEMY_COLORS.get("ravager", self.color),
                                             ttl=AFTERIMAGE_TTL))
                 if self._dash_t <= 0.0:
                     self._dash_state = "idle"
@@ -7831,13 +7831,13 @@ class Zombie:
             else:
                 self.can_crush_all_blocks = False
         if getattr(self, "is_boss", False) and getattr(self, "hp", 0) <= 0:
-            trigger_twin_enrage(self, zombies, game_state)
+            trigger_twin_enrage(self, enemies, game_state)
         # 增益怪：周期性为周围友军加 BUFF
         if self.type == "buffer":
             self.buff_cd = max(0.0, (self.buff_cd or 0.0) - dt)
             if self.buff_cd <= 0.0:
                 cx, cy = self.rect.centerx, self.rect.centery
-                for z in zombies:
+                for z in enemies:
                     zx, zy = z.rect.centerx, z.rect.centery
                     if (zx - cx) ** 2 + (zy - cy) ** 2 <= BUFF_RADIUS ** 2:
                         z.buff_t = BUFF_DURATION
@@ -7854,7 +7854,7 @@ class Zombie:
                     self.shield_hp = 0
                 if self.shield_cd <= 0.0:
                     cx, cy = self.rect.centerx, self.rect.centery
-                    for z in zombies:
+                    for z in enemies:
                         zx, zy = z.rect.centerx, z.rect.centery
                         if (zx - cx) ** 2 + (zy - cy) ** 2 <= SHIELD_RADIUS ** 2:
                             z.shield_hp = SHIELD_AMOUNT
@@ -7922,7 +7922,7 @@ class Zombie:
                     stolen = int(getattr(self, "_stolen_total", 0))
                     game_state.flash_banner(f"BANDIT ESCAPED — STOLEN {stolen} COINS", sec=1.0)
                 try:
-                    zombies.remove(self)
+                    enemies.remove(self)
                 except Exception:
                     pass
                 return
@@ -7989,7 +7989,7 @@ class Zombie:
                     self._spit_cd = 5.0 * cd_mult
                 if self._split_cd <= 0.0:
                     for _ in range(2):
-                        zombies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
+                        enemies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
                     self._split_cd = SPLIT_CD_P1 * cd_mult
             # 阶段2：移动略快；喷吐“连续两次”；召唤 3 个/15s；吸附融合
             if phase2_ok:
@@ -8010,11 +8010,11 @@ class Zombie:
                     self._spit_cd = 4.0 * cd_mult
                 if self._split_cd <= 0.0:
                     for _ in range(3):
-                        zombies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
+                        enemies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
                     self._split_cd = SPLIT_CD_P2 * cd_mult
                 # 吸附融合：场上活过 15s 的腐蚀幼体被拉回并回血
                 pull_any = False
-                for z in list(zombies):
+                for z in list(enemies):
                     if getattr(z, "type", "") == "corruptling" and getattr(z, "_life", 0.0) >= FUSION_LIFETIME:
                         zx, zy = z.rect.centerx, z.rect.centery
                         if (zx - cx) ** 2 + (zy - cy) ** 2 <= FUSION_PULL_RADIUS ** 2:
@@ -8043,7 +8043,7 @@ class Zombie:
                 # 继续召唤（比P2略低频防爆场）
                 if self._split_cd <= 0.0:
                     for _ in range(2):
-                        zombies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
+                        enemies.append(spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
                     self._split_cd = 12.0 * cd_mult
                 # 濒死冲锋
                 if hp_pct_effective <= CHARGE_THRESH and not getattr(self, "_charging", False):
@@ -8132,7 +8132,7 @@ class Zombie:
                 ring = pygame.Surface((rr * 2 + 10, rr * 2 + 10), pygame.SRCALPHA)
                 pygame.draw.circle(ring, (255, 60, 60, 220), (rr + 5, rr + 5), rr, width=6)
                 screen.blit(ring, (self.rect.centerx - rr - 5, self.rect.centery - rr - 5))
-        fallback = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
+        fallback = ENEMY_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         color = getattr(self, "_current_color", fallback)
         pygame.draw.rect(screen, color, self.rect)
         if getattr(self, "is_enraged", False):
@@ -8151,8 +8151,8 @@ class Zombie:
             screen.blit(glow, glow_rect.topleft)
 
 
-class MemoryDevourerBoss(Zombie):
-    """独立 Boss：更大体型/更大脚底圆/更高血攻；仍复用 Zombie 的大多数行为。"""
+class MemoryDevourerBoss(Enemy):
+    """独立 Boss：更大体型/更大脚底圆/更高血攻；仍复用 Enemy 的大多数行为。"""
 
     def __init__(self, grid_pos: tuple[int, int], level_idx: int):
         gx, gy = grid_pos
@@ -8167,7 +8167,7 @@ class MemoryDevourerBoss(Zombie):
                          speed=int(max(1, MEMDEV_SPEED)),
                          ztype="boss_mem",
                          hp=boss_hp)
-        self.color = ZOMBIE_COLORS.get('boss_mem', (170, 40, 200))
+        self.color = ENEMY_COLORS.get('boss_mem', (170, 40, 200))
         self._current_color = self.color
         self.is_boss = True
         self.boss_name = "Memory Devourer"
@@ -8206,7 +8206,7 @@ class MemoryDevourerBoss(Zombie):
         self._twin_powered = True
         self.is_enraged = True
         self._enrage_cd_mult = 0.65
-        enraged_color = ZOMBIE_COLORS.get("boss_mem_enraged", BOSS_MEM_ENRAGED_COLOR)
+        enraged_color = ENEMY_COLORS.get("boss_mem_enraged", BOSS_MEM_ENRAGED_COLOR)
         self._current_color = enraged_color
         self.color = enraged_color
         if hasattr(self, "_dash_cd"):
@@ -8216,15 +8216,15 @@ class MemoryDevourerBoss(Zombie):
     # （可选）你也可以覆盖 draw，画个大圆/贴图；目前沿用矩形色块就行
 
 
-class MistClone(Zombie):
+class MistClone(Enemy):
     def __init__(self, gx: int, gy: int):
         super().__init__((gx, gy), attack=8, speed=int(MIST_SPEED * CELL_SIZE / CELL_SIZE), ztype="mist_clone", hp=1)
-        self.color = ZOMBIE_COLORS["mist_clone"]
+        self.color = ENEMY_COLORS["mist_clone"]
         self.size = int(CELL_SIZE * 0.6)
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.is_illusion = True
 
-    def update_special(self, dt, player, zombies, enemy_shots, game_state=None):
+    def update_special(self, dt, player, enemies, enemy_shots, game_state=None):
         # 命中即散，死亡时留一个小雾爆
         if self.hp <= 0 and not getattr(self, "_mist_boom", False):
             game_state.spawn_acid_pool(self.rect.centerx, self.rect.centery,
@@ -8232,7 +8232,7 @@ class MistClone(Zombie):
             self._mist_boom = True
 
 
-class MistweaverBoss(Zombie):
+class MistweaverBoss(Enemy):
     def __init__(self, grid_pos: tuple[int, int], level_idx: int):
         gx, gy = grid_pos
         super().__init__((gx, gy),
@@ -8242,7 +8242,7 @@ class MistweaverBoss(Zombie):
                          hp=int(MIST_BASE_HP * (1 + 0.12 * max(0, level_idx - 9))))
         self.is_boss = True
         self.boss_name = "Mistweaver"
-        self.color = ZOMBIE_COLORS["boss_mist"]
+        self.color = ENEMY_COLORS["boss_mist"]
         # 体型稍大（比普通僵尸更有压迫感）
         self.size = int(CELL_SIZE * 1.6)
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
@@ -8264,22 +8264,22 @@ class MistweaverBoss(Zombie):
         self._ring_burst_t = 0.0
         self.is_boss_shot = True
 
-    def _has_clones(self, zombies):
+    def _has_clones(self, enemies):
         n = 0
-        for z in zombies:
+        for z in enemies:
             if getattr(z, "is_illusion", False) and getattr(z, "hp", 0) > 0:
                 n += 1
         return n
 
-    def _ensure_clones(self, zombies, game_state):
+    def _ensure_clones(self, enemies, game_state):
         # 至多 2 个分身存在
-        need = max(0, 2 - self._has_clones(zombies))
+        need = max(0, 2 - self._has_clones(enemies))
         while need > 0:
             # 随机在本体附近 2~3 格生成
             gx = int((self.x + self.size * 0.5) // CELL_SIZE) + random.choice((-3, -2, 2, 3))
             gy = int((self.y + self.size * 0.5) // CELL_SIZE) + random.choice((-3, -2, 2, 3))
             if 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE and (gx, gy) not in game_state.obstacles:
-                zombies.append(MistClone(gx, gy))
+                enemies.append(MistClone(gx, gy))
                 need -= 1
 
     def _do_blink(self, game_state):
@@ -8302,11 +8302,11 @@ class MistweaverBoss(Zombie):
         self.rect.x = int(self.x)
         self.rect.y = int(self.y) + INFO_BAR_HEIGHT
 
-    def update_special(self, dt, player, zombies, enemy_shots, game_state=None):
+    def update_special(self, dt, player, enemies, enemy_shots, game_state=None):
         hp_pct = max(0.0, self.hp / max(1, self.max_hp))
         self.phase = 1 if hp_pct > 0.70 else (2 if hp_pct > 0.35 else 3)
         # 保持分身
-        self._ensure_clones(zombies, game_state)
+        self._ensure_clones(enemies, game_state)
         # 雾门闪现 CD
         self._blink_cd -= dt
         if self._blink_cd <= 0:
@@ -8337,7 +8337,7 @@ class MistweaverBoss(Zombie):
                 for _ in range(MIST_SUMMON_IMPS):
                     ox = random.randint(-24, 24);
                     oy = random.randint(-24, 24)
-                    zombies.append(spawn_mistling_at(self.rect.centerx + ox, self.rect.centery + oy,
+                    enemies.append(spawn_mistling_at(self.rect.centerx + ox, self.rect.centery + oy,
                                                      level_idx=getattr(game_state, "current_level", 0)))
                 self._storm_cd = 6.5
         # P2：白化风暴（0.8s 后落 8 个雾池）+ 静默领域
@@ -8406,7 +8406,7 @@ class MistweaverBoss(Zombie):
         # --- Mistling 回收：在 Boss 周围半径内的雾妖会被回收并为 Boss 回血 ---
         pull_any = False
         cx, cy = self.rect.center  # ← 确保有中心坐标可用
-        for z in list(zombies):
+        for z in list(enemies):
             if getattr(z, "type", "") == "mistling":
                 zx, zy = z.rect.centerx, z.rect.centery
                 # 进入回收半径：直接被回收（相当于被击杀），标记发生回收
@@ -8421,7 +8421,7 @@ class MistweaverBoss(Zombie):
 
 class Bullet:
     def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE,
-                 damage: int = BULLET_DAMAGE_ZOMBIE, source: str = "player"):
+                 damage: int = BULLET_DAMAGE_ENEMY, source: str = "player"):
         self.x = x
         self.y = y
         self.vx = vx
@@ -8433,7 +8433,7 @@ class Bullet:
         self.r = bullet_radius_for_damage(self.damage)
         self.source = source
 
-    def update(self, dt: float, game_state: 'GameState', zombies: List['Zombie'], player: 'Player' = None):
+    def update(self, dt: float, game_state: 'GameState', enemies: List['Enemy'], player: 'Player' = None):
         if not self.alive:
             return
         nx = self.x + self.vx * dt
@@ -8456,7 +8456,7 @@ class Bullet:
                 return False
             target = None
             best_d2 = None
-            for z in zombies:
+            for z in enemies:
                 if getattr(z, "hp", 0) <= 0:
                     continue
                 dx = z.rect.centerx - hit_x
@@ -8479,8 +8479,8 @@ class Bullet:
             self.ricochet_left = remaining - 1
             return True
 
-        # 1) zombies
-        for z in list(zombies):
+        # 1) enemies
+        for z in list(enemies):
             if r.colliderect(z.rect):
                 # --- HIT SPARK ---
                 # Cyan/White sparks on hit
@@ -8580,7 +8580,7 @@ class Bullet:
                                     game_state.pending_bullets = []
                                 game_state.pending_bullets.append(sb)
                     if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) is not None:
-                        trigger_twin_enrage(z, zombies, game_state)
+                        trigger_twin_enrage(z, enemies, game_state)
                     # --- Splinter: if not yet split, split on death instead of dropping loot now ---
                 # --- Death-only handling: split, bandit refund, or normal loot/xp ---
                 if z.hp <= 0:
@@ -8589,10 +8589,10 @@ class Bullet:
                         z._split_done = True
                         z._can_split = False
                         # 生成子体；父体不掉落金币（避免三倍通胀），XP也交给后续击杀子体获得
-                        spawn_splinter_children(z, zombies, game_state, level_idx=0, wave_index=0)
+                        spawn_splinter_children(z, enemies, game_state, level_idx=0, wave_index=0)
                         # 从场上移除父体
-                        if z in zombies:
-                            zombies.remove(z)
+                        if z in enemies:
+                            enemies.remove(z)
                         self.alive = False
                         return
                     # ==== Coin Bandit：返还所有已偷 META 币 + 奖励 ====
@@ -8616,12 +8616,12 @@ class Bullet:
                                                        kind="hp")
                         # bandit 的普通随机掉落就不要叠加了，直接走移除流程
                         if player:
-                            base_xp = XP_PER_ZOMBIE_TYPE.get("bandit", XP_PLAYER_KILL)
+                            base_xp = XP_PER_ENEMY_TYPE.get("bandit", XP_PLAYER_KILL)
                             player.add_xp(base_xp)
                             setattr(z, "_xp_awarded", True)
-                        transfer_xp_to_neighbors(z, zombies)
-                        if z in zombies:
-                            zombies.remove(z)
+                        transfer_xp_to_neighbors(z, enemies)
+                        if z in enemies:
+                            enemies.remove(z)
                         # Bullet fate after a kill (pierce/ricochet handling matches normal deaths)
                         if getattr(self, "source", "player") == "player":
                             used_ricochet = False
@@ -8637,18 +8637,18 @@ class Bullet:
                         return
                     else:
                         # --- normal death (non-splinter or already split) ---
-                        drop_n = roll_spoils_for_zombie(z)
+                        drop_n = roll_spoils_for_enemy(z)
                         drop_n += int(getattr(z, "spoils", 0))
                         if drop_n > 0:
                             game_state.spawn_spoils(cx, cy, drop_n)
-                        # Bosses: guaranteed heal potions; regular zombies: random chance
+                        # Bosses: guaranteed heal potions; regular enemies: random chance
                         if getattr(z, "is_boss", False):
                             for _ in range(BOSS_HEAL_POTIONS):
                                 game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
-                        elif random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                        elif random.random() < HEAL_DROP_CHANCE_ENEMY:
                             game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
                         if player:
-                            base_xp = XP_PER_ZOMBIE_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
+                            base_xp = XP_PER_ENEMY_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
                             bonus = max(0, z.z_level - 1) * XP_ZLEVEL_BONUS
                             extra_by_spoils = int(getattr(z, "spoils", 0)) * int(Z_SPOIL_XP_BONUS_PER)
                             if getattr(z, "is_elite", False):
@@ -8658,10 +8658,10 @@ class Bullet:
                             player.add_xp(base_xp + bonus + extra_by_spoils)
                             setattr(z, "_xp_awarded", True)
                             if getattr(z, "is_boss", False):
-                                trigger_twin_enrage(z, zombies, game_state)
-                        transfer_xp_to_neighbors(z, zombies)
-                        if z in zombies:
-                            zombies.remove(z)
+                                trigger_twin_enrage(z, enemies, game_state)
+                        transfer_xp_to_neighbors(z, enemies)
+                        if z in enemies:
+                            enemies.remove(z)
                         # --- Bullet fate after hitting this enemy (hit, not just kill) ---
                         if getattr(self, "source", "player") == "player":
                             used_ricochet = False
@@ -8669,7 +8669,7 @@ class Bullet:
                             #    Ricochet is independent of piercing.
                             if try_ricochet(cx, cy):
                                 used_ricochet = True
-                            # 2) Piercing Rounds: every *hit* on a zombie consumes one charge.
+                            # 2) Piercing Rounds: every *hit* on a enemy consumes one charge.
                             remaining_pierce = int(getattr(self, "pierce_left", 0))
                             if remaining_pierce > 0:
                                 self.pierce_left = remaining_pierce - 1
@@ -8733,7 +8733,7 @@ class Bullet:
 class AutoTurret:
     """
     Simple auto-turret that orbits near the player and fires weak bullets
-    at the nearest zombie within range.
+    at the nearest enemy within range.
     """
 
     def __init__(self, owner: "Player", offset: Tuple[float, float],
@@ -8762,7 +8762,7 @@ class AutoTurret:
         self.y = float(cy + math.sin(self.angle) * self.orbit_radius)
 
     def update(self, dt: float, game_state: "GameState",
-               zombies: List["Zombie"], bullets: List["Bullet"]):
+               enemies: List["Enemy"], bullets: List["Bullet"]):
         # Stick near the player
         self._follow_owner(dt)
         # Cooldown
@@ -8773,11 +8773,11 @@ class AutoTurret:
         owner_range = clamp_player_range(getattr(self.owner, "range", PLAYER_RANGE_DEFAULT))
         max_range = clamp_player_range(owner_range * self.range_mult)
         max_r2 = max_range * max_range
-        # Find nearest zombie in range
+        # Find nearest enemy in range
         best = None
         best_d2 = max_r2
         tx, ty = self.x, self.y
-        for z in zombies:
+        for z in enemies:
             cx, cy = z.rect.centerx, z.rect.centery
             dx, dy = cx - tx, cy - ty
             d2 = dx * dx + dy * dy
@@ -8808,7 +8808,7 @@ class StationaryTurret:
     """
     Stationary turret placed on the map.
     Fires weak bullets (same default damage as AutoTurret)
-    at the nearest zombie within range every level.
+    at the nearest enemy within range every level.
     """
 
     def __init__(self, x: float, y: float,
@@ -8824,7 +8824,7 @@ class StationaryTurret:
         self.cd = random.random() * self.fire_interval
 
     def update(self, dt: float, game_state: "GameState",
-               zombies: List["Zombie"], bullets: List["Bullet"]):
+               enemies: List["Enemy"], bullets: List["Bullet"]):
         # cooldown
         self.cd -= dt
         if self.cd > 0.0:
@@ -8834,11 +8834,11 @@ class StationaryTurret:
         player_range = compute_player_range(base_range, float(META.get("range_mult", 1.0)))
         total_range = clamp_player_range(player_range * self.range_mult)
         max_r2 = total_range * total_range
-        # find nearest zombie in range around this turret
+        # find nearest enemy in range around this turret
         best = None
         best_d2 = max_r2
         tx, ty = self.x, self.y
-        for z in zombies:
+        for z in enemies:
             cx, cy = z.rect.centerx, z.rect.centery
             dx, dy = cx - tx, cy - ty
             d2 = dx * dx + dy * dy
@@ -9341,7 +9341,7 @@ class EnemyShot:
         # 2) 再判玩家
         if r.colliderect(player.rect):
             if getattr(player, "hit_cd", 0.0) <= 0.0:
-                mult = getattr(game_state, "biome_zombie_contact_mult", 1.0)
+                mult = getattr(game_state, "biome_enemy_contact_mult", 1.0)
                 dmg = int(round(self.dmg * max(1.0, mult)))
                 game_state.damage_player(player, dmg, kind="hp_enemy")
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
@@ -9561,7 +9561,7 @@ def _player_has_any_shield(player) -> bool:
     )
 
 
-def _apply_aegis_pulse_damage(player, game_state: "GameState", zombies, cx: float, cy: float,
+def _apply_aegis_pulse_damage(player, game_state: "GameState", enemies, cx: float, cy: float,
                               radius: float, damage: int) -> None:
     rr = float(radius)
     dmg = int(max(0, damage))
@@ -9588,7 +9588,7 @@ def _apply_aegis_pulse_damage(player, game_state: "GameState", zombies, cx: floa
                 game_state.spawn_spoils(bx, by, 1)
             if player:
                 player.add_xp(XP_PLAYER_BLOCK)
-    for z in list(zombies):
+    for z in list(enemies):
         if getattr(z, "hp", 0) <= 0:
             continue
         zr = float(getattr(z, "radius", getattr(z, "size", CELL_SIZE) * 0.5))
@@ -9631,7 +9631,7 @@ def _apply_aegis_pulse_damage(player, game_state: "GameState", zombies, cx: floa
             game_state.add_damage_text(z.rect.centerx, z.rect.centery, dealt, crit=False, kind=text_kind)
 
 
-def trigger_aegis_pulse(player, game_state: "GameState", zombies, radius: float, damage: int,
+def trigger_aegis_pulse(player, game_state: "GameState", enemies, radius: float, damage: int,
                         base_delay: float = 0.0) -> None:
     cx, cy = player.rect.centerx, player.rect.centery
     if not hasattr(game_state, "aegis_pulses") or game_state.aegis_pulses is None:
@@ -9644,7 +9644,7 @@ def trigger_aegis_pulse(player, game_state: "GameState", zombies, radius: float,
         )
 
 
-def tick_aegis_pulse(player, game_state: "GameState", zombies, dt: float) -> None:
+def tick_aegis_pulse(player, game_state: "GameState", enemies, dt: float) -> None:
     lvl = int(getattr(player, "aegis_pulse_level", 0))
     if lvl <= 0:
         return
@@ -9658,7 +9658,7 @@ def tick_aegis_pulse(player, game_state: "GameState", zombies, dt: float) -> Non
         while cd_timer <= 0.0:
             for w in range(wave_count):
                 trigger_aegis_pulse(
-                    player, game_state, zombies, radius, damage,
+                    player, game_state, enemies, radius, damage,
                     base_delay=float(w) * AEGIS_PULSE_WAVE_GAP
                 )
             cd_timer += cooldown
@@ -9670,8 +9670,8 @@ def tick_aegis_pulse(player, game_state: "GameState", zombies, dt: float) -> Non
     player._aegis_pulse_cd = cd_timer
 
 
-def roll_spoils_for_zombie(z: "Zombie") -> int:
-    """Return number of coins to drop for a killed zombie, applying drop chance."""
+def roll_spoils_for_enemy(z: "Enemy") -> int:
+    """Return number of coins to drop for a killed enemy, applying drop chance."""
     t = getattr(z, "type", "basic")
     # Ravagers should always drop spoils (no RNG miss)
     if t == "ravager":
@@ -9747,7 +9747,7 @@ def apply_player_carry(player, carry: dict | None):
 
 def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | float]:
     """
-    Return additive/multipliers for zombie stats based on the current game level & wave.
+    Return additive/multipliers for enemy stats based on the current game level & wave.
     We return {'hp_mult', 'atk_mult', 'spd_add', 'elite?', 'boss?'}.
     """
     L = max(0, int(game_level))
@@ -9799,8 +9799,8 @@ def roll_affix(game_level: int) -> Optional[str]:
     return random.choice(["frenzied", "armored", "veteran"])
 
 
-def apply_affix(z: "Zombie", affix: Optional[str]):
-    """Mutate a zombie with the chosen affix. Small, readable bonuses."""
+def apply_affix(z: "Enemy", affix: Optional[str]):
+    """Mutate a enemy with the chosen affix. Small, readable bonuses."""
     if not affix:
         return
     if affix == "frenzied":
@@ -9824,7 +9824,7 @@ def create_memory_devourer(grid_xy: Tuple[int, int], level_idx: int) -> "MemoryD
     return MemoryDevourerBoss(grid_xy, level_idx)
 
 
-def spawn_corruptling_at(x_px: float, y_px: float) -> "Zombie":
+def spawn_corruptling_at(x_px: float, y_px: float) -> "Enemy":
     """
     从屏幕像素坐标生成腐蚀幼体（近战小怪）。
     注意 y_px 包含了 INFO_BAR_HEIGHT，需要在换算格子时减掉。
@@ -9832,7 +9832,7 @@ def spawn_corruptling_at(x_px: float, y_px: float) -> "Zombie":
     # 像素 -> 格子；y 要扣掉信息栏偏移
     gx = int(max(0, min(GRID_SIZE - 1, x_px // CELL_SIZE)))
     gy = int(max(0, min(GRID_SIZE - 1, (y_px - INFO_BAR_HEIGHT) // CELL_SIZE)))
-    z = Zombie((gx, gy),
+    z = Enemy((gx, gy),
                attack=int(CHILD_ATK),
                speed=int(max(1, CHILD_SPEED)),
                ztype="corruptling",
@@ -9845,13 +9845,13 @@ def spawn_corruptling_at(x_px: float, y_px: float) -> "Zombie":
 def spawn_mistling_at(cx, cy, level_idx=0):
     gx = max(0, min(GRID_SIZE - 1, int(cx // CELL_SIZE)))
     gy = max(0, min(GRID_SIZE - 1, int((cy - INFO_BAR_HEIGHT) // CELL_SIZE)))
-    z = Zombie((gx, gy), attack=10, speed=3, ztype="mistling", hp=24)
+    z = Enemy((gx, gy), attack=10, speed=3, ztype="mistling", hp=24)
     return z
 
 
-def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_index: int) -> "Zombie":
-    """Factory: spawn a zombie already scaled, with elite/boss & affixes applied."""
-    z = Zombie(pos, speed=ZOMBIE_SPEED, ztype=ztype)
+def make_scaled_enemy(pos: Tuple[int, int], ztype: str, game_level: int, wave_index: int) -> "Enemy":
+    """Factory: spawn a enemy already scaled, with elite/boss & affixes applied."""
+    z = Enemy(pos, speed=ENEMY_SPEED, ztype=ztype)
     s = monster_scalars_for(game_level, wave_index)
     # bake stats
     z.attack = max(1, int(z.attack * s["atk_mult"]))
@@ -9881,9 +9881,9 @@ def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_i
         z._display_name = "Ravager"
         z._foot_prev = (z.rect.centerx, z.rect.bottom)
         z._foot_curr = (z.rect.centerx, z.rect.bottom)
-        z._current_color = ZOMBIE_COLORS.get("ravager", z.color)
+        z._current_color = ENEMY_COLORS.get("ravager", z.color)
     # ← cap final move speed
-    z.speed = min(ZOMBIE_SPEED_MAX, max(1, z.speed))
+    z.speed = min(ENEMY_SPEED_MAX, max(1, z.speed))
     return z
 
 
@@ -9892,14 +9892,14 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, playe
     wx, wy = world_xy
     gx = max(0, min(int(wx // CELL_SIZE), GRID_SIZE - 1))
     gy = max(0, min(int((wy - INFO_BAR_HEIGHT) // CELL_SIZE), GRID_SIZE - 1))  # ← 关键：扣掉顶栏
-    # 用网格坐标创建 Zombie（引擎的 Zombie 构造本来就需要网格）
-    z = Zombie((gx, gy), ztype="bandit", speed=BANDIT_BASE_SPEED)
+    # 用网格坐标创建 Enemy（引擎的 Enemy 构造本来就需要网格）
+    z = Enemy((gx, gy), ztype="bandit", speed=BANDIT_BASE_SPEED)
     z.bandit_triggered = False
     z.bandit_break_t = 0.0
     # ===== 非线性随关卡/预算缩放 =====
     z.z_level = max(1, int(1 + level_idx * 0.25))
     scale_spd = (max(1.0, budget) ** 0.33) * 0.12 + 0.05 * level_idx
-    z.speed = min(ZOMBIE_SPEED_MAX, BANDIT_BASE_SPEED + scale_spd)
+    z.speed = min(ENEMY_SPEED_MAX, BANDIT_BASE_SPEED + scale_spd)
     # 专用圆形碰撞体（用于与玩家的接触判定 & 光环半径）
     z.radius = int(z.size * 0.50)
     # Anti-jitter & corner-escape bookkeeping
@@ -9933,15 +9933,15 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, playe
     return z
 
 
-def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
+def transfer_xp_to_neighbors(dead_z: "Enemy", enemies: List["Enemy"],
                              ratio: float = XP_TRANSFER_RATIO,
                              radius: int = XP_INHERIT_RADIUS):
     """On death, share a portion of dead_z's XP to nearby survivors."""
-    if not zombies or ratio <= 0:
+    if not enemies or ratio <= 0:
         return
     cx, cy = dead_z.rect.centerx, dead_z.rect.centery
     r2 = radius * radius
-    near = [zz for zz in zombies
+    near = [zz for zz in enemies
             if zz is not dead_z and (zz.rect.centerx - cx) ** 2 + (zz.rect.centery - cy) ** 2 <= r2]
     if not near:
         return
@@ -9953,7 +9953,7 @@ def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
         t.gain_xp(share)
 
 
-def _find_twin_partner(z, zombies):
+def _find_twin_partner(z, enemies):
     partner = None
     ref = getattr(z, "_twin_partner_ref", None)
     if callable(ref):
@@ -9961,14 +9961,14 @@ def _find_twin_partner(z, zombies):
     elif ref is not None:
         partner = ref
     if partner is None and getattr(z, "twin_id", None) is not None:
-        for cand in zombies:
+        for cand in enemies:
             if getattr(cand, "is_boss", False) and getattr(cand, "twin_id", None) == z.twin_id and cand is not z:
                 partner = cand
                 break
     return partner
 
 
-def trigger_twin_enrage(dead_boss, zombies, game_state):
+def trigger_twin_enrage(dead_boss, enemies, game_state):
     """If a bonded twin dies, power up the partner exactly once."""
     # locate partner
     partner = None
@@ -9980,7 +9980,7 @@ def trigger_twin_enrage(dead_boss, zombies, game_state):
     if partner is None:  # fall back: search by twin_id
         tid = getattr(dead_boss, "twin_id", None)
         if tid is not None:
-            for z in zombies:
+            for z in enemies:
                 if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) == tid and z is not dead_boss:
                     partner = z
                     break
@@ -10004,7 +10004,7 @@ def trigger_twin_enrage(dead_boss, zombies, game_state):
         except Exception:
             pass
     if enraged_now and getattr(partner, "type", "") == "boss_mem":
-        enraged_color = ZOMBIE_COLORS.get("boss_mem_enraged", BOSS_MEM_ENRAGED_COLOR)
+        enraged_color = ENEMY_COLORS.get("boss_mem_enraged", BOSS_MEM_ENRAGED_COLOR)
         partner._current_color = enraged_color
         partner.color = enraged_color
     # floating label (now safe—accepts strings)
@@ -10030,7 +10030,7 @@ def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
                 if obstacle.type == "Indestructible":
                     continue
                 elif obstacle.type == "Destructible":
-                    k_factor = (math.ceil(obstacle.health / ZOMBIE_ATTACK)) * 0.1
+                    k_factor = (math.ceil(obstacle.health / ENEMY_ATTACK)) * 0.1
                     new_cost = cost_so_far[current] + 1 + k_factor
             if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
                 cost_so_far[neighbor] = new_cost
@@ -10052,9 +10052,9 @@ def get_level_config(level: int) -> dict:
     return {
         "obstacle_count": 20 + level,
         "item_count": 5,
-        "zombie_count": min(5, 1 + level // 3),
+        "enemy_count": min(5, 1 + level // 3),
         "block_hp": int(10 * 1.2 ** (level - len(LEVELS) + 1)),
-        "zombie_types": ["basic", "strong", "fire"][level % 3:],
+        "enemy_types": ["basic", "strong", "fire"][level % 3:],
     }
 
 
@@ -10071,7 +10071,7 @@ def reconstruct_path(came_from: Dict, start: Tuple[int, int], goal: Tuple[int, i
 
 
 # ==================== 游戏初始化函数 ====================
-def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int, zombie_count: int, main_block_hp: int,
+def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int, enemy_count: int, main_block_hp: int,
                            level_idx: int = 0):
     """
     Generate entities with map-fill: obstacle clusters, ample items, and non-blocking decorations.
@@ -10085,9 +10085,9 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
         empty = [p for p in all_positions if p not in forbidden]
         while True:
             picks = random.sample(empty, count + 1)
-            player_pos, zombies = picks[0], picks[1:]
-            if all(abs(player_pos[0] - z[0]) + abs(player_pos[1] - z[1]) >= min_distance for z in zombies):
-                return player_pos, zombies
+            player_pos, enemies = picks[0], picks[1:]
+            if all(abs(player_pos[0] - z[0]) + abs(player_pos[1] - z[1]) >= min_distance for z in enemies):
+                return player_pos, enemies
 
     # center spawn if possible
     center_pos = (grid_size // 2, grid_size // 2)
@@ -10095,11 +10095,11 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
         player_pos = center_pos
         far_candidates = [p for p in all_positions if
                           p not in forbidden and (abs(p[0] - center_pos[0]) + abs(p[1] - center_pos[1]) >= 6)]
-        zombie_pos_list = random.sample(far_candidates, zombie_count)
+        enemy_pos_list = random.sample(far_candidates, enemy_count)
     else:
-        player_pos, zombie_pos_list = pick_valid_positions(min_distance=5, count=zombie_count)
+        player_pos, enemy_pos_list = pick_valid_positions(min_distance=5, count=enemy_count)
     forbidden |= {player_pos}
-    forbidden |= set(zombie_pos_list)
+    forbidden |= set(enemy_pos_list)
     # Keep a small ring around the player completely free of obstacles
     SAFE_RADIUS = 1  # 1 tile in each direction = 3x3 area
     px, py = player_pos
@@ -10157,7 +10157,7 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
     random.shuffle(decor_candidates)
     decorations = decor_candidates[:decor_target]
     # keep return shape the same: last “main_item_list” is now empty list
-    return obstacles, items, player_pos, zombie_pos_list, [], decorations
+    return obstacles, items, player_pos, enemy_pos_list, [], decorations
 
 
 def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> Graph:
@@ -10237,9 +10237,9 @@ class SpatialHash:
     def _key(self, x, y):
         return (int(x) // self.cell, int(y) // self.cell)
 
-    def rebuild(self, zombies):
+    def rebuild(self, enemies):
         self.buckets.clear()
-        for z in zombies:
+        for z in enemies:
             k = self._key(z.rect.centerx, z.rect.centery)
             self.buckets.setdefault(k, []).append(z)
 
@@ -10687,10 +10687,10 @@ class GameState:
                 gained += s.value
         return gained
 
-    def collect_spoils_for_zombie(self, zombie: "Zombie") -> int:
+    def collect_spoils_for_enemy(self, enemy: "Enemy") -> int:
         """让某个僵尸收集与其相交的金币，返回本次收集数量。"""
         gained = 0
-        zr = zombie.rect
+        zr = enemy.rect
         for s in list(self.spoils):
             if zr.colliderect(s.rect):
                 self.spoils.remove(s)
@@ -10934,7 +10934,7 @@ class GameState:
                                              life=t.payload.get("life", ACID_LIFETIME))
                 self.telegraphs.remove(t)
 
-    def update_aegis_pulses(self, dt: float, player=None, zombies=None):
+    def update_aegis_pulses(self, dt: float, player=None, enemies=None):
         if not getattr(self, "aegis_pulses", None):
             self.aegis_pulses = []
             return
@@ -10949,8 +10949,8 @@ class GameState:
                 # each layer applies its damage once when it becomes active
                 if (not getattr(p, "hit_done", False)
                         and (p.life0 - p.t) >= float(getattr(p, "delay", 0.0))
-                        and zombies is not None):
-                    _apply_aegis_pulse_damage(player, self, zombies, p.x, p.y, float(getattr(p, "r", 0.0)),
+                        and enemies is not None):
+                    _apply_aegis_pulse_damage(player, self, enemies, p.x, p.y, float(getattr(p, "r", 0.0)),
                                               int(getattr(p, "damage", 0)))
                     p.hit_done = True
                 alive.append(p)
@@ -11002,14 +11002,14 @@ class GameState:
         self.comet_blasts.append(cb)
         return cb
 
-    def update_comet_blasts(self, dt: float, player=None, zombies=None):
+    def update_comet_blasts(self, dt: float, player=None, enemies=None):
         for b in list(self.comet_blasts):
             b.update(dt)
             if b.done():
                 self.comet_blasts.remove(b)
-        # decay comet hit flash/shake on zombies
-        if zombies is not None:
-            for z in zombies:
+        # decay comet hit flash/shake on enemies
+        if enemies is not None:
+            for z in enemies:
                 flash = float(getattr(z, "_comet_flash", 0.0))
                 if flash > 0.0:
                     z._comet_flash = max(0.0, flash - dt * 4.5)
@@ -11048,9 +11048,9 @@ class GameState:
         nx, ny = dx / dist, dy / dist
         return pos_x + nx * step, pos_y + ny * step
 
-    def update_hurricanes(self, dt: float, player, zombies, bullets, enemy_shots=None):
+    def update_hurricanes(self, dt: float, player, enemies, bullets, enemy_shots=None):
         # reset per-frame bandit trap flag; only re-enabled if actually in a wind influence ring this frame
-        for z in zombies:
+        for z in enemies:
             if getattr(z, "type", "") == "bandit":
                 z._wind_trapped = False
         if not getattr(self, "hurricanes", None):
@@ -11092,8 +11092,8 @@ class GameState:
             if dx or dy:
                 collide_and_slide_circle(player, self.obstacles.values(), dx, dy)
             
-            # 2. Pull Zombies
-            for z in zombies:
+            # 2. Pull Enemies
+            for z in enemies:
                 if getattr(z, "type", "") == "bandit":
                     dist_bandit = math.hypot(h.x - z.rect.centerx, h.y - z.rect.centery)
                     if dist_bandit <= effect_radius:
@@ -11142,11 +11142,11 @@ class GameState:
                 b.vx += tx * steer
                 b.vy += ty * steer
 
-    def update_vulnerability_marks(self, zombies, dt: float):
+    def update_vulnerability_marks(self, enemies, dt: float):
         lvl = int(META.get("vuln_mark_level", 0))
         if lvl <= 0:
             # clean stale marks if the prop is not owned
-            for z in zombies:
+            for z in enemies:
                 if hasattr(z, "_vuln_mark_t"):
                     z._vuln_mark_t = 0.0
             self._vuln_mark_cd = 0.0
@@ -11155,7 +11155,7 @@ class GameState:
         globals()["mark_pulse_time"] = globals().get("mark_pulse_time", 0.0) + dt
         interval, bonus, duration = mark_of_vulnerability_stats(lvl)
         # decay marks and small hit flash
-        for z in zombies:
+        for z in enemies:
             t = float(getattr(z, "_vuln_mark_t", 0.0))
             if t > 0.0:
                 z._vuln_mark_t = max(0.0, t - dt)
@@ -11172,7 +11172,7 @@ class GameState:
             triggers += 1
             cd += interval
             alive_unmarked = [
-                z for z in zombies
+                z for z in enemies
                 if getattr(z, "hp", 0) > 0 and float(getattr(z, "_vuln_mark_t", 0.0)) <= 0.0
             ]
             if not alive_unmarked:
@@ -11369,7 +11369,7 @@ def compute_cam_for_center_iso(cx_px: int, cy_px: int) -> tuple[int, int]:
 
 
 # --- Chained boss focus: pan through many targets, then back to player once ---
-def play_focus_chain_iso(screen, clock, game_state, player, zombies, bullets, enemy_shots, targets,
+def play_focus_chain_iso(screen, clock, game_state, player, enemies, bullets, enemy_shots, targets,
                          hold_time=0.9, label="BOSS"):
     """
     targets: list of (x_px, y_px) world-pixel centers (e.g., rect.centerx, rect.centery).
@@ -11381,7 +11381,7 @@ def play_focus_chain_iso(screen, clock, game_state, player, zombies, bullets, en
         focus_cam = compute_cam_for_center_iso(int(fx), int(fy))
         show_label = label if i == 0 else None
         play_focus_cinematic_iso(
-            screen, clock, game_state, player, zombies, bullets, enemy_shots,
+            screen, clock, game_state, player, enemies, bullets, enemy_shots,
             (int(fx), int(fy)), label=show_label, hold_time=hold_time,
             return_to_player=False, start_cam=last_cam
         )
@@ -11389,7 +11389,7 @@ def play_focus_chain_iso(screen, clock, game_state, player, zombies, bullets, en
     # final glide back to player (one time)
     pcenter = (int(player.rect.centerx), int(player.rect.centery))
     play_focus_cinematic_iso(
-        screen, clock, game_state, player, zombies, bullets, enemy_shots,
+        screen, clock, game_state, player, enemies, bullets, enemy_shots,
         pcenter, label=None, hold_time=0.0,
         return_to_player=False, start_cam=last_cam
     )
@@ -11397,7 +11397,7 @@ def play_focus_chain_iso(screen, clock, game_state, player, zombies, bullets, en
 
 def play_focus_cinematic_iso(screen, clock,
                              game_state, player,
-                             zombies, bullets, enemy_shots,
+                             enemies, bullets, enemy_shots,
                              focus_world_px: tuple[int, int],
                              hold_time: float = 0.35,
                              duration_each: float = 0.70,
@@ -11437,7 +11437,7 @@ def play_focus_cinematic_iso(screen, clock,
             t = min(1.0, (now - start) / max(1.0, dur * 1000.0))
             camx = int(_lerp(cam_a[0], cam_b[0], t))
             camy = int(_lerp(cam_a[1], cam_b[1], t))
-            render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
+            render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots,
                             game_state.obstacles, override_cam=(camx, camy))
             if label:
                 font = pygame.font.SysFont(None, 42)
@@ -11463,7 +11463,7 @@ def play_focus_cinematic_iso(screen, clock,
             if ev.type == pygame.QUIT:
                 pygame.quit();
                 sys.exit()
-        render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
+        render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots,
                         game_state.obstacles, override_cam=focus_cam)
         if label:
             font = pygame.font.SysFont(None, 42)
@@ -11478,7 +11478,7 @@ def play_focus_cinematic_iso(screen, clock,
 
 
 # ==================== 游戏渲染函数 ====================
-def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles,
+def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles,
                     override_cam: tuple[int, int] | None = None):
     # 1) 计算以“玩家所在格”为中心的相机
     px_grid = (player.x + player.size / 2) / CELL_SIZE
@@ -11622,11 +11622,11 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
         drawables.append(("item", sy, {"cx": sx, "cy": sy, "r": it.radius, "main": it.is_main}))
     # 3.3 僵尸 & 玩家（以“脚底点”排序/投影；与残影一致）
-    for z in zombies:
+    for z in enemies:
         wx = z.rect.centerx / CELL_SIZE
         wy = (z.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-        drawables.append(("zombie", sy, {"cx": sx, "cy": sy, "z": z}))
+        drawables.append(("enemy", sy, {"cx": sx, "cy": sy, "z": z}))
     wx = player.rect.centerx / CELL_SIZE
     wy = (player.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
     psx, psy = iso_world_to_screen(wx, wy, 0, camx, camy)
@@ -11732,7 +11732,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             rad = int(getattr(es, "r", BULLET_RADIUS))
             col = getattr(es, "color", HAZARD_STYLES["mist"]["ring"])
             pygame.draw.circle(screen, col, (data["cx"], data["cy"]), rad)
-        elif kind == "zombie":
+        elif kind == "enemy":
             z, cx, cy = data["z"], float(data["cx"]), float(data["cy"])
             if getattr(z, "type", "") == "bandit" and getattr(z, "radar_tagged", False):
                 base_rr = max(24, int(getattr(z, "radius", 0) * 4.0))
@@ -11779,7 +11779,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
                 pygame.draw.ellipse(glow, (255, 220, 90, max(30, alpha)), glow.get_rect())
                 screen.blit(glow, glow.get_rect(center=(cx, cy)))
             # 本体
-            base_col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
+            base_col = ENEMY_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
             col = getattr(z, "_current_color", getattr(z, "color", base_col))
             flash = float(getattr(z, "_comet_flash", 0.0))
             if flash > 0.0:
@@ -11982,7 +11982,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
             gy = (p.y - INFO_BAR_HEIGHT) / CELL_SIZE
             
             # 2. Project Grid -> Isometric Screen Coordinates
-            # (Using the same function your walls/zombies use)
+            # (Using the same function your walls/enemies use)
             sx, sy = iso_world_to_screen(gx, gy, 0, camx, camy)
             
             # 3. Draw the glow
@@ -11995,7 +11995,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
     #    —— 为避免重复代码，可以把那段 HUD 抽成一个小函数，这里调用即可。
     draw_ui_topbar(screen, game_state, player, time_left=globals().get("_time_left_runtime"))
-    bosses = _find_all_bosses(zombies)
+    bosses = _find_all_bosses(enemies)
     if len(bosses) >= 2:
         draw_boss_hp_bars_twin(screen, bosses[:2])
     elif len(bosses) == 1:
@@ -12005,7 +12005,7 @@ def render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, o
     return screen.copy()
 
 
-def render_game(screen: pygame.Surface, game_state, player: Player, zombies: List[Zombie],
+def render_game(screen: pygame.Surface, game_state, player: Player, enemies: List[Enemy],
                 bullets: Optional[List['Bullet']] = None,
                 enemy_shots: Optional[List[EnemyShot]] = None,
                 override_cam: tuple[int, int] | None = None) -> pygame.Surface:
@@ -12020,7 +12020,7 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         enemy_shots = []
     # Ignore override_cam and just use the main iso renderer
     return render_game_iso(
-        screen, game_state, player, zombies, bullets, enemy_shots,
+        screen, game_state, player, enemies, bullets, enemy_shots,
         obstacles=game_state.obstacles,
         override_cam=override_cam
     )
@@ -12195,8 +12195,8 @@ def play_combat_bgm():
 
 
 # ==================== 游戏主循环 ====================
-def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
-    pygame.display.set_caption("Zombie Card Game – Level")
+def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
+    pygame.display.set_caption("Enemy Card Game – Level")
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
     game_state = None
@@ -12214,11 +12214,11 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     play_combat_bgm()
    
     spatial = SpatialHash(SPATIAL_CELL)
-    obstacles, items, player_start, zombie_starts, main_item_list, decorations = generate_game_entities(
+    obstacles, items, player_start, enemy_starts, main_item_list, decorations = generate_game_entities(
         grid_size=GRID_SIZE,
         obstacle_count=config["obstacle_count"],
         item_count=config["item_count"],
-        zombie_count=config["zombie_count"],
+        enemy_count=config["enemy_count"],
         main_block_hp=config["block_hp"],
         level_idx=level_idx
     )
@@ -12282,13 +12282,13 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 break
     game_state.turrets = turrets
     ztype_map = {
-        "zombie_fast": "fast",
-        "zombie_tank": "tank",
-        "zombie_strong": "strong",
+        "enemy_fast": "fast",
+        "enemy_tank": "tank",
+        "enemy_strong": "strong",
         "basic": "basic"
     }
-    zt = ztype_map.get(chosen_zombie_type, "basic")
-    zombies = [Zombie(pos, speed=ZOMBIE_SPEED, ztype=zt) for pos in zombie_starts]
+    zt = ztype_map.get(chosen_enemy_type, "basic")
+    enemies = [Enemy(pos, speed=ENEMY_SPEED, ztype=zt) for pos in enemy_starts]
     bullets: List[Bullet] = []
     enemy_shots: List[EnemyShot] = []
     # wave spawn state
@@ -12298,7 +12298,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     def player_center():
         return player.x + player.size / 2, player.y + player.size / 2 + INFO_BAR_HEIGHT
 
-    def pick_zombie_type_weighted():
+    def pick_enemy_type_weighted():
         # 可按关卡/波次调整，这里给一个基础权重
         table = [
             ("basic", 50),
@@ -12325,7 +12325,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         cand = [p for p in all_pos if p not in blocked and abs(p[0] - px) + abs(p[1] - py) >= 6]
         random.shuffle(cand)
         # 也避免直接与现有僵尸重叠
-        zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in zombies}
+        zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in enemies}
         out = []
         for p in cand:
             if p in zcells: continue
@@ -12360,7 +12360,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         R2 = cur_range ** 2
         # 收集候选：僵尸（射程内）
         z_cands = []
-        for z in zombies:
+        for z in enemies:
             cx, cy = z.rect.centerx, z.rect.centery
             d2 = (cx - px) ** 2 + (cy - py) ** 2
             if d2 <= R2:
@@ -12382,17 +12382,17 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         # - 僵尸优先：加较高常数；障碍其次：加较低常数
         #   （权重不要过大，否则完全遮蔽距离差异）
         DIST_K = 1e-4
-        W_ZOMBIE = 1200.0
+        W_ENEMY = 1200.0
         W_BLOCK = 800.0
         best = None
         best_score = -1e18
         # 僵尸优先（仍受距离影响）
         for z, cx, cy, d2 in z_cands:
-            s = -d2 * DIST_K + W_ZOMBIE
+            s = -d2 * DIST_K + W_ENEMY
             # 若想进一步区分类型，可在此额外加分（例如自爆怪、远程怪等）
             if s > best_score:
                 best_score = s
-                best = ('zombie', None, z, cx, cy, d2)
+                best = ('enemy', None, z, cx, cy, d2)
         # 障碍次之（仍受距离影响）
         for gp, ob, cx, cy, d2 in b_cands:
             s = -d2 * DIST_K + W_BLOCK
@@ -12422,7 +12422,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         # We had already entered this same level earlier in this run → restore for a clean restart
         _restore_level_start_baseline(current_level, player, game_state)
     # Initial spawn: use threat budget once
-    spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
+    spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, enemies, ENEMY_CAP)
     if spawned > 0:
         wave_index += 1
         globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
@@ -12437,7 +12437,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             entry_freeze = max(0.0, entry_freeze - dt)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            last_frame = render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
+            last_frame = render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots,
                                          obstacles=game_state.obstacles)
             continue
         # ==== 消费镜头聚焦请求：完全暂停游戏与计时 ====
@@ -12447,7 +12447,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             play_focus_cinematic_iso(
                 screen, clock,
                 game_state, player,
-                zombies, bullets, enemy_shots,
+                enemies, bullets, enemy_shots,
                 (fx, fy),
                 label=("BANDIT!" if fkind == "bandit" else "BOSS!")
             )
@@ -12461,13 +12461,13 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 while fq and fq[0][0] == "boss":
                     _, pos = fq.pop(0)
                     boss_targets.append(pos)
-                play_focus_chain_iso(screen, clock, game_state, player, zombies, bullets, enemy_shots, boss_targets)
+                play_focus_chain_iso(screen, clock, game_state, player, enemies, bullets, enemy_shots, boss_targets)
             else:
                 # Non-boss singletons (e.g., bandit) keep existing one-shot behavior
                 tag, pos = fq.pop(0)
                 lbl = "COIN BANDIT!" if tag == "bandit" else None
                 play_focus_cinematic_iso(
-                    screen, clock, game_state, player, zombies, bullets, enemy_shots,
+                    screen, clock, game_state, player, enemies, bullets, enemy_shots,
                     pos, label=lbl, return_to_player=True
                 )
         # countdown timer
@@ -12480,8 +12480,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         spawn_timer += dt
         if spawn_timer >= SPAWN_INTERVAL:
             spawn_timer = 0.0
-            if len(zombies) < ZOMBIE_CAP:
-                spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
+            if len(enemies) < ENEMY_CAP:
+                spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, enemies, ENEMY_CAP)
                 if spawned > 0:
                     wave_index += 1
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
@@ -12499,7 +12499,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 player.targeting_skill = None
                 continue
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
+                bg = last_frame or render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots,
                                                    obstacles=game_state.obstacles)
                 choice, time_left = pause_game_modal(screen, bg, clock, time_left, player)
                 if choice == 'continue':
@@ -12538,7 +12538,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and getattr(player, "targeting_skill", None):
                 _update_skill_target(player, game_state)
                 if player.targeting_skill == "blast":
-                    if player.skill_target_valid and _cast_fixed_point_blast(player, game_state, zombies, player.skill_target_pos):
+                    if player.skill_target_valid and _cast_fixed_point_blast(player, game_state, enemies, player.skill_target_pos):
                         player.blast_cd = float(BLAST_COOLDOWN)
                         player.targeting_skill = None
                     else:
@@ -12561,14 +12561,14 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
         game_state.update_telegraphs(dt)  # 到时生成酸池
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
-        game_state.update_vulnerability_marks(zombies, dt)
-        game_state.update_hurricanes(dt, player, zombies, bullets, enemy_shots)
+        game_state.update_vulnerability_marks(enemies, dt)
+        game_state.update_hurricanes(dt, player, enemies, bullets, enemy_shots)
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
 
         # --- UPDATE PARTICLES ---
         game_state.fx.update(dt)
-        game_state.update_comet_blasts(dt, player, zombies)
+        game_state.update_comet_blasts(dt, player, enemies)
         game_state.update_camera_shake(dt)
         # --- Flow field refresh (rebuild ~each 0.30s or when goal/obstacles changed)
         ptile = (int(player.rect.centerx // CELL_SIZE),
@@ -12576,8 +12576,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.refresh_flow_field(ptile, dt)
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt, player)
-        for z in zombies:
-            got = game_state.collect_spoils_for_zombie(z)
+        for z in enemies:
+            got = game_state.collect_spoils_for_enemy(z)
             if got > 0:
                 z.add_spoils(got)
             # 衰减拾取光晕
@@ -12585,7 +12585,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
         game_state.update_damage_texts(dt)
-        game_state.update_aegis_pulses(dt, player, zombies)
+        game_state.update_aegis_pulses(dt, player, enemies)
         game_state.collect_heals(player)
         player.update_bone_plating(dt)
         # Active skill cooldowns
@@ -12609,14 +12609,14 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if player.acid_dot_timer <= 0.0:
                 player.acid_dot_dps = 0.0
         player.update_bone_plating(dt)
-        tick_aegis_pulse(player, game_state, zombies, dt)
+        tick_aegis_pulse(player, game_state, enemies, dt)
         # ===== Level-up picker (freeze gameplay & timer like Pause) =====
         while getattr(player, "levelup_pending", 0) > 0:
-            bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles)
+            bg = last_frame or render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles)
             time_left = levelup_modal(screen, bg, clock, time_left, player)
             player.levelup_pending -= 1
             # redraw a fresh gameplay frame behind us for a seamless return
-            last_frame = render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots, obstacles)
+            last_frame = render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles)
         # Autofire handling
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
         target, dist = find_target()
@@ -12634,10 +12634,10 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             player.fire_cd += player.fire_cooldown()
         # Auto-turrets firing
         for t in getattr(game_state, "turrets", []):
-            t.update(dt, game_state, zombies, bullets)
+            t.update(dt, game_state, enemies, bullets)
         # Update bullets
         for b in list(bullets):
-            b.update(dt, game_state, zombies, player)
+            b.update(dt, game_state, enemies, player)
             if not b.alive:
                 bullets.remove(b)
         player.hit_cd = max(0.0, player.hit_cd - dt)
@@ -12645,12 +12645,12 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         if getattr(game_state, "pending_bullets", None):
             bullets.extend(game_state.pending_bullets)
             game_state.pending_bullets.clear()
-        for zombie in list(zombies):
-            zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
-            if player.hit_cd <= 0.0 and circle_touch(zombie, player):
-                mult = getattr(game_state, "biome_zombie_contact_mult", 1.0)
-                dmg_mult = getattr(zombie, "contact_damage_mult", 1.0)
-                dmg = int(round(ZOMBIE_CONTACT_DAMAGE * max(1.0, mult) * max(0.1, dmg_mult)))
+        for enemy in list(enemies):
+            enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
+            if player.hit_cd <= 0.0 and circle_touch(enemy, player):
+                mult = getattr(game_state, "biome_enemy_contact_mult", 1.0)
+                dmg_mult = getattr(enemy, "contact_damage_mult", 1.0)
+                dmg = int(round(ENEMY_CONTACT_DAMAGE * max(1.0, mult) * max(0.1, dmg_mult)))
                 game_state.damage_player(player, dmg)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
                 if player.hp <= 0:
@@ -12658,8 +12658,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     running = False
                     break
         # special behaviors & enemy shots
-        for z in list(zombies):
-            z.update_special(dt, player, zombies, enemy_shots, game_state)
+        for z in list(enemies):
+            z.update_special(dt, player, enemies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):
                 z._death_processed = True  # Prevent duplicate death processing
                 _bandit_death_notice(z, game_state)
@@ -12672,15 +12672,15 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                                         body_size)
                         )
                 if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) is not None:
-                    trigger_twin_enrage(z, zombies, game_state)
+                    trigger_twin_enrage(z, enemies, game_state)
                 total_drop = int(SPOILS_PER_KILL) + int(getattr(z, "spoils", 0))
                 if total_drop > 0:
                     game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
-                # Bosses: guaranteed heal potions; regular zombies: random chance
+                # Bosses: guaranteed heal potions; regular enemies: random chance
                 if getattr(z, "is_boss", False):
                     for _ in range(BOSS_HEAL_POTIONS):
                         game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
-                elif random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                elif random.random() < HEAL_DROP_CHANCE_ENEMY:
                     game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
                 # 额外经验（非子弹击杀时）
                 if not getattr(z, "_xp_awarded", False):  # <-- add this guard
@@ -12689,8 +12689,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                         setattr(z, "_xp_awarded", True)  # <-- mark as paid
                     except Exception:
                         pass
-                transfer_xp_to_neighbors(z, zombies)
-                zombies.remove(z)
+                transfer_xp_to_neighbors(z, enemies)
+                enemies.remove(z)
         # enemy shots update
         for es in list(enemy_shots):
             es.update(dt, player, game_state)
@@ -12700,7 +12700,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         if game_state.ghosts:
             game_state.ghosts[:] = [g for g in game_state.ghosts if g.update(dt)]
         # Fog
-        boss_now = _find_current_boss(zombies)
+        boss_now = _find_current_boss(enemies)
         if boss_now and getattr(boss_now, "type", "") == "boss_mist":
             if not getattr(game_state, "fog_on", False):
                 game_state.enable_fog_field()
@@ -12716,28 +12716,28 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             if USE_ISO:
                 last_frame = render_game_iso(
                     pygame.display.get_surface(),
-                    game_state, player, zombies, bullets, enemy_shots,
+                    game_state, player, enemies, bullets, enemy_shots,
                     obstacles=obstacles
                 )
             else:
                 last_frame = render_game(
                     pygame.display.get_surface(),
-                    game_state, player, zombies, bullets, enemy_shots
+                    game_state, player, enemies, bullets, enemy_shots
                 )
             continue
         if USE_ISO:
             last_frame = render_game_iso(
                 pygame.display.get_surface(),
-                game_state, player, zombies, bullets, enemy_shots,
+                game_state, player, enemies, bullets, enemy_shots,
                 obstacles
             )
         else:
             last_frame = render_game(
                 pygame.display.get_surface(),
-                game_state, player, zombies, bullets, enemy_shots
+                game_state, player, enemies, bullets, enemy_shots
             )
         # else:
-        #     last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+        #     last_frame = render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
         if game_result == "success":
             globals()["_last_spoils"] = getattr(game_state, "spoils_gained", 0)
             globals()["_carry_player_state"] = capture_player_carry(player)
@@ -12816,12 +12816,12 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 turrets.append(StationaryTurret(wx, wy))
                 break
     game_state.turrets = turrets
-    # Zombies
-    zombies: List[Zombie] = []
-    for z in snap.get("zombies", []):
-        zobj = Zombie((0, 0),
-                      attack=int(z.get("attack", ZOMBIE_ATTACK)),
-                      speed=int(z.get("speed", ZOMBIE_SPEED)),
+    # Enemies
+    enemies: List[Enemy] = []
+    for z in snap.get("enemies", []):
+        zobj = Enemy((0, 0),
+                      attack=int(z.get("attack", ENEMY_ATTACK)),
+                      speed=int(z.get("speed", ENEMY_SPEED)),
                       ztype=z.get("type", "basic"),
                       hp=int(z.get("hp", 30)))
         zobj.max_hp = int(z.get("max_hp", int(z.get("hp", 30))))
@@ -12831,9 +12831,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         zobj.rect.y = int(zobj.y) + INFO_BAR_HEIGHT
         zobj._spawn_elapsed = float(z.get("spawn_elapsed", 0.0))
         zobj.attack_timer = float(z.get("attack_timer", 0.0))
-        # clamp restored speed so resumed runs don't create super-speed zombies
-        zobj.speed = min(ZOMBIE_SPEED_MAX, max(1, int(zobj.speed)))
-        zombies.append(zobj)
+        # clamp restored speed so resumed runs don't create super-speed enemies
+        zobj.speed = min(ENEMY_SPEED_MAX, max(1, int(zobj.speed)))
+        enemies.append(zobj)
     # Bullets
     bullets: List[Bullet] = []
     for b in snap.get("bullets", []):
@@ -12853,7 +12853,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     clock = pygame.time.Clock()
     running = True
     last_frame = None
-    chosen_zombie_type = meta.get("chosen_zombie_type", "basic")
+    chosen_enemy_type = meta.get("chosen_enemy_type", "basic")
     # Spawner state
     spawn_timer = 0.0
     wave_index = 0
@@ -12888,7 +12888,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         R2 = cur_range ** 2
         # 收集候选：僵尸（射程内）
         z_cands = []
-        for z in zombies:
+        for z in enemies:
             cx, cy = z.rect.centerx, z.rect.centery
             d2 = (cx - px) ** 2 + (cy - py) ** 2
             if d2 <= R2:
@@ -12910,17 +12910,17 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         # - 僵尸优先：加较高常数；障碍其次：加较低常数
         #   （权重不要过大，否则完全遮蔽距离差异）
         DIST_K = 1e-4
-        W_ZOMBIE = 1200.0
+        W_ENEMY = 1200.0
         W_BLOCK = 800.0
         best = None
         best_score = -1e18
         # 僵尸优先（仍受距离影响）
         for z, cx, cy, d2 in z_cands:
-            s = -d2 * DIST_K + W_ZOMBIE
+            s = -d2 * DIST_K + W_ENEMY
             # 若想进一步区分类型，可在此额外加分（例如自爆怪、远程怪等）
             if s > best_score:
                 best_score = s
-                best = ('zombie', None, z, cx, cy, d2)
+                best = ('enemy', None, z, cx, cy, d2)
         # 障碍次之（仍受距离影响）
         for gp, ob, cx, cy, d2 in b_cands:
             s = -d2 * DIST_K + W_BLOCK
@@ -12941,7 +12941,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             # win on survival
             chosen = show_success_screen(
                 screen,
-                last_frame or render_game(screen, game_state, player, zombies, bullets, enemy_shots),
+                last_frame or render_game(screen, game_state, player, enemies, bullets, enemy_shots),
                 reward_choices=[]
             )
             return "success", None, last_frame or screen.copy()
@@ -12958,7 +12958,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 player.targeting_skill = None
                 continue
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                bg = last_frame or render_game_iso(screen, game_state, player, zombies, bullets, enemy_shots,
+                bg = last_frame or render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots,
                                                    obstacles=game_state.obstacles)
                 choice, time_left = pause_game_modal(screen, bg, clock, time_left, player)
                 if choice == 'continue':
@@ -12969,8 +12969,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 elif choice == 'home':
                     queue_menu_transition(pygame.display.get_surface().copy())
                     snap2 = capture_snapshot(
-                        game_state, player, zombies, level_idx,
-                        chosen_zombie_type, bullets
+                        game_state, player, enemies, level_idx,
+                        chosen_enemy_type, bullets
                     )
                     save_snapshot(snap2)
                     globals()["_skip_intro_once"] = True
@@ -12997,7 +12997,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and getattr(player, "targeting_skill", None):
                 _update_skill_target(player, game_state)
                 if player.targeting_skill == "blast":
-                    if player.skill_target_valid and _cast_fixed_point_blast(player, game_state, zombies, player.skill_target_pos):
+                    if player.skill_target_valid and _cast_fixed_point_blast(player, game_state, enemies, player.skill_target_pos):
                         player.blast_cd = float(BLAST_COOLDOWN)
                         player.targeting_skill = None
                     else:
@@ -13020,20 +13020,20 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
         game_state.update_telegraphs(dt)  # 到时生成酸池
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
-        game_state.update_vulnerability_marks(zombies, dt)
+        game_state.update_vulnerability_marks(enemies, dt)
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
         game_state.fx.update(dt)
-        game_state.update_comet_blasts(dt, player, zombies)
+        game_state.update_comet_blasts(dt, player, enemies)
         game_state.update_camera_shake(dt)
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt, player)
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
         game_state.update_damage_texts(dt)
-        game_state.update_aegis_pulses(dt, player, zombies)
+        game_state.update_aegis_pulses(dt, player, enemies)
         game_state.collect_heals(player)
-        tick_aegis_pulse(player, game_state, zombies, dt)
+        tick_aegis_pulse(player, game_state, enemies, dt)
         # Active skill cooldowns
         player.blast_cd = max(0.0, getattr(player, "blast_cd", 0.0) - dt)
         player.teleport_cd = max(0.0, getattr(player, "teleport_cd", 0.0) - dt)
@@ -13057,40 +13057,40 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             player.fire_cd += player.fire_cooldown()
         # Auto-turrets firing
         for t in getattr(game_state, "turrets", []):
-            t.update(dt, game_state, zombies, bullets)
+            t.update(dt, game_state, enemies, bullets)
         # Update bullets
         for b in list(bullets):
-            b.update(dt, game_state, zombies, player)
+            b.update(dt, game_state, enemies, player)
             if not b.alive:
                 bullets.remove(b)
         # === wave spawning (budget-based ONLY) ===
         spawn_timer += dt
         if spawn_timer >= SPAWN_INTERVAL:
             spawn_timer = 0.0
-            if len(zombies) < ZOMBIE_CAP:
-                spawned = spawn_wave_with_budget(game_state, player, level_idx, wave_index, zombies, ZOMBIE_CAP)
+            if len(enemies) < ENEMY_CAP:
+                spawned = spawn_wave_with_budget(game_state, player, level_idx, wave_index, enemies, ENEMY_CAP)
                 if spawned > 0:
                     wave_index += 1
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
-        # Zombies update & contact damage
+        # Enemies update & contact damage
         player.hit_cd = max(0.0, player.hit_cd - dt)
         # --- nav refresh (shared Dijkstra flow field) ---
         pgx = int(player.rect.centerx // CELL_SIZE)
         pgy = int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE)
         game_state.refresh_flow_field((pgx, pgy), dt)
-        for zombie in list(zombies):
-            zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
-            if player.hit_cd <= 0.0 and circle_touch(zombie, player):
-                mult = getattr(game_state, "biome_zombie_contact_mult", 1.0)
-                dmg_mult = getattr(zombie, "contact_damage_mult", 1.0)
-                dmg = int(round(ZOMBIE_CONTACT_DAMAGE * max(1.0, mult) * max(0.1, dmg_mult)))
+        for enemy in list(enemies):
+            enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
+            if player.hit_cd <= 0.0 and circle_touch(enemy, player):
+                mult = getattr(game_state, "biome_enemy_contact_mult", 1.0)
+                dmg_mult = getattr(enemy, "contact_damage_mult", 1.0)
+                dmg = int(round(ENEMY_CONTACT_DAMAGE * max(1.0, mult) * max(0.1, dmg_mult)))
                 game_state.damage_player(player, dmg)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
                 if player.hp <= 0:
                     clear_save()
                     # Fresh frame with HP = 0 for fail background
                     bg = render_game_iso(
-                        screen, game_state, player, zombies, bullets, enemy_shots,
+                        screen, game_state, player, enemies, bullets, enemy_shots,
                         obstacles=game_state.obstacles
                     )
                     last_frame = bg.copy()
@@ -13104,8 +13104,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         flush_events()
                         return "restart", None, last_frame or screen.copy()
         # Special behaviors & enemy shots
-        for z in list(zombies):
-            z.update_special(dt, player, zombies, enemy_shots, game_state)
+        for z in list(enemies):
+            z.update_special(dt, player, enemies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):
                 z._death_processed = True  # Prevent duplicate death processing
                 _bandit_death_notice(z, game_state)
@@ -13120,19 +13120,19 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 total_drop = int(SPOILS_PER_KILL) + int(getattr(z, "spoils", 0))
                 if total_drop > 0:
                     game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
-                # Bosses: guaranteed heal potions; regular zombies: random chance
+                # Bosses: guaranteed heal potions; regular enemies: random chance
                 if getattr(z, "is_boss", False):
                     for _ in range(BOSS_HEAL_POTIONS):
                         game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
-                elif random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                elif random.random() < HEAL_DROP_CHANCE_ENEMY:
                     game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
                 # 额外经验（非子弹击杀时）
                 try:
                     player.add_xp(int(getattr(z, "spoils", 0)) * int(Z_SPOIL_XP_BONUS_PER))
                 except Exception:
                     pass
-                transfer_xp_to_neighbors(z, zombies)
-                zombies.remove(z)
+                transfer_xp_to_neighbors(z, enemies)
+                enemies.remove(z)
         for es in list(enemy_shots):
             es.update(dt, player, game_state)
             if not es.alive:
@@ -13141,7 +13141,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         if player.hp <= 0:
             clear_save()
             action = show_fail_screen(screen,
-                                      last_frame or render_game(screen, game_state, player, zombies, bullets,
+                                      last_frame or render_game(screen, game_state, player, enemies, bullets,
                                                                 enemy_shots))
             if action == "home":
                 clear_save();
@@ -13152,10 +13152,10 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 flush_events()
                 return "restart", None, last_frame or screen.copy()
         if USE_ISO:
-            last_frame = render_game_iso(pygame.display.get_surface(), game_state, player, zombies, bullets,
+            last_frame = render_game_iso(pygame.display.get_surface(), game_state, player, enemies, bullets,
                                          enemy_shots)
         else:
-            last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+            last_frame = render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
     return "home", None, last_frame or screen.copy()
 
 
@@ -13263,13 +13263,13 @@ if __name__ == "__main__":
                 pygame.quit();
                 sys.exit()
         config = get_level_config(current_level)
-        chosen_zombie = "basic"
+        chosen_enemy = "basic"
         # --- snapshot coins at first entry to this level ---
         if "_coins_at_level_start" not in globals():
             globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
         if globals().get("_menu_transition_frame") is None:
             flush_events()
-        result, reward, bg = main_run_level(config, chosen_zombie)
+        result, reward, bg = main_run_level(config, chosen_enemy)
         if result == "restart":
             META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
             META["run_items_spawned"] = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
@@ -13461,11 +13461,11 @@ if __name__ == "__main__":
 # TODO
 # Attack MODE need to figure out
 # The item collection system can be hugely impact this game to next level
-# Player and Zombie both can collect item to upgrade, after kill zombie, player can get the experience to upgrade, and
+# Player and Enemy both can collect item to upgrade, after kill enemy, player can get the experience to upgrade, and
 # I set a timer each game for winning condition, as long as player still alive, after the time is running out
 # player won, vice versa. And after each combat, shop( roguelike feature) will appear for player to trade with item
 # using the item they collect in the combat
-# zombie's health, attack accumulate via level increases
+# enemy's health, attack accumulate via level increases
 # Special weapon can be trade in shop using big items collected in game(GOLDCOLLECTOR, etc.) OR
 # Just make it only unlock by defeating boss/elite
 # set limit for player fire rate
@@ -13483,7 +13483,7 @@ if __name__ == "__main__":
 #
 # Math & Utils
 #
-# Entity Classes（Player/Zombie/Bullet/Obstacle/Item/Boss）
+# Entity Classes（Player/Enemy/Bullet/Obstacle/Item/Boss）
 #
 # AI & Pathfinding（A* / Flow Field）
 #
