@@ -17,7 +17,7 @@ def heuristic(a, b):
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
-def a_star_search(graph, start, goal, obstacles, zombie_attack=10):
+def a_star_search(graph, start, goal, obstacles, enemy_attack=10):
     frontier = PriorityQueue()
     frontier.put((0, start))
     came_from = {start: None}
@@ -33,7 +33,7 @@ def a_star_search(graph, start, goal, obstacles, zombie_attack=10):
                 if obstacle.type == "Indestructible":
                     continue
                 elif obstacle.type == "Destructible":
-                    k_factor = (math.ceil(obstacle.health / zombie_attack)) * 0.1
+                    k_factor = (math.ceil(obstacle.health / enemy_attack)) * 0.1
                     new_cost = cost_so_far[current] + 1 + k_factor
             if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
                 cost_so_far[neighbor] = new_cost

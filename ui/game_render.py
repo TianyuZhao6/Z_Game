@@ -2,7 +2,7 @@ import pygame
 from core.utils import CELL_SIZE, INFO_BAR_HEIGHT
 
 
-def render_game(screen, game_state, player, zombies):
+def render_game(screen, game_state, player, enemies):
     screen.fill((20, 20, 20))
     pygame.draw.rect(screen, (0, 0, 0), (0, 0, screen.get_width(), INFO_BAR_HEIGHT))
     font = pygame.font.SysFont(None, 28)
@@ -20,8 +20,8 @@ def render_game(screen, game_state, player, zombies):
 
     pygame.draw.rect(screen, (0, 255, 0), player.rect)
 
-    for zombie in zombies:
-        pygame.draw.rect(screen, (255, 60, 60), zombie.rect)
+    for enemy in enemies:
+        pygame.draw.rect(screen, (255, 60, 60), enemy.rect)
 
     for obstacle in game_state.obstacles.values():
         is_main = hasattr(obstacle, 'is_main_block') and obstacle.is_main_block

@@ -18,16 +18,16 @@ OBSTACLE_HEALTH = 20
 MAIN_BLOCK_HEALTH = 40
 DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 5
-ZOMBIE_SPEED = 2
-ZOMBIE_ATTACK = 10
-ZOMBIE_NUM = 2
+ENEMY_SPEED = 2
+ENEMY_ATTACK = 10
+ENEMY_NUM = 2
 ITEMS = 10
 
-CARD_POOL = ["zombie_fast", "zombie_strong", "zombie_tank", "zombie_spitter", "zombie_leech"]
+CARD_POOL = ["enemy_fast", "enemy_strong", "enemy_tank", "enemy_spitter", "enemy_leech"]
 
 LEVELS = [
-    {"obstacle_count": 15, "item_count": 3, "zombie_count": 1, "block_hp": 10, "zombie_types": ["basic"], "reward": "zombie_fast"},
-    {"obstacle_count": 18, "item_count": 4, "zombie_count": 2, "block_hp": 15, "zombie_types": ["basic", "strong"], "reward": "zombie_strong"},
+    {"obstacle_count": 15, "item_count": 3, "enemy_count": 1, "block_hp": 10, "enemy_types": ["basic"], "reward": "enemy_fast"},
+    {"obstacle_count": 18, "item_count": 4, "enemy_count": 2, "block_hp": 15, "enemy_types": ["basic", "strong"], "reward": "enemy_strong"},
 ]
 
 # 方向向量
@@ -115,9 +115,9 @@ def show_help(screen):
         lines = [
             "WASD to move. Collect all memory fragments to win.",
             "Breakable yellow blocks block the final fragment.",
-            "Zombies chase you. Touch = defeat.",
-            "After each win: pick a zombie card as reward.",
-            "Before the next level: choose which zombie type spawns."
+            "Enemies chase you. Touch = defeat.",
+            "After each win: pick a enemy card as reward.",
+            "Before the next level: choose which enemy type spawns."
         ]
         y=100
         for s in lines:
@@ -234,8 +234,8 @@ class Player:
     def draw(self, screen):
         pygame.draw.rect(screen, (0, 255, 0), self.rect)
 
-class Zombie:
-    def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED, ztype: str="basic"):
+class Enemy:
+    def __init__(self, pos: Tuple[int, int], attack: int = ENEMY_ATTACK, speed: int = ENEMY_SPEED, ztype: str="basic"):
         self.x = pos[0]*CELL_SIZE; self.y = pos[1]*CELL_SIZE
         self.attack=attack; self.speed=speed; self.type=ztype
         # adjust stats based on type
@@ -290,7 +290,7 @@ def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int], o
                 obstacle = obstacles[neighbor]
                 if obstacle.type == "Indestructible": continue
                 elif obstacle.type == "Destructible":
-                    k_factor = (math.ceil(obstacle.health / ZOMBIE_ATTACK)) * 0.1
+                    k_factor = (math.ceil(obstacle.health / ENEMY_ATTACK)) * 0.1
                     new_cost = cost_so_far[current] + 1 + k_factor
             if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
                 cost_so_far[neighbor] = new_cost
@@ -308,9 +308,9 @@ def get_level_config(level: int) -> dict:
     return {
         "obstacle_count": 20 + level,
         "item_count": 5,
-        "zombie_count": min(5, 1 + level // 3),
+        "enemy_count": min(5, 1 + level // 3),
         "block_hp": int(10 * 1.2 ** (level - len(LEVELS) + 1)),
-        "zombie_types": ["basic", "strong", "fire"][level % 3:],
+        "enemy_types": ["basic", "strong", "fire"][level % 3:],
         "reward": random.choice(CARD_POOL)
     }
 
@@ -322,7 +322,7 @@ def reconstruct_path(came_from: Dict, start: Tuple[int, int], goal: Tuple[int, i
     path.append(start); path.reverse(); return path
 
 # ==================== 游戏初始化函数 ====================
-def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int, zombie_count: int, main_block_hp: int):
+def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int, enemy_count: int, main_block_hp: int):
     all_positions = [(x, y) for x in range(grid_size) for y in range(grid_size)]
     corners = [(0, 0), (0, grid_size - 1), (grid_size - 1, 0), (grid_size - 1, grid_size - 1)]
     forbidden = set(corners)
@@ -330,11 +330,11 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
         empty = [p for p in all_positions if p not in forbidden]
         while True:
             picks = random.sample(empty, count + 1)
-            player_pos, zombies = picks[0], picks[1:]
-            if all(abs(player_pos[0] - z[0]) + abs(player_pos[1] - z[1]) >= min_distance for z in zombies):
-                return player_pos, zombies
-    player_pos, zombie_pos_list = pick_valid_positions(min_distance=5, count=zombie_count)
-    forbidden |= {player_pos}; forbidden |= set(zombie_pos_list)
+            player_pos, enemies = picks[0], picks[1:]
+            if all(abs(player_pos[0] - z[0]) + abs(player_pos[1] - z[1]) >= min_distance for z in enemies):
+                return player_pos, enemies
+    player_pos, enemy_pos_list = pick_valid_positions(min_distance=5, count=enemy_count)
+    forbidden |= {player_pos}; forbidden |= set(enemy_pos_list)
     main_item_candidates = [p for p in all_positions if p not in forbidden and is_not_edge(p, grid_size)]
     main_item_pos = random.choice(main_item_candidates); forbidden.add(main_item_pos)
     obstacles = {main_item_pos: MainBlock(main_item_pos[0], main_item_pos[1], health=main_block_hp)}
@@ -352,7 +352,7 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
     other_items = random.sample(item_candidates, item_count - 1)
     items = [Item(pos[0], pos[1]) for pos in other_items]
     items.append(Item(main_item_pos[0], main_item_pos[1], is_main=True))
-    return obstacles, items, player_pos, zombie_pos_list, [main_item_pos]
+    return obstacles, items, player_pos, enemy_pos_list, [main_item_pos]
 
 def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> Graph:
     graph = Graph()
@@ -392,7 +392,7 @@ class GameState:
             del self.obstacles[pos]
 
 # ==================== 游戏渲染函数 ====================
-def render_game(screen: pygame.Surface, game_state, player: Player, zombies: List[Zombie]) -> pygame.Surface:
+def render_game(screen: pygame.Surface, game_state, player: Player, enemies: List[Enemy]) -> pygame.Surface:
     screen.fill((20, 20, 20))
     pygame.draw.rect(screen, (0, 0, 0), (0, 0, WINDOW_SIZE, INFO_BAR_HEIGHT))
     font = pygame.font.SysFont(None, 28)
@@ -406,7 +406,7 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
         color = (255, 255, 100) if item.is_main else (255, 255, 0)
         pygame.draw.circle(screen, color, item.center, item.radius)
     pygame.draw.rect(screen, (0, 255, 0), player.rect)
-    for zombie in zombies: pygame.draw.rect(screen, (255, 60, 60), zombie.rect)
+    for enemy in enemies: pygame.draw.rect(screen, (255, 60, 60), enemy.rect)
     for obstacle in game_state.obstacles.values():
         is_main = hasattr(obstacle, 'is_main_block') and obstacle.is_main_block
         if is_main: color = (255, 220, 80)
@@ -425,33 +425,33 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     return screen.copy()
 
 # ==================== 游戏主循环 ====================
-def main_run_level(config, chosen_zombie_type:str) -> Tuple[str, Optional[str], pygame.Surface]:
-    pygame.display.set_caption("Zombie Card Game – Level")
+def main_run_level(config, chosen_enemy_type:str) -> Tuple[str, Optional[str], pygame.Surface]:
+    pygame.display.set_caption("Enemy Card Game – Level")
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
 
     # 生成实体
-    obstacles, items, player_start, zombie_starts, main_item_list = generate_game_entities(
+    obstacles, items, player_start, enemy_starts, main_item_list = generate_game_entities(
         grid_size=GRID_SIZE,
         obstacle_count=config["obstacle_count"],
         item_count=config["item_count"],
-        zombie_count=config["zombie_count"],
+        enemy_count=config["enemy_count"],
         main_block_hp=config["block_hp"]
     )
 
     game_state = GameState(obstacles, items, main_item_list)
     player = Player(player_start, speed=PLAYER_SPEED)
-    # make zombies with chosen type
+    # make enemies with chosen type
     ztype_map = {
-        "zombie_fast": "fast",
-        "zombie_tank": "tank",
-        "zombie_strong": "strong",
-        "zombie_spitter": "spitter",
-        "zombie_leech": "leech",
+        "enemy_fast": "fast",
+        "enemy_tank": "tank",
+        "enemy_strong": "strong",
+        "enemy_spitter": "spitter",
+        "enemy_leech": "leech",
         "basic": "basic"
     }
-    zt = ztype_map.get(chosen_zombie_type, "basic")
-    zombies = [Zombie(pos, speed=ZOMBIE_SPEED, ztype=zt) for pos in zombie_starts]
+    zt = ztype_map.get(chosen_enemy_type, "basic")
+    enemies = [Enemy(pos, speed=ENEMY_SPEED, ztype=zt) for pos in enemy_starts]
 
     running=True; game_result=None; last_frame=None
     while running:
@@ -460,24 +460,24 @@ def main_run_level(config, chosen_zombie_type:str) -> Tuple[str, Optional[str], 
         keys = pygame.key.get_pressed()
         player.move(keys, game_state.obstacles)
         game_state.collect_item(player.rect)
-        for zombie in zombies:
-            zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state)
+        for enemy in enemies:
+            enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state)
             player_rect = pygame.Rect(int(player.x), int(player.y) + INFO_BAR_HEIGHT, player.size, player.size)
-            if zombie.rect.colliderect(player_rect):
+            if enemy.rect.colliderect(player_rect):
                 game_result = "fail"; running=False; break
         if not game_state.items:
             game_result = "success"; running=False
-        last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies)
+        last_frame = render_game(pygame.display.get_surface(), game_state, player, enemies)
         clock.tick(60)
     return game_result, config.get("reward", None), last_frame
 
-def select_zombie_screen(screen, owned_cards:List[str]) -> str:
-    # Choose which zombie type spawns next level. If none owned -> 'basic'
+def select_enemy_screen(screen, owned_cards:List[str]) -> str:
+    # Choose which enemy type spawns next level. If none owned -> 'basic'
     if not owned_cards: return "basic"
     clock = pygame.time.Clock()
     while True:
         screen.fill((18,18,18))
-        title = pygame.font.SysFont(None, 48).render("Choose Next Level's Zombie", True, (230,230,230))
+        title = pygame.font.SysFont(None, 48).render("Choose Next Level's Enemy", True, (230,230,230))
         screen.blit(title, title.get_rect(center=(WINDOW_SIZE//2, 110)))
         rects=[]
         for i, card in enumerate(owned_cards):
@@ -510,14 +510,14 @@ if __name__ == "__main__":
     if not show_start_menu(screen): sys.exit()
 
     current_level = 0
-    zombie_cards_collected: List[str] = []
+    enemy_cards_collected: List[str] = []
 
     while True:
         config = get_level_config(current_level)
-        # pre-level zombie selection
-        chosen_zombie = select_zombie_screen(screen, zombie_cards_collected) if zombie_cards_collected else "basic"
+        # pre-level enemy selection
+        chosen_enemy = select_enemy_screen(screen, enemy_cards_collected) if enemy_cards_collected else "basic"
         door_transition(screen)
-        result, reward, bg = main_run_level(config, chosen_zombie)
+        result, reward, bg = main_run_level(config, chosen_enemy)
         if result == "fail":
             action = show_fail_screen(screen, bg)
             if action == "home":
@@ -527,11 +527,11 @@ if __name__ == "__main__":
                 continue
         elif result == "success":
             # compute reward choices: up to 3 not yet owned
-            pool = [c for c in CARD_POOL if c not in zombie_cards_collected]
+            pool = [c for c in CARD_POOL if c not in enemy_cards_collected]
             reward_choices = random.sample(pool, k=min(3, len(pool))) if pool else []
             chosen = show_success_screen(screen, bg, reward_choices)
             if chosen:
-                zombie_cards_collected.append(chosen)
+                enemy_cards_collected.append(chosen)
             current_level += 1
         else:
             # unknown result; back to menu

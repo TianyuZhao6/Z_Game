@@ -197,15 +197,15 @@ DECOR_DENSITY = 0.06  # proportion of tiles to place non-blocking decorations
 MIN_ITEMS = 8  # ensure enough items on larger maps
 DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 5
-ZOMBIE_SPEED = 2
-ZOMBIE_SPEED_MAX = 5
-ZOMBIE_ATTACK = 10
+ENEMY_SPEED = 2
+ENEMY_SPEED_MAX = 5
+ENEMY_ATTACK = 10
 # ----- meta progression -----
 SPOILS_PER_KILL = 3
 SPOILS_PER_BLOCK = 1
 # ----- spoils UI & drop tuning -----
-SPOILS_DROP_CHANCE = 0.50  # 50% drop chance on zombie deaths
-SPOILS_PER_TYPE = {  # average coins per zombie type (rounded when spawning)
+SPOILS_DROP_CHANCE = 0.50  # 50% drop chance on enemy deaths
+SPOILS_PER_TYPE = {  # average coins per enemy type (rounded when spawning)
     "basic": (1, 1),  # min, max
     "fast": (1, 2),
     "strong": (2, 3),
@@ -224,14 +224,14 @@ COIN_MIN_BOUNCE = 30.0  # stop bouncing when below this upward speed
 
 XP_PLAYER_KILL = 6
 XP_PLAYER_BLOCK = 2
-XP_ZOMBIE_BLOCK = 3
+XP_ENEMY_BLOCK = 3
 XP_TRANSFER_RATIO = 0.7  # special → survivors
 # ----- healing drop tuning -----
-HEAL_DROP_CHANCE_ZOMBIE = 0.12  # 12% when a zombie dies
+HEAL_DROP_CHANCE_ENEMY = 0.12  # 12% when a enemy dies
 HEAL_DROP_CHANCE_BLOCK = 0.08  # 8% when a destructible block is broken
 HEAL_POTION_AMOUNT = 6  # HP restored on pickup (capped to player.max_hp)
-# ----- player XP rewards by zombie type -----
-XP_PER_ZOMBIE_TYPE = {
+# ----- player XP rewards by enemy type -----
+XP_PER_ENEMY_TYPE = {
     "basic": 6,
     "fast": 7,
     "ranged": 7,
@@ -241,9 +241,9 @@ XP_PER_ZOMBIE_TYPE = {
     "buffer": 6,
     "shielder": 8,
 }
-XP_ZLEVEL_BONUS = 2  # bonus XP per zombie level above 1
+XP_ZLEVEL_BONUS = 2  # bonus XP per enemy level above 1
 
-ZOMBIE_XP_TO_LEVEL = 15  # per level step for monsters
+ENEMY_XP_TO_LEVEL = 15  # per level step for monsters
 PLAYER_XP_TO_LEVEL = 20  # base; scales by +20%
 # ----- player XP curve tuning -----
 # Requirement to go from level L -> L+1:
@@ -287,7 +287,7 @@ AFFIX_CHANCE_MAX = 0.45
 
 # ----- spoils & XP inheritance tuning -----
 XP_INHERIT_RADIUS = 240  # px: who is "nearby" to inherit XP
-ZOMBIE_SIZE_MAX = int(CELL_SIZE * 1.8)  # cap size when buffed by XP
+ENEMY_SIZE_MAX = int(CELL_SIZE * 1.8)  # cap size when buffed by XP
 SPOIL_POP_VY = -30  # initial pop-up velocity for coin
 SPOIL_GRAVITY = 80  # settle speed for coin pop
 
@@ -318,8 +318,8 @@ def reset_run_state():
 # resume flags
 _pending_shop = False  # if True, CONTINUE should open the shop first
 
-# --- zombie type colors (for rendering) ---
-ZOMBIE_COLORS = {
+# --- enemy type colors (for rendering) ---
+ENEMY_COLORS = {
     "basic": (200, 70, 70),
     "fast": (255, 160, 60),
     "tank": (120, 180, 255),
@@ -335,8 +335,8 @@ ZOMBIE_COLORS = {
 SPAWN_INTERVAL = 8.0
 SPAWN_BASE = 3
 SPAWN_GROWTH = 1
-ZOMBIE_CAP = 30
-# --- new zombie types tuning ---
+ENEMY_CAP = 30
+# --- new enemy types tuning ---
 RANGED_COOLDOWN = 1.2  # 远程怪开火间隔
 RANGED_PROJ_SPEED = 520.0
 RANGED_PROJ_DAMAGE = 12
@@ -362,7 +362,7 @@ THREAT_BUDGET_EXP = 1.18  # exponential growth per level (≈+18%/lvl feels rogu
 THREAT_BUDGET_MIN = 5  # never below this
 THREAT_BOSS_BONUS = 1.5  # first spawn on boss level gets +50% budget
 
-# cost per zombie type (integer points)
+# cost per enemy type (integer points)
 THREAT_COSTS = {
     "basic": 1,
     "fast": 2,
@@ -390,14 +390,14 @@ FIRE_RATE = None  # shots per second; if None, derive from BULLET_SPACING_PX
 BULLET_SPEED = 1000.0  # pixels per second (controls travel speed)
 BULLET_SPACING_PX = 260.0  # desired spacing between bullets along their path
 BULLET_RADIUS = 4
-BULLET_DAMAGE_ZOMBIE = 12
+BULLET_DAMAGE_ENEMY = 12
 BULLET_DAMAGE_BLOCK = 10
 ENEMY_SHOT_DAMAGE_BLOCK = BULLET_DAMAGE_BLOCK
 MAX_FIRE_RANGE = 800.0  # pixels
 # --- survival mode & player health ---
 LEVEL_TIME_LIMIT = 45.0  # seconds per run
 PLAYER_MAX_HP = 40  # player total health
-ZOMBIE_CONTACT_DAMAGE = 20  # damage per contact tick
+ENEMY_CONTACT_DAMAGE = 20  # damage per contact tick
 PLAYER_HIT_COOLDOWN = 0.6  # seconds of i-frames after taking contact damage
 
 # derive cooldown from either explicit FIRE_RATE or SPACING
@@ -410,13 +410,13 @@ else:
 FX_VOLUME = 70  # 0-100
 BGM_VOLUME = 60  # 0-100
 
-CARD_POOL = ["zombie_fast", "zombie_strong", "zombie_tank"]
+CARD_POOL = ["enemy_fast", "enemy_strong", "enemy_tank"]
 
 LEVELS = [
-    {"obstacle_count": 15, "item_count": 3, "zombie_count": 1, "block_hp": 10, "zombie_types": ["basic"],
-     "reward": "zombie_fast"},
-    {"obstacle_count": 18, "item_count": 4, "zombie_count": 2, "block_hp": 15, "zombie_types": ["basic", "strong"],
-     "reward": "zombie_strong"},
+    {"obstacle_count": 15, "item_count": 3, "enemy_count": 1, "block_hp": 10, "enemy_types": ["basic"],
+     "reward": "enemy_fast"},
+    {"obstacle_count": 18, "item_count": 4, "enemy_count": 2, "block_hp": 15, "enemy_types": ["basic", "strong"],
+     "reward": "enemy_strong"},
 ]
 
 # 方向向量
@@ -435,14 +435,14 @@ SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
 
 
 def save_progress(current_level: int,
-                  zombie_cards_collected: list,
+                  enemy_cards_collected: list,
                   max_wave_reached: int | None = None,
                   pending_shop: bool = False):
     """Persist minimal progress plus META upgrades and player carry."""
     data = {
         "mode": "progress",
         "current_level": int(current_level),
-        "zombie_cards_collected": list(zombie_cards_collected),
+        "enemy_cards_collected": list(enemy_cards_collected),
         "meta": dict(META),  # dmg, firerate_mult, speed, maxhp, spoils
         "carry_player": globals().get("_carry_player_state", None),
         "pending_shop": bool(pending_shop)  # <<< NEW
@@ -456,16 +456,16 @@ def save_progress(current_level: int,
         print("save_progress error:", e)
 
 
-def capture_snapshot(game_state, player, zombies, current_level: int, zombie_cards_collected: List[str],
-                     chosen_zombie_type: str = "basic", bullets: Optional[List['Bullet']] = None) -> dict:
+def capture_snapshot(game_state, player, enemies, current_level: int, enemy_cards_collected: List[str],
+                     chosen_enemy_type: str = "basic", bullets: Optional[List['Bullet']] = None) -> dict:
     """Create a full mid-run snapshot of the current game state."""
     snap = {
         "mode": "snapshot",
         "version": 3,
         "meta": {
             "current_level": int(current_level),
-            "zombie_cards_collected": list(zombie_cards_collected),
-            "chosen_zombie_type": str(chosen_zombie_type or "basic"),
+            "enemy_cards_collected": list(enemy_cards_collected),
+            "chosen_enemy_type": str(chosen_enemy_type or "basic"),
         },
         "snapshot": {
             "player": {"x": float(player.x), "y": float(player.y),
@@ -476,7 +476,7 @@ def capture_snapshot(game_state, player, zombies, current_level: int, zombie_car
                        "hit_cd": float(getattr(player, "hit_cd", 0.0)),
                        "level": int(getattr(player, "level", 1)),
                        "xp": int(getattr(player, "xp", 0))},
-            "zombies": [{
+            "enemies": [{
                 "x": float(z.x), "y": float(z.y),
                 "attack": int(getattr(z, "attack", 10)),
                 "speed": int(getattr(z, "speed", 2)),
@@ -485,7 +485,7 @@ def capture_snapshot(game_state, player, zombies, current_level: int, zombie_car
                 "max_hp": int(getattr(z, "max_hp", getattr(z, "hp", 30))),
                 "spawn_elapsed": float(getattr(z, "_spawn_elapsed", 0.0)),
                 "attack_timer": float(getattr(z, "attack_timer", 0.0)),
-            } for z in zombies],
+            } for z in enemies],
             "obstacles": [{
                 "x": int(ob.rect.x // CELL_SIZE),
                 "y": int((ob.rect.y - INFO_BAR_HEIGHT) // CELL_SIZE),
@@ -534,12 +534,12 @@ def load_save() -> Optional[dict]:
         # normalize fields
         if data["mode"] == "meta":
             data.setdefault("current_level", 0)
-            data.setdefault("zombie_cards_collected", [])
+            data.setdefault("enemy_cards_collected", [])
         elif data["mode"] == "snapshot":
             data.setdefault("meta", {})
             data["meta"].setdefault("current_level", 0)
-            data["meta"].setdefault("zombie_cards_collected", [])
-            data["meta"].setdefault("chosen_zombie_type", "basic")
+            data["meta"].setdefault("enemy_cards_collected", [])
+            data["meta"].setdefault("chosen_enemy_type", "basic")
             data.setdefault("snapshot", {})
         return data
     except Exception as e:
@@ -705,7 +705,7 @@ def show_help(screen):
         lines = [
             "WASD to move. Survive until the timer hits 00:00 to win.",
             "Breakable yellow blocks block the final fragment (secondary).",
-            "Zombies deal contact damage. Avoid or kite them.",
+            "Enemies deal contact damage. Avoid or kite them.",
             "Auto-fire targets the closest enemy/block in range.",
             "Transitions use the classic 'two doors' animation."
         ]
@@ -888,13 +888,13 @@ def show_pause_menu(screen, background_surf):
     y_offset = top_margin
 
     # 标题
-    title = font_small.render("Zombie Cards", True, (230, 230, 230))
+    title = font_small.render("Enemy Cards", True, (230, 230, 230))
     title_rect = title.get_rect(right=right_margin, top=y_offset)
     screen.blit(title, title_rect)
     y_offset += 40
 
-    if zombie_cards_collected:
-        for i, card in enumerate(zombie_cards_collected):
+    if enemy_cards_collected:
+        for i, card in enumerate(enemy_cards_collected):
             if y_offset < VIEW_H - 100:  # 确保不会超出屏幕
                 card_text = font_tiny.render(f"• {card.replace('_', ' ').title()}", True, (200, 200, 200))
                 card_rect = card_text.get_rect(right=right_margin, top=y_offset)
@@ -1205,16 +1205,16 @@ def _pick_type_by_budget(rem: int) -> Optional[str]:
     return choices[-1][0]
 
 
-def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Zombie"], want: int) -> List[
+def _spawn_positions(game_state: "GameState", player: "Player", enemies: List["Enemy"], want: int) -> List[
     Tuple[int, int]]:
-    """Reuse your existing constraints: not blocked, not too close to player, not overlapping zombies."""
+    """Reuse your existing constraints: not blocked, not too close to player, not overlapping enemies."""
     all_pos = [(x, y) for x in range(GRID_SIZE) for y in range(GRID_SIZE)]
     blocked = set(game_state.obstacles.keys()) | set((i.x, i.y) for i in getattr(game_state, "items", []))
     px, py = int(player.rect.centerx // CELL_SIZE), int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE)
     # Manhattan ≥ 6 tiles from player like before
     cand = [p for p in all_pos if p not in blocked and abs(p[0] - px) + abs(p[1] - py) >= 6]
     random.shuffle(cand)
-    zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in zombies}
+    zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in enemies}
     out = []
     for p in cand:
         if p in zcells:
@@ -1225,8 +1225,8 @@ def _spawn_positions(game_state: "GameState", player: "Player", zombies: List["Z
     return out
 
 
-def promote_to_boss(z: "Zombie"):
-    """Promote a single zombie instance to boss (stats on top of current scaling)."""
+def promote_to_boss(z: "Enemy"):
+    """Promote a single enemy instance to boss (stats on top of current scaling)."""
     z.is_boss = True
     z.max_hp = int(z.max_hp * BOSS_HP_MULT_EXTRA);
     z.hp = z.max_hp
@@ -1238,13 +1238,13 @@ def spawn_wave_with_budget(game_state: "GameState",
                            player: "Player",
                            current_level: int,
                            wave_index: int,
-                           zombies: List["Zombie"],
+                           enemies: List["Enemy"],
                            cap: int) -> int:
     """
-    Spend the per-level budget on new zombies, respecting cap.
+    Spend the per-level budget on new enemies, respecting cap.
     Returns the number spawned.
     """
-    if len(zombies) >= cap:
+    if len(enemies) >= cap:
         return 0
 
     # base budget for this level (identical every spawn this level)
@@ -1256,44 +1256,44 @@ def spawn_wave_with_budget(game_state: "GameState",
         budget = int(budget * THREAT_BOSS_BONUS)
 
     # optimistic position pool (ask for up to budget cells)
-    spots = _spawn_positions(game_state, player, zombies, want=budget)
+    spots = _spawn_positions(game_state, player, enemies, want=budget)
     spawned = 0
     boss_done = False
 
     # spend budget until no type fits or cap/positions exhausted
     i = 0
-    while i < len(spots) and len(zombies) < cap:
+    while i < len(spots) and len(enemies) < cap:
         gx, gy = spots[i]
         i += 1
 
         # if we must place a boss, do it once, then continue budget spending
         if force_boss and not boss_done:
-            # create a durable type as base; pass wave_index=0 so make_scaled_zombie can apply "first-wave" scaling
-            z = make_scaled_zombie((gx, gy), "tank", current_level, 0)
-            # ensure only this one becomes a boss even if make_scaled_zombie marks others: explicitly promote
+            # create a durable type as base; pass wave_index=0 so make_scaled_enemy can apply "first-wave" scaling
+            z = make_scaled_enemy((gx, gy), "tank", current_level, 0)
+            # ensure only this one becomes a boss even if make_scaled_enemy marks others: explicitly promote
             promote_to_boss(z)
-            zombies.append(z)
+            enemies.append(z)
             spawned += 1
             boss_done = True
             # no budget cost for the boss itself (or you can subtract THREAT_COSTS["tank"]*something if you prefer)
             continue
 
         # choose a type that fits remaining budget
-        remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in zombies if
+        remaining = budget - sum(THREAT_COSTS.get(getattr(z, "type", "basic"), 0) for z in enemies if
                                  getattr(z, "_spawn_wave_tag", -1) == wave_index)
         t = _pick_type_by_budget(max(1, remaining))
         if not t:
             break  # can't afford any type
 
-        z = make_scaled_zombie((gx, gy), t,
+        z = make_scaled_enemy((gx, gy), t,
                                current_level,
                                # IMPORTANT: if this is a boss level first wave,
                                # pass wave_index=1 for non-boss spawns to avoid accidental boss flag in older code
                                (1 if (is_boss_level(current_level) and wave_index == 0) else wave_index))
-        # mark which wave inserted this zombie (used above to compute remaining)
+        # mark which wave inserted this enemy (used above to compute remaining)
         z._spawn_wave_tag = wave_index
 
-        zombies.append(z)
+        enemies.append(z)
         spawned += 1
 
     return spawned
@@ -1363,7 +1363,7 @@ class Player:
         self.xp_to_next = player_xp_required(self.level)
 
         # per-run upgrades from shop (applied on spawn)
-        self.bullet_damage = BULLET_DAMAGE_ZOMBIE + META.get("dmg", 0)
+        self.bullet_damage = BULLET_DAMAGE_ENEMY + META.get("dmg", 0)
         self.fire_rate_mult = META.get("firerate_mult", 1.0)
         self.speed += META.get("speed", 0)
         self.max_hp += META.get("maxhp", 0)
@@ -1427,8 +1427,8 @@ class Player:
         pygame.draw.rect(screen, (0, 255, 0), self.rect)
 
 
-class Zombie:
-    def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED,
+class Enemy:
+    def __init__(self, pos: Tuple[int, int], attack: int = ENEMY_ATTACK, speed: int = ENEMY_SPEED,
                  ztype: str = "basic", hp: Optional[int] = None):
         self.x = pos[0] * CELL_SIZE
         self.y = pos[1] * CELL_SIZE
@@ -1448,7 +1448,7 @@ class Zombie:
         # XP & rank
         self.z_level = 1
         self.xp = 0
-        self.xp_to_next = ZOMBIE_XP_TO_LEVEL
+        self.xp_to_next = ENEMY_XP_TO_LEVEL
         self.is_elite = False
         self.is_boss = False
 
@@ -1483,7 +1483,7 @@ class Zombie:
             self.hp = min(self.max_hp, self.hp + 2)
             # SIZE growth (keep center & clamp)
             base = CELL_SIZE - 6
-            new_size = min(ZOMBIE_SIZE_MAX, base + (self.z_level - 1) * 2)
+            new_size = min(ENEMY_SIZE_MAX, base + (self.z_level - 1) * 2)
             if new_size != self.size:
                 cx, cy = self.rect.center
                 self.size = new_size
@@ -1503,7 +1503,7 @@ class Zombie:
             self.buff_t = max(0.0, self.buff_t - dt)
 
         # FINAL per-frame movement speed (capped)
-        speed = min(ZOMBIE_SPEED_MAX, max(1, int(base_speed)))
+        speed = min(ENEMY_SPEED_MAX, max(1, int(base_speed)))
 
         if not hasattr(self, 'attack_timer'): self.attack_timer = 0
         self.attack_timer += dt
@@ -1536,7 +1536,7 @@ class Zombie:
                                 # drop spoils on the ground
                                 cx, cy = ob.rect.centerx, ob.rect.centery
                                 game_state.spawn_spoils(cx, cy, SPOILS_PER_BLOCK)
-                                self.gain_xp(XP_ZOMBIE_BLOCK)
+                                self.gain_xp(XP_ENEMY_BLOCK)
                                 if random.random() < HEAL_DROP_CHANCE_BLOCK:
                                     game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
                         blocked = True
@@ -1551,7 +1551,7 @@ class Zombie:
                 self.rect.y = int(self.y) + INFO_BAR_HEIGHT
                 break
 
-    def update_special(self, dt: float, player: 'Player', zombies: List['Zombie'],
+    def update_special(self, dt: float, player: 'Player', enemies: List['Enemy'],
                        enemy_shots: List['EnemyShot']):
         # 远程怪：发射投射物
         if self.type in ("ranged", "spitter"):
@@ -1588,7 +1588,7 @@ class Zombie:
             self.buff_cd = max(0.0, (self.buff_cd or 0.0) - dt)
             if self.buff_cd <= 0.0:
                 cx, cy = self.rect.centerx, self.rect.centery
-                for z in zombies:
+                for z in enemies:
                     zx, zy = z.rect.centerx, z.rect.centery
                     if (zx - cx) ** 2 + (zy - cy) ** 2 <= BUFF_RADIUS ** 2:
                         z.buff_t = BUFF_DURATION
@@ -1606,7 +1606,7 @@ class Zombie:
                     self.shield_hp = 0
             if self.shield_cd <= 0.0:
                 cx, cy = self.rect.centerx, self.rect.centery
-                for z in zombies:
+                for z in enemies:
                     zx, zy = z.rect.centerx, z.rect.centery
                     if (zx - cx) ** 2 + (zy - cy) ** 2 <= SHIELD_RADIUS ** 2:
                         z.shield_hp = SHIELD_AMOUNT
@@ -1614,13 +1614,13 @@ class Zombie:
                 self.shield_cd = SHIELD_COOLDOWN
 
     def draw(self, screen):
-        color = ZOMBIE_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
+        color = ENEMY_COLORS.get(getattr(self, "type", "basic"), (255, 60, 60))
         pygame.draw.rect(screen, color, self.rect)
 
 
 class Bullet:
     def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float = MAX_FIRE_RANGE,
-                 damage: int = BULLET_DAMAGE_ZOMBIE):
+                 damage: int = BULLET_DAMAGE_ENEMY):
         self.x = x
         self.y = y
         self.vx = vx
@@ -1630,7 +1630,7 @@ class Bullet:
         self.max_dist = max_dist
         self.damage = int(damage)
 
-    def update(self, dt: float, game_state: 'GameState', zombies: List['Zombie'], player: 'Player' = None):
+    def update(self, dt: float, game_state: 'GameState', enemies: List['Enemy'], player: 'Player' = None):
         if not self.alive: return
         nx = self.x + self.vx * dt
         ny = self.y + self.vy * dt
@@ -1642,8 +1642,8 @@ class Bullet:
 
         r = pygame.Rect(int(self.x - BULLET_RADIUS), int(self.y - BULLET_RADIUS), BULLET_RADIUS * 2, BULLET_RADIUS * 2)
 
-        # 1) zombies
-        for z in list(zombies):
+        # 1) enemies
+        for z in list(enemies):
             if r.colliderect(z.rect):
                 # shield first
                 if getattr(z, "shield_hp", 0) > 0:
@@ -1657,22 +1657,22 @@ class Bullet:
                 if z.hp <= 0:
                     # coin drop (with chance) at death
                     cx, cy = z.rect.centerx, z.rect.centery
-                    drop_n = roll_spoils_for_zombie(z)
+                    drop_n = roll_spoils_for_enemy(z)
                     if drop_n > 0:
                         game_state.spawn_spoils(cx, cy, drop_n)
                     # Small chance to drop a heal potion
-                    if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                    if random.random() < HEAL_DROP_CHANCE_ENEMY:
                         game_state.spawn_heal(cx, cy, HEAL_POTION_AMOUNT)
                     # player XP + inheritance if you were already doing that here earlier
                     if player:
-                        base_xp = XP_PER_ZOMBIE_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
+                        base_xp = XP_PER_ENEMY_TYPE.get(getattr(z, "type", "basic"), XP_PLAYER_KILL)
                         bonus = max(0, z.z_level - 1) * XP_ZLEVEL_BONUS
                         if getattr(z, "is_elite", False):  base_xp = int(base_xp * 1.5)
                         if getattr(z, "is_boss", False):  base_xp = int(base_xp * 3.0)
                         player.add_xp(base_xp + bonus)
 
-                    transfer_xp_to_neighbors(z, zombies)
-                    zombies.remove(z)
+                    transfer_xp_to_neighbors(z, enemies)
+                    enemies.remove(z)
 
                 self.alive = False
                 return
@@ -1905,8 +1905,8 @@ def draw_iso_prism(surface, gx, gy, top_color, camx, camy, wall_h=ISO_WALL_Z):
     pygame.draw.polygon(surface, c_top, top)
 
 
-def roll_spoils_for_zombie(z: "Zombie") -> int:
-    """Return number of coins to drop for a killed zombie, applying drop chance."""
+def roll_spoils_for_enemy(z: "Enemy") -> int:
+    """Return number of coins to drop for a killed enemy, applying drop chance."""
     if random.random() > SPOILS_DROP_CHANCE:
         return 0
     t = getattr(z, "type", "basic")
@@ -1976,7 +1976,7 @@ def apply_player_carry(player, carry: dict | None):
 
 def monster_scalars_for(game_level: int, wave_index: int) -> Dict[str, int | float]:
     """
-    Return additive/multipliers for zombie stats based on the current game level & wave.
+    Return additive/multipliers for enemy stats based on the current game level & wave.
     We return {'hp_mult', 'atk_mult', 'spd_add', 'elite?', 'boss?'}.
     """
     L = max(0, int(game_level))
@@ -2018,8 +2018,8 @@ def roll_affix(game_level: int) -> Optional[str]:
     return random.choice(["frenzied", "armored", "veteran"])
 
 
-def apply_affix(z: "Zombie", affix: Optional[str]):
-    """Mutate a zombie with the chosen affix. Small, readable bonuses."""
+def apply_affix(z: "Enemy", affix: Optional[str]):
+    """Mutate a enemy with the chosen affix. Small, readable bonuses."""
     if not affix:
         return
     if affix == "frenzied":
@@ -2039,9 +2039,9 @@ def apply_affix(z: "Zombie", affix: Optional[str]):
         z._affix_tag = "V"
 
 
-def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_index: int) -> "Zombie":
-    """Factory: spawn a zombie already scaled, with elite/boss & affixes applied."""
-    z = Zombie(pos, speed=ZOMBIE_SPEED, ztype=ztype)
+def make_scaled_enemy(pos: Tuple[int, int], ztype: str, game_level: int, wave_index: int) -> "Enemy":
+    """Factory: spawn a enemy already scaled, with elite/boss & affixes applied."""
+    z = Enemy(pos, speed=ENEMY_SPEED, ztype=ztype)
     s = monster_scalars_for(game_level, wave_index)
     # bake stats
     z.attack = max(1, int(z.attack * s["atk_mult"]))
@@ -2057,19 +2057,19 @@ def make_scaled_zombie(pos: Tuple[int, int], ztype: str, game_level: int, wave_i
     z._affix_name = aff
 
     # ← cap final move speed
-    z.speed = min(ZOMBIE_SPEED_MAX, max(1, z.speed))
+    z.speed = min(ENEMY_SPEED_MAX, max(1, z.speed))
     return z
 
 
-def transfer_xp_to_neighbors(dead_z: "Zombie", zombies: List["Zombie"],
+def transfer_xp_to_neighbors(dead_z: "Enemy", enemies: List["Enemy"],
                              ratio: float = XP_TRANSFER_RATIO,
                              radius: int = XP_INHERIT_RADIUS):
     """On death, share a portion of dead_z's XP to nearby survivors."""
-    if not zombies or ratio <= 0:
+    if not enemies or ratio <= 0:
         return
     cx, cy = dead_z.rect.centerx, dead_z.rect.centery
     r2 = radius * radius
-    near = [zz for zz in zombies
+    near = [zz for zz in enemies
             if zz is not dead_z and (zz.rect.centerx - cx) ** 2 + (zz.rect.centery - cy) ** 2 <= r2]
     if not near:
         return
@@ -2097,7 +2097,7 @@ def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
                 if obstacle.type == "Indestructible":
                     continue
                 elif obstacle.type == "Destructible":
-                    k_factor = (math.ceil(obstacle.health / ZOMBIE_ATTACK)) * 0.1
+                    k_factor = (math.ceil(obstacle.health / ENEMY_ATTACK)) * 0.1
                     new_cost = cost_so_far[current] + 1 + k_factor
             if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
                 cost_so_far[neighbor] = new_cost
@@ -2119,9 +2119,9 @@ def get_level_config(level: int) -> dict:
     return {
         "obstacle_count": 20 + level,
         "item_count": 5,
-        "zombie_count": min(5, 1 + level // 3),
+        "enemy_count": min(5, 1 + level // 3),
         "block_hp": int(10 * 1.2 ** (level - len(LEVELS) + 1)),
-        "zombie_types": ["basic", "strong", "fire"][level % 3:],
+        "enemy_types": ["basic", "strong", "fire"][level % 3:],
         "reward": random.choice(CARD_POOL)
     }
 
@@ -2140,7 +2140,7 @@ def reconstruct_path(came_from: Dict, start: Tuple[int, int], goal: Tuple[int, i
 
 # ==================== 游戏初始化函数 ====================
 
-def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int, zombie_count: int, main_block_hp: int):
+def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int, enemy_count: int, main_block_hp: int):
     """
     Generate entities with map-fill: obstacle clusters, ample items, and non-blocking decorations.
     Main block removed — all items are collectible when touched.
@@ -2153,9 +2153,9 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
         empty = [p for p in all_positions if p not in forbidden]
         while True:
             picks = random.sample(empty, count + 1)
-            player_pos, zombies = picks[0], picks[1:]
-            if all(abs(player_pos[0] - z[0]) + abs(player_pos[1] - z[1]) >= min_distance for z in zombies):
-                return player_pos, zombies
+            player_pos, enemies = picks[0], picks[1:]
+            if all(abs(player_pos[0] - z[0]) + abs(player_pos[1] - z[1]) >= min_distance for z in enemies):
+                return player_pos, enemies
 
     # center spawn if possible
     center_pos = (grid_size // 2, grid_size // 2)
@@ -2163,11 +2163,11 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
         player_pos = center_pos
         far_candidates = [p for p in all_positions if
                           p not in forbidden and (abs(p[0] - center_pos[0]) + abs(p[1] - center_pos[1]) >= 6)]
-        zombie_pos_list = random.sample(far_candidates, zombie_count)
+        enemy_pos_list = random.sample(far_candidates, enemy_count)
     else:
-        player_pos, zombie_pos_list = pick_valid_positions(min_distance=5, count=zombie_count)
+        player_pos, enemy_pos_list = pick_valid_positions(min_distance=5, count=enemy_count)
     forbidden |= {player_pos}
-    forbidden |= set(zombie_pos_list)
+    forbidden |= set(enemy_pos_list)
 
     # --- obstacle fill with clusters (NO pre-placed main block now) ---
     obstacles: Dict[Tuple[int, int], Obstacle] = {}
@@ -2226,7 +2226,7 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
     decorations = decor_candidates[:decor_target]
 
     # keep return shape the same: last “main_item_list” is now empty list
-    return obstacles, items, player_pos, zombie_pos_list, [], decorations
+    return obstacles, items, player_pos, enemy_pos_list, [], decorations
 
 
 def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> Graph:
@@ -2312,7 +2312,7 @@ class GameState:
 
 
 # ==================== 游戏渲染函数 ====================
-def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
+def render_game_iso(screen: pygame.Surface, game_state, player, enemies,
                     bullets=None, enemy_shots=None) -> pygame.Surface:
     # 1) 计算以“玩家所在格”为中心的相机
     px_grid = (player.x + player.size / 2) / CELL_SIZE
@@ -2362,10 +2362,10 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
         drawables.append(("heal", sy, {"cx": sx, "cy": sy, "r": h.r}))
 
     # 3.3 僵尸 & 玩家（以脚底点排序）
-    for z in zombies:
+    for z in enemies:
         wx, wy = (z.x + z.size / 2) / CELL_SIZE, (z.y + z.size / 2) / CELL_SIZE
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-        drawables.append(("zombie", sy, {"cx": sx, "cy": sy, "z": z}))
+        drawables.append(("enemy", sy, {"cx": sx, "cy": sy, "z": z}))
 
     wx, wy = (player.x + player.size / 2) / CELL_SIZE, (player.y + player.size / 2) / CELL_SIZE
     psx, psy = iso_world_to_screen(wx, wy, 0, camx, camy)
@@ -2407,7 +2407,7 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
             pygame.draw.circle(screen, (255, 255, 255), (data["cx"], data["cy"]), BULLET_RADIUS)
         elif kind == "eshot":
             pygame.draw.circle(screen, (255, 120, 50), (data["cx"], data["cy"]), BULLET_RADIUS)
-        elif kind == "zombie":
+        elif kind == "enemy":
             z, cx, cy = data["z"], data["cx"], data["cy"]
             sh = pygame.Surface((ISO_CELL_W // 2, ISO_CELL_H // 2), pygame.SRCALPHA)
             pygame.draw.ellipse(sh, (0, 0, 0, ISO_SHADOW_ALPHA), sh.get_rect())
@@ -2415,7 +2415,7 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
             size = int(CELL_SIZE * 0.6)
             body = pygame.Rect(0, 0, size, size);
             body.midbottom = (cx, cy)
-            col = ZOMBIE_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
+            col = ENEMY_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
             if z.is_boss: pygame.draw.rect(screen, (255, 215, 0), body.inflate(4, 4), 3)
             pygame.draw.rect(screen, col, body)
         elif kind == "player":
@@ -2438,7 +2438,7 @@ def render_game_iso(screen: pygame.Surface, game_state, player, zombies,
     return screen.copy()
 
 
-def render_game(screen: pygame.Surface, game_state, player: Player, zombies: List[Zombie],
+def render_game(screen: pygame.Surface, game_state, player: Player, enemies: List[Enemy],
                 bullets: Optional[List['Bullet']] = None,
                 enemy_shots: Optional[List[EnemyShot]] = None) -> pygame.Surface:
     # Camera centers on player; add pillarbox if the viewport is wider/taller than the world
@@ -2532,38 +2532,38 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     else:
         pygame.draw.rect(screen, (0, 255, 0), player_draw)
 
-    # zombies
-    for zombie in zombies:
-        zr = zombie.rect.copy()
+    # enemies
+    for enemy in enemies:
+        zr = enemy.rect.copy()
         zr.x -= cam_x
         zr.y -= cam_y
 
         # 基于类型的底色
-        base_color = ZOMBIE_COLORS.get(getattr(zombie, "type", "basic"), (255, 60, 60))
+        base_color = ENEMY_COLORS.get(getattr(enemy, "type", "basic"), (255, 60, 60))
         color = base_color
 
         # 自爆怪：临爆前闪烁（覆盖底色）
-        if zombie.type in ("suicide", "bomber") and getattr(zombie, "fuse", None) is not None:
-            if zombie.fuse <= SUICIDE_FLICKER and (pygame.time.get_ticks() // 100) % 2 == 0:
+        if enemy.type in ("suicide", "bomber") and getattr(enemy, "fuse", None) is not None:
+            if enemy.fuse <= SUICIDE_FLICKER and (pygame.time.get_ticks() // 100) % 2 == 0:
                 color = (255, 220, 100)
 
         pygame.draw.rect(screen, color, zr)
         # Elite/Boss outline
-        if getattr(zombie, "is_boss", False):
+        if getattr(enemy, "is_boss", False):
             pygame.draw.rect(screen, (255, 215, 0), zr, 3)  # gold outline
-        elif getattr(zombie, "is_elite", False):
+        elif getattr(enemy, "is_elite", False):
             pygame.draw.rect(screen, (180, 220, 255), zr, 2)  # blue outline
 
         # Affix letter (tiny)
-        tag = getattr(zombie, "_affix_tag", None)
+        tag = getattr(enemy, "_affix_tag", None)
         if tag:
             aff_font = pygame.font.SysFont(None, 18)
             screen.blit(aff_font.render(tag, True, (0, 0, 0)), (zr.x + 3, zr.y + 2))
 
         # HP bar
         try:
-            mhp = getattr(zombie, 'max_hp', None) or getattr(zombie, 'hp', 1)
-            ratio = max(0.0, min(1.0, float(max(0, zombie.hp)) / float(mhp)))
+            mhp = getattr(enemy, 'max_hp', None) or getattr(enemy, 'hp', 1)
+            ratio = max(0.0, min(1.0, float(max(0, enemy.hp)) / float(mhp)))
             bar_w = zr.width
             bar_h = 4
             bx, by = zr.x, zr.y - (bar_h + 3)
@@ -2573,8 +2573,8 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
             pass
 
         # 护盾条（画在 HP 条上面）
-        if getattr(zombie, "shield_hp", 0) > 0 and getattr(zombie, "shield_t", 0.0) > 0:
-            sh_ratio = max(0.0, min(1.0, zombie.shield_hp / float(SHIELD_AMOUNT)))
+        if getattr(enemy, "shield_hp", 0) > 0 and getattr(enemy, "shield_t", 0.0) > 0:
+            sh_ratio = max(0.0, min(1.0, enemy.shield_hp / float(SHIELD_AMOUNT)))
             sby = by - (bar_h + 2)
             pygame.draw.rect(screen, (30, 30, 50), (bx, sby, bar_w, bar_h))
             pygame.draw.rect(screen, (60, 180, 255), (bx, sby, int(bar_w * sh_ratio), bar_h))
@@ -2719,18 +2719,18 @@ class GameSound:
 # ==================== 游戏主循环 ====================
 
 
-def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
-    pygame.display.set_caption("Zombie Card Game – Level")
+def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
+    pygame.display.set_caption("Enemy Card Game – Level")
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
     time_left = float(LEVEL_TIME_LIMIT)
     globals()["_time_left_runtime"] = time_left
 
-    obstacles, items, player_start, zombie_starts, main_item_list, decorations = generate_game_entities(
+    obstacles, items, player_start, enemy_starts, main_item_list, decorations = generate_game_entities(
         grid_size=GRID_SIZE,
         obstacle_count=config["obstacle_count"],
         item_count=config["item_count"],
-        zombie_count=config["zombie_count"],
+        enemy_count=config["enemy_count"],
         main_block_hp=config["block_hp"]
     )
 
@@ -2741,13 +2741,13 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     apply_player_carry(player, globals().get("_carry_player_state"))
 
     ztype_map = {
-        "zombie_fast": "fast",
-        "zombie_tank": "tank",
-        "zombie_strong": "strong",
+        "enemy_fast": "fast",
+        "enemy_tank": "tank",
+        "enemy_strong": "strong",
         "basic": "basic"
     }
-    zt = ztype_map.get(chosen_zombie_type, "basic")
-    zombies = [Zombie(pos, speed=ZOMBIE_SPEED, ztype=zt) for pos in zombie_starts]
+    zt = ztype_map.get(chosen_enemy_type, "basic")
+    enemies = [Enemy(pos, speed=ENEMY_SPEED, ztype=zt) for pos in enemy_starts]
 
     bullets: List[Bullet] = []
     enemy_shots: List[EnemyShot] = []
@@ -2758,7 +2758,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
     def player_center():
         return player.x + player.size / 2, player.y + player.size / 2 + INFO_BAR_HEIGHT
 
-    def pick_zombie_type_weighted():
+    def pick_enemy_type_weighted():
         # 可按关卡/波次调整，这里给一个基础权重
         table = [
             ("basic", 50),
@@ -2785,7 +2785,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         cand = [p for p in all_pos if p not in blocked and abs(p[0] - px) + abs(p[1] - py) >= 6]
         random.shuffle(cand)
         # 也避免直接与现有僵尸重叠
-        zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in zombies}
+        zcells = {(int((z.x + z.size // 2) // CELL_SIZE), int((z.y + z.size // 2) // CELL_SIZE)) for z in enemies}
         out = []
         for p in cand:
             if p in zcells: continue
@@ -2797,13 +2797,13 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         px, py = player_center()
         best = None
         best_d2 = float('inf')
-        # Prefer zombies first
-        for z in zombies:
+        # Prefer enemies first
+        for z in enemies:
             cx, cy = z.rect.centerx, z.rect.centery
             d2 = (cx - px) ** 2 + (cy - py) ** 2
             if d2 < best_d2:
                 best_d2 = d2
-                best = ('zombie', None, z, cx, cy)
+                best = ('enemy', None, z, cx, cy)
         # Then destructible blocks (non-main)
         for gp, ob in game_state.obstacles.items():
             if ob.type == 'Destructible' and not getattr(ob, 'is_main_block', False):
@@ -2815,7 +2815,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         return best, (best_d2 ** 0.5) if best else None
 
     # Initial spawn: use threat budget once
-    spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
+    spawn_wave_with_budget(game_state, player, current_level, wave_index, enemies, ENEMY_CAP)
 
     running = True
     game_result = None
@@ -2837,8 +2837,8 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         spawn_timer += dt
         if spawn_timer >= SPAWN_INTERVAL:
             spawn_timer = 0.0
-            if len(zombies) < ZOMBIE_CAP:
-                spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, zombies, ZOMBIE_CAP)
+            if len(enemies) < ENEMY_CAP:
+                spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, enemies, ENEMY_CAP)
                 if spawned > 0:
                     wave_index += 1
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
@@ -2846,7 +2846,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                bg = last_frame or render_game(screen, game_state, player, zombies, bullets, enemy_shots)
+                bg = last_frame or render_game(screen, game_state, player, enemies, bullets, enemy_shots)
                 choice, time_left = pause_game_modal(screen, bg, clock, time_left)
 
                 if choice == 'continue':
@@ -2858,7 +2858,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                     globals()["_carry_player_state"] = capture_player_carry(player)
                     # write a progress save (this contains META + carry)
                     save_progress(current_level=current_level,
-                                  zombie_cards_collected=zombie_cards_collected,
+                                  enemy_cards_collected=enemy_cards_collected,
                                   max_wave_reached=wave_index)
                     return 'home', config.get('reward', None), bg
 
@@ -2866,7 +2866,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
                 elif choice == 'exit':
                     # write a progress save so Homepage shows CONTINUE
                     save_progress(current_level=current_level,
-                                  zombie_cards_collected=zombie_cards_collected,
+                                  enemy_cards_collected=enemy_cards_collected,
                                   max_wave_reached=wave_index)
                     return 'exit', config.get('reward', None), bg
 
@@ -2892,31 +2892,31 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
 
         # Update bullets
         for b in list(bullets):
-            b.update(dt, game_state, zombies, player)
+            b.update(dt, game_state, enemies, player)
             if not b.alive:
                 bullets.remove(b)
 
         player.hit_cd = max(0.0, player.hit_cd - dt)
-        for zombie in list(zombies):
-            zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
-            if zombie.rect.colliderect(player.rect) and player.hit_cd <= 0.0:
-                player.hp -= int(ZOMBIE_CONTACT_DAMAGE)
+        for enemy in list(enemies):
+            enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
+            if enemy.rect.colliderect(player.rect) and player.hit_cd <= 0.0:
+                player.hp -= int(ENEMY_CONTACT_DAMAGE)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
                 if player.hp <= 0:
                     game_result = "fail"
                     running = False
                     break
         # special behaviors & enemy shots
-        for z in list(zombies):
-            z.update_special(dt, player, zombies, enemy_shots)
+        for z in list(enemies):
+            z.update_special(dt, player, enemies, enemy_shots)
             if z.hp <= 0:
                 # drop spoils & share XP even if it died by fuse/other causes
                 game_state.spawn_spoils(z.rect.centerx, z.rect.centery, SPOILS_PER_KILL)
-                if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                if random.random() < HEAL_DROP_CHANCE_ENEMY:
                     game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
 
-                transfer_xp_to_neighbors(z, zombies)
-                zombies.remove(z)
+                transfer_xp_to_neighbors(z, enemies)
+                enemies.remove(z)
 
         # enemy shots update
         for es in list(enemy_shots):
@@ -2931,7 +2931,7 @@ def main_run_level(config, chosen_zombie_type: str) -> Tuple[str, Optional[str],
             continue
 
 
-        last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+        last_frame = render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
 
         if game_result == "success":
             globals()["_last_spoils"] = getattr(game_state, "spoils_gained", 0)
@@ -2990,12 +2990,12 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
 
     if not hasattr(player, 'fire_cd'): player.fire_cd = 0.0
 
-    # Zombies
-    zombies: List[Zombie] = []
-    for z in snap.get("zombies", []):
-        zobj = Zombie((0, 0),
-                      attack=int(z.get("attack", ZOMBIE_ATTACK)),
-                      speed=int(z.get("speed", ZOMBIE_SPEED)),
+    # Enemies
+    enemies: List[Enemy] = []
+    for z in snap.get("enemies", []):
+        zobj = Enemy((0, 0),
+                      attack=int(z.get("attack", ENEMY_ATTACK)),
+                      speed=int(z.get("speed", ENEMY_SPEED)),
                       ztype=z.get("type", "basic"),
                       hp=int(z.get("hp", 30)))
         zobj.max_hp = int(z.get("max_hp", int(z.get("hp", 30))))
@@ -3005,9 +3005,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         zobj.rect.y = int(zobj.y) + INFO_BAR_HEIGHT
         zobj._spawn_elapsed = float(z.get("spawn_elapsed", 0.0))
         zobj.attack_timer = float(z.get("attack_timer", 0.0))
-        # clamp restored speed so resumed runs don't create super-speed zombies
-        zobj.speed = min(ZOMBIE_SPEED_MAX, max(1, int(zobj.speed)))
-        zombies.append(zobj)
+        # clamp restored speed so resumed runs don't create super-speed enemies
+        zobj.speed = min(ENEMY_SPEED_MAX, max(1, int(zobj.speed)))
+        enemies.append(zobj)
 
     # Bullets
     bullets: List[Bullet] = []
@@ -3028,7 +3028,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     clock = pygame.time.Clock()
     running = True
     last_frame = None
-    chosen_zombie_type = meta.get("chosen_zombie_type", "basic")
+    chosen_enemy_type = meta.get("chosen_enemy_type", "basic")
 
     # Spawner state
     spawn_timer = 0.0
@@ -3041,13 +3041,13 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         px, py = player_center()
         best = None
         best_d2 = float('inf')
-        # prefer zombies
-        for z in zombies:
+        # prefer enemies
+        for z in enemies:
             cx, cy = z.rect.centerx, z.rect.centery
             d2 = (cx - px) ** 2 + (cy - py) ** 2
             if d2 < best_d2:
                 best_d2 = d2;
-                best = ('zombie', None, z, cx, cy)
+                best = ('enemy', None, z, cx, cy)
         # then destructible blocks
         for gp, ob in game_state.obstacles.items():
             if ob.type == 'Destructible' and not getattr(ob, 'is_main_block', False):
@@ -3068,7 +3068,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             # win on survival
             chosen = show_success_screen(
                 screen,
-                last_frame or render_game(screen, game_state, player, zombies, bullets, enemy_shots),
+                last_frame or render_game(screen, game_state, player, enemies, bullets, enemy_shots),
                 reward_choices=[]
             )
             return "success", None, last_frame or screen.copy()
@@ -3077,7 +3077,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                bg = last_frame or render_game(screen, game_state, player, zombies, bullets, enemy_shots)
+                bg = last_frame or render_game(screen, game_state, player, enemies, bullets, enemy_shots)
                 choice, time_left = pause_game_modal(screen, bg, clock, time_left)
                 if choice == 'continue':
                     pass
@@ -3085,9 +3085,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                     return 'restart', None, bg
                 elif choice == 'home':
                     snap2 = capture_snapshot(
-                        game_state, player, zombies, level_idx,
-                        meta.get("zombie_cards_collected", []),
-                        chosen_zombie_type, bullets
+                        game_state, player, enemies, level_idx,
+                        meta.get("enemy_cards_collected", []),
+                        chosen_enemy_type, bullets
                     )
                     save_snapshot(snap2)
                     return 'home', None, bg
@@ -3096,7 +3096,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                     # also save progress from a snapshot resume
                     save_progress(
                         current_level=level_idx,
-                        zombie_cards_collected=meta.get("zombie_cards_collected", []),
+                        enemy_cards_collected=meta.get("enemy_cards_collected", []),
                         max_wave_reached=wave_index
                     )
                     return 'exit', None, bg
@@ -3125,7 +3125,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
 
         # Update bullets
         for b in list(bullets):
-            b.update(dt, game_state, zombies, player)
+            b.update(dt, game_state, enemies, player)
             if not b.alive:
                 bullets.remove(b)
 
@@ -3133,23 +3133,23 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         spawn_timer += dt
         if spawn_timer >= SPAWN_INTERVAL:
             spawn_timer = 0.0
-            if len(zombies) < ZOMBIE_CAP:
-                spawned = spawn_wave_with_budget(game_state, player, level_idx, wave_index, zombies, ZOMBIE_CAP)
+            if len(enemies) < ENEMY_CAP:
+                spawned = spawn_wave_with_budget(game_state, player, level_idx, wave_index, enemies, ENEMY_CAP)
                 if spawned > 0:
                     wave_index += 1
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
 
-        # Zombies update & contact damage
+        # Enemies update & contact damage
         player.hit_cd = max(0.0, player.hit_cd - dt)
-        for zombie in list(zombies):
-            zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
-            if zombie.rect.colliderect(player.rect) and player.hit_cd <= 0.0:
-                player.hp -= int(ZOMBIE_CONTACT_DAMAGE)
+        for enemy in list(enemies):
+            enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
+            if enemy.rect.colliderect(player.rect) and player.hit_cd <= 0.0:
+                player.hp -= int(ENEMY_CONTACT_DAMAGE)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
                 if player.hp <= 0:
                     clear_save()
                     action = show_fail_screen(screen,
-                                              last_frame or render_game(screen, game_state, player, zombies, bullets,
+                                              last_frame or render_game(screen, game_state, player, enemies, bullets,
                                                                         enemy_shots))
                     if action == "home":
                         clear_save();
@@ -3161,14 +3161,14 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         return "restart", None, last_frame or screen.copy()
 
         # Special behaviors & enemy shots
-        for z in list(zombies):
-            z.update_special(dt, player, zombies, enemy_shots)
+        for z in list(enemies):
+            z.update_special(dt, player, enemies, enemy_shots)
             if z.hp <= 0:
                 game_state.spawn_spoils(z.rect.centerx, z.rect.centery, SPOILS_PER_KILL)
-                if random.random() < HEAL_DROP_CHANCE_ZOMBIE:
+                if random.random() < HEAL_DROP_CHANCE_ENEMY:
                     game_state.spawn_heal(z.rect.centerx, z.rect.centery, HEAL_POTION_AMOUNT)
-                transfer_xp_to_neighbors(z, zombies)
-                zombies.remove(z)
+                transfer_xp_to_neighbors(z, enemies)
+                enemies.remove(z)
 
         for es in list(enemy_shots):
             es.update(dt, player, game_state)
@@ -3179,7 +3179,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         if player.hp <= 0:
             clear_save()
             action = show_fail_screen(screen,
-                                      last_frame or render_game(screen, game_state, player, zombies, bullets,
+                                      last_frame or render_game(screen, game_state, player, enemies, bullets,
                                                                 enemy_shots))
             if action == "home":
                 clear_save();
@@ -3191,17 +3191,17 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                 return "restart", None, last_frame or screen.copy()
 
 
-        last_frame = render_game(pygame.display.get_surface(), game_state, player, zombies, bullets, enemy_shots)
+        last_frame = render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
 
     return "home", None, last_frame or screen.copy()
 
 
-def select_zombie_screen(screen, owned_cards: List[str]) -> str:
+def select_enemy_screen(screen, owned_cards: List[str]) -> str:
     if not owned_cards: return "basic"
     clock = pygame.time.Clock()
     while True:
         screen.fill((18, 18, 18))
-        title = pygame.font.SysFont(None, 48).render("Choose Next Level's Zombie", True, (230, 230, 230))
+        title = pygame.font.SysFont(None, 48).render("Choose Next Level's Enemy", True, (230, 230, 230))
         screen.blit(title, title.get_rect(center=(VIEW_W // 2, 110)))
         rects = []
         for i, card in enumerate(owned_cards):
@@ -3275,15 +3275,15 @@ if __name__ == "__main__":
             # pull meta
             meta = save_data.get("meta", {})
             current_level = int(meta.get("current_level", 0))
-            zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
+            enemy_cards_collected = list(meta.get("enemy_cards_collected", []))
         else:
             current_level = int(save_data.get("current_level", 0))
-            zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+            enemy_cards_collected = list(save_data.get("enemy_cards_collected", []))
     else:
         clear_save()
         reset_run_state()
         current_level = 0
-        zombie_cards_collected = []
+        enemy_cards_collected = []
         globals()["_carry_player_state"] = None
         globals()["_pending_shop"] = False
         globals().pop("_last_spoils", None)
@@ -3296,12 +3296,12 @@ if __name__ == "__main__":
             if action in (None,):  # user clicked NEXT (closed shop normally)
                 globals()["_pending_shop"] = False
                 current_level += 1
-                save_progress(current_level, zombie_cards_collected)
+                save_progress(current_level, enemy_cards_collected)
                 # fall through to start the next level immediately
 
             elif action == "home":
                 # keep the shop pending so CONTINUE returns here again
-                save_progress(current_level, zombie_cards_collected, pending_shop=True)
+                save_progress(current_level, enemy_cards_collected, pending_shop=True)
                 flush_events()
                 selection = show_start_menu(screen)
                 if not selection: sys.exit()
@@ -3311,13 +3311,13 @@ if __name__ == "__main__":
                     globals()["_carry_player_state"] = save_data.get("carry_player", None)
                     globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
                     current_level = int(save_data.get("current_level", 0))
-                    zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+                    enemy_cards_collected = list(save_data.get("enemy_cards_collected", []))
 
                 else:
                     clear_save()
                     reset_run_state()
                     current_level = 0
-                    zombie_cards_collected = []
+                    enemy_cards_collected = []
                     globals()["_carry_player_state"] = None
                     globals()["_pending_shop"] = False
                     globals().pop("_last_spoils", None)
@@ -3328,14 +3328,14 @@ if __name__ == "__main__":
                 continue
 
             elif action == "exit":
-                save_progress(current_level, zombie_cards_collected, pending_shop=True)
+                save_progress(current_level, enemy_cards_collected, pending_shop=True)
                 pygame.quit();
                 sys.exit()
 
         config = get_level_config(current_level)
-        chosen_zombie = select_zombie_screen(screen, zombie_cards_collected) if zombie_cards_collected else "basic"
+        chosen_enemy = select_enemy_screen(screen, enemy_cards_collected) if enemy_cards_collected else "basic"
         door_transition(screen)
-        result, reward, bg = main_run_level(config, chosen_zombie)
+        result, reward, bg = main_run_level(config, chosen_enemy)
 
         if result == "restart":
             flush_events()
@@ -3358,11 +3358,11 @@ if __name__ == "__main__":
                 if save_data.get("mode") == "snapshot":
                     meta = save_data.get("meta", {})
                     current_level = int(meta.get("current_level", 0))
-                    zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
+                    enemy_cards_collected = list(meta.get("enemy_cards_collected", []))
 
                 else:
                     current_level = int(save_data.get("current_level", 0))
-                    zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+                    enemy_cards_collected = list(save_data.get("enemy_cards_collected", []))
 
                 globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
 
@@ -3370,7 +3370,7 @@ if __name__ == "__main__":
                 clear_save()
                 reset_run_state()
                 current_level = 0
-                zombie_cards_collected = []
+                enemy_cards_collected = []
                 globals()["_carry_player_state"] = None
                 globals()["_pending_shop"] = False
                 globals().pop("_last_spoils", None)
@@ -3396,7 +3396,7 @@ if __name__ == "__main__":
                 clear_save()
                 reset_run_state()
                 current_level = 0
-                zombie_cards_collected = []
+                enemy_cards_collected = []
                 continue
             else:
                 # action == "retry" → restart this level as a fresh run
@@ -3405,7 +3405,7 @@ if __name__ == "__main__":
 
 
         elif result == "success":
-            pool = [c for c in CARD_POOL if c not in zombie_cards_collected]
+            pool = [c for c in CARD_POOL if c not in enemy_cards_collected]
             reward_choices = random.sample(pool, k=min(3, len(pool))) if pool else []
             chosen = show_success_screen(screen, bg, reward_choices)
 
@@ -3427,15 +3427,15 @@ if __name__ == "__main__":
                     if save_data.get("mode") == "snapshot":
                         meta = save_data.get("meta", {})
                         current_level = int(meta.get("current_level", 0))
-                        zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
+                        enemy_cards_collected = list(meta.get("enemy_cards_collected", []))
                     else:
                         current_level = int(save_data.get("current_level", 0))
-                        zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+                        enemy_cards_collected = list(save_data.get("enemy_cards_collected", []))
                 else:
                     clear_save()
                     reset_run_state()
                     current_level = 0
-                    zombie_cards_collected = []
+                    enemy_cards_collected = []
                     globals()["_carry_player_state"] = None
                 continue  # 回到 while 重新开始流程
 
@@ -3444,13 +3444,13 @@ if __name__ == "__main__":
                 continue
 
             elif chosen in CARD_POOL:
-                zombie_cards_collected.append(chosen)
+                enemy_cards_collected.append(chosen)
                 # bank spoils from this level, then open the shop
                 META["spoils"] += int(globals().get("_last_spoils", 0))
                 action = show_shop_screen(screen)
                 # React to pause-menu choices made from inside the shop
                 if action == "home":
-                    save_progress(current_level, zombie_cards_collected, pending_shop=True)
+                    save_progress(current_level, enemy_cards_collected, pending_shop=True)
                     flush_events()
                     selection = show_start_menu(screen)
                     if not selection: sys.exit()
@@ -3466,34 +3466,34 @@ if __name__ == "__main__":
                         if save_data.get("mode") == "snapshot":
                             meta = save_data.get("meta", {})
                             current_level = int(meta.get("current_level", 0))
-                            zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
+                            enemy_cards_collected = list(meta.get("enemy_cards_collected", []))
                         else:
                             current_level = int(save_data.get("current_level", 0))
-                            zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+                            enemy_cards_collected = list(save_data.get("enemy_cards_collected", []))
                         globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
 
                     else:
                         clear_save()
                         current_level = 0
-                        zombie_cards_collected = []
+                        enemy_cards_collected = []
                         globals()["_carry_player_state"] = None
                     continue  # back to the top-level loop
                 if action == "restart":
                     # replay the current level (do not advance)
                     continue
                 if action == "exit":
-                    save_progress(current_level, zombie_cards_collected, pending_shop=True)
+                    save_progress(current_level, enemy_cards_collected, pending_shop=True)
                     pygame.quit();
                     sys.exit()
                 # Normal shop close → advance level
                 current_level += 1
-                save_progress(current_level, zombie_cards_collected)
+                save_progress(current_level, enemy_cards_collected)
 
             else:
                 META["spoils"] += int(globals().get("_last_spoils", 0))
                 action = show_shop_screen(screen)
                 if action == "home":
-                    save_progress(current_level, zombie_cards_collected, pending_shop=True)
+                    save_progress(current_level, enemy_cards_collected, pending_shop=True)
                     flush_events()
                     selection = show_start_menu(screen)
                     if not selection: sys.exit()
@@ -3508,16 +3508,16 @@ if __name__ == "__main__":
                         if save_data.get("mode") == "snapshot":
                             meta = save_data.get("meta", {})
                             current_level = int(meta.get("current_level", 0))
-                            zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
+                            enemy_cards_collected = list(meta.get("enemy_cards_collected", []))
                         else:
                             current_level = int(save_data.get("current_level", 0))
-                            zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+                            enemy_cards_collected = list(save_data.get("enemy_cards_collected", []))
                         globals()["_pending_shop"] = bool(save_data.get("pending_shop", False))
 
                     else:
                         clear_save()
                         current_level = 0
-                        zombie_cards_collected = []
+                        enemy_cards_collected = []
                         globals()["_carry_player_state"] = None
                     continue
 
@@ -3525,12 +3525,12 @@ if __name__ == "__main__":
                     continue
 
                 if action == "exit":
-                    save_progress(current_level, zombie_cards_collected, pending_shop=True)
+                    save_progress(current_level, enemy_cards_collected, pending_shop=True)
                     pygame.quit();
                     sys.exit()
 
                 current_level += 1
-                save_progress(current_level, zombie_cards_collected)
+                save_progress(current_level, enemy_cards_collected)
 
 
         else:
@@ -3550,25 +3550,25 @@ if __name__ == "__main__":
                     meta = save_data.get("meta", {})
                     if mode == "continue" and save_data and save_data.get("mode") == "snapshot":
                         current_level = int(meta.get("current_level", 0))
-                        zombie_cards_collected = list(meta.get("zombie_cards_collected", []))
+                        enemy_cards_collected = list(meta.get("enemy_cards_collected", []))
                 else:
                     current_level = int(save_data.get("current_level", 0))
-                    zombie_cards_collected = list(save_data.get("zombie_cards_collected", []))
+                    enemy_cards_collected = list(save_data.get("enemy_cards_collected", []))
             else:
                 clear_save()
                 current_level = 0
-                zombie_cards_collected = []
+                enemy_cards_collected = []
                 globals()["_carry_player_state"] = None
 
 # TODO
 # Attack MODE need to figure out
 # The item collection system can be hugely impact this game to next level
-# Player and Zombie both can collect item to upgrade, after kill zombie, player can get the experience to upgrade, and
+# Player and Enemy both can collect item to upgrade, after kill enemy, player can get the experience to upgrade, and
 # I set a timer each game for winning condition, as long as player still alive, after the time is running out
 # player won, vice versa. And after each combat, shop( roguelike feature) will apear for player to trade with item
 # using the item they collect in the combat
 
-# zombie's health, attack accumulate via level increases
+# enemy's health, attack accumulate via level increases
 # Special weapon can be trade in shop using big items collected in game(GOLDCOLLECTOR, etc.) OR
 # Just make it only unlock by defeating boss/elite
 # set limit for player fire rate

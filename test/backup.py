@@ -18,16 +18,16 @@ OBSTACLE_HEALTH = 20  # 可破坏障碍物初始血量
 MAIN_BLOCK_HEALTH = 40
 DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 5
-ZOMBIE_SPEED = 2
-ZOMBIE_ATTACK = 10  # 僵尸攻击力
-ZOMBIE_NUM = 2
+ENEMY_SPEED = 2
+ENEMY_ATTACK = 10  # 僵尸攻击力
+ENEMY_NUM = 2
 ITEMS = 10
 
 LEVELS = [
-    {"obstacle_count": 15, "item_count": 3, "zombie_count": 1, "block_hp": 10, "zombie_types": ["basic"],
-     "reward": "zombie_fast"},
-    {"obstacle_count": 18, "item_count": 4, "zombie_count": 2, "block_hp": 15, "zombie_types": ["basic", "strong"],
-     "reward": "zombie_strong"},
+    {"obstacle_count": 15, "item_count": 3, "enemy_count": 1, "block_hp": 10, "enemy_types": ["basic"],
+     "reward": "enemy_fast"},
+    {"obstacle_count": 18, "item_count": 4, "enemy_count": 2, "block_hp": 15, "enemy_types": ["basic", "strong"],
+     "reward": "enemy_strong"},
     # 可以继续添加更多关
 ]
 
@@ -220,10 +220,10 @@ class Player:
     #     pygame.draw.rect(screen, (0, 255, 0), player_rect)
 
 
-class Zombie:
+class Enemy:
     """僵尸角色"""
 
-    # def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED):
+    # def __init__(self, pos: Tuple[int, int], attack: int = ENEMY_ATTACK, speed: int = ENEMY_SPEED):
     #     """
     #     初始化僵尸
     #
@@ -239,7 +239,7 @@ class Zombie:
     #     self.breaking_obstacle: Optional[Tuple[int, int]] = None
     """像素自由移动版僵尸"""
 
-    def __init__(self, pos: Tuple[int, int], attack: int = ZOMBIE_ATTACK, speed: int = ZOMBIE_SPEED):
+    def __init__(self, pos: Tuple[int, int], attack: int = ENEMY_ATTACK, speed: int = ENEMY_SPEED):
         # 初始格子坐标转像素
         self.x = pos[0] * CELL_SIZE
         self.y = pos[1] * CELL_SIZE
@@ -360,7 +360,7 @@ def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
                 # 可破坏障碍物，增加额外代价
                 elif obstacle.type == "Destructible":
                     # 计算破坏障碍物所需的额外代价
-                    k_factor = (math.ceil(obstacle.health / ZOMBIE_ATTACK)) * 0.1
+                    k_factor = (math.ceil(obstacle.health / ENEMY_ATTACK)) * 0.1
                     new_cost = cost_so_far[current] + 1 + k_factor
 
             # 更新节点代价
@@ -384,10 +384,10 @@ def get_level_config(level: int) -> dict:
     return {
         "obstacle_count": 20 + level,
         "item_count": 5,
-        "zombie_count": min(5, 1 + level // 3),
+        "enemy_count": min(5, 1 + level // 3),
         "block_hp": int(10 * 1.2 ** (level - len(LEVELS) + 1)),
-        "zombie_types": ["basic", "strong", "fire"][level % 3:],
-        "reward": f"zombie_special_{level}"
+        "enemy_types": ["basic", "strong", "fire"][level % 3:],
+        "reward": f"enemy_special_{level}"
     }
 
 
@@ -408,7 +408,7 @@ def reconstruct_path(came_from: Dict, start: Tuple[int, int], goal: Tuple[int, i
 
 # ==================== 游戏初始化函数 ====================
 def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
-                           zombie_count: int, main_block_hp: int) -> Tuple[Dict, Set, Tuple, List]:
+                           enemy_count: int, main_block_hp: int) -> Tuple[Dict, Set, Tuple, List]:
     """
     生成游戏实体（障碍物、道具、玩家和僵尸位置）
 
@@ -418,7 +418,7 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
         obstacle_pixel_list: List[Obstacle]  # 用于碰撞检测
         items: Set[Tuple[int, int]]
         player_start: (x, y)
-        zombie_starts: List[(x, y)]
+        enemy_starts: List[(x, y)]
         main_item_pos: List[Tuple[int, int]]
     """
     all_positions = [(x, y) for x in range(grid_size) for y in range(grid_size)]
@@ -431,13 +431,13 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
         empty = [p for p in all_positions if p not in forbidden]
         while True:
             picks = random.sample(empty, count + 1)
-            player_pos, zombies = picks[0], picks[1:]
-            if all(abs(player_pos[0] - z[0]) + abs(player_pos[1] - z[1]) >= min_distance for z in zombies):
-                return player_pos, zombies
+            player_pos, enemies = picks[0], picks[1:]
+            if all(abs(player_pos[0] - z[0]) + abs(player_pos[1] - z[1]) >= min_distance for z in enemies):
+                return player_pos, enemies
 
-    player_pos, zombie_pos_list = pick_valid_positions(min_distance=5, count=zombie_count)
+    player_pos, enemy_pos_list = pick_valid_positions(min_distance=5, count=enemy_count)
     forbidden |= {player_pos}
-    forbidden |= set(zombie_pos_list)
+    forbidden |= set(enemy_pos_list)
 
     # 主道具点（不在 forbidden）
     main_item_candidates = [p for p in all_positions if p not in forbidden and is_not_edge(p, grid_size)]
@@ -468,7 +468,7 @@ def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int,
     items = [Item(pos[0], pos[1]) for pos in other_items]
     items.append(Item(main_item_pos[0], main_item_pos[1], is_main=True))  # MainBlock
 
-    return obstacles, items, player_pos, zombie_pos_list, [main_item_pos]  # main_item_pos可为列表支持多关卡
+    return obstacles, items, player_pos, enemy_pos_list, [main_item_pos]  # main_item_pos可为列表支持多关卡
 
 
 # ----------- 生成开始界面 -----------
@@ -589,7 +589,7 @@ class GameState:
 # ==================== 游戏渲染函数 ====================
 
 
-def render_game(screen: pygame.Surface, game_state, player: Player, zombies: List[Zombie]) -> None:
+def render_game(screen: pygame.Surface, game_state, player: Player, enemies: List[Enemy]) -> None:
     """渲染游戏画面"""
     # 清空屏幕
     screen.fill((20, 20, 20))
@@ -625,16 +625,16 @@ def render_game(screen: pygame.Surface, game_state, player: Player, zombies: Lis
     pygame.draw.rect(screen, (0, 255, 0), player.rect)
 
     # 绘制所有僵尸
-    # for zombie in zombies:
-    #     zombie_rect = pygame.Rect(
-    #         zombie.pos[0] * CELL_SIZE,
-    #         zombie.pos[1] * CELL_SIZE + INFO_BAR_HEIGHT,
+    # for enemy in enemies:
+    #     enemy_rect = pygame.Rect(
+    #         enemy.pos[0] * CELL_SIZE,
+    #         enemy.pos[1] * CELL_SIZE + INFO_BAR_HEIGHT,
     #         CELL_SIZE,
     #         CELL_SIZE
     #     )
-    #     pygame.draw.rect(screen, (255, 60, 60), zombie_rect)
-    for zombie in zombies:
-        pygame.draw.rect(screen, (255, 60, 60), zombie.rect)
+    #     pygame.draw.rect(screen, (255, 60, 60), enemy_rect)
+    for enemy in enemies:
+        pygame.draw.rect(screen, (255, 60, 60), enemy.rect)
 
     # 绘制障碍物
     for obstacle in game_state.obstacles.values():
@@ -695,11 +695,11 @@ def render_game_result(screen: pygame.Surface, result: str, restart_img, next_im
 
 
 # ==================== 游戏主循环 ====================
-def main(config, zombie_cards_collected: Set[str]) -> Tuple[str, Optional[str]]:
+def main(config, enemy_cards_collected: Set[str]) -> Tuple[str, Optional[str]]:
     """游戏主函数"""
     # 初始化pygame
     pygame.init()
-    pygame.display.set_caption("Zombie Chase Game")
+    pygame.display.set_caption("Enemy Chase Game")
     screen = pygame.display.set_mode((WINDOW_SIZE, TOTAL_HEIGHT))
     clock = pygame.time.Clock()
 
@@ -710,17 +710,17 @@ def main(config, zombie_cards_collected: Set[str]) -> Tuple[str, Optional[str]]:
     next_img = pygame.transform.smoothscale(next_img, (icon_size, icon_size))
 
     # 生成游戏实体
-    # obstacles, items, player_start, zombie_starts, main_item_list = generate_game_entities(
+    # obstacles, items, player_start, enemy_starts, main_item_list = generate_game_entities(
     #     grid_size=GRID_SIZE,
     #     obstacle_count=OBSTACLES,
     #     item_count=ITEMS,
-    #     zombie_count=ZOMBIE_NUM
+    #     enemy_count=ENEMY_NUM
     # )
-    obstacles, items, player_start, zombie_starts, main_item_list = generate_game_entities(
+    obstacles, items, player_start, enemy_starts, main_item_list = generate_game_entities(
         grid_size=GRID_SIZE,
         obstacle_count=config["obstacle_count"],
         item_count=config["item_count"],
-        zombie_count=config["zombie_count"],
+        enemy_count=config["enemy_count"],
         main_block_hp=config["block_hp"]
     )
 
@@ -729,7 +729,7 @@ def main(config, zombie_cards_collected: Set[str]) -> Tuple[str, Optional[str]]:
 
     # 创建玩家和僵尸
     player = Player(player_start, speed=PLAYER_SPEED)
-    zombies = [Zombie(pos, speed=ZOMBIE_SPEED) for pos in zombie_starts]
+    enemies = [Enemy(pos, speed=ENEMY_SPEED) for pos in enemy_starts]
 
     # 构建地图图结构
     graph = build_graph(GRID_SIZE, obstacles)
@@ -759,20 +759,20 @@ def main(config, zombie_cards_collected: Set[str]) -> Tuple[str, Optional[str]]:
         # 检查玩家是否拾取道具
         game_state.collect_item(player.rect)
 
-        for zombie in zombies:
+        for enemy in enemies:
             # 僵尸像素级追踪玩家
-            zombie.move_and_attack(player, list(game_state.obstacles.values()), game_state)
+            enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state)
             # 僵尸与玩家像素碰撞则失败
             player_rect = pygame.Rect(int(player.x), int(player.y) + INFO_BAR_HEIGHT, player.size, player.size)
-            if zombie.rect.colliderect(player_rect):
+            if enemy.rect.colliderect(player_rect):
                 game_result = "fail"
                 break
-        # for zombie in zombies:
-        #     if zombie.move_cooldown > 0:
-        #         zombie.move_cooldown -= 1
+        # for enemy in enemies:
+        #     if enemy.move_cooldown > 0:
+        #         enemy.move_cooldown -= 1
         #         continue
         #
-        #     action, target_pos = zombie.chase(player.pos, graph, obstacles)
+        #     action, target_pos = enemy.chase(player.pos, graph, obstacles)
         #
         #     # 处理障碍物被破坏的情况
         #     if action == "destroy":
@@ -783,12 +783,12 @@ def main(config, zombie_cards_collected: Set[str]) -> Tuple[str, Optional[str]]:
         #
         #     # 处理僵尸移动
         #     if action == "move":
-        #         zombie.pos = target_pos
+        #         enemy.pos = target_pos
         #
-        #     zombie.move_cooldown = zombie.speed
+        #     enemy.move_cooldown = enemy.speed
         #
         #     # 检查僵尸是否抓到玩家
-        #     if zombie.pos == player.pos:
+        #     if enemy.pos == player.pos:
         #         game_result = "fail"
         #         game_running = False
         #
@@ -798,7 +798,7 @@ def main(config, zombie_cards_collected: Set[str]) -> Tuple[str, Optional[str]]:
             break
 
         # ...游戏内容渲染...
-        render_game(screen, game_state, player, zombies)
+        render_game(screen, game_state, player, enemies)
         pygame.display.flip()
         clock.tick(60)
 
@@ -834,7 +834,7 @@ def main(config, zombie_cards_collected: Set[str]) -> Tuple[str, Optional[str]]:
 if __name__ == "__main__":
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_SIZE, TOTAL_HEIGHT))
-    pygame.display.set_caption("Zombie Card Game")
+    pygame.display.set_caption("Enemy Card Game")
 
     # 开始界面
     if not show_start_menu(screen):
@@ -842,16 +842,16 @@ if __name__ == "__main__":
 
     # 主游戏循环
     current_level = 0
-    zombie_cards_collected = set()
+    enemy_cards_collected = set()
 
     while True:
         config = get_level_config(current_level)
-        result, reward = main(config, zombie_cards_collected)
+        result, reward = main(config, enemy_cards_collected)
 
         if result == "next":
             current_level += 1
             if reward:
-                zombie_cards_collected.add(reward)
+                enemy_cards_collected.add(reward)
                 print(f"获得新卡牌：{reward}")
         elif result == "restart":
             continue
@@ -860,7 +860,7 @@ if __name__ == "__main__":
 
 # TODO
 #  IMPROVE THE UI AND HINT  BUGS ABOUT LOCKED ITEM CANNOT SUCCESS/ block arrangement
-#  ADDING MULTIPLE TYPE/ NUMBER OF / Balancing the speed of Zombies & Player
+#  ADDING MULTIPLE TYPE/ NUMBER OF / Balancing the speed of Enemies & Player
 #  Adding more interaction with the blocks and other feature on map
 #  Adding multiple chapters afterMONSTER AGAINST PLAYER  DONE
 #  Possibly increase player ability completing single one
@@ -868,11 +868,11 @@ if __name__ == "__main__":
 #  更多交互/可破坏物体
 #  动画、特效、音效
 #  UI按钮、菜单、地图选择等
-#  Actually you know what I got I better idea about this game, Zombie and Obstacle,
+#  Actually you know what I got I better idea about this game, Enemy and Obstacle,
 #  We can make it have a much deeper connection with player, add them into the goal of the game
 #  Revision: put the last item in the centre of walls surrounding, do not use the lock thing
 #  , it has nothing to do directly with the game set
-#  Add a potion to control zombie possess the body
+#  Add a potion to control enemy possess the body
 #  Working on the aviator and main character design and map design today, getting a little inspired
 #  Turn to pixel design, give up the block set.etc
 
