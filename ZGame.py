@@ -163,6 +163,20 @@ def circle_touch(a, b, extra=0.0) -> bool:
     return (dx * dx + dy * dy) <= (r * r)
 
 
+def update_hit_flash_timer(entity, dt: float) -> None:
+    """
+    If HP dropped since last tick, start a short white flash.
+    Always decays by dt so the flash fades back to the base color.
+    """
+    prev_hp = int(getattr(entity, "_flash_prev_hp", getattr(entity, "hp", 0)))
+    cur_hp = int(getattr(entity, "hp", 0))
+    if cur_hp < prev_hp:
+        entity._hit_flash = float(HIT_FLASH_DURATION)
+    else:
+        entity._hit_flash = max(0.0, float(getattr(entity, "_hit_flash", 0.0)) - float(dt))
+    entity._flash_prev_hp = cur_hp
+
+
 def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -> None:
     """
     顶栏 HUD（绝对屏幕坐标，不受相机/等距相机影响）
@@ -761,6 +775,7 @@ def _get_sekuya_font(size: int) -> pygame.font.Font:
 # 角色圆形碰撞半径
 PLAYER_RADIUS = int(CELL_SIZE * 0.30)  # matches 0.6×CELL_SIZE footprint
 ENEMY_RADIUS = int(CELL_SIZE * 0.30)
+HIT_FLASH_DURATION = 0.18  # seconds a white hit flash stays on screen
 # 成长模式：'linear'（当前默认）或 'exp'（推荐）
 MON_SCALE_MODE = "exp"  # "linear" / "exp"
 MON_HP_GROWTH_PER_LEVEL = 0.08  # HP 每关 +8% 复利到软帽
@@ -6584,6 +6599,8 @@ class Player:
         hp0 = int(META.get("base_maxhp", PLAYER_MAX_HP))
         self.max_hp = hp0 + int(META.get("maxhp", 0))
         self.hp = min(self.max_hp, self.max_hp)  # 刚生成满血
+        self._hit_flash = 0.0
+        self._flash_prev_hp = int(self.hp)
         # Shield state: per-level shield plus persistent Carapace reserve
         self.shield_hp = 0
         self.shield_max = 0
@@ -6649,7 +6666,11 @@ class Player:
     def take_damage(self, amount: int):
         """Used by enemy projectiles / hazards that call player.take_damage."""
         if self.hit_cd <= 0.0:
+            before = int(self.hp)
             self.hp = max(0, self.hp - int(amount))
+            if self.hp < before:
+                self._hit_flash = float(HIT_FLASH_DURATION)
+                self._flash_prev_hp = int(self.hp)
             self.hit_cd = float(PLAYER_HIT_COOLDOWN)
 
     def move(self, keys, obstacles, dt):
@@ -6870,6 +6891,8 @@ class Enemy:
             base_hp = int(base_hp * 1.8)
         self.hp = max(1, base_hp)
         self.max_hp = self.hp
+        self._hit_flash = 0.0
+        self._flash_prev_hp = int(self.hp)
         self.size = int(CELL_SIZE * 0.6)
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         # track trailing foot points for afterimage
@@ -8535,6 +8558,9 @@ class Bullet:
                     z.hp -= dealt
                     game_state.add_damage_text(cx, cy, dealt, crit=is_crit, kind="hp_player")
                 hp_lost = max(0, hp_before - max(z.hp, 0))
+                if hp_lost > 0:
+                    z._hit_flash = float(HIT_FLASH_DURATION)
+                    z._flash_prev_hp = int(max(0, z.hp))
                 if z.hp <= 0 and not getattr(z, "_death_processed", False):
                     z._death_processed = True  # Prevent duplicate death processing
                     # --- DEATH EXPLOSION ---
@@ -10885,7 +10911,11 @@ class GameState:
                 kind="shield",
             )
         if dmg > 0:
+            hp_before = int(player.hp)
             player.hp = max(0, player.hp - dmg)
+            if player.hp < hp_before:
+                player._hit_flash = float(HIT_FLASH_DURATION)
+                player._flash_prev_hp = int(player.hp)
             self.add_damage_text(
                 player.rect.centerx,
                 player.rect.centery,
@@ -11820,6 +11850,12 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 screen.blit(txt, txt.get_rect(midbottom=(cx, body.top - 4)))
             if z.is_boss: pygame.draw.rect(screen, (255, 215, 0), body.inflate(4, 4), 3)
             pygame.draw.rect(screen, col, body)
+            flash_t = float(getattr(z, "_hit_flash", 0.0))
+            if flash_t > 0.0 and HIT_FLASH_DURATION > 0:
+                flash_ratio = min(1.0, flash_t / HIT_FLASH_DURATION)
+                overlay = pygame.Surface(body.size, pygame.SRCALPHA)
+                overlay.fill((255, 255, 255, int(200 * flash_ratio)))
+                screen.blit(overlay, body.topleft)
             mark_t = float(getattr(z, "_vuln_mark_t", 0.0))
             if mark_t > 0.0:
                 flash = float(getattr(z, "_vuln_hit_flash", 0.0))
@@ -11893,6 +11929,12 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             col = (240, 80, 80) if (p.hit_cd > 0 and (pygame.time.get_ticks() // 80) % 2 == 0) else (0, 255, 0)
             pygame.draw.rect(screen, col, rect)
             pygame.draw.rect(screen, (80, 220, 255), rect.inflate(6, 6), 2, border_radius=4)
+            flash_t = float(getattr(p, "_hit_flash", 0.0))
+            if flash_t > 0.0 and HIT_FLASH_DURATION > 0:
+                flash_ratio = min(1.0, flash_t / HIT_FLASH_DURATION)
+                overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
+                overlay.fill((255, 255, 255, int(200 * flash_ratio)))
+                screen.blit(overlay, rect.topleft)
             carapace_hp = int(getattr(p, "carapace_hp", 0))
             total_shield = int(getattr(p, "shield_hp", 0)) + carapace_hp
             if total_shield > 0:
@@ -12426,6 +12468,11 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
     if spawned > 0:
         wave_index += 1
         globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
+    player._hit_flash = 0.0
+    player._flash_prev_hp = int(player.hp)
+    for z in enemies:
+        z._hit_flash = 0.0
+        z._flash_prev_hp = int(getattr(z, "hp", 0))
     running = True
     game_result = None
     last_frame = None
@@ -12437,6 +12484,9 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
             entry_freeze = max(0.0, entry_freeze - dt)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
+            update_hit_flash_timer(player, dt)
+            for z in enemies:
+                update_hit_flash_timer(z, dt)
             last_frame = render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots,
                                          obstacles=game_state.obstacles)
             continue
@@ -12696,6 +12746,9 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
             es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
+        update_hit_flash_timer(player, dt)
+        for z in enemies:
+            update_hit_flash_timer(z, dt)
         # afterimages (update & prune)
         if game_state.ghosts:
             game_state.ghosts[:] = [g for g in game_state.ghosts if g.update(dt)]
@@ -12793,6 +12846,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     else:
         player._aegis_pulse_cd = 0.0
     if not hasattr(player, 'fire_cd'): player.fire_cd = 0.0
+    player._hit_flash = 0.0
+    player._flash_prev_hp = int(player.hp)
     # Auto-turrets when resuming (use saved meta if present, else global META)
     turret_level = int(meta.get("auto_turret_level", META.get("auto_turret_level", 0)))
     turrets: List[AutoTurret] = []
@@ -12833,6 +12888,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         zobj.attack_timer = float(z.get("attack_timer", 0.0))
         # clamp restored speed so resumed runs don't create super-speed enemies
         zobj.speed = min(ENEMY_SPEED_MAX, max(1, int(zobj.speed)))
+        zobj._hit_flash = 0.0
+        zobj._flash_prev_hp = int(zobj.hp)
         enemies.append(zobj)
     # Bullets
     bullets: List[Bullet] = []
@@ -12932,6 +12989,11 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         kind, gp_or_none, obj, cx, cy, d2 = best
         return (kind, gp_or_none, obj, cx, cy), (d2 ** 0.5)
 
+    player._hit_flash = 0.0
+    player._flash_prev_hp = int(player.hp)
+    for z in enemies:
+        z._hit_flash = 0.0
+        z._flash_prev_hp = int(getattr(z, "hp", 0))
     while running:
         dt = clock.tick(60) / 1000.0
         # survival timer
@@ -13137,6 +13199,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             es.update(dt, player, game_state)
             if not es.alive:
                 enemy_shots.remove(es)
+        update_hit_flash_timer(player, dt)
+        for z in enemies:
+            update_hit_flash_timer(z, dt)
         # Fail check (redundant guard)
         if player.hp <= 0:
             clear_save()
