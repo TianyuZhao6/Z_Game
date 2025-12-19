@@ -1461,19 +1461,22 @@ def aegis_pulse_visual_profile(level: int) -> tuple[int, float, float]:
     layer_gap = expand_time / max(1, layers)
     return layers, expand_time, layer_gap
 
-def shop_price(base_cost: int, level_idx: int, kind: str = "normal") -> int:
+def shop_price(base_cost: int, level_idx: int, kind: str = "normal", prop_level: int | None = None) -> int:
     """
-    同一关内价格固定；进入下一关时按曲线整体上调。
-    kind = "reroll" 时保持恒定，不随关卡变化
+    价格逻辑：
+    - 基于关卡指数/线性上调（reroll 恒定）
+    - 同一关内，同一条目随拥有等级叠加涨价（SHOP_PRICE_STACK）
     """
     discount_lvl = min(COUPON_MAX_LEVEL, int(META.get("coupon_level", 0)))
     discount_mult = max(0.0, 1.0 - COUPON_DISCOUNT_PER * discount_lvl)
+    lvl_owned = max(0, int(prop_level or 0))
     if kind == "reroll":
         price = int(base_cost)
     else:
         exp = (SHOP_PRICE_EXP ** level_idx)
         lin = (1.0 + SHOP_PRICE_LINEAR * level_idx)
-        price = int(round(base_cost * exp * lin))
+        stack = (SHOP_PRICE_STACK ** lvl_owned)
+        price = int(round(base_cost * exp * lin * stack))
     price = int(round(price * discount_mult))
     return max(1, price)
 
@@ -5777,8 +5780,8 @@ def show_shop_screen(screen) -> Optional[str]:
             if it is None:
                 continue
             level_idx = int(globals().get("current_level", 0))
-            dyn_cost = shop_price(int(it["cost"]), level_idx, kind="normal")
             cur_lvl = _prop_level(it)
+            dyn_cost = shop_price(int(it["cost"]), level_idx, kind="normal", prop_level=cur_lvl)
             max_lvl = _prop_max_level(it)
             is_capped = (max_lvl is not None and cur_lvl is not None and cur_lvl >= max_lvl)
             uid = it.get("id") or it.get("name")
