@@ -5157,7 +5157,7 @@ def show_settings_popup(screen, background_surf):
         draw_neuro_button(screen, back_btn, "Back", btn_font,
                           hovered=back_btn.collidepoint(pygame.mouse.get_pos()),
                           disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
-        draw_neuro_button(screen, close_btn, "Close", btn_font,
+        draw_neuro_button(screen, close_btn, "Save", btn_font,
                           hovered=close_btn.collidepoint(pygame.mouse.get_pos()),
                           disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
         pygame.display.flip()
@@ -5193,7 +5193,7 @@ def show_settings_popup(screen, background_surf):
         draw_neuro_button(screen, back_btn, "Back", btn_font,
                           hovered=back_btn.collidepoint(pygame.mouse.get_pos()),
                           disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
-        draw_neuro_button(screen, close_btn, "Close", btn_font,
+        draw_neuro_button(screen, close_btn, "Save", btn_font,
                           hovered=close_btn.collidepoint(pygame.mouse.get_pos()),
                           disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
         pygame.display.flip()
