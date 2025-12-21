@@ -5383,7 +5383,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 "name": "Auto-Turret",
                 "key": "auto_turret",
                 "cost": 14,
-                "rarity": 3,
+                "rarity": 2,
                 "max_level": 5,
                 "desc": "Summons an orbiting auto-turret that fires at nearby enemies.",
                 "apply": lambda: META.update(
@@ -5491,7 +5491,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 "name": "Coupon",
                 "desc": "Permanently reduce 5% all shop prices this run.",
                 "cost": 10,
-                "rarity": 2,
+                "rarity": 1,
                 "max_level": COUPON_MAX_LEVEL,
                 "apply": lambda: META.update(
                     coupon_level=min(COUPON_MAX_LEVEL, int(META.get("coupon_level", 0)) + 1)
@@ -5502,7 +5502,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 "name": "Stationary Turret",
                 "desc": "Adds a stationary turret that spawns at a random clear spot on the map each level.",
                 "cost": 14,  # tweak as you like
-                "rarity": 2,  # slightly rarer than basic stuff
+                "rarity": 1,  # slightly rarer than basic stuff
                 "max_level": 99,  # effectively unlimited copies
                 "apply": lambda: META.update(
                     stationary_turret_count=int(META.get("stationary_turret_count", 0)) + 1
@@ -5702,10 +5702,10 @@ def show_shop_screen(screen) -> Optional[str]:
         level_num = max(1, int(level_idx_zero_based) + 1)
         curves = {
             1: [(1, 100.0), (3, 70.0), (5, 45.0), (7, 25.0), (9, 15.0), (10, 10.0)],
-            2: [(1, 0.0), (2, 0.0), (3, 25.0), (5, 35.0), (7, 33.0), (9, 20.0), (10, 15.0)],
-            3: [(1, 0.0), (3, 0.0), (4, 12.0), (6, 25.0), (8, 32.0), (10, 35.0)],
+            2: [(1, 15.0), (2, 20.0), (3, 25.0), (5, 35.0), (7, 33.0), (9, 20.0), (10, 15.0)],
+            3: [(1, 3.0), (3, 6.0), (4, 12.0), (6, 25.0), (8, 32.0), (10, 35.0)],
             4: [(1, 0.0), (2, 0.0), (3, 5.0), (5, 12.0), (7, 22.0), (9, 35.0), (10, 40.0)],
-            5: [(1, 0.0), (7, 0.0), (8, 1.0), (10, 3.0)],
+            5: [(1, 0.0), (7, 0.0), (8, 1.0), (10, 5.0)],
         }
         weights = {r: _interp_weight(level_num, pts) for r, pts in curves.items()}
         if level_num < 8:
@@ -5763,6 +5763,20 @@ def show_shop_screen(screen) -> Optional[str]:
                 if cards_for_rarity == []:
                     available_by_rarity.pop(cr, None)
         offers = offers[:4]
+        if len(offers) < 4:
+            # Fallback: broaden pool (ignoring rarity weights) so the shop always shows 4 prop cards
+            fallback_pool = [c for c in catalog if c.get("id") != "reroll"]
+            random.shuffle(fallback_pool)
+            for card in fallback_pool:
+                if len(offers) >= 4:
+                    break
+                if card in offers or _prop_at_cap(card):
+                    continue
+                offers.append(card)
+            # If still short, allow repeats from whatever remains (better to show something than leave a blank)
+            fallback_pool = [c for c in fallback_pool if not _prop_at_cap(c)] or fallback_pool
+            while len(offers) < 4 and fallback_pool:
+                offers.append(random.choice(fallback_pool))
         # append dedicated reroll card at the end
         offers.append(next(c for c in catalog if c.get("id") == "reroll"))
         return offers
