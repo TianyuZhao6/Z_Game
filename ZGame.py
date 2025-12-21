@@ -5685,7 +5685,36 @@ def show_shop_screen(screen) -> Optional[str]:
         lvl = _prop_level(it)
         return lvl is not None and lvl >= max_lvl
 
+    def _interp_weight(level_num: int, points: list[tuple[int, float]]) -> float:
+        """Piecewise-linear helper for rarity curves."""
+        if not points:
+            return 0.0
+        if level_num <= points[0][0]:
+            return float(points[0][1])
+        for (l0, v0), (l1, v1) in zip(points, points[1:]):
+            if level_num <= l1:
+                t = (level_num - l0) / float(max(1, l1 - l0))
+                return v0 + (v1 - v0) * t
+        return float(points[-1][1])
+
+    def _rarity_weights_for_level(level_idx_zero_based: int) -> dict[int, float]:
+        """Level-scaled weighting for shop rolls (rarity 1→4 focus; rarity 5 is ultra-rare past L8)."""
+        level_num = max(1, int(level_idx_zero_based) + 1)
+        curves = {
+            1: [(1, 100.0), (3, 70.0), (5, 45.0), (7, 25.0), (9, 15.0), (10, 10.0)],
+            2: [(1, 0.0), (2, 0.0), (3, 25.0), (5, 35.0), (7, 33.0), (9, 20.0), (10, 15.0)],
+            3: [(1, 0.0), (3, 0.0), (4, 12.0), (6, 25.0), (8, 32.0), (10, 35.0)],
+            4: [(1, 0.0), (2, 0.0), (3, 5.0), (5, 12.0), (7, 22.0), (9, 35.0), (10, 40.0)],
+            5: [(1, 0.0), (7, 0.0), (8, 1.0), (10, 3.0)],
+        }
+        weights = {r: _interp_weight(level_num, pts) for r, pts in curves.items()}
+        if level_num < 8:
+            weights[5] = 0.0  # rarity 5 stays boss-only until late-game shops
+        return weights
+
     def roll_offers():
+        level_idx = int(globals().get("current_level", 0))
+        rarity_weights = _rarity_weights_for_level(level_idx)
         # base pool (no reroll)
         pool = [c for c in catalog if c.get("id") != "reroll" and not _prop_at_cap(c)]
         # start with any locked cards from previous shops
@@ -5697,13 +5726,43 @@ def show_shop_screen(screen) -> Optional[str]:
                     break
         # avoid duplicates in the random pool
         pool = [c for c in pool if c.get("id") not in locked_ids]
-        # fill remaining slots up to 4 cards
-        remaining = max(0, 4 - len(locked_cards))
-        if remaining > 0 and pool:
-            locked_cards.extend(
-                random.sample(pool, k=min(remaining, len(pool)))
-            )
         offers = locked_cards[:4]
+        if len(offers) < 4 and pool:
+            # filter by level-appropriate rarities; fall back to full pool if curve excludes everything
+            weighted_pool = [c for c in pool if rarity_weights.get(int(c.get("rarity", 1)), 0.0) > 0]
+            source_pool = weighted_pool or pool
+            available_by_rarity: dict[int, list] = {}
+            for card in source_pool:
+                r = int(card.get("rarity", 1))
+                available_by_rarity.setdefault(r, []).append(card)
+            remaining_cards = list(source_pool)
+            while len(offers) < 4 and remaining_cards:
+                rarities = [r for r, cards in available_by_rarity.items() if cards]
+                weights = [rarity_weights.get(r, 0.0) for r in rarities]
+                if not rarities:
+                    break
+                if all(w <= 0 for w in weights):
+                    choice = random.choice(remaining_cards)
+                else:
+                    filtered = [(r, w) for r, w in zip(rarities, weights) if w > 0]
+                    if filtered:
+                        rarities, weights = zip(*filtered)
+                    choice_rarity = random.choices(list(rarities), weights=list(weights), k=1)[0]
+                    cards_for_rarity = available_by_rarity.get(choice_rarity) or []
+                    if not cards_for_rarity:
+                        available_by_rarity.pop(choice_rarity, None)
+                        continue
+                    choice = random.choice(cards_for_rarity)
+                offers.append(choice)
+                if choice in remaining_cards:
+                    remaining_cards.remove(choice)
+                cr = int(choice.get("rarity", 1))
+                cards_for_rarity = available_by_rarity.get(cr)
+                if cards_for_rarity and choice in cards_for_rarity:
+                    cards_for_rarity.remove(choice)
+                if cards_for_rarity == []:
+                    available_by_rarity.pop(cr, None)
+        offers = offers[:4]
         # append dedicated reroll card at the end
         offers.append(next(c for c in catalog if c.get("id") == "reroll"))
         return offers
