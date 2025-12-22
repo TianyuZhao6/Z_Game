@@ -5359,8 +5359,8 @@ def show_shop_screen(screen) -> Optional[str]:
                 "id": "aegis_pulse",
                 "name": "Aegis Pulse",
                 "desc": "Periodically release a hexagonal force field that damages nearby enemies when shield exists.",
-                "cost": 25,
-                "rarity": 4,
+                "cost": 28,
+                "rarity": 3,
                 "max_level": 5,
                 "apply": lambda: META.update(
                     aegis_pulse_level=min(5, int(META.get("aegis_pulse_level", 0)) + 1)
@@ -5427,7 +5427,7 @@ def show_shop_screen(screen) -> Optional[str]:
                 "id": "mark_vulnerability",
                 "name": "Mark of Vulnerability",
                 "desc": "Every 5/4/3s mark a priority enemy for 5/6/7s; marked take +15/22/30% damage.",
-                "cost": 25,
+                "cost": 22,
                 "rarity": 3,
                 "max_level": 3,
                 "apply": lambda: META.update(
