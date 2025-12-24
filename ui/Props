@@ -90,9 +90,14 @@ You periodically “expose” a high-priority enemy,
 
 1.6. Explosive Rounds
 
-Rarity: 3–4
+Rarity: 3
+
 Effect:
 Your bullets create a small explosion on kill (tiny AoE around impact; scales gently with level).
+Level	Damage % of killing shot	Radius (tiles)	Gameplay feel
+1	20%	~0.6 tile	Tiny pop, good vs clumped trash
+2	30%	~0.8 tile	Noticeable splash, soft chain-kill potential
+3	40%	~1.0 tile	Full-tile mini-nukes on every kill
 
 
 '2. Defense & Survival Props'
