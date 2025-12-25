@@ -94,9 +94,9 @@ Base Price: $18
 Max Level: 3
 
 Spawn a small AoE explosion centered on that enemy.
-Explosion damage is based only on the player's base bullet damage (pre-crit), not the killing hit.
+Explosion damage is based only on the player base bullet damage (pre-crit).
 If the explosion kills another enemy, it chains: that enemy also spawns its own explosion with the same stats.
-Explosion damage against bosses is 50% of normal to avoid melting single chunky bosses.
+Explosion damage against bosses is 50%.
 Explosion does not hurt the player.
 
 Level 1
