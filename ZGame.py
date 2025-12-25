@@ -1234,6 +1234,14 @@ AEGIS_PULSE_EXPAND_DELTA = 0.06  # faster expansion per level
 AEGIS_PULSE_MIN_EXPAND_TIME = 0.45
 AEGIS_PULSE_RING_FADE = 0.20
 AEGIS_PULSE_MIN_START_R = 12
+# --- Explosive Rounds (on-kill splash) ---
+EXPLOSIVE_ROUNDS_RADIUS_MULTS = (0.65, 0.80, 0.95)
+EXPLOSIVE_ROUNDS_DAMAGE_MULTS = (0.25, 0.35, 0.45)
+EXPLOSIVE_ROUNDS_BOSS_MULT = 0.50
+EXPLOSIVE_ROUNDS_FLASH_COLOR = (255, 200, 120)
+EXPLOSIVE_ROUNDS_FLASH_TTL = (0.15, 0.22)
+EXPLOSIVE_ROUNDS_FLASH_PARTICLES = (3, 6)
+EXPLOSIVE_ROUNDS_FLASH_SPEED = (80.0, 200.0)
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -1259,7 +1267,7 @@ HURRICANE_BULLET_SPIN_STEER = 4.0  # how quickly bullet velocity is steered towa
 HURRICANE_ESCAPE_SPEED = 3.8  # speed to shrug most pull
 HURRICANE_ESCAPE_SIZE = CELL_SIZE * 1.0  # entities larger than this resist more
 HURRICANE_COLOR = (120, 200, 255)
-SHOP_CATALOG_VERSION = 2  # bump to invalidate cached offers when catalog changes
+SHOP_CATALOG_VERSION = 3  # bump to invalidate cached offers when catalog changes
 # persistent (per run) upgrades bought in shop
 META = {
     # —— 本轮累积资源 ——
@@ -1288,6 +1296,7 @@ META = {
     "carapace_level": 0,
     "bone_plating_level": 0,
     "shrapnel_level": 0,
+    "explosive_rounds_level": 0,
     "carapace_shield_hp": 0,
     "golden_interest_level": 0,
     "shady_loan_level": 0,
@@ -1333,6 +1342,7 @@ def reset_run_state():
         "carapace_level": 0,
         "bone_plating_level": 0,
         "shrapnel_level": 0,
+        "explosive_rounds_level": 0,
         "carapace_shield_hp": 0,
         "golden_interest_level": 0,
         "shady_loan_level": 0,
@@ -1370,6 +1380,7 @@ def _ensure_meta_defaults():
     """Fill in newly added META keys when loading older saves."""
     defaults = {
         "vuln_mark_level": 0,
+        "explosive_rounds_level": 0,
         "bindings": {},
     }
     for k, v in defaults.items():
@@ -1421,6 +1432,107 @@ def apply_vuln_bonus(z: "Enemy", dmg: int) -> int:
     except Exception:
         pass
     return max(0, scaled)
+
+
+def explosive_rounds_stats(level: int, bullet_base: int | float) -> tuple[float, int, int]:
+    """Return (radius_px, damage, boss_damage) for Explosive Rounds."""
+    lvl = max(1, min(int(level), len(EXPLOSIVE_ROUNDS_DAMAGE_MULTS)))
+    radius = float(CELL_SIZE) * float(EXPLOSIVE_ROUNDS_RADIUS_MULTS[lvl - 1])
+    base = max(1, int(round(float(bullet_base) * EXPLOSIVE_ROUNDS_DAMAGE_MULTS[lvl - 1])))
+    boss = max(
+        1,
+        int(round(float(bullet_base) * EXPLOSIVE_ROUNDS_DAMAGE_MULTS[lvl - 1] * EXPLOSIVE_ROUNDS_BOSS_MULT)),
+    )
+    return radius, base, boss
+
+
+def spawn_explosive_rounds_vfx(game_state: "GameState", x: float, y: float, radius: float) -> None:
+    if game_state is None or not hasattr(game_state, "fx"):
+        return
+    ttl_min, ttl_max = EXPLOSIVE_ROUNDS_FLASH_TTL
+    life = random.uniform(ttl_min, ttl_max)
+    base_size = max(3, int(radius * 0.4))
+    game_state.fx.particles.append(
+        Particle(x, y, 0.0, 0.0, EXPLOSIVE_ROUNDS_FLASH_COLOR, life, base_size)
+    )
+    count = random.randint(EXPLOSIVE_ROUNDS_FLASH_PARTICLES[0], EXPLOSIVE_ROUNDS_FLASH_PARTICLES[1])
+    sp_min, sp_max = EXPLOSIVE_ROUNDS_FLASH_SPEED
+    for _ in range(count):
+        ang = random.uniform(0.0, math.tau)
+        speed = random.uniform(sp_min, sp_max)
+        vx = math.cos(ang) * speed
+        vy = math.sin(ang) * speed
+        p_life = random.uniform(ttl_min, ttl_max)
+        size = random.randint(2, max(3, int(radius * 0.2)))
+        game_state.fx.particles.append(
+            Particle(x, y, vx, vy, EXPLOSIVE_ROUNDS_FLASH_COLOR, p_life, size)
+        )
+
+
+def trigger_explosive_rounds(player, game_state: "GameState", enemies,
+                             origin_pos: tuple[float, float], bullet_base: int | None = None) -> None:
+    lvl = int(META.get("explosive_rounds_level", 0))
+    if lvl <= 0 or player is None or game_state is None or enemies is None or origin_pos is None:
+        return
+    if bullet_base is None:
+        bullet_base = int(getattr(player, "bullet_damage", BULLET_DAMAGE_ENEMY))
+    radius, base_dmg, boss_dmg = explosive_rounds_stats(lvl, bullet_base)
+    if base_dmg <= 0 or radius <= 0:
+        return
+    queue = deque([(float(origin_pos[0]), float(origin_pos[1]))])
+    while queue:
+        cx, cy = queue.popleft()
+        spawn_explosive_rounds_vfx(game_state, cx, cy, radius)
+        for z in list(enemies):
+            if getattr(z, "hp", 0) <= 0:
+                continue
+            zx, zy = z.rect.center
+            dx = zx - cx
+            dy = zy - cy
+            zr = float(getattr(z, "radius", getattr(z, "size", CELL_SIZE) * 0.5))
+            if dx * dx + dy * dy > (radius + zr) ** 2:
+                continue
+            dealt = boss_dmg if getattr(z, "is_boss", False) else base_dmg
+            if dealt <= 0:
+                continue
+            if getattr(z, "type", "") == "boss_mist":
+                if random.random() < MIST_PHASE_CHANCE:
+                    game_state.add_damage_text(zx, zy, "TELEPORT", crit=False, kind="shield")
+                    pdx = zx - player.rect.centerx
+                    pdy = zy - player.rect.centery
+                    L = (pdx * pdx + pdy * pdy) ** 0.5 or 1.0
+                    ox = pdx / L * (MIST_PHASE_TELE_TILES * CELL_SIZE)
+                    oy = pdy / L * (MIST_PHASE_TELE_TILES * CELL_SIZE)
+                    z.x += ox
+                    z.y += oy - INFO_BAR_HEIGHT
+                    z.rect.x = int(z.x)
+                    z.rect.y = int(z.y + INFO_BAR_HEIGHT)
+                    continue
+                dist_tiles = math.hypot((zx - cx) / CELL_SIZE, (zy - cy) / CELL_SIZE)
+                if dist_tiles >= MIST_RANGED_REDUCE_TILES:
+                    dealt = int(dealt * MIST_RANGED_MULT)
+            dealt = apply_vuln_bonus(z, dealt)
+            if dealt <= 0:
+                continue
+            hp_before = int(getattr(z, "hp", 0))
+            if getattr(z, "shield_hp", 0) > 0:
+                blocked = min(dealt, z.shield_hp)
+                z.shield_hp -= dealt
+                if blocked > 0:
+                    game_state.add_damage_text(zx, zy, blocked, crit=False, kind="shield")
+                overflow = dealt - blocked
+                if overflow > 0:
+                    z.hp -= overflow
+                    game_state.add_damage_text(zx, zy - 10, overflow, crit=False, kind="hp_player")
+            else:
+                z.hp -= dealt
+                game_state.add_damage_text(zx, zy, dealt, crit=False, kind="hp_player")
+            if z.hp < hp_before:
+                z._hit_flash = float(HIT_FLASH_DURATION)
+                z._flash_prev_hp = int(max(0, z.hp))
+            if z.hp <= 0 and not getattr(z, "_explosive_rounds_done", False):
+                z._explosive_rounds_done = True
+                queue.append((zx, zy))
 
 
 def _aegis_pulse_damage_for(level: int, player_max_hp: int | float | None) -> int:
@@ -4732,6 +4844,11 @@ def show_pause_menu(screen, background_surf):
                 "max_level": 3,
             },
             {
+                "id": "explosive_rounds",
+                "name": "Explosive Rounds",
+                "max_level": 3,
+            },
+            {
                 "id": "bone_plating",
                 "name": "Bone Plating",
                 "max_level": 5,
@@ -4813,6 +4930,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("pierce_level", 0))
         if iid == "shrapnel_shells":
             return int(META.get("shrapnel_level", 0))
+        if iid == "explosive_rounds":
+            return int(META.get("explosive_rounds_level", 0))
         if iid == "mark_vulnerability":
             return int(META.get("vuln_mark_level", 0))
         if iid == "bandit_radar":
@@ -5424,6 +5543,17 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "explosive_rounds",
+                "name": "Explosive Rounds",
+                "desc": "On bullet kill, explode for 25/35/45% bullet dmg in a small radius (bosses half).",
+                "cost": 18,
+                "rarity": 2,
+                "max_level": 3,
+                "apply": lambda: META.update(
+                    explosive_rounds_level=min(3, int(META.get("explosive_rounds_level", 0)) + 1)
+                ),
+            },
+            {
                 "id": "mark_vulnerability",
                 "name": "Mark of Vulnerability",
                 "desc": "Every 5/4/3s mark a priority enemy for 5/6/7s; marked take +15/22/30% damage.",
@@ -5560,6 +5690,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return int(META.get("ricochet_level", 0))
         if iid == "shrapnel_shells":
             return int(META.get("shrapnel_level", 0))
+        if iid == "explosive_rounds":
+            return int(META.get("explosive_rounds_level", 0))
         if iid == "mark_vulnerability":
             return int(META.get("vuln_mark_level", 0))
         if iid == "stationary_turret":
@@ -5620,6 +5752,11 @@ def show_shop_screen(screen) -> Optional[str]:
             per = 10
             chance = min(80, base + per * (lvl - 1))
             return f"{chance}% shrapnel on kill"
+        if iid == "explosive_rounds":
+            bullet_base = int(META.get("base_dmg", BULLET_DAMAGE_ENEMY)) + int(META.get("dmg", 0))
+            radius, dmg, boss_dmg = explosive_rounds_stats(lvl, bullet_base)
+            r_tiles = radius / float(CELL_SIZE)
+            return f"Explode {dmg}/{boss_dmg} dmg, r {r_tiles:.2f} tiles"
         if iid == "mark_vulnerability":
             interval, bonus, duration = mark_of_vulnerability_stats(lvl)
             pct = int(bonus * 100)
@@ -6658,6 +6795,7 @@ class Player:
         self.bullet_ricochet = int(META.get("ricochet_level", 0))
         # on-kill shrapnel splashes
         self.shrapnel_level = int(META.get("shrapnel_level", 0))
+        self.explosive_rounds_level = int(META.get("explosive_rounds_level", 0))
         self.aegis_pulse_level = int(META.get("aegis_pulse_level", 0))
         if self.aegis_pulse_level > 0:
             _, _, cd = aegis_pulse_stats(self.aegis_pulse_level, self.max_hp)
@@ -8681,6 +8819,10 @@ class Bullet:
                                 if not hasattr(game_state, "pending_bullets"):
                                     game_state.pending_bullets = []
                                 game_state.pending_bullets.append(sb)
+                    # --- Explosive Rounds: on bullet kill, splash and chain ---
+                    if getattr(self, "source", "player") == "player" and player is not None:
+                        bullet_base = int(getattr(player, "bullet_damage", base))
+                        trigger_explosive_rounds(player, game_state, enemies, (cx, cy), bullet_base=bullet_base)
                     if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) is not None:
                         trigger_twin_enrage(z, enemies, game_state)
                     # --- Splinter: if not yet split, split on death instead of dropping loot now ---
