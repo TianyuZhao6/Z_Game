@@ -89,16 +89,35 @@ You periodically “expose” a high-priority enemy,
 
 
 1.6. Explosive Rounds
+Rarity: (3)
+Base Price: $18
+Max Level: 3
 
-Rarity: 3
+Spawn a small AoE explosion centered on that enemy.
+Explosion damage is based only on the player’s base bullet damage.  Can be affected by crit%
+If the explosion kills another enemy, it chains: that enemy also spawns its own explosion with the same stats.
+Explosion damage against bosses is 50% of normal to avoid melting single chunky bosses.
+Explosion does not hurt the player.
 
-Effect:
-Your bullets create a small explosion on kill (tiny AoE around impact; scales gently with level).
-Level	Damage % of killing shot	Radius (tiles)	Gameplay feel
-1	20%	~0.6 tile	Tiny pop, good vs clumped trash
-2	30%	~0.8 tile	Noticeable splash, soft chain-kill potential
-3	40%	~1.0 tile	Full-tile mini-nukes on every kill
+Level 1
 
+Damage vs normal enemies: 25% of bullet_base
+Damage vs bosses: 12.5% of bullet_base (rounded down in code)
+Radius: small — about 0.65 tiles
+Suggest: radius_px ≈ CELL_SIZE * 0.65
+
+Level 2
+
+Damage vs normal enemies: 35% of bullet_base
+Damage vs bosses: 17.5% of bullet_base
+Radius: small+ — about 0.80 tiles
+Suggest: radius_px ≈ CELL_SIZE * 0.80
+
+Level 3
+Damage vs normal enemies: 45% of bullet_base
+Damage vs bosses: 22.5% of bullet_base
+Radius: almost 1 tile — about 0.95 tiles
+Suggest: radius_px ≈ CELL_SIZE * 0.95
 
 '2. Defense & Survival Props'
 
