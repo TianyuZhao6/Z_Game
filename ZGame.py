@@ -8719,9 +8719,6 @@ class Bullet:
         # 1) enemies
         for z in list(enemies):
             if r.colliderect(z.rect):
-                # --- HIT SPARK ---
-                # Cyan/White sparks on hit
-                game_state.fx.spawn_explosion(self.x, self.y, (0, 255, 255), count=6)
                 # --- crit roll (use player's stats if available) ---
                 crit_p = float(getattr(player, "crit_chance", CRIT_CHANCE_BASE))
                 crit_m = float(getattr(player, "crit_mult", CRIT_MULT_BASE))
@@ -8777,14 +8774,15 @@ class Bullet:
                     z._flash_prev_hp = int(max(0, z.hp))
                 if z.hp <= 0 and not getattr(z, "_death_processed", False):
                     z._death_processed = True  # Prevent duplicate death processing
-                    # --- DEATH EXPLOSION ---
+                    # --- DEATH EXPLOSION (only when Explosive Rounds is owned) ---
                     cx, cy = z.rect.centerx, z.rect.centery
-                    if getattr(z, "is_boss", False):
-                        # Huge Red/Gold explosion for boss
-                        game_state.fx.spawn_explosion(cx, cy, (255, 100, 50), count=150)
-                    else:
-                        # Standard enemy death (Green/Purple)
-                        game_state.fx.spawn_explosion(cx, cy, z.color, count=25)
+                    if int(META.get("explosive_rounds_level", 0)) > 0:
+                        if getattr(z, "is_boss", False):
+                            # Huge Red/Gold explosion for boss
+                            game_state.fx.spawn_explosion(cx, cy, (255, 100, 50), count=150)
+                        else:
+                            # Standard enemy death (Green/Purple)
+                            game_state.fx.spawn_explosion(cx, cy, z.color, count=25)
 
                     _bandit_death_notice(z, game_state)
                     # --- Shrapnel Shells: on enemy death, spawn shrapnel splashes ---
