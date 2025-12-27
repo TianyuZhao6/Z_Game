@@ -119,6 +119,9 @@ Damage vs bosses: 22.5% of bullet_base
 Radius: almost 1 tile — about 0.95 tiles
 Suggest: radius_px ≈ CELL_SIZE * 0.95
 
+1.7. DOT Rounds
+With visual effect of particle effects GrowCache.
+
 '2. Defense & Survival Props'
 
 Not just raw HP—give them interesting defensive patterns.
