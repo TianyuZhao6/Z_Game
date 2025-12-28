@@ -4928,6 +4928,11 @@ def show_pause_menu(screen, background_surf):
                 "max_level": 3,
             },
             {
+                "id": "dot_rounds",
+                "name": "D.O.T. Rounds",
+                "max_level": 3,
+            },
+            {
                 "id": "bone_plating",
                 "name": "Bone Plating",
                 "max_level": 5,
@@ -11601,7 +11606,7 @@ class GameState:
                             z.rect.centery - 8,
                             deal,
                             crit=False,
-                            kind="hp_player",
+                            kind="dot",
                         )
                         z._dot_rounds_accum = accum - deal
                     else:
@@ -12403,6 +12408,7 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             "shield": ((120, 200, 255), (120, 200, 255)),
             "aegis": (AEGIS_PULSE_COLOR, AEGIS_PULSE_COLOR),
             "hp_player": ((255, 255, 255), (255, 255, 220)),
+            "dot": ((86, 141, 86), (86, 141, 86)),
             "hp_enemy": ((255, 60, 60), (255, 140, 140)),
         }
         normal, crit = color_map.get(d.kind, ((255, 100, 100), (255, 240, 120)))
