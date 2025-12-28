@@ -1242,6 +1242,18 @@ EXPLOSIVE_ROUNDS_FLASH_COLOR = (255, 200, 120)
 EXPLOSIVE_ROUNDS_FLASH_TTL = (0.15, 0.22)
 EXPLOSIVE_ROUNDS_FLASH_PARTICLES = (3, 6)
 EXPLOSIVE_ROUNDS_FLASH_SPEED = (80.0, 200.0)
+# --- D.O.T. Rounds (on-hit DoT) ---
+DOT_ROUNDS_TICK_INTERVAL = 0.5
+DOT_ROUNDS_DAMAGE_PER_TICK = (0.10, 0.16, 0.22)
+DOT_ROUNDS_DURATIONS = (2.5, 3.0, 3.5)
+DOT_ROUNDS_MAX_STACKS = (1, 1, 2)
+DOT_ROUNDS_BOSS_MULT = 0.70
+DOT_ROUNDS_HIT_SPARK_COLORS = ((140, 240, 255), (255, 255, 255))
+DOT_ROUNDS_HIT_SPARK_PARTICLES = (4, 7)
+DOT_ROUNDS_HIT_SPARK_SPEED = (80.0, 220.0)
+DOT_ROUNDS_HIT_SPARK_LIFE = (0.12, 0.22)
+DOT_ROUNDS_HIT_SPARK_SIZE = (2, 5)
+DOT_ROUNDS_GLOW_COLOR = (120, 235, 255)
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -1267,7 +1279,7 @@ HURRICANE_BULLET_SPIN_STEER = 4.0  # how quickly bullet velocity is steered towa
 HURRICANE_ESCAPE_SPEED = 3.8  # speed to shrug most pull
 HURRICANE_ESCAPE_SIZE = CELL_SIZE * 1.0  # entities larger than this resist more
 HURRICANE_COLOR = (120, 200, 255)
-SHOP_CATALOG_VERSION = 3  # bump to invalidate cached offers when catalog changes
+SHOP_CATALOG_VERSION = 4  # bump to invalidate cached offers when catalog changes
 # persistent (per run) upgrades bought in shop
 META = {
     # —— 本轮累积资源 ——
@@ -1297,6 +1309,7 @@ META = {
     "bone_plating_level": 0,
     "shrapnel_level": 0,
     "explosive_rounds_level": 0,
+    "dot_rounds_level": 0,
     "carapace_shield_hp": 0,
     "golden_interest_level": 0,
     "shady_loan_level": 0,
@@ -1343,6 +1356,7 @@ def reset_run_state():
         "bone_plating_level": 0,
         "shrapnel_level": 0,
         "explosive_rounds_level": 0,
+        "dot_rounds_level": 0,
         "carapace_shield_hp": 0,
         "golden_interest_level": 0,
         "shady_loan_level": 0,
@@ -1381,6 +1395,7 @@ def _ensure_meta_defaults():
     defaults = {
         "vuln_mark_level": 0,
         "explosive_rounds_level": 0,
+        "dot_rounds_level": 0,
         "bindings": {},
     }
     for k, v in defaults.items():
@@ -1446,6 +1461,49 @@ def explosive_rounds_stats(level: int, bullet_base: int | float) -> tuple[float,
     return radius, base, boss
 
 
+def dot_rounds_stats(level: int, bullet_base: int | float) -> tuple[float, float, int]:
+    """Return (damage_per_tick, duration_s, max_stacks) for D.O.T. Rounds."""
+    lvl = max(1, min(int(level), len(DOT_ROUNDS_DAMAGE_PER_TICK)))
+    dmg_per_tick = float(bullet_base) * float(DOT_ROUNDS_DAMAGE_PER_TICK[lvl - 1])
+    duration = float(DOT_ROUNDS_DURATIONS[lvl - 1])
+    max_stacks = int(DOT_ROUNDS_MAX_STACKS[lvl - 1])
+    return dmg_per_tick, duration, max_stacks
+
+
+def apply_dot_rounds_stack(target: "Enemy", damage_per_tick: float, duration: float, max_stacks: int) -> None:
+    if target is None or max_stacks <= 0 or duration <= 0.0:
+        return
+    stacks = getattr(target, "dot_rounds_stacks", None)
+    if stacks is None:
+        stacks = []
+        target.dot_rounds_stacks = stacks
+    entry = {
+        "t": float(duration),
+        "dur": float(duration),
+        "dmg": float(max(0.0, damage_per_tick)),
+    }
+    if len(stacks) < max_stacks:
+        stacks.append(entry)
+    else:
+        oldest = stacks.pop(0)
+        oldest.update(entry)
+        stacks.append(oldest)
+    if not hasattr(target, "_dot_rounds_tick_t"):
+        target._dot_rounds_tick_t = float(DOT_ROUNDS_TICK_INTERVAL)
+
+
+def dot_rounds_visual_state(target: "Enemy") -> tuple[float, int]:
+    stacks = getattr(target, "dot_rounds_stacks", None)
+    if not stacks:
+        return 0.0, 0
+    ratio = 0.0
+    for s in stacks:
+        dur = float(s.get("dur", 0.0))
+        if dur > 0.0:
+            ratio = max(ratio, float(s.get("t", 0.0)) / dur)
+    return max(0.0, min(1.0, ratio)), len(stacks)
+
+
 def spawn_explosive_rounds_vfx(game_state: "GameState", x: float, y: float, radius: float) -> None:
     if game_state is None or not hasattr(game_state, "fx"):
         return
@@ -1467,6 +1525,27 @@ def spawn_explosive_rounds_vfx(game_state: "GameState", x: float, y: float, radi
         game_state.fx.particles.append(
             Particle(x, y, vx, vy, EXPLOSIVE_ROUNDS_FLASH_COLOR, p_life, size)
         )
+
+
+def spawn_dot_rounds_hit_vfx(game_state: "GameState", x: float, y: float) -> None:
+    if game_state is None or not hasattr(game_state, "fx"):
+        return
+    cmin, cmax = DOT_ROUNDS_HIT_SPARK_PARTICLES
+    sp_min, sp_max = DOT_ROUNDS_HIT_SPARK_SPEED
+    life_min, life_max = DOT_ROUNDS_HIT_SPARK_LIFE
+    size_min, size_max = DOT_ROUNDS_HIT_SPARK_SIZE
+    for idx, col in enumerate(DOT_ROUNDS_HIT_SPARK_COLORS):
+        count = random.randint(cmin, cmax)
+        if idx > 0:
+            count = max(2, count // 2)
+        for _ in range(count):
+            ang = random.uniform(0.0, math.tau)
+            speed = random.uniform(sp_min, sp_max)
+            vx = math.cos(ang) * speed
+            vy = math.sin(ang) * speed
+            life = random.uniform(life_min, life_max)
+            size = random.randint(size_min, size_max)
+            game_state.fx.particles.append(Particle(x, y, vx, vy, col, life, size))
 
 
 def trigger_explosive_rounds(player, game_state: "GameState", enemies,
@@ -4932,6 +5011,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("shrapnel_level", 0))
         if iid == "explosive_rounds":
             return int(META.get("explosive_rounds_level", 0))
+        if iid == "dot_rounds":
+            return int(META.get("dot_rounds_level", 0))
         if iid == "mark_vulnerability":
             return int(META.get("vuln_mark_level", 0))
         if iid == "bandit_radar":
@@ -5554,6 +5635,17 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "dot_rounds",
+                "name": "D.O.T. Rounds",
+                "desc": "On hit, apply a stacking DoT based on base bullet dmg (0.5s ticks, bosses -30%).",
+                "cost": 20,
+                "rarity": 2,
+                "max_level": 3,
+                "apply": lambda: META.update(
+                    dot_rounds_level=min(3, int(META.get("dot_rounds_level", 0)) + 1)
+                ),
+            },
+            {
                 "id": "mark_vulnerability",
                 "name": "Mark of Vulnerability",
                 "desc": "Every 5/4/3s mark a priority enemy for 5/6/7s; marked take +15/22/30% damage.",
@@ -5757,6 +5849,13 @@ def show_shop_screen(screen) -> Optional[str]:
             radius, dmg, boss_dmg = explosive_rounds_stats(lvl, bullet_base)
             r_tiles = radius / float(CELL_SIZE)
             return f"Explode {dmg}/{boss_dmg} dmg, r {r_tiles:.2f} tiles"
+        if iid == "dot_rounds":
+            idx = min(max(lvl, 1), len(DOT_ROUNDS_DAMAGE_PER_TICK)) - 1
+            pct = int(DOT_ROUNDS_DAMAGE_PER_TICK[idx] * 100)
+            duration = float(DOT_ROUNDS_DURATIONS[idx])
+            ticks = int(round(duration / float(DOT_ROUNDS_TICK_INTERVAL)))
+            max_stacks = int(DOT_ROUNDS_MAX_STACKS[idx])
+            return f"{pct}% base dmg per tick ({ticks} ticks), stacks {max_stacks}"
         if iid == "mark_vulnerability":
             interval, bonus, duration = mark_of_vulnerability_stats(lvl)
             pct = int(bonus * 100)
@@ -6796,6 +6895,7 @@ class Player:
         # on-kill shrapnel splashes
         self.shrapnel_level = int(META.get("shrapnel_level", 0))
         self.explosive_rounds_level = int(META.get("explosive_rounds_level", 0))
+        self.dot_rounds_level = int(META.get("dot_rounds_level", 0))
         self.aegis_pulse_level = int(META.get("aegis_pulse_level", 0))
         if self.aegis_pulse_level > 0:
             _, _, cd = aegis_pulse_stats(self.aegis_pulse_level, self.max_hp)
@@ -7091,6 +7191,10 @@ class Enemy:
         # Spoil
         self.spoils = 0  # 当前持有金币
         self._gold_glow_t = 0.0  # 金色拾取光晕计时器
+        # D.O.T. Rounds stacks (per-enemy)
+        self.dot_rounds_stacks = []
+        self._dot_rounds_tick_t = float(DOT_ROUNDS_TICK_INTERVAL)
+        self._dot_rounds_accum = 0.0
         self.speed = float(self.speed)  # 改成 float，支持 +0.5 的增速
         # split flags (only for splinter)
         self._can_split = (self.type == "splinter")
@@ -8772,6 +8876,16 @@ class Bullet:
                 if hp_lost > 0:
                     z._hit_flash = float(HIT_FLASH_DURATION)
                     z._flash_prev_hp = int(max(0, z.hp))
+                if getattr(self, "source", "player") == "player":
+                    dot_lvl = int(META.get("dot_rounds_level", 0))
+                    if dot_lvl > 0:
+                        if player is not None:
+                            bullet_base = int(getattr(player, "bullet_damage", base))
+                        else:
+                            bullet_base = int(META.get("base_dmg", BULLET_DAMAGE_ENEMY)) + int(META.get("dmg", 0))
+                        dmg_per_tick, duration, max_stacks = dot_rounds_stats(dot_lvl, bullet_base)
+                        apply_dot_rounds_stack(z, dmg_per_tick, duration, max_stacks)
+                        spawn_dot_rounds_hit_vfx(game_state, cx, cy)
                 if z.hp <= 0 and not getattr(z, "_death_processed", False):
                     z._death_processed = True  # Prevent duplicate death processing
                     # --- DEATH EXPLOSION (only when Explosive Rounds is owned) ---
@@ -11444,6 +11558,56 @@ class GameState:
             z._vuln_hit_flash = max(0.0, float(getattr(z, "_vuln_hit_flash", 0.0)))
         self._vuln_mark_cd = cd
 
+    def update_dot_rounds(self, enemies, dt: float) -> None:
+        lvl = int(META.get("dot_rounds_level", 0))
+        if lvl <= 0:
+            for z in enemies:
+                if getattr(z, "dot_rounds_stacks", None):
+                    z.dot_rounds_stacks = []
+                    z._dot_rounds_tick_t = float(DOT_ROUNDS_TICK_INTERVAL)
+                    z._dot_rounds_accum = 0.0
+            return
+        tick_interval = float(DOT_ROUNDS_TICK_INTERVAL)
+        for z in enemies:
+            if getattr(z, "hp", 0) <= 0:
+                continue
+            stacks = getattr(z, "dot_rounds_stacks", None)
+            if not stacks:
+                continue
+            for s in stacks:
+                s["t"] = float(s.get("t", 0.0)) - dt
+            stacks[:] = [s for s in stacks if s.get("t", 0.0) > 0.0]
+            if not stacks:
+                z._dot_rounds_tick_t = tick_interval
+                z._dot_rounds_accum = 0.0
+                continue
+            tick_t = float(getattr(z, "_dot_rounds_tick_t", tick_interval))
+            tick_t -= dt
+            if tick_t <= 0.0:
+                ticks = int(abs(tick_t) // tick_interval) + 1
+                tick_t += tick_interval * ticks
+                total = 0.0
+                for s in stacks:
+                    total += float(s.get("dmg", 0.0)) * ticks
+                if total > 0.0:
+                    if getattr(z, "is_boss", False):
+                        total *= DOT_ROUNDS_BOSS_MULT
+                    accum = float(getattr(z, "_dot_rounds_accum", 0.0)) + total
+                    deal = int(accum)
+                    if deal > 0:
+                        z.hp -= deal
+                        self.add_damage_text(
+                            z.rect.centerx,
+                            z.rect.centery - 8,
+                            deal,
+                            crit=False,
+                            kind="hp_player",
+                        )
+                        z._dot_rounds_accum = accum - deal
+                    else:
+                        z._dot_rounds_accum = accum
+            z._dot_rounds_tick_t = tick_t
+
     def enable_fog_field(self):
         if self.fog_on:
             return
@@ -12047,6 +12211,40 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 pygame.draw.rect(screen, (255, 215, 0), body, 3)
             elif coins >= Z_SPOIL_ATK_STEP:
                 pygame.draw.rect(screen, (220, 180, 80), body, 2)
+            dot_ratio, dot_count = dot_rounds_visual_state(z)
+            if dot_ratio > 0.0:
+                glow_w = max(12, int(draw_size * 1.1))
+                glow_h = max(8, int(draw_size * 0.7))
+                glow_alpha = int(120 * dot_ratio)
+                glow = pygame.Surface((glow_w, glow_h), pygame.SRCALPHA)
+                pygame.draw.ellipse(
+                    glow,
+                    (DOT_ROUNDS_GLOW_COLOR[0], DOT_ROUNDS_GLOW_COLOR[1], DOT_ROUNDS_GLOW_COLOR[2], glow_alpha),
+                    glow.get_rect(),
+                    width=2,
+                )
+                glow_rect = glow.get_rect(center=(cx, body.centery - 4))
+                screen.blit(glow, glow_rect)
+                orb_count = min(2, dot_count)
+                if orb_count > 0:
+                    orb_surf = pygame.Surface((glow_w, glow_h), pygame.SRCALPHA)
+                    orb_alpha = int(200 * dot_ratio)
+                    ocx, ocy = glow_w // 2, glow_h // 2
+                    orbit_r = max(6, int(draw_size * 0.45))
+                    t = pygame.time.get_ticks() * 0.004
+                    for i in range(orb_count):
+                        ang = t + i * math.tau / max(1, orb_count)
+                        ox = int(math.cos(ang) * orbit_r)
+                        oy = int(math.sin(ang) * orbit_r * 0.6)
+                        pygame.draw.circle(
+                            orb_surf, (200, 255, 255, orb_alpha),
+                            (ocx + ox, ocy + oy), 2,
+                        )
+                        pygame.draw.circle(
+                            orb_surf, (255, 255, 255, max(40, orb_alpha - 80)),
+                            (ocx + ox, ocy + oy), 1,
+                        )
+                    screen.blit(orb_surf, glow_rect.topleft)
             # Bandit-only HP bar for readability
             if getattr(z, "type", "") == "bandit":
                 bar_w = draw_size
@@ -12924,6 +13122,7 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
                     running = False
                     break
         # special behaviors & enemy shots
+        game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
             z.update_special(dt, player, enemies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):
@@ -13382,6 +13581,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         flush_events()
                         return "restart", None, last_frame or screen.copy()
         # Special behaviors & enemy shots
+        game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
             z.update_special(dt, player, enemies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):

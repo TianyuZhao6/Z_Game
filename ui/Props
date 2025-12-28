@@ -120,7 +120,17 @@ Radius: almost 1 tile — about 0.95 tiles
 Suggest: radius_px ≈ CELL_SIZE * 0.95
 
 1.7. DOT Rounds
-With visual effect of particle effects GrowCache.
+Rarity: 2
+Base Price: $20
+Max Level: 3
+Effect: On player bullet hit, apply DoT. Tick interval 0.5s. Damage per tick uses bullet_base (pre-crit).
+Bosses take 70% of DoT damage.
+
+Level 1: damage_per_tick = 0.10 * bullet_base, duration = 2.5s (5 ticks), max_stacks = 1
+Level 2: damage_per_tick = 0.16 * bullet_base, duration = 3.0s (6 ticks), max_stacks = 1
+Level 3: damage_per_tick = 0.22 * bullet_base, duration = 3.5s (7 ticks), max_stacks = 2
+
+VFX: cyan + white spark burst on hit; glow/orbiting particles while active.
 
 '2. Defense & Survival Props'
 
