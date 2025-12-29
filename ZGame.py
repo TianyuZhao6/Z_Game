@@ -4779,6 +4779,10 @@ def show_success_screen(screen, background_surf, reward_choices):
                 if pick == "exit":
                     pygame.quit()
                     sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                if chosen or len(reward_choices) == 0:
+                    flush_events()
+                    return chosen
             if event.type == pygame.MOUSEBUTTONDOWN:
                 for rect, card in card_rects:
                     if rect.collidepoint(event.pos): chosen = card
