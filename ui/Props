@@ -88,7 +88,7 @@ You periodically “expose” a high-priority enemy,
  making them take extra damage from all sources.
 
 
-1.6. Explosive Rounds
+;1.6. Explosive Rounds
 Rarity: 2
 Base Price: $18
 Max Level: 3
@@ -119,7 +119,7 @@ Damage vs bosses: 22.5% of bullet_base
 Radius: almost 1 tile — about 0.95 tiles
 Suggest: radius_px ≈ CELL_SIZE * 0.95
 
-1.7. DOT Rounds
+;1.7. DOT Rounds
 Rarity: 2
 Base Price: $20
 Max Level: 3

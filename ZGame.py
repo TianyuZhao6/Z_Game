@@ -1248,12 +1248,13 @@ DOT_ROUNDS_DAMAGE_PER_TICK = (0.10, 0.16, 0.22)
 DOT_ROUNDS_DURATIONS = (2.5, 3.0, 3.5)
 DOT_ROUNDS_MAX_STACKS = (1, 1, 2)
 DOT_ROUNDS_BOSS_MULT = 0.70
-DOT_ROUNDS_HIT_SPARK_COLORS = ((140, 240, 255), (255, 255, 255))
-DOT_ROUNDS_HIT_SPARK_PARTICLES = (4, 7)
-DOT_ROUNDS_HIT_SPARK_SPEED = (80.0, 220.0)
-DOT_ROUNDS_HIT_SPARK_LIFE = (0.12, 0.22)
-DOT_ROUNDS_HIT_SPARK_SIZE = (2, 5)
-DOT_ROUNDS_GLOW_COLOR = (120, 235, 255)
+DOT_ROUNDS_HIT_SPARK_CYAN = ((0, 208, 255), (0, 255, 255))
+DOT_ROUNDS_HIT_SPARK_WHITE = (255, 255, 255)
+DOT_ROUNDS_HIT_SPARK_PARTICLES = (6, 10)
+DOT_ROUNDS_HIT_SPARK_SPEED = (60.0, 180.0)
+DOT_ROUNDS_HIT_SPARK_LIFE = (0.20, 0.30)
+DOT_ROUNDS_HIT_SPARK_SIZE = (2, 3)
+DOT_ROUNDS_GLOW_COLOR = (0, 230, 255)
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -1534,18 +1535,22 @@ def spawn_dot_rounds_hit_vfx(game_state: "GameState", x: float, y: float) -> Non
     sp_min, sp_max = DOT_ROUNDS_HIT_SPARK_SPEED
     life_min, life_max = DOT_ROUNDS_HIT_SPARK_LIFE
     size_min, size_max = DOT_ROUNDS_HIT_SPARK_SIZE
-    for idx, col in enumerate(DOT_ROUNDS_HIT_SPARK_COLORS):
-        count = random.randint(cmin, cmax)
-        if idx > 0:
-            count = max(2, count // 2)
-        for _ in range(count):
-            ang = random.uniform(0.0, math.tau)
-            speed = random.uniform(sp_min, sp_max)
-            vx = math.cos(ang) * speed
-            vy = math.sin(ang) * speed
-            life = random.uniform(life_min, life_max)
-            size = random.randint(size_min, size_max)
-            game_state.fx.particles.append(Particle(x, y, vx, vy, col, life, size))
+    c1, c2 = DOT_ROUNDS_HIT_SPARK_CYAN
+    g_min = min(c1[1], c2[1])
+    g_max = max(c1[1], c2[1])
+    count = random.randint(cmin, cmax)
+    for _ in range(count):
+        ang = random.uniform(0.0, math.tau)
+        speed = random.uniform(sp_min, sp_max)
+        vx = math.cos(ang) * speed
+        vy = math.sin(ang) * speed
+        life = random.uniform(life_min, life_max)
+        size = random.randint(size_min, size_max)
+        if random.random() < 0.28:
+            col = DOT_ROUNDS_HIT_SPARK_WHITE
+        else:
+            col = (0, random.randint(g_min, g_max), 255)
+        game_state.fx.particles.append(Particle(x, y, vx, vy, col, life, size))
 
 
 def trigger_explosive_rounds(player, game_state: "GameState", enemies,
@@ -5793,6 +5798,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return int(META.get("shrapnel_level", 0))
         if iid == "explosive_rounds":
             return int(META.get("explosive_rounds_level", 0))
+        if iid == "dot_rounds":
+            return int(META.get("dot_rounds_level", 0))
         if iid == "mark_vulnerability":
             return int(META.get("vuln_mark_level", 0))
         if iid == "stationary_turret":
@@ -12224,8 +12231,21 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             if dot_ratio > 0.0:
                 glow_w = max(12, int(draw_size * 1.1))
                 glow_h = max(8, int(draw_size * 0.7))
-                glow_alpha = int(120 * dot_ratio)
+                tick_interval = float(DOT_ROUNDS_TICK_INTERVAL)
+                tick_t = float(getattr(z, "_dot_rounds_tick_t", tick_interval))
+                if tick_interval > 0.0:
+                    phase = 1.0 - max(0.0, min(1.0, tick_t / tick_interval))
+                    pulse = 0.7 + 0.3 * math.sin(phase * math.tau)
+                else:
+                    pulse = 1.0
+                glow_alpha = int(120 * dot_ratio * pulse)
+                fill_alpha = int(55 * dot_ratio * pulse)
                 glow = pygame.Surface((glow_w, glow_h), pygame.SRCALPHA)
+                pygame.draw.ellipse(
+                    glow,
+                    (DOT_ROUNDS_GLOW_COLOR[0], DOT_ROUNDS_GLOW_COLOR[1], DOT_ROUNDS_GLOW_COLOR[2], fill_alpha),
+                    glow.get_rect(),
+                )
                 pygame.draw.ellipse(
                     glow,
                     (DOT_ROUNDS_GLOW_COLOR[0], DOT_ROUNDS_GLOW_COLOR[1], DOT_ROUNDS_GLOW_COLOR[2], glow_alpha),
@@ -12234,23 +12254,25 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 )
                 glow_rect = glow.get_rect(center=(cx, body.centery - 4))
                 screen.blit(glow, glow_rect)
-                orb_count = min(2, dot_count)
+                orb_count = 0
+                if dot_count > 0:
+                    orb_count = 2 if dot_count < 2 else 3
                 if orb_count > 0:
                     orb_surf = pygame.Surface((glow_w, glow_h), pygame.SRCALPHA)
-                    orb_alpha = int(200 * dot_ratio)
+                    orb_alpha = int(190 * dot_ratio * pulse)
                     ocx, ocy = glow_w // 2, glow_h // 2
                     orbit_r = max(6, int(draw_size * 0.45))
-                    t = pygame.time.get_ticks() * 0.004
+                    t = pygame.time.get_ticks() * 0.003
                     for i in range(orb_count):
                         ang = t + i * math.tau / max(1, orb_count)
                         ox = int(math.cos(ang) * orbit_r)
                         oy = int(math.sin(ang) * orbit_r * 0.6)
                         pygame.draw.circle(
-                            orb_surf, (200, 255, 255, orb_alpha),
+                            orb_surf, (DOT_ROUNDS_GLOW_COLOR[0], DOT_ROUNDS_GLOW_COLOR[1], DOT_ROUNDS_GLOW_COLOR[2], orb_alpha),
                             (ocx + ox, ocy + oy), 2,
                         )
                         pygame.draw.circle(
-                            orb_surf, (255, 255, 255, max(40, orb_alpha - 80)),
+                            orb_surf, (255, 255, 255, max(40, orb_alpha - 90)),
                             (ocx + ox, ocy + oy), 1,
                         )
                     screen.blit(orb_surf, glow_rect.topleft)
@@ -12412,12 +12434,15 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             "shield": ((120, 200, 255), (120, 200, 255)),
             "aegis": (AEGIS_PULSE_COLOR, AEGIS_PULSE_COLOR),
             "hp_player": ((255, 255, 255), (255, 255, 220)),
-            "dot": ((86, 141, 86), (86, 141, 86)),
+            "dot": ((80, 220, 255), (140, 255, 255)),
             "hp_enemy": ((255, 60, 60), (255, 140, 140)),
         }
         normal, crit = color_map.get(d.kind, ((255, 100, 100), (255, 240, 120)))
         col = crit if d.crit else normal
-        size = DMG_TEXT_SIZE_NORMAL if not d.crit else DMG_TEXT_SIZE_CRIT
+        if d.kind == "dot":
+            size = max(14, DMG_TEXT_SIZE_NORMAL - 6)
+        else:
+            size = DMG_TEXT_SIZE_NORMAL if not d.crit else DMG_TEXT_SIZE_CRIT
         font = pygame.font.SysFont(None, size, bold=d.crit)
         surf = font.render(str(d.amount), True, col)
         surf.set_alpha(d.alpha())
