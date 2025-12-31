@@ -1264,8 +1264,18 @@ GROUND_SPIKES_MAX_ACTIVE = (6, 10, 14)
 GROUND_SPIKES_RADIUS = CELL_SIZE * 0.28
 GROUND_SPIKES_SLOW_MULT = 0.95
 GROUND_SPIKES_SLOW_DURATION = 1.0
+GROUND_SPIKES_RISE_TIME = 0.15
+GROUND_SPIKES_GLOW_TIME = 0.20
 GROUND_SPIKES_COLOR = (120, 230, 255)
 GROUND_SPIKES_RING = (220, 255, 255)
+GROUND_SPIKES_BASE_DARK = (40, 70, 85)
+GROUND_SPIKES_SIDE_DARK = (70, 120, 140)
+GROUND_SPIKES_SIDE_LIGHT = (150, 230, 245)
+GROUND_SPIKES_TOP_COLOR = (210, 250, 255)
+GROUND_SPIKES_HIT_PARTICLES = (4, 7)
+GROUND_SPIKES_HIT_SPEED = (60.0, 160.0)
+GROUND_SPIKES_HIT_LIFE = (0.10, 0.20)
+GROUND_SPIKES_HIT_SIZE = (2, 4)
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -1575,6 +1585,39 @@ def spawn_dot_rounds_hit_vfx(game_state: "GameState", x: float, y: float) -> Non
             col = (0, random.randint(g_min, g_max), 255)
         game_state.fx.particles.append(Particle(x, y, vx, vy, col, life, size))
 
+
+def spawn_ground_spike_spawn_vfx(game_state: "GameState", x: float, y: float) -> None:
+    if game_state is None or not hasattr(game_state, "fx"):
+        return
+    game_state.fx.particles.append(
+        Particle(x, y, 0.0, 0.0, GROUND_SPIKES_RING, 0.16, 7)
+    )
+    for _ in range(random.randint(2, 4)):
+        ang = random.uniform(0.0, math.tau)
+        speed = random.uniform(20.0, 90.0)
+        vx = math.cos(ang) * speed
+        vy = math.sin(ang) * speed
+        life = random.uniform(0.10, 0.18)
+        size = random.randint(2, 3)
+        game_state.fx.particles.append(Particle(x, y, vx, vy, GROUND_SPIKES_COLOR, life, size))
+
+
+def spawn_ground_spike_hit_vfx(game_state: "GameState", x: float, y: float) -> None:
+    if game_state is None or not hasattr(game_state, "fx"):
+        return
+    count = random.randint(GROUND_SPIKES_HIT_PARTICLES[0], GROUND_SPIKES_HIT_PARTICLES[1])
+    sp_min, sp_max = GROUND_SPIKES_HIT_SPEED
+    life_min, life_max = GROUND_SPIKES_HIT_LIFE
+    size_min, size_max = GROUND_SPIKES_HIT_SIZE
+    for _ in range(count):
+        ang = random.uniform(0.0, math.tau)
+        speed = random.uniform(sp_min, sp_max)
+        vx = math.cos(ang) * speed
+        vy = math.sin(ang) * speed
+        life = random.uniform(life_min, life_max)
+        size = random.randint(size_min, size_max)
+        col = GROUND_SPIKES_COLOR if random.random() < 0.75 else (255, 255, 255)
+        game_state.fx.particles.append(Particle(x, y, vx, vy, col, life, size))
 
 def trigger_explosive_rounds(player, game_state: "GameState", enemies,
                              origin_pos: tuple[float, float], bullet_base: int | None = None) -> None:
@@ -5692,7 +5735,7 @@ def show_shop_screen(screen) -> Optional[str]:
             {
                 "id": "ground_spikes",
                 "name": "Ground Spikes",
-                "desc": "While moving, leave spikes that hit and slow enemies; -4% move speed per buy.",
+                "desc": "While moving, leave spikes that hit once and slow 5% for 1.0s; -4% move speed per buy.",
                 "cost": 18,
                 "rarity": 2,
                 "max_level": 3,
@@ -6134,12 +6177,21 @@ def show_shop_screen(screen) -> Optional[str]:
         overlay_surf = None
         overlay_alpha = 255
         if lockbox_msg and now_ms < lockbox_msg_until:
-            lb_lvl = int(META.get("lockbox_level", 0))
-            if lb_lvl > 0:
-                protected = lockbox_protected_min(max(0, int(META.get("spoils", 0))), lb_lvl)
-                msg_txt = f"{protected} coins restored"
-                overlay_surf = pygame.font.SysFont("Franklin Gothic Medium", 96).render(msg_txt, True, (255, 230, 160))
-                t = max(0.0, min(1.0, (lockbox_msg_until - now_ms) / float(lockbox_msg_life)))
+            t = max(0.0, min(1.0, (lockbox_msg_until - now_ms) / float(lockbox_msg_life)))
+            if lockbox_msg == "lockbox":
+                lb_lvl = int(META.get("lockbox_level", 0))
+                if lb_lvl > 0:
+                    protected = lockbox_protected_min(max(0, int(META.get("spoils", 0))), lb_lvl)
+                    msg_txt = f"{protected} coins restored"
+                    overlay_surf = pygame.font.SysFont("Franklin Gothic Medium", 96).render(
+                        msg_txt, True, (255, 230, 160)
+                    )
+                    overlay_alpha = int(255 * t)
+            else:
+                msg_txt = str(lockbox_msg)
+                overlay_surf = pygame.font.SysFont("Franklin Gothic Medium", 46).render(
+                    msg_txt, True, (210, 235, 255)
+                )
                 overlay_alpha = int(255 * t)
         # Offers row ? keep slot spacing even if some cards are gone
         card_w, card_h = 220, 180
@@ -6448,6 +6500,9 @@ def show_shop_screen(screen) -> Optional[str]:
                             it["apply"]()
                             if card_id == "lockbox":
                                 lockbox_msg = "lockbox"
+                                lockbox_msg_until = pygame.time.get_ticks() + lockbox_msg_life
+                            elif card_id == "ground_spikes":
+                                lockbox_msg = "More spikes, but you move slower (-4% speed)."
                                 lockbox_msg_until = pygame.time.get_ticks() + lockbox_msg_life
                             # Remove the purchased card from its slot (leave blank space)
                             if 0 <= slot_idx < len(normal_slots):
@@ -9965,6 +10020,75 @@ def draw_iso_ground_ellipse(surface: pygame.Surface, x_px: float, y_px: float,
     surface.blit(surf, (cx - rx - 1, cy - ry - 1))
 
 
+def _draw_poly_alpha(surface: pygame.Surface, color_rgba: tuple[int, int, int, int],
+                     points: list[tuple[float, float]]) -> None:
+    if not points:
+        return
+    min_x = min(p[0] for p in points)
+    min_y = min(p[1] for p in points)
+    max_x = max(p[0] for p in points)
+    max_y = max(p[1] for p in points)
+    w = int(max_x - min_x) + 4
+    h = int(max_y - min_y) + 4
+    if w <= 2 or h <= 2:
+        return
+    surf = pygame.Surface((w, h), pygame.SRCALPHA)
+    shifted = [(p[0] - min_x + 2, p[1] - min_y + 2) for p in points]
+    pygame.draw.polygon(surf, color_rgba, shifted)
+    surface.blit(surf, (int(min_x - 2), int(min_y - 2)))
+
+
+def iso_world_px_to_screen(x_px: float, y_px: float, camx: float, camy: float, z_px: float = 0.0) -> tuple[int, int]:
+    wx = x_px / CELL_SIZE
+    wy = (y_px - INFO_BAR_HEIGHT) / CELL_SIZE
+    return iso_world_to_screen(wx, wy, z_px, camx, camy)
+
+
+def draw_ground_spike_iso(surface: pygame.Surface, spike: "GroundSpike", camx: float, camy: float) -> None:
+    life0 = max(0.001, float(getattr(spike, "life0", spike.t)))
+    age = max(0.0, life0 - float(spike.t))
+    rise = 1.0 if GROUND_SPIKES_RISE_TIME <= 0 else min(1.0, age / GROUND_SPIKES_RISE_TIME)
+    fade = max(0.0, min(1.0, float(spike.t) / life0))
+    if fade <= 0.0 or rise <= 0.0:
+        return
+    pulse = 0.65 + 0.35 * math.sin(pygame.time.get_ticks() * 0.008 + (spike.x + spike.y) * 0.01)
+    base_r = float(spike.r) * (0.4 + 0.6 * rise) * max(0.35, fade)
+    height = float(spike.r) * 2.6 * rise * (0.35 + 0.65 * fade)
+    top_r = max(1.0, base_r * 0.35)
+    if age <= GROUND_SPIKES_GLOW_TIME:
+        glow_p = max(0.0, 1.0 - age / max(0.001, GROUND_SPIKES_GLOW_TIME))
+        glow_alpha = int(180 * glow_p)
+        draw_iso_ground_ellipse(
+            surface, spike.x, spike.y, base_r * 1.6,
+            GROUND_SPIKES_COLOR, glow_alpha, camx, camy, fill=True
+        )
+    ring_alpha = int(140 * fade * pulse)
+    if ring_alpha > 0:
+        draw_iso_ground_ellipse(
+            surface, spike.x, spike.y, base_r * 1.1,
+            GROUND_SPIKES_RING, ring_alpha, camx, camy, fill=False, width=2
+        )
+    base_pts = [
+        iso_world_px_to_screen(spike.x + base_r, spike.y, camx, camy, 0.0),
+        iso_world_px_to_screen(spike.x, spike.y + base_r, camx, camy, 0.0),
+        iso_world_px_to_screen(spike.x - base_r, spike.y, camx, camy, 0.0),
+        iso_world_px_to_screen(spike.x, spike.y - base_r, camx, camy, 0.0),
+    ]
+    top_pts = [
+        iso_world_px_to_screen(spike.x + top_r, spike.y, camx, camy, height),
+        iso_world_px_to_screen(spike.x, spike.y + top_r, camx, camy, height),
+        iso_world_px_to_screen(spike.x - top_r, spike.y, camx, camy, height),
+        iso_world_px_to_screen(spike.x, spike.y - top_r, camx, camy, height),
+    ]
+    _draw_poly_alpha(surface, (*GROUND_SPIKES_BASE_DARK, int(160 * fade)), base_pts)
+    side_alpha = int(200 * fade)
+    for i in range(4):
+        j = (i + 1) % 4
+        col = GROUND_SPIKES_SIDE_LIGHT if i in (0, 1) else GROUND_SPIKES_SIDE_DARK
+        _draw_poly_alpha(surface, (*col, side_alpha), [base_pts[i], base_pts[j], top_pts[j], top_pts[i]])
+    _draw_poly_alpha(surface, (*GROUND_SPIKES_TOP_COLOR, int(220 * fade)), top_pts)
+
+
 def draw_iso_hex_ring(surface: pygame.Surface, x_px: float, y_px: float, r_px: float,
                       color: tuple[int, int, int], alpha: float,
                       camx: float, camy: float,
@@ -11297,6 +11421,7 @@ class GameState:
                     self.ground_spikes.append(GroundSpike(px, py, damage, lifetime, GROUND_SPIKES_RADIUS))
                     while len(self.ground_spikes) > max_active:
                         self.ground_spikes.pop(0)
+                    spawn_ground_spike_spawn_vfx(self, px, py)
                 self._ground_spike_t = 0.0
                 self._ground_spike_d = 0.0
         alive = []
@@ -11340,6 +11465,8 @@ class GameState:
                         float(getattr(z, "_ground_spike_slow_t", 0.0)),
                         float(GROUND_SPIKES_SLOW_DURATION),
                     )
+                    z._comet_shake = max(0.12, float(getattr(z, "_comet_shake", 0.0)))
+                    spawn_ground_spike_hit_vfx(self, s.x, s.y)
                     hit = True
                     break
             if not hit:
@@ -11895,16 +12022,7 @@ class GameState:
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["ring"], 180, cam_x, cam_y, fill=False, width=2)
         # 3) Ground Spikes (trail hazard)
         for s in list(getattr(self, "ground_spikes", [])):
-            life0 = max(0.001, float(getattr(s, "life0", s.t)))
-            ratio = max(0.0, min(1.0, s.t / life0))
-            if ratio <= 0.0:
-                continue
-            r = max(2.0, float(s.r) * (0.6 + 0.4 * ratio))
-            alpha = int(180 * ratio)
-            ring_alpha = int(230 * ratio)
-            draw_iso_ground_ellipse(screen, s.x, s.y, r, GROUND_SPIKES_COLOR, alpha, cam_x, cam_y, fill=True)
-            draw_iso_ground_ellipse(screen, s.x, s.y, r, GROUND_SPIKES_RING, ring_alpha, cam_x, cam_y,
-                                    fill=False, width=2)
+            draw_ground_spike_iso(screen, s, cam_x, cam_y)
 
     def draw_fog_overlay(self, screen, camx, camy, player, obstacles):
         """在世界层上方绘制一层‘黑雾’，对玩家与灯笼的范围挖透明洞。"""
@@ -12432,6 +12550,20 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                             (ocx + ox, ocy + oy), 1,
                         )
                     screen.blit(orb_surf, glow_rect.topleft)
+            spike_slow_t = float(getattr(z, "_ground_spike_slow_t", 0.0))
+            if spike_slow_t > 0.0:
+                ratio = max(0.0, min(1.0, spike_slow_t / max(0.001, GROUND_SPIKES_SLOW_DURATION)))
+                alpha = int(200 * ratio)
+                bob = int(2 * math.sin(pygame.time.get_ticks() * 0.01 + z.rect.x * 0.03))
+                icon = pygame.Surface((12, 10), pygame.SRCALPHA)
+                arrow = [(6, 8), (2, 2), (10, 2)]
+                pygame.draw.polygon(
+                    icon,
+                    (GROUND_SPIKES_COLOR[0], GROUND_SPIKES_COLOR[1], GROUND_SPIKES_COLOR[2], alpha),
+                    arrow,
+                )
+                pygame.draw.polygon(icon, (255, 255, 255, max(60, alpha - 80)), arrow, 1)
+                screen.blit(icon, icon.get_rect(center=(cx, body.top - 12 + bob)))
             # Bandit-only HP bar for readability
             if getattr(z, "type", "") == "bandit":
                 bar_w = draw_size
