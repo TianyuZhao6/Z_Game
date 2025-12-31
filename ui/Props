@@ -139,9 +139,9 @@ Max Level: 3
 Effect: While moving, leave temporary spikes at your position. Each spike hits once and slows 5% for 1.0s.
 Trade-off: each purchase reduces move speed by ~4% (stacking multiplicatively).
 
-Level 1: spike_damage = 0.30 * bullet_base, lifetime = 2.0s, max_active = 6
-Level 2: spike_damage = 0.40 * bullet_base, lifetime = 3.0s, max_active = 10
-Level 3: spike_damage = 0.50 * bullet_base, lifetime = 4.0s, max_active = 14
+Level 1: spike_damage = 0.30 * bullet_base, lifetime = 3.0s, max_active = 6
+Level 2: spike_damage = 0.40 * bullet_base, lifetime = 4.0s, max_active = 10
+Level 3: spike_damage = 0.50 * bullet_base, lifetime = 5.0s, max_active = 14
 
 
 '2. Defense & Survival Props'

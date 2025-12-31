@@ -1259,7 +1259,7 @@ DOT_ROUNDS_GLOW_COLOR = (0, 230, 255)
 GROUND_SPIKES_SPAWN_INTERVAL = 0.35
 GROUND_SPIKES_SPAWN_DIST = 0.75 * CELL_SIZE
 GROUND_SPIKES_DAMAGE_MULTS = (0.30, 0.40, 0.50)
-GROUND_SPIKES_LIFETIMES = (2.0, 3.0, 4.0)
+GROUND_SPIKES_LIFETIMES = (3.0, 4.0, 5.0)
 GROUND_SPIKES_MAX_ACTIVE = (6, 10, 14)
 GROUND_SPIKES_RADIUS = CELL_SIZE * 0.28
 GROUND_SPIKES_SLOW_MULT = 0.95
@@ -4926,9 +4926,10 @@ def show_pause_menu(screen, background_surf):
     screen.blit(rng_text, (left_margin, y_offset));
     y_offset += 30
     # --- speed ---
-    cur_speed = float(getattr(p, "speed", base_speed + META.get("speed", 0)))
+    spd_mult = float(META.get("speed_mult", 1.0))
+    cur_speed = float(getattr(p, "speed", base_speed * spd_mult + META.get("speed", 0)))
     spd_text = font_tiny.render(
-        f"Speed: {cur_speed:.1f}  (Lv1 {base_speed:.1f}, +{int(META.get('speed', 0))} shop)",
+        f"Speed: {cur_speed:.1f}  (Lv1 {base_speed:.1f}, x{spd_mult:.2f}, +{int(META.get('speed', 0))} shop)",
         True, (100, 100, 230)
     )
     screen.blit(spd_text, (left_margin, y_offset));
