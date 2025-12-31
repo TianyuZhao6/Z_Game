@@ -1255,6 +1255,17 @@ DOT_ROUNDS_HIT_SPARK_SPEED = (60.0, 180.0)
 DOT_ROUNDS_HIT_SPARK_LIFE = (0.20, 0.30)
 DOT_ROUNDS_HIT_SPARK_SIZE = (2, 3)
 DOT_ROUNDS_GLOW_COLOR = (0, 230, 255)
+# --- Ground Spikes (trail hazard) ---
+GROUND_SPIKES_SPAWN_INTERVAL = 0.35
+GROUND_SPIKES_SPAWN_DIST = 0.75 * CELL_SIZE
+GROUND_SPIKES_DAMAGE_MULTS = (0.30, 0.40, 0.50)
+GROUND_SPIKES_LIFETIMES = (2.0, 3.0, 4.0)
+GROUND_SPIKES_MAX_ACTIVE = (6, 10, 14)
+GROUND_SPIKES_RADIUS = CELL_SIZE * 0.28
+GROUND_SPIKES_SLOW_MULT = 0.95
+GROUND_SPIKES_SLOW_DURATION = 1.0
+GROUND_SPIKES_COLOR = (120, 230, 255)
+GROUND_SPIKES_RING = (220, 255, 255)
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -1280,7 +1291,7 @@ HURRICANE_BULLET_SPIN_STEER = 4.0  # how quickly bullet velocity is steered towa
 HURRICANE_ESCAPE_SPEED = 3.8  # speed to shrug most pull
 HURRICANE_ESCAPE_SIZE = CELL_SIZE * 1.0  # entities larger than this resist more
 HURRICANE_COLOR = (120, 200, 255)
-SHOP_CATALOG_VERSION = 4  # bump to invalidate cached offers when catalog changes
+SHOP_CATALOG_VERSION = 5  # bump to invalidate cached offers when catalog changes
 # persistent (per run) upgrades bought in shop
 META = {
     # —— 本轮累积资源 ——
@@ -1311,6 +1322,7 @@ META = {
     "shrapnel_level": 0,
     "explosive_rounds_level": 0,
     "dot_rounds_level": 0,
+    "ground_spikes_level": 0,
     "carapace_shield_hp": 0,
     "golden_interest_level": 0,
     "shady_loan_level": 0,
@@ -1358,6 +1370,7 @@ def reset_run_state():
         "shrapnel_level": 0,
         "explosive_rounds_level": 0,
         "dot_rounds_level": 0,
+        "ground_spikes_level": 0,
         "carapace_shield_hp": 0,
         "golden_interest_level": 0,
         "shady_loan_level": 0,
@@ -1397,6 +1410,7 @@ def _ensure_meta_defaults():
         "vuln_mark_level": 0,
         "explosive_rounds_level": 0,
         "dot_rounds_level": 0,
+        "ground_spikes_level": 0,
         "bindings": {},
     }
     for k, v in defaults.items():
@@ -1469,6 +1483,15 @@ def dot_rounds_stats(level: int, bullet_base: int | float) -> tuple[float, float
     duration = float(DOT_ROUNDS_DURATIONS[lvl - 1])
     max_stacks = int(DOT_ROUNDS_MAX_STACKS[lvl - 1])
     return dmg_per_tick, duration, max_stacks
+
+
+def ground_spikes_stats(level: int, bullet_base: int | float) -> tuple[float, float, int]:
+    """Return (spike_damage, lifetime_s, max_active) for Ground Spikes."""
+    lvl = max(1, min(int(level), len(GROUND_SPIKES_DAMAGE_MULTS)))
+    damage = float(bullet_base) * float(GROUND_SPIKES_DAMAGE_MULTS[lvl - 1])
+    lifetime = float(GROUND_SPIKES_LIFETIMES[lvl - 1])
+    max_active = int(GROUND_SPIKES_MAX_ACTIVE[lvl - 1])
+    return damage, lifetime, max_active
 
 
 def apply_dot_rounds_stack(target: "Enemy", damage_per_tick: float, duration: float, max_stacks: int) -> None:
@@ -4942,6 +4965,11 @@ def show_pause_menu(screen, background_surf):
                 "max_level": 3,
             },
             {
+                "id": "ground_spikes",
+                "name": "Ground Spikes",
+                "max_level": 3,
+            },
+            {
                 "id": "bone_plating",
                 "name": "Bone Plating",
                 "max_level": 5,
@@ -5027,6 +5055,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("explosive_rounds_level", 0))
         if iid == "dot_rounds":
             return int(META.get("dot_rounds_level", 0))
+        if iid == "ground_spikes":
+            return int(META.get("ground_spikes_level", 0))
         if iid == "mark_vulnerability":
             return int(META.get("vuln_mark_level", 0))
         if iid == "bandit_radar":
@@ -5660,6 +5690,18 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "ground_spikes",
+                "name": "Ground Spikes",
+                "desc": "While moving, leave spikes that hit and slow enemies; -4% move speed per buy.",
+                "cost": 18,
+                "rarity": 2,
+                "max_level": 3,
+                "apply": lambda: META.update(
+                    ground_spikes_level=min(3, int(META.get("ground_spikes_level", 0)) + 1),
+                    speed_mult=max(0.30, float(META.get("speed_mult", 1.0)) * 0.96),
+                ),
+            },
+            {
                 "id": "mark_vulnerability",
                 "name": "Mark of Vulnerability",
                 "desc": "Every 5/4/3s mark a priority enemy for 5/6/7s; marked take +15/22/30% damage.",
@@ -5800,6 +5842,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return int(META.get("explosive_rounds_level", 0))
         if iid == "dot_rounds":
             return int(META.get("dot_rounds_level", 0))
+        if iid == "ground_spikes":
+            return int(META.get("ground_spikes_level", 0))
         if iid == "mark_vulnerability":
             return int(META.get("vuln_mark_level", 0))
         if iid == "stationary_turret":
@@ -5872,6 +5916,12 @@ def show_shop_screen(screen) -> Optional[str]:
             ticks = int(round(duration / float(DOT_ROUNDS_TICK_INTERVAL)))
             max_stacks = int(DOT_ROUNDS_MAX_STACKS[idx])
             return f"{pct}% base dmg per tick ({ticks} ticks), stacks {max_stacks}"
+        if iid == "ground_spikes":
+            idx = min(max(lvl, 1), len(GROUND_SPIKES_DAMAGE_MULTS)) - 1
+            pct = int(GROUND_SPIKES_DAMAGE_MULTS[idx] * 100)
+            life = float(GROUND_SPIKES_LIFETIMES[idx])
+            max_active = int(GROUND_SPIKES_MAX_ACTIVE[idx])
+            return f"{pct}% base dmg, {life:.1f}s life, max {max_active}, slow 5%"
         if iid == "mark_vulnerability":
             interval, bonus, duration = mark_of_vulnerability_stats(lvl)
             pct = int(bonus * 100)
@@ -7234,6 +7284,7 @@ class Enemy:
         self._foot_curr = (self.rect.centerx, self.rect.bottom)
         self.spawn_delay = 0.6
         self._enrage_cd_mult = 1.0
+        self._ground_spike_slow_t = 0.0
 
     def draw(self, screen):
         color = getattr(self, "_current_color", self.color)
@@ -7374,6 +7425,11 @@ class Enemy:
             base_speed = float(base_speed) + float(getattr(self, "buff_spd_add", 0))
             self.buff_t = max(0.0, self.buff_t - dt)
         base_speed *= float(getattr(self, "_hurricane_slow_mult", 1.0))
+        spike_slow_t = float(getattr(self, "_ground_spike_slow_t", 0.0))
+        if spike_slow_t > 0.0:
+            spike_slow_t = max(0.0, spike_slow_t - dt)
+            self._ground_spike_slow_t = spike_slow_t
+            base_speed *= GROUND_SPIKES_SLOW_MULT
         speed = float(min(Z_SPOIL_SPD_CAP, max(0.5, base_speed)))
         is_bandit = (getattr(self, "type", "") == "bandit")
         bandit_break_t = 0.0
@@ -9308,6 +9364,16 @@ class AcidPool:
         return (px - self.x) ** 2 + (py - self.y) ** 2 <= self.r ** 2
 
 
+class GroundSpike:
+    def __init__(self, x, y, damage, life, radius):
+        self.x = float(x)
+        self.y = float(y)
+        self.damage = float(damage)
+        self.t = float(life)
+        self.life0 = float(life)
+        self.r = float(radius)
+
+
 class TelegraphCircle:
     def __init__(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
         self.x, self.y, self.r = x, y, r
@@ -10954,6 +11020,9 @@ class GameState:
         self.heals = []  # List[HealPickup]
         self.dmg_texts = []  # List[DamageText]
         self.acids = []  # List[AcidPool]
+        self.ground_spikes = []  # List[GroundSpike]
+        self._ground_spike_t = 0.0
+        self._ground_spike_d = 0.0
         self.telegraphs = []  # List[TelegraphCircle]
         self.aegis_pulses = []  # List[AegisPulseRing]
         self.ghosts = []  # 冲刺残影列表
@@ -11201,6 +11270,81 @@ class GameState:
             if getattr(player, "slow_t", 0.0) <= 0.0:
                 player._slow_frac = 0.0
         # 不在池里：不做直接伤害；离开后的 DoT 由主循环统一结算
+
+    def update_ground_spikes(self, dt: float, player: "Player", enemies: list) -> None:
+        lvl = int(META.get("ground_spikes_level", 0))
+        if lvl <= 0 or player is None:
+            if self.ground_spikes:
+                self.ground_spikes = []
+            self._ground_spike_t = 0.0
+            self._ground_spike_d = 0.0
+            return
+        mvx, mvy = getattr(player, "_last_move_vec", (0.0, 0.0))
+        moved = math.hypot(mvx, mvy)
+        if moved > 0.05:
+            self._ground_spike_t += dt
+            self._ground_spike_d += moved
+            if (self._ground_spike_t >= GROUND_SPIKES_SPAWN_INTERVAL
+                    or self._ground_spike_d >= GROUND_SPIKES_SPAWN_DIST):
+                bullet_base = int(getattr(
+                    player,
+                    "bullet_damage",
+                    int(META.get("base_dmg", BULLET_DAMAGE_ENEMY)) + int(META.get("dmg", 0)),
+                ))
+                damage, lifetime, max_active = ground_spikes_stats(lvl, bullet_base)
+                if damage > 0.0 and lifetime > 0.0:
+                    px, py = player.rect.centerx, player.rect.centery
+                    self.ground_spikes.append(GroundSpike(px, py, damage, lifetime, GROUND_SPIKES_RADIUS))
+                    while len(self.ground_spikes) > max_active:
+                        self.ground_spikes.pop(0)
+                self._ground_spike_t = 0.0
+                self._ground_spike_d = 0.0
+        alive = []
+        for s in self.ground_spikes:
+            s.t -= dt
+            if s.t > 0:
+                alive.append(s)
+        self.ground_spikes = alive
+        if not enemies or not self.ground_spikes:
+            return
+        remaining = []
+        for s in self.ground_spikes:
+            hit = False
+            for z in enemies:
+                if getattr(z, "hp", 0) <= 0:
+                    continue
+                zx, zy = z.rect.center
+                zr = float(getattr(z, "radius", getattr(z, "size", CELL_SIZE) * 0.5))
+                if (zx - s.x) ** 2 + (zy - s.y) ** 2 <= (s.r + zr) ** 2:
+                    dealt = int(round(s.damage))
+                    if dealt > 0:
+                        dealt = apply_vuln_bonus(z, dealt)
+                    if dealt > 0:
+                        hp_before = int(getattr(z, "hp", 0))
+                        if getattr(z, "shield_hp", 0) > 0:
+                            blocked = min(dealt, z.shield_hp)
+                            z.shield_hp -= dealt
+                            if blocked > 0:
+                                self.add_damage_text(zx, zy, blocked, crit=False, kind="shield")
+                            overflow = dealt - blocked
+                            if overflow > 0:
+                                z.hp -= overflow
+                                self.add_damage_text(zx, zy - 10, overflow, crit=False, kind="hp_player")
+                        else:
+                            z.hp -= dealt
+                            self.add_damage_text(zx, zy, dealt, crit=False, kind="hp_player")
+                        if z.hp < hp_before:
+                            z._hit_flash = float(HIT_FLASH_DURATION)
+                            z._flash_prev_hp = int(max(0, z.hp))
+                    z._ground_spike_slow_t = max(
+                        float(getattr(z, "_ground_spike_slow_t", 0.0)),
+                        float(GROUND_SPIKES_SLOW_DURATION),
+                    )
+                    hit = True
+                    break
+            if not hit:
+                remaining.append(s)
+        self.ground_spikes = remaining
 
     def damage_player(self, player, dmg, kind="hp"):
         dmg = int(max(0, dmg))
@@ -11749,6 +11893,18 @@ class GameState:
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["fill"], alpha, cam_x, cam_y, fill=True)
             # 细边
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["ring"], 180, cam_x, cam_y, fill=False, width=2)
+        # 3) Ground Spikes (trail hazard)
+        for s in list(getattr(self, "ground_spikes", [])):
+            life0 = max(0.001, float(getattr(s, "life0", s.t)))
+            ratio = max(0.0, min(1.0, s.t / life0))
+            if ratio <= 0.0:
+                continue
+            r = max(2.0, float(s.r) * (0.6 + 0.4 * ratio))
+            alpha = int(180 * ratio)
+            ring_alpha = int(230 * ratio)
+            draw_iso_ground_ellipse(screen, s.x, s.y, r, GROUND_SPIKES_COLOR, alpha, cam_x, cam_y, fill=True)
+            draw_iso_ground_ellipse(screen, s.x, s.y, r, GROUND_SPIKES_RING, ring_alpha, cam_x, cam_y,
+                                    fill=False, width=2)
 
     def draw_fog_overlay(self, screen, camx, camy, player, obstacles):
         """在世界层上方绘制一层‘黑雾’，对玩家与灯笼的范围挖透明洞。"""
@@ -13156,6 +13312,7 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
                     game_result = "fail"
                     running = False
                     break
+        game_state.update_ground_spikes(dt, player, enemies)
         # special behaviors & enemy shots
         game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
@@ -13615,6 +13772,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         clear_save();
                         flush_events()
                         return "restart", None, last_frame or screen.copy()
+        game_state.update_ground_spikes(dt, player, enemies)
         # Special behaviors & enemy shots
         game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
