@@ -4892,10 +4892,9 @@ def show_pause_menu(screen, background_surf):
     base_crit = float(META.get("base_crit", CRIT_CHANCE_BASE))
     # --- damage ---
     cur_dmg = int(getattr(p, "bullet_damage", base_dmg + META.get("dmg", 0)))
-    shop_dmg = int(META.get("dmg", 0))
-    lvl_dmg = max(0, cur_dmg - base_dmg - shop_dmg)
+    bonus_dmg = max(0, cur_dmg - base_dmg)
     dmg_text = font_tiny.render(
-        f"Damage: {cur_dmg}  (Lv1 {base_dmg}, +{shop_dmg} shop, +{lvl_dmg} lvl)",
+        f"Damage: {cur_dmg}  (Lv1 {base_dmg}, +{bonus_dmg} bonus)",
         True, (230, 100, 100)
     )
     screen.blit(dmg_text, (left_margin, y_offset));
@@ -4936,18 +4935,18 @@ def show_pause_menu(screen, background_surf):
     y_offset += 30
     # --- max hp ---
     cur_mhp = int(getattr(p, "max_hp", base_hp + META.get("maxhp", 0)))
-    shop_hp = int(META.get("maxhp", 0))
-    lvl_hp = max(0, cur_mhp - base_hp - shop_hp)
+    bonus_hp = max(0, cur_mhp - base_hp)
     hp_text = font_tiny.render(
-        f"Max HP: {cur_mhp}  (Lv1 {base_hp}, +{shop_hp} shop, +{lvl_hp} lvl)",
+        f"Max HP: {cur_mhp}  (Lv1 {base_hp}, +{bonus_hp} bonus)",
         True, (230, 150, 100)
     )
     screen.blit(hp_text, (left_margin, y_offset));
     y_offset += 30
     # --- crit ---
     cur_crit = float(getattr(p, "crit_chance", base_crit + META.get("crit", 0.0)))
+    bonus_crit = cur_crit - base_crit
     crit_text = font_tiny.render(
-        f"Crit Chance: {int(cur_crit * 100)}%  (Lv1 {int(base_crit * 100)}%)",
+        f"Crit Chance: {int(cur_crit * 100)}%  (Lv1 {int(base_crit * 100)}%, +{int(bonus_crit * 100)}%)",
         True, (255, 220, 120)
     )
     screen.blit(crit_text, (left_margin, y_offset));
@@ -6501,9 +6500,6 @@ def show_shop_screen(screen) -> Optional[str]:
                             it["apply"]()
                             if card_id == "lockbox":
                                 lockbox_msg = "lockbox"
-                                lockbox_msg_until = pygame.time.get_ticks() + lockbox_msg_life
-                            elif card_id == "ground_spikes":
-                                lockbox_msg = "More spikes, but you move slower (-4% speed)."
                                 lockbox_msg_until = pygame.time.get_ticks() + lockbox_msg_life
                             # Remove the purchased card from its slot (leave blank space)
                             if 0 <= slot_idx < len(normal_slots):
