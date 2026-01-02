@@ -1266,6 +1266,7 @@ GROUND_SPIKES_SLOW_MULT = 0.95
 GROUND_SPIKES_SLOW_DURATION = 1.0
 GROUND_SPIKES_RISE_TIME = 0.15
 GROUND_SPIKES_GLOW_TIME = 0.20
+GROUND_SPIKES_VIS_SCALE = (1.0, 1.18, 1.32)
 GROUND_SPIKES_COLOR = (120, 230, 255)
 GROUND_SPIKES_RING = (220, 255, 255)
 GROUND_SPIKES_BASE_DARK = (40, 70, 85)
@@ -9417,13 +9418,14 @@ class AcidPool:
 
 
 class GroundSpike:
-    def __init__(self, x, y, damage, life, radius):
+    def __init__(self, x, y, damage, life, radius, level: int = 1):
         self.x = float(x)
         self.y = float(y)
         self.damage = float(damage)
         self.t = float(life)
         self.life0 = float(life)
         self.r = float(radius)
+        self.level = int(max(1, level))
 
 
 class TelegraphCircle:
@@ -10049,8 +10051,11 @@ def draw_ground_spike_iso(surface: pygame.Surface, spike: "GroundSpike", camx: f
     if fade <= 0.0 or rise <= 0.0:
         return
     pulse = 0.65 + 0.35 * math.sin(pygame.time.get_ticks() * 0.008 + (spike.x + spike.y) * 0.01)
-    base_r = float(spike.r) * (0.4 + 0.6 * rise) * max(0.35, fade)
-    height = float(spike.r) * 2.6 * rise * (0.35 + 0.65 * fade)
+    lvl = int(getattr(spike, "level", 1))
+    idx = max(0, min(lvl - 1, len(GROUND_SPIKES_VIS_SCALE) - 1))
+    vis_scale = float(GROUND_SPIKES_VIS_SCALE[idx])
+    base_r = float(spike.r) * vis_scale * (0.4 + 0.6 * rise) * max(0.35, fade)
+    height = float(spike.r) * 2.6 * vis_scale * rise * (0.35 + 0.65 * fade)
     top_r = max(1.0, base_r * 0.35)
     if age <= GROUND_SPIKES_GLOW_TIME:
         glow_p = max(0.0, 1.0 - age / max(0.001, GROUND_SPIKES_GLOW_TIME))
@@ -11415,7 +11420,7 @@ class GameState:
                 damage, lifetime, max_active = ground_spikes_stats(lvl, bullet_base)
                 if damage > 0.0 and lifetime > 0.0:
                     px, py = player.rect.centerx, player.rect.centery
-                    self.ground_spikes.append(GroundSpike(px, py, damage, lifetime, GROUND_SPIKES_RADIUS))
+                    self.ground_spikes.append(GroundSpike(px, py, damage, lifetime, GROUND_SPIKES_RADIUS, lvl))
                     while len(self.ground_spikes) > max_active:
                         self.ground_spikes.pop(0)
                     spawn_ground_spike_spawn_vfx(self, px, py)

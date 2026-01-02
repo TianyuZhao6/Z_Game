@@ -99,25 +99,12 @@ If the explosion kills another enemy, it chains: that enemy also spawns its own 
 Explosion damage against bosses is 50%.
 Explosion does not hurt the player.
 
-Level 1
+Level 1/2/3:
 
-Damage vs normal enemies: 25% of bullet_base
-Damage vs bosses: 12.5% of bullet_base (rounded down in code)
-Radius: small — about 0.65 tiles
-Suggest: radius_px ≈ CELL_SIZE * 0.65
-
-Level 2
-
-Damage vs normal enemies: 35% of bullet_base
-Damage vs bosses: 17.5% of bullet_base
-Radius: small+ — about 0.80 tiles
-Suggest: radius_px ≈ CELL_SIZE * 0.80
-
-Level 3
-Damage vs normal enemies: 45% of bullet_base
-Damage vs bosses: 22.5% of bullet_base
-Radius: almost 1 tile — about 0.95 tiles
-Suggest: radius_px ≈ CELL_SIZE * 0.95
+Damage vs normal enemies: 25%/35%/45% of bullet_base
+Damage vs bosses: 12.5%/17.5%/22.5% of bullet_base (rounded down in code)
+Radius: small/small+/almost 1 tile — about 0.65/0.80/0.95 tiles
+Suggest: radius_px ≈ CELL_SIZE * 0.65/0.80/0.95
 
 ;1.7. DOT Rounds
 Rarity: 2
