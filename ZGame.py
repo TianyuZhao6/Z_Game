@@ -1266,7 +1266,7 @@ GROUND_SPIKES_SLOW_MULT = 0.95
 GROUND_SPIKES_SLOW_DURATION = 1.0
 GROUND_SPIKES_RISE_TIME = 0.15
 GROUND_SPIKES_GLOW_TIME = 0.20
-GROUND_SPIKES_VIS_SCALE = (1.0, 1.18, 1.32)
+GROUND_SPIKES_VIS_SCALE = (1.0, 1.25, 1.50)
 GROUND_SPIKES_COLOR = (120, 230, 255)
 GROUND_SPIKES_RING = (220, 255, 255)
 GROUND_SPIKES_BASE_DARK = (40, 70, 85)
@@ -10060,14 +10060,16 @@ def draw_ground_spike_iso(surface: pygame.Surface, spike: "GroundSpike", camx: f
     if age <= GROUND_SPIKES_GLOW_TIME:
         glow_p = max(0.0, 1.0 - age / max(0.001, GROUND_SPIKES_GLOW_TIME))
         glow_alpha = int(180 * glow_p)
+        glow_scale = 1.0 + 0.18 * idx
         draw_iso_ground_ellipse(
-            surface, spike.x, spike.y, base_r * 1.6,
+            surface, spike.x, spike.y, base_r * 1.6 * glow_scale,
             GROUND_SPIKES_COLOR, glow_alpha, camx, camy, fill=True
         )
     ring_alpha = int(140 * fade * pulse)
     if ring_alpha > 0:
+        ring_scale = 1.0 + 0.12 * idx
         draw_iso_ground_ellipse(
-            surface, spike.x, spike.y, base_r * 1.1,
+            surface, spike.x, spike.y, base_r * 1.1 * ring_scale,
             GROUND_SPIKES_RING, ring_alpha, camx, camy, fill=False, width=2
         )
     base_pts = [
