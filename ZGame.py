@@ -1505,6 +1505,101 @@ def ground_spikes_stats(level: int, bullet_base: int | float) -> tuple[float, fl
     return damage, lifetime, max_active
 
 
+def owned_prop_tooltip_text(it, lvl: int | None):
+    iid = it.get("id") if isinstance(it, dict) else None
+    lvl = 0 if lvl is None else int(lvl)
+    if iid == "shady_loan":
+        lvl = max(lvl, int(META.get("shady_loan_last_level", lvl)))
+    if lvl <= 0:
+        return None
+    if iid == "lockbox":
+        coins = max(0, int(META.get("spoils", 0)))
+        pct = int(LOCKBOX_PROTECT_RATES[min(lvl - 1, len(LOCKBOX_PROTECT_RATES) - 1)] * 100)
+        protected = lockbox_protected_min(coins, lvl)
+        return f"{protected} coins restored (at {pct}%)"
+    if iid == "bone_plating":
+        gain = max(0, lvl * BONE_PLATING_STACK_HP)
+        effective_speed = max(0.30, 0.98 ** lvl)
+        spd_pen = max(0.0, (1.0 - effective_speed) * 100.0)
+        spd_txt = f", -{spd_pen:.0f}% speed" if spd_pen >= 0.5 else ""
+        return f"Every {int(BONE_PLATING_GAIN_INTERVAL)}s gain {gain} hp shield{spd_txt}"
+    if iid == "coupon":
+        disc = int(COUPON_DISCOUNT_PER * 100 * lvl)
+        return f"-{disc}% shop prices"
+    if iid == "piercing_rounds":
+        return f"Pierce {lvl} extra enemy" + ("ies" if lvl > 1 else "")
+    if iid == "ricochet_scope":
+        return f"Bounce {lvl} times"
+    if iid == "shrapnel_shells":
+        base = 25
+        per = 10
+        chance = min(80, base + per * (lvl - 1))
+        return f"{chance}% shrapnel on kill"
+    if iid == "explosive_rounds":
+        bullet_base = int(META.get("base_dmg", BULLET_DAMAGE_ENEMY)) + int(META.get("dmg", 0))
+        radius, dmg, boss_dmg = explosive_rounds_stats(lvl, bullet_base)
+        r_tiles = radius / float(CELL_SIZE)
+        return f"Explode {dmg}/{boss_dmg} dmg, r {r_tiles:.2f} tiles"
+    if iid == "dot_rounds":
+        idx = min(max(lvl, 1), len(DOT_ROUNDS_DAMAGE_PER_TICK)) - 1
+        pct = int(DOT_ROUNDS_DAMAGE_PER_TICK[idx] * 100)
+        duration = float(DOT_ROUNDS_DURATIONS[idx])
+        ticks = int(round(duration / float(DOT_ROUNDS_TICK_INTERVAL)))
+        max_stacks = int(DOT_ROUNDS_MAX_STACKS[idx])
+        return f"{pct}% base dmg per tick ({ticks} ticks), stacks {max_stacks}"
+    if iid == "ground_spikes":
+        idx = min(max(lvl, 1), len(GROUND_SPIKES_DAMAGE_MULTS)) - 1
+        pct = int(GROUND_SPIKES_DAMAGE_MULTS[idx] * 100)
+        life = float(GROUND_SPIKES_LIFETIMES[idx])
+        max_active = int(GROUND_SPIKES_MAX_ACTIVE[idx])
+        return f"{pct}% base dmg, {life:.1f}s life, max {max_active}, slow 5%"
+    if iid == "mark_vulnerability":
+        interval, bonus, duration = mark_of_vulnerability_stats(lvl)
+        pct = int(bonus * 100)
+        return f"Mark {interval:.1f}s, +{pct}% dmg for {duration:.1f}s"
+    if iid == "bandit_radar":
+        lvl_idx = min(max(lvl, 1), len(BANDIT_RADAR_SLOW_MULT))
+        slow_pct = int((1.0 - BANDIT_RADAR_SLOW_MULT[lvl_idx - 1]) * 100)
+        dur = BANDIT_RADAR_SLOW_DUR[lvl_idx - 1]
+        return f"Bandits -{slow_pct}% speed for {dur:.0f}s"
+    if iid == "aegis_pulse":
+        idx = min(max(lvl, 1) - 1, len(AEGIS_PULSE_DAMAGE_RATIOS) - 1)
+        pct = int(AEGIS_PULSE_DAMAGE_RATIOS[idx] * 100)
+        return f"Pulse hits for {pct}% max HP"
+    if iid == "golden_interest":
+        rate_pct = int(GOLDEN_INTEREST_RATE_PER_LEVEL * 100 * lvl)
+        cap = GOLDEN_INTEREST_CAPS[min(lvl - 1, len(GOLDEN_INTEREST_CAPS) - 1)]
+        return f"Interest {rate_pct}% (cap {cap})"
+    if iid == "wanted_poster":
+        waves = int(META.get("wanted_poster_waves", 0))
+        status = "ready" if waves > 0 else ("armed" if META.get("wanted_active") else "spent")
+        return f"Bounty charges: {waves} ({status})"
+    if iid == "shady_loan":
+        debt = max(0, int(META.get("shady_loan_remaining_debt", 0)))
+        waves = int(META.get("shady_loan_waves_remaining", 0))
+        status = META.get("shady_loan_status")
+        if status == "defaulted":
+            idx = min(max(lvl, 1), SHADY_LOAN_MAX_LEVEL) - 1
+            pct = int(SHADY_LOAN_HP_PENALTIES[idx] * 100)
+            return f"Defaulted: -{pct}% max HP"
+        if status == "repaid" and debt <= 0:
+            return "Loan repaid"
+        if status == "active" and debt > 0 and waves == 1:
+            return "The loan settlement happens after this shop!"
+        return f"Debt {debt}, {max(0, waves)} waves left (final clears remainder)"
+    if iid == "coin_magnet":
+        radius = int(META.get("coin_magnet_radius", 0))
+        return f"Pickup radius +{radius}px"
+    if iid == "auto_turret":
+        return f"Auto-turret count {lvl}"
+    if iid == "stationary_turret":
+        return f"Stationary turrets {lvl}"
+    if iid == "carapace":
+        hp = int(META.get("carapace_shield_hp", 0))
+        return f"Shield HP {hp}"
+    return None
+
+
 def apply_dot_rounds_stack(target: "Enemy", damage_per_tick: float, duration: float, max_stacks: int) -> None:
     if target is None or max_stacks <= 0 or duration <= 0.0:
         return
@@ -4875,6 +4970,7 @@ def show_pause_menu(screen, background_surf):
     # 在变暗的背景中显示玩家build信息
     font_small = pygame.font.SysFont(None, 28)
     font_tiny = pygame.font.SysFont(None, 22)
+    desc_font = pygame.font.SysFont(None, 24)
     # 左上角显示基本属性
     left_margin = 30
     top_margin = 30
@@ -5129,15 +5225,22 @@ def show_pause_menu(screen, background_surf):
         lvl = _pause_prop_level(item)
         max_lvl = item.get("max_level")
         if lvl and lvl > 0:
-            owned.append((item["name"], lvl, max_lvl))
+            owned.append({"itm": item, "lvl": lvl, "max": max_lvl})
+    owned_rows = []
     if owned:
-        for name, lvl, max_lvl in owned:
+        line_h = max(22, pos_font.get_height())
+        for ent in owned:
+            name = ent["itm"]["name"]
+            lvl = ent["lvl"]
+            max_lvl = ent["max"]
             lvl_str = f"{lvl}/{max_lvl}" if max_lvl else f"x{lvl}"
             text = f"{name}: {lvl_str}"
             surf = pos_font.render(text, True, UI_TEXT)
             rect = surf.get_rect(right=right_margin, top=y_offset)
             screen.blit(surf, rect)
-            y_offset += 24
+            owned_rows.append((rect, ent))
+            y_offset += line_h
+    pause_bg = screen.copy()
     panel_w, panel_h = min(520, VIEW_W - 80), min(500, VIEW_H - 160)
     panel = pygame.Rect(0, 0, panel_w, panel_h)
     panel.center = (VIEW_W // 2, VIEW_H // 2)
@@ -5178,7 +5281,26 @@ def show_pause_menu(screen, background_surf):
             if rect.collidepoint((mx, my)):
                 hover_tag = tag
                 break
+        screen.blit(pause_bg, (0, 0))
         redraw(hover_tag)
+        tooltip_txt = None
+        tooltip_pos = None
+        if owned_rows:
+            for row_rect, ent in owned_rows:
+                if row_rect.collidepoint((mx, my)):
+                    tooltip_txt = owned_prop_tooltip_text(ent["itm"], ent["lvl"])
+                    tooltip_pos = (row_rect.right + 10, row_rect.centery)
+                    break
+        if tooltip_txt:
+            tip_surf = desc_font.render(tooltip_txt, True, (235, 235, 235))
+            pad = 8
+            bg = pygame.Surface((tip_surf.get_width() + pad * 2, tip_surf.get_height() + pad * 2), pygame.SRCALPHA)
+            pygame.draw.rect(bg, (30, 30, 36, 230), bg.get_rect(), border_radius=10)
+            pygame.draw.rect(bg, (120, 150, 210, 240), bg.get_rect(), 2, border_radius=10)
+            bg.blit(tip_surf, (pad, pad))
+            bx = min(VIEW_W - bg.get_width() - 10, tooltip_pos[0])
+            by = max(60, min(VIEW_H - bg.get_height() - 60, tooltip_pos[1] - bg.get_height() // 2))
+            screen.blit(bg, (bx, by))
         pygame.display.flip()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -5920,97 +6042,7 @@ def show_shop_screen(screen) -> Optional[str]:
         return None
 
     def _owned_live_text(it, lvl: int | None):
-        iid = it.get("id")
-        lvl = 0 if lvl is None else int(lvl)
-        if iid == "shady_loan":lvl = max(lvl, int(META.get("shady_loan_last_level", lvl)))
-        if lvl <= 0:
-            return None
-        if iid == "lockbox":
-            coins = max(0, int(META.get("spoils", 0)))
-            pct = int(LOCKBOX_PROTECT_RATES[min(lvl - 1, len(LOCKBOX_PROTECT_RATES) - 1)] * 100)
-            protected = lockbox_protected_min(coins, lvl)
-            return f"{protected} coins restored (at {pct}%)"
-        if iid == "bone_plating":
-            gain = max(0, lvl * BONE_PLATING_STACK_HP)
-            effective_speed = max(0.30, 0.98 ** lvl)
-            spd_pen = max(0.0, (1.0 - effective_speed) * 100.0)
-            spd_txt = f", -{spd_pen:.0f}% speed" if spd_pen >= 0.5 else ""
-            return f"Every {int(BONE_PLATING_GAIN_INTERVAL)}s gain {gain} hp shield{spd_txt}"
-        if iid == "coupon":
-            disc = int(COUPON_DISCOUNT_PER * 100 * lvl)
-            return f"-{disc}% shop prices"
-        if iid == "piercing_rounds":
-            return f"Pierce {lvl} extra enemy" + ("ies" if lvl > 1 else "")
-        if iid == "ricochet_scope":
-            return f"Bounce {lvl} times"
-        if iid == "shrapnel_shells":
-            base = 25
-            per = 10
-            chance = min(80, base + per * (lvl - 1))
-            return f"{chance}% shrapnel on kill"
-        if iid == "explosive_rounds":
-            bullet_base = int(META.get("base_dmg", BULLET_DAMAGE_ENEMY)) + int(META.get("dmg", 0))
-            radius, dmg, boss_dmg = explosive_rounds_stats(lvl, bullet_base)
-            r_tiles = radius / float(CELL_SIZE)
-            return f"Explode {dmg}/{boss_dmg} dmg, r {r_tiles:.2f} tiles"
-        if iid == "dot_rounds":
-            idx = min(max(lvl, 1), len(DOT_ROUNDS_DAMAGE_PER_TICK)) - 1
-            pct = int(DOT_ROUNDS_DAMAGE_PER_TICK[idx] * 100)
-            duration = float(DOT_ROUNDS_DURATIONS[idx])
-            ticks = int(round(duration / float(DOT_ROUNDS_TICK_INTERVAL)))
-            max_stacks = int(DOT_ROUNDS_MAX_STACKS[idx])
-            return f"{pct}% base dmg per tick ({ticks} ticks), stacks {max_stacks}"
-        if iid == "ground_spikes":
-            idx = min(max(lvl, 1), len(GROUND_SPIKES_DAMAGE_MULTS)) - 1
-            pct = int(GROUND_SPIKES_DAMAGE_MULTS[idx] * 100)
-            life = float(GROUND_SPIKES_LIFETIMES[idx])
-            max_active = int(GROUND_SPIKES_MAX_ACTIVE[idx])
-            return f"{pct}% base dmg, {life:.1f}s life, max {max_active}, slow 5%"
-        if iid == "mark_vulnerability":
-            interval, bonus, duration = mark_of_vulnerability_stats(lvl)
-            pct = int(bonus * 100)
-            return f"Mark {interval:.1f}s, +{pct}% dmg for {duration:.1f}s"
-        if iid == "bandit_radar":
-            lvl_idx = min(max(lvl, 1), len(BANDIT_RADAR_SLOW_MULT))
-            slow_pct = int((1.0 - BANDIT_RADAR_SLOW_MULT[lvl_idx - 1]) * 100)
-            dur = BANDIT_RADAR_SLOW_DUR[lvl_idx - 1]
-            return f"Bandits -{slow_pct}% speed for {dur:.0f}s"
-        if iid == "aegis_pulse":
-            idx = min(max(lvl, 1) - 1, len(AEGIS_PULSE_DAMAGE_RATIOS) - 1)
-            pct = int(AEGIS_PULSE_DAMAGE_RATIOS[idx] * 100)
-            return f"Pulse hits for {pct}% max HP"
-        if iid == "golden_interest":
-            rate_pct = int(GOLDEN_INTEREST_RATE_PER_LEVEL * 100 * lvl)
-            cap = GOLDEN_INTEREST_CAPS[min(lvl - 1, len(GOLDEN_INTEREST_CAPS) - 1)]
-            return f"Interest {rate_pct}% (cap {cap})"
-        if iid == "wanted_poster":
-            waves = int(META.get("wanted_poster_waves", 0))
-            status = "ready" if waves > 0 else ("armed" if META.get("wanted_active") else "spent")
-            return f"Bounty charges: {waves} ({status})"
-        if iid == "shady_loan":
-            debt = max(0, int(META.get("shady_loan_remaining_debt", 0)))
-            waves = int(META.get("shady_loan_waves_remaining", 0))
-            status = META.get("shady_loan_status")
-            if status == "defaulted":
-                idx = min(max(lvl, 1), SHADY_LOAN_MAX_LEVEL) - 1
-                pct = int(SHADY_LOAN_HP_PENALTIES[idx] * 100)
-                return f"Defaulted: -{pct}% max HP"
-            if status == "repaid" and debt <= 0:
-                return "Loan repaid"
-            if status == "active" and debt > 0 and waves == 1:
-                return "The loan settlement happens after this shop!"
-            return f"Debt {debt}, {max(0, waves)} waves left (final clears remainder)"
-        if iid == "coin_magnet":
-            radius = int(META.get("coin_magnet_radius", 0))
-            return f"Pickup radius +{radius}px"
-        if iid == "auto_turret":
-            return f"Auto-turret count {lvl}"
-        if iid == "stationary_turret":
-            return f"Stationary turrets {lvl}"
-        if iid == "carapace":
-            hp = int(META.get("carapace_shield_hp", 0))
-            return f"Shield HP {hp}"
-        return None
+        return owned_prop_tooltip_text(it, lvl)
 
     def _prop_max_level(it):
         return it.get("max_level", None)
