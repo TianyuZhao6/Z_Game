@@ -175,6 +175,10 @@ def update_hit_flash_timer(entity, dt: float) -> None:
     else:
         entity._hit_flash = max(0.0, float(getattr(entity, "_hit_flash", 0.0)) - float(dt))
     entity._flash_prev_hp = cur_hp
+    glow_t = max(0.0, float(getattr(entity, "_curing_paint_glow_t", 0.0)) - float(dt))
+    entity._curing_paint_glow_t = glow_t
+    if glow_t <= 0.0:
+        entity._curing_paint_glow_intensity = 0.0
 
 
 def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -> None:
@@ -1286,6 +1290,13 @@ CURING_PAINT_DAMAGE_PER_TICK = (0.04, 0.06, 0.08)
 CURING_PAINT_TICK_INTERVAL = 0.5
 CURING_PAINT_BOSS_MULT = 0.70
 CURING_PAINT_SPLASH_TIME = 0.12
+CURING_PAINT_SPLASH_SCALE_START = 0.70
+CURING_PAINT_SPLASH_SCALE_PEAK = 1.05
+CURING_PAINT_SPLASH_SETTLE = 0.10
+CURING_PAINT_BRIGHTNESS_MIN = 0.35
+CURING_PAINT_BLOB_POINTS = 14
+CURING_PAINT_WIGGLE_STRENGTH = 0.08
+CURING_PAINT_WIGGLE_SPEED = 5.0
 CURING_PAINT_FILL_COLOR = (120, 12, 22)
 CURING_PAINT_EDGE_COLOR = (230, 70, 60)
 CURING_PAINT_EDGE_HIGHLIGHT = (255, 120, 110)
@@ -1540,6 +1551,13 @@ def curing_paint_stats(level: int, bullet_base: int | float) -> tuple[float, flo
 def curing_paint_kill_bonus(kill_count: int) -> float:
     """Scale curing paint DoT by a small bonus per 10 kills."""
     return 1.0 + 0.002 * max(0, int(kill_count) // 10)
+
+
+def curing_paint_base_color(player) -> tuple[int, int, int]:
+    col = getattr(player, "paint_color", None) or getattr(player, "color", None)
+    if isinstance(col, (tuple, list)) and len(col) >= 3:
+        return (int(col[0]), int(col[1]), int(col[2]))
+    return (0, 255, 0)
 
 
 def owned_prop_tooltip_text(it, lvl: int | None):
@@ -9548,13 +9566,21 @@ class GroundSpike:
 
 
 class CuringPaintFootprint:
-    def __init__(self, x, y, radius, life, level: int = 1):
+    def __init__(self, x, y, radius, life, level: int = 1, base_color: tuple[int, int, int] | None = None):
         self.x = float(x)
         self.y = float(y)
         self.r = float(radius)
         self.t = float(life)
         self.life0 = float(life)
         self.level = int(max(1, level))
+        if base_color and len(base_color) >= 3:
+            self.base_color = tuple(int(c) for c in base_color[:3])
+        else:
+            self.base_color = CURING_PAINT_FILL_COLOR
+        count = max(8, int(CURING_PAINT_BLOB_POINTS))
+        self._blob_noise = [random.uniform(0.82, 1.18) for _ in range(count)]
+        self._blob_phase = [random.uniform(0.0, math.tau) for _ in range(count)]
+        self._blob_rot = random.uniform(0.0, math.tau)
 
     @property
     def intensity(self) -> float:
@@ -10172,10 +10198,70 @@ def _draw_poly_alpha(surface: pygame.Surface, color_rgba: tuple[int, int, int, i
     surface.blit(surf, (int(min_x - 2), int(min_y - 2)))
 
 
+def _draw_polyline_alpha(surface: pygame.Surface, color_rgba: tuple[int, int, int, int],
+                         points: list[tuple[float, float]], width: int = 2) -> None:
+    if not points:
+        return
+    min_x = min(p[0] for p in points)
+    min_y = min(p[1] for p in points)
+    max_x = max(p[0] for p in points)
+    max_y = max(p[1] for p in points)
+    w = int(max_x - min_x) + 4
+    h = int(max_y - min_y) + 4
+    if w <= 2 or h <= 2:
+        return
+    surf = pygame.Surface((w, h), pygame.SRCALPHA)
+    shifted = [(p[0] - min_x + 2, p[1] - min_y + 2) for p in points]
+    pygame.draw.lines(surf, color_rgba, True, shifted, max(1, int(width)))
+    surface.blit(surf, (int(min_x - 2), int(min_y - 2)))
+
+
 def iso_world_px_to_screen(x_px: float, y_px: float, camx: float, camy: float, z_px: float = 0.0) -> tuple[int, int]:
     wx = x_px / CELL_SIZE
     wy = (y_px - INFO_BAR_HEIGHT) / CELL_SIZE
     return iso_world_to_screen(wx, wy, z_px, camx, camy)
+
+
+def _lerp_color(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
+    t = max(0.0, min(1.0, float(t)))
+    return (
+        int(a[0] + (b[0] - a[0]) * t),
+        int(a[1] + (b[1] - a[1]) * t),
+        int(a[2] + (b[2] - a[2]) * t),
+    )
+
+
+def _scale_color(color: tuple[int, int, int], scale: float) -> tuple[int, int, int]:
+    s = max(0.0, float(scale))
+    return (
+        max(0, min(255, int(color[0] * s))),
+        max(0, min(255, int(color[1] * s))),
+        max(0, min(255, int(color[2] * s))),
+    )
+
+
+def _curing_paint_blob_points(paint: "CuringPaintFootprint", radius: float,
+                              camx: float, camy: float, t: float,
+                              wiggle: float) -> list[tuple[int, int]]:
+    points = []
+    noise_list = getattr(paint, "_blob_noise", None)
+    phase_list = getattr(paint, "_blob_phase", None)
+    count = len(noise_list) if noise_list else CURING_PAINT_BLOB_POINTS
+    if not noise_list:
+        noise_list = [1.0] * int(count)
+    if not phase_list:
+        phase_list = [0.0] * int(count)
+    rot = float(getattr(paint, "_blob_rot", 0.0))
+    for i in range(int(count)):
+        ang = rot + math.tau * i / float(count)
+        noise = float(noise_list[i % len(noise_list)])
+        phase = float(phase_list[i % len(phase_list)])
+        jiggle = 1.0 + wiggle * math.sin(t * CURING_PAINT_WIGGLE_SPEED + phase)
+        r = radius * noise * jiggle
+        wx = paint.x + math.cos(ang) * r
+        wy = paint.y + math.sin(ang) * r
+        points.append(iso_world_px_to_screen(wx, wy, camx, camy, 0.0))
+    return points
 
 
 def draw_curing_paint_iso(surface: pygame.Surface, paint: "CuringPaintFootprint",
@@ -10188,35 +10274,44 @@ def draw_curing_paint_iso(surface: pygame.Surface, paint: "CuringPaintFootprint"
     if intensity <= 0.0:
         return
     age = max(0.0, life0 - t_left)
-    splash = 1.0 if CURING_PAINT_SPLASH_TIME <= 0.0 else min(1.0, age / CURING_PAINT_SPLASH_TIME)
     t = pygame.time.get_ticks() * 0.001
-    pulse = 0.82 + 0.18 * math.sin(t * 3.6 + (paint.x + paint.y) * 0.012)
-    shimmer = 0.75 + 0.25 * math.sin(t * 6.0 + (paint.x - paint.y) * 0.02)
-    base_r = float(paint.r) * (0.35 + 0.65 * splash)
-    fill_alpha = int(170 * intensity * (0.7 + 0.3 * pulse))
+    if CURING_PAINT_SPLASH_TIME > 0.0 and age < CURING_PAINT_SPLASH_TIME:
+        prog = age / CURING_PAINT_SPLASH_TIME
+        scale = CURING_PAINT_SPLASH_SCALE_START + prog * (
+            CURING_PAINT_SPLASH_SCALE_PEAK - CURING_PAINT_SPLASH_SCALE_START
+        )
+    elif CURING_PAINT_SPLASH_SETTLE > 0.0 and age < CURING_PAINT_SPLASH_TIME + CURING_PAINT_SPLASH_SETTLE:
+        settle = (age - CURING_PAINT_SPLASH_TIME) / CURING_PAINT_SPLASH_SETTLE
+        scale = CURING_PAINT_SPLASH_SCALE_PEAK - (CURING_PAINT_SPLASH_SCALE_PEAK - 1.0) * settle
+    else:
+        scale = 1.0
+    pulse = 0.84 + 0.16 * math.sin(t * 3.2 + (paint.x + paint.y) * 0.012)
+    shimmer = 0.74 + 0.26 * math.sin(t * 6.0 + (paint.x - paint.y) * 0.02)
+    base_r = float(paint.r) * scale
+    wiggle = CURING_PAINT_WIGGLE_STRENGTH * intensity * (0.6 + 0.4 * shimmer)
+    base_col = tuple(getattr(paint, "base_color", CURING_PAINT_FILL_COLOR))
+    brightness = CURING_PAINT_BRIGHTNESS_MIN + (1.0 - CURING_PAINT_BRIGHTNESS_MIN) * intensity
+    fill_col = _scale_color(base_col, brightness)
+    red_edge = _lerp_color(base_col, CURING_PAINT_EDGE_COLOR, 0.55 + 0.25 * intensity)
+    cyan_edge = _lerp_color(base_col, CURING_PAINT_SPARK_COLORS[0], 0.35 + 0.25 * shimmer)
+    fill_alpha = int(150 * intensity * (0.7 + 0.3 * pulse))
     if fill_alpha > 0:
-        draw_iso_ground_ellipse(
-            surface, paint.x, paint.y, base_r,
-            CURING_PAINT_FILL_COLOR, fill_alpha, camx, camy, fill=True
-        )
-    ring_alpha = int(220 * intensity * shimmer)
+        points = _curing_paint_blob_points(paint, base_r, camx, camy, t, wiggle)
+        _draw_poly_alpha(surface, (*fill_col, fill_alpha), points)
+    ring_alpha = int(210 * intensity * shimmer)
     if ring_alpha > 0:
-        draw_iso_ground_ellipse(
-            surface, paint.x, paint.y, base_r * (0.9 + 0.1 * pulse),
-            CURING_PAINT_EDGE_COLOR, ring_alpha, camx, camy, fill=False, width=2
+        ring_points = _curing_paint_blob_points(
+            paint, base_r * (1.05 + 0.05 * pulse), camx, camy, t, wiggle + 0.02
         )
-    core_alpha = int(120 * intensity * pulse)
+        _draw_polyline_alpha(surface, (*red_edge, ring_alpha), ring_points, width=2)
+        cyan_alpha = int(120 * intensity * shimmer)
+        if cyan_alpha > 0:
+            _draw_polyline_alpha(surface, (*cyan_edge, cyan_alpha), ring_points, width=1)
+    core_alpha = int(90 * intensity * pulse)
     if core_alpha > 0:
-        draw_iso_ground_ellipse(
-            surface, paint.x, paint.y, base_r * 0.45,
-            CURING_PAINT_EDGE_HIGHLIGHT, core_alpha, camx, camy, fill=True
-        )
-    if splash < 1.0:
-        burst_alpha = int(220 * (1.0 - splash) * intensity)
-        draw_iso_ground_ellipse(
-            surface, paint.x, paint.y, base_r * (1.05 + 0.15 * (1.0 - splash)),
-            CURING_PAINT_EDGE_HIGHLIGHT, burst_alpha, camx, camy, fill=False, width=2
-        )
+        inner_col = _lerp_color(base_col, CURING_PAINT_EDGE_HIGHLIGHT, 0.45)
+        inner_points = _curing_paint_blob_points(paint, base_r * 0.45, camx, camy, t, wiggle * 0.6)
+        _draw_poly_alpha(surface, (*inner_col, core_alpha), inner_points)
 
 
 def draw_ground_spike_iso(surface: pygame.Surface, spike: "GroundSpike", camx: float, camy: float) -> None:
@@ -11602,8 +11697,9 @@ class GameState:
                     or self._curing_paint_d >= CURING_PAINT_SPAWN_DIST):
                 lifetime = float(CURING_PAINT_LIFETIMES[lvl_idx])
                 px, py = player.rect.centerx, player.rect.centery
+                base_color = curing_paint_base_color(player)
                 self.curing_paint.append(
-                    CuringPaintFootprint(px, py, CURING_PAINT_RADIUS, lifetime, lvl)
+                    CuringPaintFootprint(px, py, CURING_PAINT_RADIUS, lifetime, lvl, base_color)
                 )
                 self._curing_paint_t = 0.0
                 self._curing_paint_d = 0.0
@@ -11613,7 +11709,7 @@ class GameState:
             p.t -= dt
             if p.t > 0:
                 intensity = p.intensity
-                if intensity > 0.55 and random.random() < spark_chance * intensity:
+                if intensity >= 0.1 and random.random() < spark_chance * (intensity ** 1.35):
                     spawn_curing_paint_spark_vfx(self, p.x, p.y, intensity)
                 alive.append(p)
         self.curing_paint = alive
@@ -11664,6 +11760,11 @@ class GameState:
             if deal > 0:
                 z.hp -= deal
                 self.add_damage_text(zx, zy - 8, deal, crit=False, kind="dot")
+                z._curing_paint_glow_t = max(0.0, float(getattr(z, "_curing_paint_glow_t", 0.0)), 0.14)
+                z._curing_paint_glow_intensity = max(
+                    float(getattr(z, "_curing_paint_glow_intensity", 0.0)),
+                    max_intensity,
+                )
                 z._curing_paint_accum = accum - deal
             else:
                 z._curing_paint_accum = accum
@@ -12727,6 +12828,24 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                     fill=False,
                     width=4,
                 )
+            glow_t = float(getattr(z, "_curing_paint_glow_t", 0.0))
+            if glow_t > 0.0:
+                glow_ratio = max(0.0, min(1.0, glow_t / 0.14))
+                glow_int = max(0.0, float(getattr(z, "_curing_paint_glow_intensity", 0.0)))
+                alpha = int(110 * glow_ratio * (0.5 + 0.5 * glow_int))
+                if alpha > 0:
+                    glow_r = max(10, int(getattr(z, "radius", CELL_SIZE * 0.3) * 1.1))
+                    draw_iso_ground_ellipse(
+                        screen,
+                        z.rect.centerx,
+                        z.rect.centery,
+                        glow_r,
+                        CURING_PAINT_SPARK_COLORS[0],
+                        alpha,
+                        camx,
+                        camy,
+                        fill=True,
+                    )
             shake = float(getattr(z, "_comet_shake", 0.0))
             if shake > 0.0:
                 amp = min(6.0, 10.0 * shake)
