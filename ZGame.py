@@ -1277,6 +1277,23 @@ GROUND_SPIKES_HIT_PARTICLES = (4, 7)
 GROUND_SPIKES_HIT_SPEED = (60.0, 160.0)
 GROUND_SPIKES_HIT_LIFE = (0.10, 0.20)
 GROUND_SPIKES_HIT_SIZE = (2, 4)
+# --- Curing Paint (ground ink DoT) ---
+CURING_PAINT_SPAWN_INTERVAL = 0.25
+CURING_PAINT_SPAWN_DIST = 0.50 * CELL_SIZE
+CURING_PAINT_RADIUS = CELL_SIZE * 0.60
+CURING_PAINT_LIFETIMES = (2.0, 3.0, 4.0)
+CURING_PAINT_DAMAGE_PER_TICK = (0.04, 0.06, 0.08)
+CURING_PAINT_TICK_INTERVAL = 0.5
+CURING_PAINT_BOSS_MULT = 0.70
+CURING_PAINT_SPLASH_TIME = 0.12
+CURING_PAINT_FILL_COLOR = (120, 12, 22)
+CURING_PAINT_EDGE_COLOR = (230, 70, 60)
+CURING_PAINT_EDGE_HIGHLIGHT = (255, 120, 110)
+CURING_PAINT_SPARK_COLORS = ((80, 220, 255), (255, 255, 255))
+CURING_PAINT_SPARK_RATE = 0.85  # sparks per second per footprint at full intensity
+CURING_PAINT_SPARK_SPEED = (40.0, 90.0)
+CURING_PAINT_SPARK_LIFE = (0.16, 0.28)
+CURING_PAINT_SPARK_SIZE = (2, 3)
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -1302,7 +1319,7 @@ HURRICANE_BULLET_SPIN_STEER = 4.0  # how quickly bullet velocity is steered towa
 HURRICANE_ESCAPE_SPEED = 3.8  # speed to shrug most pull
 HURRICANE_ESCAPE_SIZE = CELL_SIZE * 1.0  # entities larger than this resist more
 HURRICANE_COLOR = (120, 200, 255)
-SHOP_CATALOG_VERSION = 5  # bump to invalidate cached offers when catalog changes
+SHOP_CATALOG_VERSION = 6  # bump to invalidate cached offers when catalog changes
 # persistent (per run) upgrades bought in shop
 META = {
     # —— 本轮累积资源 ——
@@ -1334,6 +1351,7 @@ META = {
     "explosive_rounds_level": 0,
     "dot_rounds_level": 0,
     "ground_spikes_level": 0,
+    "curing_paint_level": 0,
     "carapace_shield_hp": 0,
     "golden_interest_level": 0,
     "shady_loan_level": 0,
@@ -1351,6 +1369,7 @@ META = {
     "aegis_pulse_level": 0,
     "run_items_spawned": 0,
     "run_items_collected": 0,
+    "kill_count": 0,
 }
 
 
@@ -1382,6 +1401,7 @@ def reset_run_state():
         "explosive_rounds_level": 0,
         "dot_rounds_level": 0,
         "ground_spikes_level": 0,
+        "curing_paint_level": 0,
         "carapace_shield_hp": 0,
         "golden_interest_level": 0,
         "shady_loan_level": 0,
@@ -1399,6 +1419,7 @@ def reset_run_state():
         "aegis_pulse_level": 0,
         "run_items_spawned": 0,
         "run_items_collected": 0,
+        "kill_count": 0,
         "bindings": dict(META.get("bindings", DEFAULT_BINDINGS)),
     })
     globals()["_carry_player_state"] = None
@@ -1422,6 +1443,8 @@ def _ensure_meta_defaults():
         "explosive_rounds_level": 0,
         "dot_rounds_level": 0,
         "ground_spikes_level": 0,
+        "curing_paint_level": 0,
+        "kill_count": 0,
         "bindings": {},
     }
     for k, v in defaults.items():
@@ -1505,6 +1528,20 @@ def ground_spikes_stats(level: int, bullet_base: int | float) -> tuple[float, fl
     return damage, lifetime, max_active
 
 
+def curing_paint_stats(level: int, bullet_base: int | float) -> tuple[float, float, float]:
+    """Return (damage_per_tick, lifetime_s, radius_px) for Curing Paint."""
+    lvl = max(1, min(int(level), len(CURING_PAINT_DAMAGE_PER_TICK)))
+    dmg_per_tick = float(bullet_base) * float(CURING_PAINT_DAMAGE_PER_TICK[lvl - 1])
+    lifetime = float(CURING_PAINT_LIFETIMES[lvl - 1])
+    radius = float(CURING_PAINT_RADIUS)
+    return dmg_per_tick, lifetime, radius
+
+
+def curing_paint_kill_bonus(kill_count: int) -> float:
+    """Scale curing paint DoT by a small bonus per 10 kills."""
+    return 1.0 + 0.002 * max(0, int(kill_count) // 10)
+
+
 def owned_prop_tooltip_text(it, lvl: int | None):
     iid = it.get("id") if isinstance(it, dict) else None
     lvl = 0 if lvl is None else int(lvl)
@@ -1553,6 +1590,11 @@ def owned_prop_tooltip_text(it, lvl: int | None):
         life = float(GROUND_SPIKES_LIFETIMES[idx])
         max_active = int(GROUND_SPIKES_MAX_ACTIVE[idx])
         return f"{pct}% base dmg, {life:.1f}s life, max {max_active}, slow 5%"
+    if iid == "curing_paint":
+        idx = min(max(lvl, 1), len(CURING_PAINT_DAMAGE_PER_TICK)) - 1
+        pct = int(CURING_PAINT_DAMAGE_PER_TICK[idx] * 100)
+        life = float(CURING_PAINT_LIFETIMES[idx])
+        return f"{pct}% base dmg/tick (0.5s), {life:.1f}s life"
     if iid == "mark_vulnerability":
         interval, bonus, duration = mark_of_vulnerability_stats(lvl)
         pct = int(bonus * 100)
@@ -1714,6 +1756,22 @@ def spawn_ground_spike_hit_vfx(game_state: "GameState", x: float, y: float) -> N
         size = random.randint(size_min, size_max)
         col = GROUND_SPIKES_COLOR if random.random() < 0.75 else (255, 255, 255)
         game_state.fx.particles.append(Particle(x, y, vx, vy, col, life, size))
+
+
+def spawn_curing_paint_spark_vfx(game_state: "GameState", x: float, y: float, intensity: float) -> None:
+    if game_state is None or not hasattr(game_state, "fx"):
+        return
+    if intensity <= 0.0:
+        return
+    color = random.choice(CURING_PAINT_SPARK_COLORS)
+    speed = random.uniform(CURING_PAINT_SPARK_SPEED[0], CURING_PAINT_SPARK_SPEED[1])
+    vx = random.uniform(-0.5, 0.5) * speed
+    vy = -random.uniform(0.6, 1.0) * speed
+    life = random.uniform(CURING_PAINT_SPARK_LIFE[0], CURING_PAINT_SPARK_LIFE[1])
+    size = random.randint(CURING_PAINT_SPARK_SIZE[0], CURING_PAINT_SPARK_SIZE[1])
+    jx = random.uniform(-6.0, 6.0)
+    jy = random.uniform(-6.0, 6.0)
+    game_state.fx.particles.append(Particle(x + jx, y + jy, vx, vy, color, life, size))
 
 def trigger_explosive_rounds(player, game_state: "GameState", enemies,
                              origin_pos: tuple[float, float], bullet_base: int | None = None) -> None:
@@ -2082,6 +2140,14 @@ def _bandit_death_notice(z, game_state):
         f"+{refund}" if refund > 0 else "BANDIT DOWN",
         crit=True, kind="shield"
     )
+
+
+def increment_kill_count(amount: int = 1) -> None:
+    """Track total enemy kills this run for scaling effects."""
+    try:
+        META["kill_count"] = int(META.get("kill_count", 0)) + int(amount)
+    except Exception:
+        META["kill_count"] = int(amount)
 
 
 def is_action_event(event, action: str) -> bool:
@@ -5105,6 +5171,11 @@ def show_pause_menu(screen, background_surf):
                 "max_level": 3,
             },
             {
+                "id": "curing_paint",
+                "name": "Curing Paint",
+                "max_level": 3,
+            },
+            {
                 "id": "ground_spikes",
                 "name": "Ground Spikes",
                 "max_level": 3,
@@ -5195,6 +5266,8 @@ def show_pause_menu(screen, background_surf):
             return int(META.get("explosive_rounds_level", 0))
         if iid == "dot_rounds":
             return int(META.get("dot_rounds_level", 0))
+        if iid == "curing_paint":
+            return int(META.get("curing_paint_level", 0))
         if iid == "ground_spikes":
             return int(META.get("ground_spikes_level", 0))
         if iid == "mark_vulnerability":
@@ -5856,6 +5929,17 @@ def show_shop_screen(screen) -> Optional[str]:
                 ),
             },
             {
+                "id": "curing_paint",
+                "name": "Curing Paint",
+                "desc": "While moving, leave curing ink footprints that damage enemies standing on them (0.5s ticks).",
+                "cost": 12,
+                "rarity": 2,
+                "max_level": 3,
+                "apply": lambda: META.update(
+                    curing_paint_level=min(3, int(META.get("curing_paint_level", 0)) + 1)
+                ),
+            },
+            {
                 "id": "ground_spikes",
                 "name": "Ground Spikes",
                 "desc": "While moving, leave spikes that hit once and slow 5% for 1.0s; -4% move speed per buy.",
@@ -6008,6 +6092,8 @@ def show_shop_screen(screen) -> Optional[str]:
             return int(META.get("explosive_rounds_level", 0))
         if iid == "dot_rounds":
             return int(META.get("dot_rounds_level", 0))
+        if iid == "curing_paint":
+            return int(META.get("curing_paint_level", 0))
         if iid == "ground_spikes":
             return int(META.get("ground_spikes_level", 0))
         if iid == "mark_vulnerability":
@@ -9045,6 +9131,7 @@ class Bullet:
                         spawn_dot_rounds_hit_vfx(game_state, cx, cy)
                 if z.hp <= 0 and not getattr(z, "_death_processed", False):
                     z._death_processed = True  # Prevent duplicate death processing
+                    increment_kill_count()
                     # --- DEATH EXPLOSION (only when Explosive Rounds is owned) ---
                     cx, cy = z.rect.centerx, z.rect.centery
                     if int(META.get("explosive_rounds_level", 0)) > 0:
@@ -9458,6 +9545,22 @@ class GroundSpike:
         self.life0 = float(life)
         self.r = float(radius)
         self.level = int(max(1, level))
+
+
+class CuringPaintFootprint:
+    def __init__(self, x, y, radius, life, level: int = 1):
+        self.x = float(x)
+        self.y = float(y)
+        self.r = float(radius)
+        self.t = float(life)
+        self.life0 = float(life)
+        self.level = int(max(1, level))
+
+    @property
+    def intensity(self) -> float:
+        if self.life0 <= 0.0:
+            return 0.0
+        return max(0.0, min(1.0, float(self.t) / float(self.life0)))
 
 
 class TelegraphCircle:
@@ -10073,6 +10176,47 @@ def iso_world_px_to_screen(x_px: float, y_px: float, camx: float, camy: float, z
     wx = x_px / CELL_SIZE
     wy = (y_px - INFO_BAR_HEIGHT) / CELL_SIZE
     return iso_world_to_screen(wx, wy, z_px, camx, camy)
+
+
+def draw_curing_paint_iso(surface: pygame.Surface, paint: "CuringPaintFootprint",
+                          camx: float, camy: float) -> None:
+    life0 = max(0.001, float(getattr(paint, "life0", paint.t)))
+    t_left = max(0.0, float(getattr(paint, "t", 0.0)))
+    if t_left <= 0.0:
+        return
+    intensity = max(0.0, min(1.0, t_left / life0))
+    if intensity <= 0.0:
+        return
+    age = max(0.0, life0 - t_left)
+    splash = 1.0 if CURING_PAINT_SPLASH_TIME <= 0.0 else min(1.0, age / CURING_PAINT_SPLASH_TIME)
+    t = pygame.time.get_ticks() * 0.001
+    pulse = 0.82 + 0.18 * math.sin(t * 3.6 + (paint.x + paint.y) * 0.012)
+    shimmer = 0.75 + 0.25 * math.sin(t * 6.0 + (paint.x - paint.y) * 0.02)
+    base_r = float(paint.r) * (0.35 + 0.65 * splash)
+    fill_alpha = int(170 * intensity * (0.7 + 0.3 * pulse))
+    if fill_alpha > 0:
+        draw_iso_ground_ellipse(
+            surface, paint.x, paint.y, base_r,
+            CURING_PAINT_FILL_COLOR, fill_alpha, camx, camy, fill=True
+        )
+    ring_alpha = int(220 * intensity * shimmer)
+    if ring_alpha > 0:
+        draw_iso_ground_ellipse(
+            surface, paint.x, paint.y, base_r * (0.9 + 0.1 * pulse),
+            CURING_PAINT_EDGE_COLOR, ring_alpha, camx, camy, fill=False, width=2
+        )
+    core_alpha = int(120 * intensity * pulse)
+    if core_alpha > 0:
+        draw_iso_ground_ellipse(
+            surface, paint.x, paint.y, base_r * 0.45,
+            CURING_PAINT_EDGE_HIGHLIGHT, core_alpha, camx, camy, fill=True
+        )
+    if splash < 1.0:
+        burst_alpha = int(220 * (1.0 - splash) * intensity)
+        draw_iso_ground_ellipse(
+            surface, paint.x, paint.y, base_r * (1.05 + 0.15 * (1.0 - splash)),
+            CURING_PAINT_EDGE_HIGHLIGHT, burst_alpha, camx, camy, fill=False, width=2
+        )
 
 
 def draw_ground_spike_iso(surface: pygame.Surface, spike: "GroundSpike", camx: float, camy: float) -> None:
@@ -11183,6 +11327,10 @@ class GameState:
         self.ground_spikes = []  # List[GroundSpike]
         self._ground_spike_t = 0.0
         self._ground_spike_d = 0.0
+        self.curing_paint = []  # List[CuringPaintFootprint]
+        self._curing_paint_t = 0.0
+        self._curing_paint_d = 0.0
+        self._curing_paint_tick_t = float(CURING_PAINT_TICK_INTERVAL)
         self.telegraphs = []  # List[TelegraphCircle]
         self.aegis_pulses = []  # List[AegisPulseRing]
         self.ghosts = []  # 冲刺残影列表
@@ -11430,6 +11578,95 @@ class GameState:
             if getattr(player, "slow_t", 0.0) <= 0.0:
                 player._slow_frac = 0.0
         # 不在池里：不做直接伤害；离开后的 DoT 由主循环统一结算
+
+    def update_curing_paint(self, dt: float, player: "Player", enemies: list) -> None:
+        lvl = int(META.get("curing_paint_level", 0))
+        if lvl <= 0 or player is None:
+            if self.curing_paint:
+                self.curing_paint = []
+            self._curing_paint_t = 0.0
+            self._curing_paint_d = 0.0
+            self._curing_paint_tick_t = float(CURING_PAINT_TICK_INTERVAL)
+            if enemies:
+                for z in enemies:
+                    if hasattr(z, "_curing_paint_accum"):
+                        z._curing_paint_accum = 0.0
+            return
+        lvl_idx = max(0, min(lvl - 1, len(CURING_PAINT_LIFETIMES) - 1))
+        mvx, mvy = getattr(player, "_last_move_vec", (0.0, 0.0))
+        moved = math.hypot(mvx, mvy)
+        if moved > 0.05:
+            self._curing_paint_t += dt
+            self._curing_paint_d += moved
+            if (self._curing_paint_t >= CURING_PAINT_SPAWN_INTERVAL
+                    or self._curing_paint_d >= CURING_PAINT_SPAWN_DIST):
+                lifetime = float(CURING_PAINT_LIFETIMES[lvl_idx])
+                px, py = player.rect.centerx, player.rect.centery
+                self.curing_paint.append(
+                    CuringPaintFootprint(px, py, CURING_PAINT_RADIUS, lifetime, lvl)
+                )
+                self._curing_paint_t = 0.0
+                self._curing_paint_d = 0.0
+        alive = []
+        spark_chance = float(CURING_PAINT_SPARK_RATE) * dt
+        for p in self.curing_paint:
+            p.t -= dt
+            if p.t > 0:
+                intensity = p.intensity
+                if intensity > 0.55 and random.random() < spark_chance * intensity:
+                    spawn_curing_paint_spark_vfx(self, p.x, p.y, intensity)
+                alive.append(p)
+        self.curing_paint = alive
+        tick_interval = float(CURING_PAINT_TICK_INTERVAL)
+        tick_t = float(getattr(self, "_curing_paint_tick_t", tick_interval)) - dt
+        if tick_t > 0.0:
+            self._curing_paint_tick_t = tick_t
+            return
+        ticks = int(abs(tick_t) // tick_interval) + 1
+        tick_t += tick_interval * ticks
+        self._curing_paint_tick_t = tick_t
+        if not enemies or not self.curing_paint:
+            return
+        paint_fields = []
+        for p in self.curing_paint:
+            intensity = p.intensity
+            if intensity <= 0.0:
+                continue
+            paint_fields.append((p.x, p.y, p.r, intensity))
+        if not paint_fields:
+            return
+        bullet_base = int(getattr(player, "bullet_damage", BULLET_DAMAGE_ENEMY))
+        dmg_per_tick, _, _ = curing_paint_stats(lvl, bullet_base)
+        base_dmg = float(dmg_per_tick) * float(ticks)
+        kill_bonus = curing_paint_kill_bonus(int(META.get("kill_count", 0)))
+        for z in enemies:
+            if getattr(z, "hp", 0) <= 0:
+                continue
+            zx, zy = z.rect.center
+            zr = float(getattr(z, "radius", getattr(z, "size", CELL_SIZE) * 0.5))
+            max_intensity = 0.0
+            for px, py, pr, intensity in paint_fields:
+                dx = zx - px
+                dy = zy - py
+                rsum = pr + zr
+                if dx * dx + dy * dy <= rsum * rsum:
+                    if intensity > max_intensity:
+                        max_intensity = intensity
+            if max_intensity <= 0.0:
+                continue
+            total = base_dmg * kill_bonus * max_intensity
+            if getattr(z, "is_boss", False):
+                total *= CURING_PAINT_BOSS_MULT
+            if total <= 0.0:
+                continue
+            accum = float(getattr(z, "_curing_paint_accum", 0.0)) + total
+            deal = int(accum)
+            if deal > 0:
+                z.hp -= deal
+                self.add_damage_text(zx, zy - 8, deal, crit=False, kind="dot")
+                z._curing_paint_accum = accum - deal
+            else:
+                z._curing_paint_accum = accum
 
     def update_ground_spikes(self, dt: float, player: "Player", enemies: list) -> None:
         lvl = int(META.get("ground_spikes_level", 0))
@@ -12056,6 +12293,9 @@ class GameState:
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["fill"], alpha, cam_x, cam_y, fill=True)
             # 细边
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["ring"], 180, cam_x, cam_y, fill=False, width=2)
+        # 2.5) Curing Paint (player trail)
+        for p in list(getattr(self, "curing_paint", [])):
+            draw_curing_paint_iso(screen, p, cam_x, cam_y)
         # 3) Ground Spikes (trail hazard)
         for s in list(getattr(self, "ground_spikes", [])):
             draw_ground_spike_iso(screen, s, cam_x, cam_y)
@@ -13481,12 +13721,14 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
                     running = False
                     break
         game_state.update_ground_spikes(dt, player, enemies)
+        game_state.update_curing_paint(dt, player, enemies)
         # special behaviors & enemy shots
         game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
             z.update_special(dt, player, enemies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):
                 z._death_processed = True  # Prevent duplicate death processing
+                increment_kill_count()
                 _bandit_death_notice(z, game_state)
                 if getattr(z, "_comet_death", False) and not getattr(z, "_comet_fx_done", False):
                     z._comet_fx_done = True
@@ -13941,12 +14183,14 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         flush_events()
                         return "restart", None, last_frame or screen.copy()
         game_state.update_ground_spikes(dt, player, enemies)
+        game_state.update_curing_paint(dt, player, enemies)
         # Special behaviors & enemy shots
         game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
             z.update_special(dt, player, enemies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):
                 z._death_processed = True  # Prevent duplicate death processing
+                increment_kill_count()
                 _bandit_death_notice(z, game_state)
                 if getattr(z, "_comet_death", False) and not getattr(z, "_comet_fx_done", False):
                     z._comet_fx_done = True
