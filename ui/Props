@@ -343,4 +343,31 @@ Synergy:
 Rewards sustained fire (auto-fire weapons).
 Great vs clustered waves, weaker vs single boss, so still somewhat balanced.
 
-'6. “Set / Combo” Ideas'
+'6.Core Paint System '
+Tiles can hold temporary “paint” that affects movement and combat. A tile’s paint has:
+Owner state: Neutral / Player Paint / Enemy Paint (enemy paint optional for later).
+Intensity: 0–1, starts high when applied, then decays over time. Effects scale with intensity (fresh paint is stronger, faded paint is weaker).
+Sources of paint include:
+Player movement (trails / footsteps).
+Some attacks (projectiles, explosions, AoE splashes).
+Boss skills (enemy ink zones).
+Props that convert shield, HP, or kills into paint.
+Basic rules for Player Paint (future-proof):
+While standing on Player Paint:
+Small move-speed bonus (respect existing speed cap).
+Small attack / damage bonus vs enemies also standing on your paint.
+Optional: tiny HP / shield regen and faster “special/ult” meter gain.
+Enemy Paint (for later):
+Slows the player, may apply chip damage or debuffs (fog, blind, crit reduction), encouraging the player to “reclaim” the ground with their own paint.
+Paint always fades over time, keeping the battlefield dynamic instead of permanently covered.
+All paint can be covered by other paint, and the new paint will replace the old paint.
+
+6.1. Curing Paint
+Path: Core Paint System (OFF – offensive utility)
+Rarity: ⭐–⭐⭐ (Common / Uncommon)
+Base Price: $12
+Max Level: 3
+Core Effect
+Your movement leaves a short trail of Player Paint (“curing ink”) on the ground.
+
+'7. “Set / Combo” Ideas'
