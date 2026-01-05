@@ -649,6 +649,7 @@ def apply_domain_buffs_for_level(game_state, player):
     game_state.biome_enemy_hp_mult = 1.0
     game_state.biome_boss_hp_mult = 1.0
     game_state.biome_bandit_hp_mult = 1.0
+    game_state.biome_curing_paint_bonus = 0
     game_state._fog_biome_forced = False
     player.xp_gain_mult = 1.0
     game_state.hurricanes = []
@@ -663,6 +664,7 @@ def apply_domain_buffs_for_level(game_state, player):
         player.bullet_damage = int(player.bullet_damage * 2)
         game_state.biome_enemy_contact_mult = 2.0
         game_state.biome_boss_contact_mult = 1.5
+        game_state.biome_curing_paint_bonus = 1
     elif b == "Bastion of Stone":
         player.shield_hp = int(round(player.max_hp * 0.50))
         player.shield_max = player.shield_hp
@@ -1327,6 +1329,10 @@ ENEMY_PAINT_EDGE_HIGHLIGHT = (130, 255, 190)
 ENEMY_PAINT_GLOW_COLOR = (50, 140, 90)
 ENEMY_PAINT_PARTICLE_COLOR = (8, 18, 10)
 ENEMY_PAINT_BLEND_IN = 0.12
+# --- Hell biome enemy paint (all enemies) ---
+HELL_ENEMY_PAINT_SPAWN_INTERVAL = 0.45
+HELL_ENEMY_PAINT_SPAWN_DIST = 0.70 * CELL_SIZE
+HELL_ENEMY_PAINT_RADIUS = CELL_SIZE * 0.45
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -7520,6 +7526,8 @@ class Enemy:
         self._paint_contact_mult = 1.0
         self.enemy_trace_timer = 0.0
         self.last_paint_pos = None
+        self._hell_paint_t = 0.0
+        self._hell_paint_pos = None
 
     def draw(self, screen):
         color = getattr(self, "_current_color", self.color)
@@ -8259,6 +8267,30 @@ class Enemy:
         self.rect.y = int(self.y) + INFO_BAR_HEIGHT
         # record this frame's foot point
         self._foot_curr = (self.rect.centerx, self.rect.bottom)
+        if game_state is not None and getattr(game_state, "biome_active", None) == "Scorched Hell":
+            if getattr(self, "type", "") != "trailrunner" and getattr(self, "hp", 0) > 0:
+                f0 = getattr(self, "_foot_prev", (self.rect.centerx, self.rect.bottom))
+                f1 = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))
+                moved = math.hypot(f1[0] - f0[0], f1[1] - f0[1])
+                if moved > 0.05:
+                    hell_t = float(getattr(self, "_hell_paint_t", 0.0)) + float(dt)
+                    last_pos = getattr(self, "_hell_paint_pos", None)
+                    if not (isinstance(last_pos, (tuple, list)) and len(last_pos) == 2):
+                        last_pos = (f1[0], f1[1])
+                    dx = f1[0] - float(last_pos[0])
+                    dy = f1[1] - float(last_pos[1])
+                    dist = math.hypot(dx, dy)
+                    if (hell_t >= HELL_ENEMY_PAINT_SPAWN_INTERVAL
+                            or dist >= HELL_ENEMY_PAINT_SPAWN_DIST):
+                        game_state.apply_enemy_paint(
+                            f1[0], f1[1], HELL_ENEMY_PAINT_RADIUS,
+                            paint_type="hell_trail",
+                            paint_color=getattr(self, "color", None),
+                        )
+                        hell_t = 0.0
+                        last_pos = (f1[0], f1[1])
+                    self._hell_paint_t = hell_t
+                    self._hell_paint_pos = last_pos
         # Let non-boss contact damage also chew through red blocks so they don't get stuck
         if not getattr(self, "is_boss", False) and self._block_contact_cd <= 0.0:
             ob_contact = getattr(self, "_hit_ob", None)
@@ -8782,7 +8814,14 @@ class Enemy:
                 dist = math.hypot(dx, dy)
                 if (enemy_trace_timer >= ENEMY_PAINT_SPAWN_INTERVAL
                         or dist >= ENEMY_PAINT_SPAWN_DIST):
-                    game_state.apply_enemy_paint(f1[0], f1[1], ENEMY_PAINT_RADIUS, paint_type="corrupt_trail")
+                    paint_color = None
+                    if getattr(game_state, "biome_active", None) == "Scorched Hell":
+                        paint_color = getattr(self, "color", None)
+                    game_state.apply_enemy_paint(
+                        f1[0], f1[1], ENEMY_PAINT_RADIUS,
+                        paint_type="corrupt_trail",
+                        paint_color=paint_color,
+                    )
                     enemy_trace_timer = 0.0
                     last_paint_pos = (f1[0], f1[1])
                 self.enemy_trace_timer = enemy_trace_timer
@@ -9660,7 +9699,7 @@ class CuringPaintFootprint:
 
 
 class PaintTile:
-    __slots__ = ("paint_owner", "paint_intensity", "paint_age", "paint_type", "paint_life0",
+    __slots__ = ("paint_owner", "paint_intensity", "paint_age", "paint_type", "paint_life0", "paint_color",
                  "_blob_noise", "_blob_phase", "_blob_rot", "_spark_phase")
 
     def __init__(self):
@@ -9669,6 +9708,7 @@ class PaintTile:
         self.paint_age = 0.0
         self.paint_type = None
         self.paint_life0 = 0.0
+        self.paint_color = None
         self._blob_noise = None
         self._blob_phase = None
         self._blob_rot = 0.0
@@ -10455,9 +10495,22 @@ def draw_enemy_paint_tile_iso(surface: pygame.Surface, gx: int, gy: int, tile: "
     base_r *= (0.9 + 0.1 * blend)
     base_r *= (0.95 + 0.05 * math.sin(t * 2.0 + float(getattr(tile, "_spark_phase", 0.0))))
     wiggle = ENEMY_PAINT_WIGGLE_STRENGTH * (0.4 + 0.6 * intensity) * (0.6 + 0.4 * shimmer)
-    fill_col = _scale_color(ENEMY_PAINT_FILL_COLOR, 0.65 + 0.35 * vis_intensity)
-    edge_col = _lerp_color(ENEMY_PAINT_FILL_COLOR, ENEMY_PAINT_EDGE_COLOR, 0.55 + 0.35 * vis_intensity)
-    highlight_col = _lerp_color(ENEMY_PAINT_EDGE_COLOR, ENEMY_PAINT_EDGE_HIGHLIGHT, 0.45 + 0.45 * shimmer)
+    paint_color = getattr(tile, "paint_color", None)
+    custom_col = None
+    if isinstance(paint_color, (tuple, list)) and len(paint_color) >= 3:
+        custom_col = (int(paint_color[0]), int(paint_color[1]), int(paint_color[2]))
+    if custom_col is None:
+        fill_col = _scale_color(ENEMY_PAINT_FILL_COLOR, 0.65 + 0.35 * vis_intensity)
+        edge_col = _lerp_color(ENEMY_PAINT_FILL_COLOR, ENEMY_PAINT_EDGE_COLOR, 0.55 + 0.35 * vis_intensity)
+        highlight_col = _lerp_color(ENEMY_PAINT_EDGE_COLOR, ENEMY_PAINT_EDGE_HIGHLIGHT, 0.45 + 0.45 * shimmer)
+        glow_col = ENEMY_PAINT_GLOW_COLOR
+        particle_col = ENEMY_PAINT_PARTICLE_COLOR
+    else:
+        fill_col = _scale_color(custom_col, 0.55 + 0.45 * vis_intensity)
+        edge_col = _lerp_color(custom_col, (255, 255, 255), 0.35 + 0.35 * vis_intensity)
+        highlight_col = _lerp_color(edge_col, (255, 255, 255), 0.4 + 0.4 * shimmer)
+        glow_col = _lerp_color(custom_col, (255, 255, 255), 0.2 + 0.2 * vis_intensity)
+        particle_col = _scale_color(custom_col, 0.35)
     intensity_pow = vis_intensity ** 0.65
     fill_alpha = int(210 * intensity_pow * (0.7 + 0.3 * pulse))
     if fill_alpha > 0:
@@ -10475,7 +10528,7 @@ def draw_enemy_paint_tile_iso(surface: pygame.Surface, gx: int, gy: int, tile: "
         glow_r = base_r * (1.05 + 0.75 * intensity)
         draw_iso_ground_ellipse(
             surface, cx, cy, glow_r,
-            ENEMY_PAINT_GLOW_COLOR, glow_alpha, camx, camy, fill=True
+            glow_col, glow_alpha, camx, camy, fill=True
         )
     if vis_intensity > 0.2:
         pcount = 2 if vis_intensity < 0.5 else 3
@@ -10489,7 +10542,7 @@ def draw_enemy_paint_tile_iso(surface: pygame.Surface, gx: int, gy: int, tile: "
             py = cy + math.sin(ang) * rad * 0.6 - drift * 0.25
             sx, sy = iso_world_px_to_screen(px, py, camx, camy, 0.0)
             size = max(1, int(2 * vis_intensity))
-            pygame.draw.circle(surface, ENEMY_PAINT_PARTICLE_COLOR, (int(sx), int(sy)), size)
+            pygame.draw.circle(surface, particle_col, (int(sx), int(sy)), size)
 
 
 def draw_ground_spike_iso(surface: pygame.Surface, spike: "GroundSpike", camx: float, camy: float) -> None:
@@ -11604,6 +11657,7 @@ class GameState:
         self._curing_paint_t = 0.0
         self._curing_paint_d = 0.0
         self._curing_paint_tick_t = float(CURING_PAINT_TICK_INTERVAL)
+        self.biome_curing_paint_bonus = 0
         self.paint_grid = [[PaintTile() for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
         self.paint_active = set()
         self.telegraphs = []  # List[TelegraphCircle]
@@ -11870,7 +11924,11 @@ class GameState:
         return float(getattr(tile, "paint_intensity", 0.0))
 
     def player_paint_lifetime(self, level_override: int | None = None) -> float:
-        lvl = int(level_override) if level_override is not None else int(META.get("curing_paint_level", 0))
+        if level_override is None:
+            lvl = int(META.get("curing_paint_level", 0))
+            lvl += int(getattr(self, "biome_curing_paint_bonus", 0))
+        else:
+            lvl = int(level_override)
         if lvl <= 0:
             return float(CURING_PAINT_LIFETIMES[0]) if CURING_PAINT_LIFETIMES else float(ENEMY_PAINT_LIFETIME)
         idx = max(0, min(lvl - 1, len(CURING_PAINT_LIFETIMES) - 1))
@@ -11878,7 +11936,8 @@ class GameState:
 
     def apply_paint(self, x_px: float, y_px: float, radius_px: float,
                     owner: int, paint_type: Optional[str] = None,
-                    lifetime_s: Optional[float] = None) -> None:
+                    lifetime_s: Optional[float] = None,
+                    paint_color: Optional[tuple[int, int, int]] = None) -> None:
         if owner <= 0:
             return
         r = max(1.0, float(radius_px))
@@ -11908,12 +11967,14 @@ class GameState:
                 tile.paint_age = 0.0
                 tile.paint_type = paint_type
                 tile.paint_life0 = life0
+                tile.paint_color = tuple(int(c) for c in paint_color[:3]) if paint_color else None
                 tile.refresh_visuals()
                 self.paint_active.add((gx, gy))
 
     def apply_enemy_paint(self, x_px: float, y_px: float, radius_px: float,
-                          paint_type: str = "corrupt_trail") -> None:
-        self.apply_paint(x_px, y_px, radius_px, owner=2, paint_type=paint_type)
+                          paint_type: str = "corrupt_trail",
+                          paint_color: Optional[tuple[int, int, int]] = None) -> None:
+        self.apply_paint(x_px, y_px, radius_px, owner=2, paint_type=paint_type, paint_color=paint_color)
 
     def apply_player_paint(self, x_px: float, y_px: float, radius_px: float,
                            paint_type: str = "curing_paint") -> None:
@@ -11944,6 +12005,7 @@ class GameState:
                 tile.paint_intensity = 0.0
                 tile.paint_age = 0.0
                 tile.paint_type = None
+                tile.paint_color = None
                 self.paint_active.discard((gx, gy))
                 continue
             tile.paint_age = float(getattr(tile, "paint_age", 0.0)) + float(dt)
@@ -11954,6 +12016,7 @@ class GameState:
                 tile.paint_age = 0.0
                 tile.paint_life0 = 0.0
                 tile.paint_type = None
+                tile.paint_color = None
                 self.paint_active.discard((gx, gy))
 
     def update_enemy_paint(self, dt: float, player: "Player") -> None:
@@ -11992,6 +12055,9 @@ class GameState:
 
     def update_curing_paint(self, dt: float, player: "Player", enemies: list) -> None:
         lvl = int(META.get("curing_paint_level", 0))
+        lvl += int(getattr(self, "biome_curing_paint_bonus", 0))
+        if lvl > 0 and CURING_PAINT_LIFETIMES:
+            lvl = min(lvl, len(CURING_PAINT_LIFETIMES))
         if lvl <= 0 or player is None:
             if self.curing_paint:
                 self.curing_paint = []
@@ -13065,6 +13131,7 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
     # 4) 排序后统一绘制（只保留这一段循环）
     drawables.sort(key=lambda x: x[1])
     hell = (getattr(game_state, "biome_active", "") == "Scorched Hell")
+    hell_t = pygame.time.get_ticks() * 0.006 if hell else 0.0
     COL_PLAYER_BULLET = (199, 68, 12) if hell else (120, 204, 121)  # color in Hell, white elsewhere
     COL_ENEMY_SHOT = (255, 80, 80) if hell else (255, 120, 50)  # hot red in Hell, orange elsewhere
     for kind, _, data in drawables:
@@ -13192,6 +13259,22 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             sh = pygame.Surface((sh_w, sh_h), pygame.SRCALPHA)
             pygame.draw.ellipse(sh, (0, 0, 0, ISO_SHADOW_ALPHA), sh.get_rect())
             screen.blit(sh, sh.get_rect(center=(cx, cy + 6)))
+            if hell:
+                pulse = 0.6 + 0.4 * math.sin(hell_t + z.rect.x * 0.02 + z.rect.y * 0.015)
+                aura_r = max(10, int(draw_size * 0.6)) * (0.9 + 0.15 * pulse)
+                aura_alpha = int(50 + 60 * pulse)
+                if aura_alpha > 0:
+                    draw_iso_ground_ellipse(
+                        screen,
+                        z.rect.centerx,
+                        z.rect.centery,
+                        aura_r,
+                        (200, 70, 30),
+                        aura_alpha,
+                        camx,
+                        camy,
+                        fill=True,
+                    )
             body = pygame.Rect(0, 0, draw_size, draw_size)
             body.midbottom = (cx, cy)
             # 拾取光晕（金色）
@@ -13384,6 +13467,22 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
         elif kind == "player":
             p, cx, cy = data["p"], data["cx"], data["cy"]
             player_size = int(CELL_SIZE * 0.6)  # match footprint used in collisions
+            if hell:
+                pulse = 0.6 + 0.4 * math.sin(hell_t + p.rect.x * 0.02 + p.rect.y * 0.015)
+                aura_r = max(12, int(player_size * 0.7)) * (0.9 + 0.18 * pulse)
+                aura_alpha = int(60 + 70 * pulse)
+                if aura_alpha > 0:
+                    draw_iso_ground_ellipse(
+                        screen,
+                        p.rect.centerx,
+                        p.rect.centery,
+                        aura_r,
+                        (230, 90, 40),
+                        aura_alpha,
+                        camx,
+                        camy,
+                        fill=True,
+                    )
             paint_intensity = 0.0
             if hasattr(game_state, "paint_intensity_at_world"):
                 paint_intensity = game_state.paint_intensity_at_world(p.rect.centerx, p.rect.centery, owner=2)
