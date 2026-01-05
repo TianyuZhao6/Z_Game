@@ -1287,6 +1287,7 @@ GROUND_SPIKES_HIT_SIZE = (2, 4)
 CURING_PAINT_SPAWN_INTERVAL = 0.25
 CURING_PAINT_SPAWN_DIST = 0.50 * CELL_SIZE
 CURING_PAINT_RADIUS = CELL_SIZE * 0.60
+CURING_PAINT_RADIUS_MULTS = (1.0, 1.15, 1.30)
 CURING_PAINT_LIFETIMES = (2.0, 3.0, 4.0)
 CURING_PAINT_DAMAGE_PER_TICK = (0.04, 0.06, 0.08)
 CURING_PAINT_TICK_INTERVAL = 0.5
@@ -1560,12 +1561,19 @@ def ground_spikes_stats(level: int, bullet_base: int | float) -> tuple[float, fl
     return damage, lifetime, max_active
 
 
+def curing_paint_radius(level: int) -> float:
+    """Return radius_px for Curing Paint based on upgrade level."""
+    lvl = max(1, min(int(level), len(CURING_PAINT_RADIUS_MULTS)))
+    mult = float(CURING_PAINT_RADIUS_MULTS[lvl - 1]) if CURING_PAINT_RADIUS_MULTS else 1.0
+    return float(CURING_PAINT_RADIUS) * mult
+
+
 def curing_paint_stats(level: int, bullet_base: int | float) -> tuple[float, float, float]:
     """Return (damage_per_tick, lifetime_s, radius_px) for Curing Paint."""
     lvl = max(1, min(int(level), len(CURING_PAINT_DAMAGE_PER_TICK)))
     dmg_per_tick = float(bullet_base) * float(CURING_PAINT_DAMAGE_PER_TICK[lvl - 1])
     lifetime = float(CURING_PAINT_LIFETIMES[lvl - 1])
-    radius = float(CURING_PAINT_RADIUS)
+    radius = curing_paint_radius(lvl)
     return dmg_per_tick, lifetime, radius
 
 
@@ -11996,6 +12004,7 @@ class GameState:
                         z._curing_paint_accum = 0.0
             return
         lvl_idx = max(0, min(lvl - 1, len(CURING_PAINT_LIFETIMES) - 1))
+        radius = curing_paint_radius(lvl)
         mvx, mvy = getattr(player, "_last_move_vec", (0.0, 0.0))
         moved = math.hypot(mvx, mvy)
         if moved > 0.05:
@@ -12007,9 +12016,9 @@ class GameState:
                 px, py = player.rect.centerx, player.rect.centery
                 base_color = curing_paint_base_color(player)
                 self.curing_paint.append(
-                    CuringPaintFootprint(px, py, CURING_PAINT_RADIUS, lifetime, lvl, base_color)
+                    CuringPaintFootprint(px, py, radius, lifetime, lvl, base_color)
                 )
-                self.apply_player_paint(px, py, CURING_PAINT_RADIUS, paint_type="curing_paint")
+                self.apply_player_paint(px, py, radius, paint_type="curing_paint")
                 self._curing_paint_t = 0.0
                 self._curing_paint_d = 0.0
         alive = []
