@@ -1289,7 +1289,7 @@ GROUND_SPIKES_HIT_SIZE = (2, 4)
 CURING_PAINT_SPAWN_INTERVAL = 0.25
 CURING_PAINT_SPAWN_DIST = 0.50 * CELL_SIZE
 CURING_PAINT_RADIUS = CELL_SIZE * 0.60
-CURING_PAINT_RADIUS_MULTS = (1.0, 1.15, 1.30)
+CURING_PAINT_RADIUS_MULTS = (1.15, 1.30, 1.50)
 CURING_PAINT_LIFETIMES = (2.0, 3.0, 4.0)
 CURING_PAINT_DAMAGE_PER_TICK = (0.04, 0.06, 0.08)
 CURING_PAINT_TICK_INTERVAL = 0.5
@@ -10498,18 +10498,17 @@ def draw_enemy_paint_tile_iso(surface: pygame.Surface, gx: int, gy: int, tile: "
     paint_color = getattr(tile, "paint_color", None)
     custom_col = None
     if isinstance(paint_color, (tuple, list)) and len(paint_color) >= 3:
-        custom_col = (int(paint_color[0]), int(paint_color[1]), int(paint_color[2]))
+        raw_col = (int(paint_color[0]), int(paint_color[1]), int(paint_color[2]))
+        custom_col = _lerp_color(raw_col, (255, 255, 255), 0.35)
     if custom_col is None:
         fill_col = _scale_color(ENEMY_PAINT_FILL_COLOR, 0.65 + 0.35 * vis_intensity)
         edge_col = _lerp_color(ENEMY_PAINT_FILL_COLOR, ENEMY_PAINT_EDGE_COLOR, 0.55 + 0.35 * vis_intensity)
         highlight_col = _lerp_color(ENEMY_PAINT_EDGE_COLOR, ENEMY_PAINT_EDGE_HIGHLIGHT, 0.45 + 0.45 * shimmer)
-        glow_col = ENEMY_PAINT_GLOW_COLOR
         particle_col = ENEMY_PAINT_PARTICLE_COLOR
     else:
         fill_col = _scale_color(custom_col, 0.55 + 0.45 * vis_intensity)
         edge_col = _lerp_color(custom_col, (255, 255, 255), 0.35 + 0.35 * vis_intensity)
         highlight_col = _lerp_color(edge_col, (255, 255, 255), 0.4 + 0.4 * shimmer)
-        glow_col = _lerp_color(custom_col, (255, 255, 255), 0.2 + 0.2 * vis_intensity)
         particle_col = _scale_color(custom_col, 0.35)
     intensity_pow = vis_intensity ** 0.65
     fill_alpha = int(210 * intensity_pow * (0.7 + 0.3 * pulse))
@@ -10523,13 +10522,6 @@ def draw_enemy_paint_tile_iso(surface: pygame.Surface, gx: int, gy: int, tile: "
         edge2_alpha = int(140 * intensity_pow * shimmer)
         if edge2_alpha > 0:
             _draw_polyline_alpha(surface, (*highlight_col, edge2_alpha), ring_points, width=1)
-    glow_alpha = int(140 * intensity_pow)
-    if glow_alpha > 0:
-        glow_r = base_r * (1.05 + 0.75 * intensity)
-        draw_iso_ground_ellipse(
-            surface, cx, cy, glow_r,
-            glow_col, glow_alpha, camx, camy, fill=True
-        )
     if vis_intensity > 0.2:
         pcount = 2 if vis_intensity < 0.5 else 3
         particle_speed = 10.0 * (0.4 + 0.6 * vis_intensity)
@@ -12092,9 +12084,12 @@ class GameState:
                 self.apply_player_paint(px, py, radius, paint_type="curing_paint")
                 self._curing_paint_t = 0.0
                 self._curing_paint_d = 0.0
-        alive = [] if not hell else self.curing_paint
+        alive = []
         spark_chance = float(CURING_PAINT_SPARK_RATE) * dt
         for p in self.curing_paint:
+            tile = self.paint_tile_at_world(p.x, p.y)
+            if tile is not None and getattr(tile, "paint_owner", 0) != 1:
+                continue
             if not hell:
                 p.t -= dt
                 if p.t <= 0:
@@ -12104,10 +12099,8 @@ class GameState:
                 intensity = 1.0
             if intensity >= 0.1 and random.random() < spark_chance * (intensity ** 1.35):
                 spawn_curing_paint_spark_vfx(self, p.x, p.y, intensity)
-            if not hell:
-                alive.append(p)
-        if not hell:
-            self.curing_paint = alive
+            alive.append(p)
+        self.curing_paint = alive
         tick_interval = float(CURING_PAINT_TICK_INTERVAL)
         tick_t = float(getattr(self, "_curing_paint_tick_t", tick_interval)) - dt
         if tick_t > 0.0:
@@ -12120,7 +12113,10 @@ class GameState:
             return
         paint_fields = []
         for p in self.curing_paint:
-            intensity = p.intensity
+            tile = self.paint_tile_at_world(p.x, p.y)
+            if tile is not None and getattr(tile, "paint_owner", 0) != 1:
+                continue
+            intensity = 1.0 if hell else p.intensity
             if intensity <= 0.0:
                 continue
             paint_fields.append((p.x, p.y, p.r, intensity))
@@ -12758,15 +12754,24 @@ class GameState:
             pygame.draw.rect(screen, (255, 230, 120), body, border_radius=6)
             pygame.draw.rect(screen, (120, 80, 20), body, 2, border_radius=6)
 
+    def draw_paint_iso(self, screen, cam_x, cam_y):
+        # Enemy Paint (corrupt trail)
+        if hasattr(self, "paint_active") and hasattr(self, "paint_grid"):
+            for gx, gy in list(getattr(self, "paint_active", [])):
+                if not (0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE):
+                    continue
+                tile = self.paint_grid[gy][gx]
+                if getattr(tile, "paint_owner", 0) != 2:
+                    continue
+                draw_enemy_paint_tile_iso(screen, gx, gy, tile, cam_x, cam_y)
+        # Curing Paint (player trail)
+        for p in list(getattr(self, "curing_paint", [])):
+            tile = self.paint_tile_at_world(p.x, p.y)
+            if tile is not None and getattr(tile, "paint_owner", 0) != 1:
+                continue
+            draw_curing_paint_iso(screen, p, cam_x, cam_y)
+
     def draw_hazards_iso(self, screen, cam_x, cam_y):
-        # 1) Telegraph（空心圈）
-        for t in list(getattr(self, "telegraphs", [])):
-            # 颜色/透明度由 telegraph 自带
-            draw_iso_ground_ellipse(
-                screen, t.x, t.y, t.r,
-                color=getattr(t, "color", (255, 80, 80)), alpha=180,
-                camx=cam_x, camy=cam_y, fill=False, width=2
-            )
         for p in list(getattr(self, "aegis_pulses", [])):
             life0 = max(0.001, float(getattr(p, "life0", AEGIS_PULSE_TTL)))
             fade = max(0.0, min(1.0, float(getattr(p, "t", 0.0)) / life0))
@@ -12789,18 +12794,6 @@ class GameState:
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["fill"], alpha, cam_x, cam_y, fill=True)
             # 细边
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["ring"], 180, cam_x, cam_y, fill=False, width=2)
-        # 2.4) Enemy Paint (corrupt trail)
-        if hasattr(self, "paint_active") and hasattr(self, "paint_grid"):
-            for gx, gy in list(getattr(self, "paint_active", [])):
-                if not (0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE):
-                    continue
-                tile = self.paint_grid[gy][gx]
-                if getattr(tile, "paint_owner", 0) != 2:
-                    continue
-                draw_enemy_paint_tile_iso(screen, gx, gy, tile, cam_x, cam_y)
-        # 2.5) Curing Paint (player trail)
-        for p in list(getattr(self, "curing_paint", [])):
-            draw_curing_paint_iso(screen, p, cam_x, cam_y)
         # 3) Ground Spikes (trail hazard)
         for s in list(getattr(self, "ground_spikes", [])):
             draw_ground_spike_iso(screen, s, cam_x, cam_y)
@@ -13070,6 +13063,8 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             camx=camx, camy=camy,
             fill=True
         )
+    if hasattr(game_state, "draw_paint_iso"):
+        game_state.draw_paint_iso(screen, camx, camy)
     # 3) 收集需要按底部Y排序的可绘制体
     drawables = []
     # 3.1 障碍（立体墙砖，按“底边 y + 墙高”排）
