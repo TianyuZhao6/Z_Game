@@ -847,6 +847,7 @@ SPOILS_PER_TYPE = {  # average coins per enemy type (rounded when spawning)
     "bomber": (1, 2),  # alias for suicide, if used
     "splinter": (1, 2),
     "splinterling": (0, 1),
+    "trailrunner": (1, 2),
     "ravager": (2, 5),
 }
 # --- Twin Boss (Level 5 only) ---
@@ -949,6 +950,7 @@ XP_PER_ENEMY_TYPE = {
     "shielder": 8,
     "splinter": 8,
     "splinterling": 4,
+    "trailrunner": 8,
 }
 XP_ZLEVEL_BONUS = 2  # bonus XP per enemy level above 1
 ENEMY_XP_TO_LEVEL = 15  # per level step for monsters
@@ -1305,6 +1307,25 @@ CURING_PAINT_SPARK_RATE = 0.85  # sparks per second per footprint at full intens
 CURING_PAINT_SPARK_SPEED = (40.0, 90.0)
 CURING_PAINT_SPARK_LIFE = (0.16, 0.28)
 CURING_PAINT_SPARK_SIZE = (2, 3)
+# --- Enemy Paint (Corrupt Trailrunner trail) ---
+ENEMY_PAINT_SPAWN_INTERVAL = 0.30
+ENEMY_PAINT_SPAWN_DIST = 0.60 * CELL_SIZE
+ENEMY_PAINT_RADIUS = CELL_SIZE * 0.60
+ENEMY_PAINT_LIFETIME = 3.0
+ENEMY_PAINT_SPEED_BONUS = 0.20
+ENEMY_PAINT_DAMAGE_BONUS = 0.15
+ENEMY_PAINT_PLAYER_SLOW = 0.25
+ENEMY_PAINT_DOT_INTERVAL = 0.5
+ENEMY_PAINT_DOT_HP_FRAC = 0.01
+ENEMY_PAINT_BLOB_POINTS = 12
+ENEMY_PAINT_WIGGLE_STRENGTH = 0.10
+ENEMY_PAINT_WIGGLE_SPEED = 4.5
+ENEMY_PAINT_FILL_COLOR = (20, 50, 30)
+ENEMY_PAINT_EDGE_COLOR = (80, 200, 130)
+ENEMY_PAINT_EDGE_HIGHLIGHT = (130, 255, 190)
+ENEMY_PAINT_GLOW_COLOR = (50, 140, 90)
+ENEMY_PAINT_PARTICLE_COLOR = (8, 18, 10)
+ENEMY_PAINT_BLEND_IN = 0.12
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -1931,6 +1952,7 @@ ENEMY_COLORS = {
     "splinter": (180, 120, 250),
     "splinterling": (210, 160, 255),
     "mistling": (228, 218, 255),
+    "trailrunner": (90, 190, 120),
     "bandit": (255, 215, 0),  # 金币大盗：金色
 }
 # --- colors (add) ---
@@ -1989,6 +2011,7 @@ THREAT_COSTS = {
     "tank": 4,
     "ravager": 5,
     "splinter": 4,
+    "trailrunner": 3,
 }
 # (Optional) relative preference if multiple types fit the remaining budget
 THREAT_WEIGHTS = {
@@ -2002,6 +2025,7 @@ THREAT_WEIGHTS = {
     "tank": 6,
     "ravager": 8,
     "splinter": 10,
+    "trailrunner": 12,
 }
 # derive cooldown from either explicit FIRE_RATE or SPACING
 if FIRE_RATE:
@@ -7185,6 +7209,10 @@ class Player:
         self.acid_dot_dps = 0.0  # 当前DoT每秒伤害（根据最近踩到的酸池设置）
         self._acid_dmg_accum = 0.0  # 在池中时的“本帧累计伤害”浮点缓存
         self._acid_dot_accum = 0.0  # 离开池后DoT的累计伤害缓存
+        self._enemy_paint_slow = 0.0
+        self._enemy_paint_dot_t = 0.0
+        self._enemy_paint_dot_accum = 0.0
+        self._enemy_paint_vignette_t = 0.0
         self.dot_ticks = []  # list[(dps, t_left)]
         self.apply_slow_extra = 0.0  # extra slow gathered each frame (hazards add to this)
         # Active skills
@@ -7248,6 +7276,9 @@ class Player:
         lingering_slow = float(getattr(self, "_slow_frac", 0.0))
         if lingering_slow > 0.0:
             self.apply_slow_extra = max(self.apply_slow_extra, lingering_slow)
+        paint_slow = float(getattr(self, "_enemy_paint_slow", 0.0))
+        if paint_slow > 0.0:
+            self.apply_slow_extra = max(self.apply_slow_extra, paint_slow)
         # tick active DoTs (stackable)
         if self.dot_ticks:
             total = 0.0
@@ -7459,6 +7490,10 @@ class Enemy:
         if ztype == "fast":
             self.speed = max(int(self.speed + 1), int(self.speed * 1.5))
             base_hp = int(base_hp * 0.7)
+        if ztype == "trailrunner":
+            self.speed = max(int(self.speed + 1), int(self.speed * 1.4))
+            base_hp = int(base_hp * 0.85)
+            self._display_name = "Corrupt Trailrunner"
         if ztype == "tank":
             self.attack = int(self.attack * 0.6)
             base_hp = int(base_hp * 1.8)
@@ -7474,6 +7509,9 @@ class Enemy:
         self.spawn_delay = 0.6
         self._enrage_cd_mult = 1.0
         self._ground_spike_slow_t = 0.0
+        self._paint_contact_mult = 1.0
+        self.enemy_trace_timer = 0.0
+        self.last_paint_pos = None
 
     def draw(self, screen):
         color = getattr(self, "_current_color", self.color)
@@ -7613,6 +7651,11 @@ class Enemy:
             base_attack = int(base_attack * getattr(self, "buff_atk_mult", 1.0))
             base_speed = float(base_speed) + float(getattr(self, "buff_spd_add", 0))
             self.buff_t = max(0.0, self.buff_t - dt)
+        paint_intensity = 0.0
+        if game_state is not None and hasattr(game_state, "paint_intensity_at_world"):
+            paint_intensity = game_state.paint_intensity_at_world(self.rect.centerx, self.rect.centery, owner=2)
+        self._paint_contact_mult = 1.0 + ENEMY_PAINT_DAMAGE_BONUS * paint_intensity
+        base_speed *= (1.0 + ENEMY_PAINT_SPEED_BONUS * paint_intensity)
         base_speed *= float(getattr(self, "_hurricane_slow_mult", 1.0))
         spike_slow_t = float(getattr(self, "_ground_spike_slow_t", 0.0))
         if spike_slow_t > 0.0:
@@ -8717,6 +8760,25 @@ class Enemy:
                         next_cd = random.uniform(4.5, 6.0)
                     self._dash_cd = next_cd * cd_mult
                     self._dash_cd_next = None
+        if self.type == "trailrunner" and game_state and getattr(self, "hp", 0) > 0:
+            f0 = getattr(self, "_foot_prev", (self.rect.centerx, self.rect.bottom))
+            f1 = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))
+            moved = math.hypot(f1[0] - f0[0], f1[1] - f0[1])
+            if moved > 0.05:
+                enemy_trace_timer = float(getattr(self, "enemy_trace_timer", 0.0)) + float(dt)
+                last_paint_pos = getattr(self, "last_paint_pos", None)
+                if not (isinstance(last_paint_pos, (tuple, list)) and len(last_paint_pos) == 2):
+                    last_paint_pos = (f1[0], f1[1])
+                dx = f1[0] - float(last_paint_pos[0])
+                dy = f1[1] - float(last_paint_pos[1])
+                dist = math.hypot(dx, dy)
+                if (enemy_trace_timer >= ENEMY_PAINT_SPAWN_INTERVAL
+                        or dist >= ENEMY_PAINT_SPAWN_DIST):
+                    game_state.apply_enemy_paint(f1[0], f1[1], ENEMY_PAINT_RADIUS, paint_type="corrupt_trail")
+                    enemy_trace_timer = 0.0
+                    last_paint_pos = (f1[0], f1[1])
+                self.enemy_trace_timer = enemy_trace_timer
+                self.last_paint_pos = last_paint_pos
 
     def draw(self, screen):
         if getattr(self, "type", "") == "bandit":
@@ -9589,6 +9651,29 @@ class CuringPaintFootprint:
         return max(0.0, min(1.0, float(self.t) / float(self.life0)))
 
 
+class PaintTile:
+    __slots__ = ("paint_owner", "paint_intensity", "paint_age", "paint_type", "paint_life0",
+                 "_blob_noise", "_blob_phase", "_blob_rot", "_spark_phase")
+
+    def __init__(self):
+        self.paint_owner = 0
+        self.paint_intensity = 0.0
+        self.paint_age = 0.0
+        self.paint_type = None
+        self.paint_life0 = 0.0
+        self._blob_noise = None
+        self._blob_phase = None
+        self._blob_rot = 0.0
+        self._spark_phase = random.uniform(0.0, math.tau)
+
+    def refresh_visuals(self):
+        count = max(8, int(ENEMY_PAINT_BLOB_POINTS))
+        self._blob_noise = [random.uniform(0.78, 1.20) for _ in range(count)]
+        self._blob_phase = [random.uniform(0.0, math.tau) for _ in range(count)]
+        self._blob_rot = random.uniform(0.0, math.tau)
+        self._spark_phase = random.uniform(0.0, math.tau)
+
+
 class TelegraphCircle:
     def __init__(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
         self.x, self.y, self.r = x, y, r
@@ -10312,6 +10397,91 @@ def draw_curing_paint_iso(surface: pygame.Surface, paint: "CuringPaintFootprint"
         inner_col = _lerp_color(base_col, CURING_PAINT_EDGE_HIGHLIGHT, 0.45)
         inner_points = _curing_paint_blob_points(paint, base_r * 0.45, camx, camy, t, wiggle * 0.6)
         _draw_poly_alpha(surface, (*inner_col, core_alpha), inner_points)
+
+
+def _enemy_paint_blob_points(tile: "PaintTile", cx: float, cy: float, radius: float,
+                             camx: float, camy: float, t: float, wiggle: float) -> list[tuple[int, int]]:
+    points = []
+    noise_list = getattr(tile, "_blob_noise", None)
+    phase_list = getattr(tile, "_blob_phase", None)
+    count = len(noise_list) if noise_list else ENEMY_PAINT_BLOB_POINTS
+    if not noise_list:
+        noise_list = [1.0] * int(count)
+    if not phase_list:
+        phase_list = [0.0] * int(count)
+    rot = float(getattr(tile, "_blob_rot", 0.0))
+    for i in range(int(count)):
+        ang = rot + math.tau * i / float(count)
+        noise = float(noise_list[i % len(noise_list)])
+        phase = float(phase_list[i % len(phase_list)])
+        jiggle = 1.0 + wiggle * math.sin(t * ENEMY_PAINT_WIGGLE_SPEED + phase)
+        r = radius * noise * jiggle
+        wx = cx + math.cos(ang) * r
+        wy = cy + math.sin(ang) * r
+        points.append(iso_world_px_to_screen(wx, wy, camx, camy, 0.0))
+    return points
+
+
+def draw_enemy_paint_tile_iso(surface: pygame.Surface, gx: int, gy: int, tile: "PaintTile",
+                              camx: float, camy: float) -> None:
+    if getattr(tile, "paint_owner", 0) != 2:
+        return
+    intensity = max(0.0, min(1.0, float(getattr(tile, "paint_intensity", 0.0))))
+    if intensity <= 0.0:
+        return
+    age = max(0.0, float(getattr(tile, "paint_age", 0.0)))
+    blend = 1.0
+    blend_in = float(ENEMY_PAINT_BLEND_IN)
+    if blend_in > 0.0:
+        blend = max(0.0, min(1.0, age / blend_in))
+        blend = blend * blend * (3.0 - 2.0 * blend)
+    vis_intensity = max(0.0, min(1.0, intensity * blend))
+    base_t = pygame.time.get_ticks() * 0.001
+    anim_rate = 0.35 + 0.65 * intensity
+    t = base_t * anim_rate
+    cx = gx * CELL_SIZE + CELL_SIZE * 0.5
+    cy = gy * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
+    shimmer = 0.7 + 0.3 * math.sin(t * (4.0 + 2.0 * intensity) + float(getattr(tile, "_spark_phase", 0.0)))
+    pulse = 0.82 + 0.18 * math.sin(t * (2.4 + 1.6 * intensity) + (gx + gy) * 0.38)
+    base_r = float(ENEMY_PAINT_RADIUS) * (0.85 + 0.15 * vis_intensity)
+    base_r *= (0.9 + 0.1 * blend)
+    base_r *= (0.95 + 0.05 * math.sin(t * 2.0 + float(getattr(tile, "_spark_phase", 0.0))))
+    wiggle = ENEMY_PAINT_WIGGLE_STRENGTH * (0.4 + 0.6 * intensity) * (0.6 + 0.4 * shimmer)
+    fill_col = _scale_color(ENEMY_PAINT_FILL_COLOR, 0.65 + 0.35 * vis_intensity)
+    edge_col = _lerp_color(ENEMY_PAINT_FILL_COLOR, ENEMY_PAINT_EDGE_COLOR, 0.55 + 0.35 * vis_intensity)
+    highlight_col = _lerp_color(ENEMY_PAINT_EDGE_COLOR, ENEMY_PAINT_EDGE_HIGHLIGHT, 0.45 + 0.45 * shimmer)
+    intensity_pow = vis_intensity ** 0.65
+    fill_alpha = int(210 * intensity_pow * (0.7 + 0.3 * pulse))
+    if fill_alpha > 0:
+        points = _enemy_paint_blob_points(tile, cx, cy, base_r, camx, camy, t, wiggle)
+        _draw_poly_alpha(surface, (*fill_col, fill_alpha), points)
+    ring_alpha = int(230 * intensity_pow * shimmer)
+    if ring_alpha > 0:
+        ring_points = _enemy_paint_blob_points(tile, cx, cy, base_r * (1.05 + 0.05 * pulse), camx, camy, t, wiggle)
+        _draw_polyline_alpha(surface, (*edge_col, ring_alpha), ring_points, width=2)
+        edge2_alpha = int(140 * intensity_pow * shimmer)
+        if edge2_alpha > 0:
+            _draw_polyline_alpha(surface, (*highlight_col, edge2_alpha), ring_points, width=1)
+    glow_alpha = int(140 * intensity_pow)
+    if glow_alpha > 0:
+        glow_r = base_r * (1.05 + 0.75 * intensity)
+        draw_iso_ground_ellipse(
+            surface, cx, cy, glow_r,
+            ENEMY_PAINT_GLOW_COLOR, glow_alpha, camx, camy, fill=True
+        )
+    if vis_intensity > 0.2:
+        pcount = 2 if vis_intensity < 0.5 else 3
+        particle_speed = 10.0 * (0.4 + 0.6 * vis_intensity)
+        for i in range(pcount):
+            phase = float(getattr(tile, "_spark_phase", 0.0)) + i * 2.1
+            ang = t * (0.7 + 0.15 * i) + phase
+            drift = (base_t * particle_speed + i * 5.3) % (base_r * 0.55)
+            rad = base_r * (0.18 + 0.12 * math.sin(base_t * 1.3 + i)) + drift * 0.5
+            px = cx + math.cos(ang) * rad
+            py = cy + math.sin(ang) * rad * 0.6 - drift * 0.25
+            sx, sy = iso_world_px_to_screen(px, py, camx, camy, 0.0)
+            size = max(1, int(2 * vis_intensity))
+            pygame.draw.circle(surface, ENEMY_PAINT_PARTICLE_COLOR, (int(sx), int(sy)), size)
 
 
 def draw_ground_spike_iso(surface: pygame.Surface, spike: "GroundSpike", camx: float, camy: float) -> None:
@@ -11426,6 +11596,8 @@ class GameState:
         self._curing_paint_t = 0.0
         self._curing_paint_d = 0.0
         self._curing_paint_tick_t = float(CURING_PAINT_TICK_INTERVAL)
+        self.paint_grid = [[PaintTile() for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
+        self.paint_active = set()
         self.telegraphs = []  # List[TelegraphCircle]
         self.aegis_pulses = []  # List[AegisPulseRing]
         self.ghosts = []  # 冲刺残影列表
@@ -11674,6 +11846,142 @@ class GameState:
                 player._slow_frac = 0.0
         # 不在池里：不做直接伤害；离开后的 DoT 由主循环统一结算
 
+    def paint_tile_at_world(self, x_px: float, y_px: float) -> Optional[PaintTile]:
+        gx = int(x_px // CELL_SIZE)
+        gy = int((y_px - INFO_BAR_HEIGHT) // CELL_SIZE)
+        if not (0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE):
+            return None
+        return self.paint_grid[gy][gx]
+
+    def paint_intensity_at_world(self, x_px: float, y_px: float, owner: int = 2) -> float:
+        tile = self.paint_tile_at_world(x_px, y_px)
+        if tile is None:
+            return 0.0
+        if getattr(tile, "paint_owner", 0) != int(owner):
+            return 0.0
+        return float(getattr(tile, "paint_intensity", 0.0))
+
+    def player_paint_lifetime(self, level_override: int | None = None) -> float:
+        lvl = int(level_override) if level_override is not None else int(META.get("curing_paint_level", 0))
+        if lvl <= 0:
+            return float(CURING_PAINT_LIFETIMES[0]) if CURING_PAINT_LIFETIMES else float(ENEMY_PAINT_LIFETIME)
+        idx = max(0, min(lvl - 1, len(CURING_PAINT_LIFETIMES) - 1))
+        return float(CURING_PAINT_LIFETIMES[idx])
+
+    def apply_paint(self, x_px: float, y_px: float, radius_px: float,
+                    owner: int, paint_type: Optional[str] = None,
+                    lifetime_s: Optional[float] = None) -> None:
+        if owner <= 0:
+            return
+        r = max(1.0, float(radius_px))
+        y_world = y_px - INFO_BAR_HEIGHT
+        min_gx = int(max(0, (x_px - r) // CELL_SIZE))
+        max_gx = int(min(GRID_SIZE - 1, (x_px + r) // CELL_SIZE))
+        min_gy = int(max(0, (y_world - r) // CELL_SIZE))
+        max_gy = int(min(GRID_SIZE - 1, (y_world + r) // CELL_SIZE))
+        r2 = r * r
+        life0 = float(lifetime_s) if lifetime_s is not None else 0.0
+        if life0 <= 0.0:
+            if owner == 1:
+                life0 = self.player_paint_lifetime()
+            elif owner == 2:
+                life0 = float(ENEMY_PAINT_LIFETIME)
+        for gx in range(min_gx, max_gx + 1):
+            for gy in range(min_gy, max_gy + 1):
+                cx = gx * CELL_SIZE + CELL_SIZE * 0.5
+                cy = gy * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
+                dx = cx - x_px
+                dy = cy - y_px
+                if dx * dx + dy * dy > r2:
+                    continue
+                tile = self.paint_grid[gy][gx]
+                tile.paint_owner = int(owner)
+                tile.paint_intensity = 1.0
+                tile.paint_age = 0.0
+                tile.paint_type = paint_type
+                tile.paint_life0 = life0
+                tile.refresh_visuals()
+                self.paint_active.add((gx, gy))
+
+    def apply_enemy_paint(self, x_px: float, y_px: float, radius_px: float,
+                          paint_type: str = "corrupt_trail") -> None:
+        self.apply_paint(x_px, y_px, radius_px, owner=2, paint_type=paint_type)
+
+    def apply_player_paint(self, x_px: float, y_px: float, radius_px: float,
+                           paint_type: str = "curing_paint") -> None:
+        lifetime = self.player_paint_lifetime()
+        self.apply_paint(x_px, y_px, radius_px, owner=1, paint_type=paint_type, lifetime_s=lifetime)
+
+    def update_paint_tiles(self, dt: float) -> None:
+        if not self.paint_active:
+            return
+        for gx, gy in list(self.paint_active):
+            if not (0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE):
+                self.paint_active.discard((gx, gy))
+                continue
+            tile = self.paint_grid[gy][gx]
+            owner = int(getattr(tile, "paint_owner", 0))
+            if owner <= 0:
+                self.paint_active.discard((gx, gy))
+                continue
+            life0 = float(getattr(tile, "paint_life0", 0.0))
+            if life0 <= 0.0:
+                if owner == 1:
+                    life0 = self.player_paint_lifetime()
+                elif owner == 2:
+                    life0 = float(ENEMY_PAINT_LIFETIME)
+                tile.paint_life0 = life0
+            if life0 <= 0.0:
+                tile.paint_owner = 0
+                tile.paint_intensity = 0.0
+                tile.paint_age = 0.0
+                tile.paint_type = None
+                self.paint_active.discard((gx, gy))
+                continue
+            tile.paint_age = float(getattr(tile, "paint_age", 0.0)) + float(dt)
+            tile.paint_intensity = max(0.0, 1.0 - tile.paint_age / life0)
+            if tile.paint_intensity <= 0.0:
+                tile.paint_owner = 0
+                tile.paint_intensity = 0.0
+                tile.paint_age = 0.0
+                tile.paint_life0 = 0.0
+                tile.paint_type = None
+                self.paint_active.discard((gx, gy))
+
+    def update_enemy_paint(self, dt: float, player: "Player") -> None:
+        self.update_paint_tiles(dt)
+        if player is None:
+            return
+        player._enemy_paint_vignette_t = max(
+            0.0,
+            float(getattr(player, "_enemy_paint_vignette_t", 0.0)) - float(dt),
+        )
+        intensity = self.paint_intensity_at_world(player.rect.centerx, player.rect.centery, owner=2)
+        if intensity > 0.0:
+            player._enemy_paint_slow = ENEMY_PAINT_PLAYER_SLOW * intensity
+            tick_t = float(getattr(player, "_enemy_paint_dot_t", 0.0)) + float(dt)
+            interval = float(ENEMY_PAINT_DOT_INTERVAL)
+            if interval > 0.0 and tick_t >= interval:
+                ticks = int(tick_t // interval)
+                tick_t -= interval * ticks
+                dmg_per_tick = float(ENEMY_PAINT_DOT_HP_FRAC) * float(getattr(player, "max_hp", 0)) * intensity
+                if dmg_per_tick > 0.0 and ticks > 0:
+                    accum = float(getattr(player, "_enemy_paint_dot_accum", 0.0)) + dmg_per_tick * ticks
+                    deal = int(accum)
+                    if deal > 0:
+                        self.damage_player(player, deal, kind="hp_enemy")
+                        player._enemy_paint_vignette_t = max(
+                            float(getattr(player, "_enemy_paint_vignette_t", 0.0)),
+                            0.18,
+                        )
+                        accum -= deal
+                    player._enemy_paint_dot_accum = accum
+            player._enemy_paint_dot_t = tick_t
+        else:
+            player._enemy_paint_slow = 0.0
+            player._enemy_paint_dot_t = 0.0
+            player._enemy_paint_dot_accum = 0.0
+
     def update_curing_paint(self, dt: float, player: "Player", enemies: list) -> None:
         lvl = int(META.get("curing_paint_level", 0))
         if lvl <= 0 or player is None:
@@ -11701,6 +12009,7 @@ class GameState:
                 self.curing_paint.append(
                     CuringPaintFootprint(px, py, CURING_PAINT_RADIUS, lifetime, lvl, base_color)
                 )
+                self.apply_player_paint(px, py, CURING_PAINT_RADIUS, paint_type="curing_paint")
                 self._curing_paint_t = 0.0
                 self._curing_paint_d = 0.0
         alive = []
@@ -12394,6 +12703,15 @@ class GameState:
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["fill"], alpha, cam_x, cam_y, fill=True)
             # 细边
             draw_iso_ground_ellipse(screen, a.x, a.y, a.r, st["ring"], 180, cam_x, cam_y, fill=False, width=2)
+        # 2.4) Enemy Paint (corrupt trail)
+        if hasattr(self, "paint_active") and hasattr(self, "paint_grid"):
+            for gx, gy in list(getattr(self, "paint_active", [])):
+                if not (0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE):
+                    continue
+                tile = self.paint_grid[gy][gx]
+                if getattr(tile, "paint_owner", 0) != 2:
+                    continue
+                draw_enemy_paint_tile_iso(screen, gx, gy, tile, cam_x, cam_y)
         # 2.5) Curing Paint (player trail)
         for p in list(getattr(self, "curing_paint", [])):
             draw_curing_paint_iso(screen, p, cam_x, cam_y)
@@ -12978,6 +13296,16 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 screen.blit(txt, txt.get_rect(midbottom=(cx, body.top - 4)))
             if z.is_boss: pygame.draw.rect(screen, (255, 215, 0), body.inflate(4, 4), 3)
             pygame.draw.rect(screen, col, body)
+            paint_intensity = 0.0
+            if hasattr(game_state, "paint_intensity_at_world"):
+                paint_intensity = game_state.paint_intensity_at_world(z.rect.centerx, z.rect.centery, owner=2)
+            if paint_intensity > 0.0:
+                tint_alpha = int(70 * paint_intensity)
+                if tint_alpha > 0:
+                    tint_h = max(4, int(draw_size * 0.38))
+                    tint = pygame.Surface((draw_size, tint_h), pygame.SRCALPHA)
+                    tint.fill((20, 80, 50, tint_alpha))
+                    screen.blit(tint, (body.left, body.bottom - tint_h))
             flash_t = float(getattr(z, "_hit_flash", 0.0))
             if flash_t > 0.0 and HIT_FLASH_DURATION > 0:
                 flash_ratio = min(1.0, flash_t / HIT_FLASH_DURATION)
@@ -13047,6 +13375,24 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
         elif kind == "player":
             p, cx, cy = data["p"], data["cx"], data["cy"]
             player_size = int(CELL_SIZE * 0.6)  # match footprint used in collisions
+            paint_intensity = 0.0
+            if hasattr(game_state, "paint_intensity_at_world"):
+                paint_intensity = game_state.paint_intensity_at_world(p.rect.centerx, p.rect.centery, owner=2)
+            if paint_intensity > 0.0:
+                aura_r = max(10, int(player_size * 0.6)) * (0.85 + 0.3 * paint_intensity)
+                aura_alpha = int(110 * paint_intensity)
+                if aura_alpha > 0:
+                    draw_iso_ground_ellipse(
+                        screen,
+                        p.rect.centerx,
+                        p.rect.centery,
+                        aura_r,
+                        (12, 40, 20),
+                        aura_alpha,
+                        camx,
+                        camy,
+                        fill=True,
+                    )
             sh_w = max(8, int(player_size * 0.9))
             sh_h = max(4, int(player_size * 0.45))
             sh = pygame.Surface((sh_w, sh_h), pygame.SRCALPHA)
@@ -13165,6 +13511,20 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             
             # Center the particle image at the projected screen coordinates
             screen.blit(glow, (sx - p.size, sy - p.size), special_flags=pygame.BLEND_ADD)
+    vignette_t = float(getattr(player, "_enemy_paint_vignette_t", 0.0))
+    if vignette_t > 0.0:
+        ratio = max(0.0, min(1.0, vignette_t / 0.18))
+        alpha = int(80 * ratio)
+        if alpha > 0:
+            w, h = screen.get_size()
+            edge = int(16 + 14 * ratio)
+            overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+            overlay.fill((10, 30, 18, int(22 * ratio)))
+            pygame.draw.rect(overlay, (10, 40, 20, alpha), pygame.Rect(0, 0, w, edge))
+            pygame.draw.rect(overlay, (10, 40, 20, alpha), pygame.Rect(0, h - edge, w, edge))
+            pygame.draw.rect(overlay, (10, 40, 20, alpha), pygame.Rect(0, 0, edge, h))
+            pygame.draw.rect(overlay, (10, 40, 20, alpha), pygame.Rect(w - edge, 0, edge, h))
+            screen.blit(overlay, (0, 0))
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
     #    —— 为避免重复代码，可以把那段 HUD 抽成一个小函数，这里调用即可。
@@ -13478,6 +13838,7 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
             ("basic", 50),
             ("fast", 15),
             ("tank", 10),
+            ("trailrunner", 8),
             ("ranged", 12),
             ("suicide", 8),
             ("buffer", 3),
@@ -13743,6 +14104,7 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
         game_state.update_telegraphs(dt)  # 到时生成酸池
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
+        game_state.update_enemy_paint(dt, player)
         game_state.update_vulnerability_marks(enemies, dt)
         game_state.update_hurricanes(dt, player, enemies, bullets, enemy_shots)
         # -----------------------------------------------
@@ -13831,7 +14193,9 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
             enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
             if player.hit_cd <= 0.0 and circle_touch(enemy, player):
                 mult = getattr(game_state, "biome_enemy_contact_mult", 1.0)
-                dmg_mult = getattr(enemy, "contact_damage_mult", 1.0)
+                base_mult = getattr(enemy, "contact_damage_mult", 1.0)
+                paint_mult = getattr(enemy, "_paint_contact_mult", 1.0)
+                dmg_mult = base_mult * paint_mult
                 dmg = int(round(ENEMY_CONTACT_DAMAGE * max(1.0, mult) * max(0.1, dmg_mult)))
                 game_state.damage_player(player, dmg)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
@@ -14218,6 +14582,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
         game_state.update_telegraphs(dt)  # 到时生成酸池
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
+        game_state.update_enemy_paint(dt, player)
         game_state.update_vulnerability_marks(enemies, dt)
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
@@ -14280,7 +14645,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
             if player.hit_cd <= 0.0 and circle_touch(enemy, player):
                 mult = getattr(game_state, "biome_enemy_contact_mult", 1.0)
-                dmg_mult = getattr(enemy, "contact_damage_mult", 1.0)
+                base_mult = getattr(enemy, "contact_damage_mult", 1.0)
+                paint_mult = getattr(enemy, "_paint_contact_mult", 1.0)
+                dmg_mult = base_mult * paint_mult
                 dmg = int(round(ENEMY_CONTACT_DAMAGE * max(1.0, mult) * max(0.1, dmg_mult)))
                 game_state.damage_player(player, dmg)
                 player.hit_cd = float(PLAYER_HIT_COOLDOWN)
