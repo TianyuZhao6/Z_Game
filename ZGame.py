@@ -656,7 +656,7 @@ def apply_domain_buffs_for_level(game_state, player):
     if b == "Misty Forest":
         # Same fog feel as Lv10
         game_state.request_fog_field(player)
-        game_state._fog_biome_forced = True
+        game_state._fog_biome_forced = Trues
         # Tradeoff: foggy vision but +30% XP gains
         player.xp_gain_mult = 1.3
     elif b == "Scorched Hell":
@@ -11984,6 +11984,7 @@ class GameState:
     def update_paint_tiles(self, dt: float) -> None:
         if not self.paint_active:
             return
+        hell = (getattr(self, "biome_active", None) == "Scorched Hell")
         for gx, gy in list(self.paint_active):
             if not (0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE):
                 self.paint_active.discard((gx, gy))
@@ -12009,6 +12010,9 @@ class GameState:
                 self.paint_active.discard((gx, gy))
                 continue
             tile.paint_age = float(getattr(tile, "paint_age", 0.0)) + float(dt)
+            if hell:
+                tile.paint_intensity = 1.0
+                continue
             tile.paint_intensity = max(0.0, 1.0 - tile.paint_age / life0)
             if tile.paint_intensity <= 0.0:
                 tile.paint_owner = 0
@@ -12058,6 +12062,7 @@ class GameState:
         lvl += int(getattr(self, "biome_curing_paint_bonus", 0))
         if lvl > 0 and CURING_PAINT_LIFETIMES:
             lvl = min(lvl, len(CURING_PAINT_LIFETIMES))
+        hell = (getattr(self, "biome_active", None) == "Scorched Hell")
         if lvl <= 0 or player is None:
             if self.curing_paint:
                 self.curing_paint = []
@@ -12087,16 +12092,22 @@ class GameState:
                 self.apply_player_paint(px, py, radius, paint_type="curing_paint")
                 self._curing_paint_t = 0.0
                 self._curing_paint_d = 0.0
-        alive = []
+        alive = [] if not hell else self.curing_paint
         spark_chance = float(CURING_PAINT_SPARK_RATE) * dt
         for p in self.curing_paint:
-            p.t -= dt
-            if p.t > 0:
+            if not hell:
+                p.t -= dt
+                if p.t <= 0:
+                    continue
                 intensity = p.intensity
-                if intensity >= 0.1 and random.random() < spark_chance * (intensity ** 1.35):
-                    spawn_curing_paint_spark_vfx(self, p.x, p.y, intensity)
+            else:
+                intensity = 1.0
+            if intensity >= 0.1 and random.random() < spark_chance * (intensity ** 1.35):
+                spawn_curing_paint_spark_vfx(self, p.x, p.y, intensity)
+            if not hell:
                 alive.append(p)
-        self.curing_paint = alive
+        if not hell:
+            self.curing_paint = alive
         tick_interval = float(CURING_PAINT_TICK_INTERVAL)
         tick_t = float(getattr(self, "_curing_paint_tick_t", tick_interval)) - dt
         if tick_t > 0.0:
