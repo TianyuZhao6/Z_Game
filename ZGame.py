@@ -13265,22 +13265,6 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             sh = pygame.Surface((sh_w, sh_h), pygame.SRCALPHA)
             pygame.draw.ellipse(sh, (0, 0, 0, ISO_SHADOW_ALPHA), sh.get_rect())
             screen.blit(sh, sh.get_rect(center=(cx, cy + 6)))
-            if hell:
-                pulse = 0.6 + 0.4 * math.sin(hell_t + z.rect.x * 0.02 + z.rect.y * 0.015)
-                aura_r = max(10, int(draw_size * 0.6)) * (0.9 + 0.15 * pulse)
-                aura_alpha = int(50 + 60 * pulse)
-                if aura_alpha > 0:
-                    draw_iso_ground_ellipse(
-                        screen,
-                        z.rect.centerx,
-                        z.rect.centery,
-                        aura_r,
-                        (200, 70, 30),
-                        aura_alpha,
-                        camx,
-                        camy,
-                        fill=True,
-                    )
             body = pygame.Rect(0, 0, draw_size, draw_size)
             body.midbottom = (cx, cy)
             # 拾取光晕（金色）
@@ -13473,22 +13457,6 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
         elif kind == "player":
             p, cx, cy = data["p"], data["cx"], data["cy"]
             player_size = int(CELL_SIZE * 0.6)  # match footprint used in collisions
-            if hell:
-                pulse = 0.6 + 0.4 * math.sin(hell_t + p.rect.x * 0.02 + p.rect.y * 0.015)
-                aura_r = max(12, int(player_size * 0.7)) * (0.9 + 0.18 * pulse)
-                aura_alpha = int(60 + 70 * pulse)
-                if aura_alpha > 0:
-                    draw_iso_ground_ellipse(
-                        screen,
-                        p.rect.centerx,
-                        p.rect.centery,
-                        aura_r,
-                        (230, 90, 40),
-                        aura_alpha,
-                        camx,
-                        camy,
-                        fill=True,
-                    )
             paint_intensity = 0.0
             if hasattr(game_state, "paint_intensity_at_world"):
                 paint_intensity = game_state.paint_intensity_at_world(p.rect.centerx, p.rect.centery, owner=2)
