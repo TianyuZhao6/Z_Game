@@ -1333,6 +1333,7 @@ ENEMY_PAINT_BLEND_IN = 0.12
 HELL_ENEMY_PAINT_SPAWN_INTERVAL = 0.45
 HELL_ENEMY_PAINT_SPAWN_DIST = 0.70 * CELL_SIZE
 HELL_ENEMY_PAINT_RADIUS = CELL_SIZE * 0.45
+HELL_ENEMY_PAINT_STATIC = True
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -9700,7 +9701,7 @@ class CuringPaintFootprint:
 
 class PaintTile:
     __slots__ = ("paint_owner", "paint_intensity", "paint_age", "paint_type", "paint_life0", "paint_color",
-                 "_blob_noise", "_blob_phase", "_blob_rot", "_spark_phase")
+                 "_blob_noise", "_blob_phase", "_blob_rot", "_spark_phase", "_static_cache")
 
     def __init__(self):
         self.paint_owner = 0
@@ -9713,6 +9714,7 @@ class PaintTile:
         self._blob_phase = None
         self._blob_rot = 0.0
         self._spark_phase = random.uniform(0.0, math.tau)
+        self._static_cache = None
 
     def refresh_visuals(self):
         count = max(8, int(ENEMY_PAINT_BLOB_POINTS))
@@ -9720,6 +9722,7 @@ class PaintTile:
         self._blob_phase = [random.uniform(0.0, math.tau) for _ in range(count)]
         self._blob_rot = random.uniform(0.0, math.tau)
         self._spark_phase = random.uniform(0.0, math.tau)
+        self._static_cache = None
 
 
 class TelegraphCircle:
@@ -10470,8 +10473,79 @@ def _enemy_paint_blob_points(tile: "PaintTile", cx: float, cy: float, radius: fl
     return points
 
 
+def _enemy_paint_static_color_key(tile: "PaintTile") -> tuple[int, int, int] | None:
+    paint_color = getattr(tile, "paint_color", None)
+    if isinstance(paint_color, (tuple, list)) and len(paint_color) >= 3:
+        return (int(paint_color[0]), int(paint_color[1]), int(paint_color[2]))
+    return None
+
+
+def _build_enemy_paint_static_cache(gx: int, gy: int, tile: "PaintTile",
+                                    intensity: float) -> dict | None:
+    vis_intensity = max(0.0, min(1.0, float(intensity)))
+    if vis_intensity <= 0.0:
+        return None
+    base_t = float(getattr(tile, "_spark_phase", 0.0))
+    t = base_t * (0.35 + 0.65 * vis_intensity)
+    shimmer = 0.7 + 0.3 * math.sin(t * (4.0 + 2.0 * vis_intensity) + base_t)
+    pulse = 0.82 + 0.18 * math.sin(t * (2.4 + 1.6 * vis_intensity) + (gx + gy) * 0.38)
+    base_r = float(ENEMY_PAINT_RADIUS) * (0.85 + 0.15 * vis_intensity)
+    base_r *= (0.95 + 0.05 * math.sin(t * 2.0 + base_t))
+    wiggle = ENEMY_PAINT_WIGGLE_STRENGTH * (0.4 + 0.6 * vis_intensity) * (0.6 + 0.4 * shimmer)
+    color_key = _enemy_paint_static_color_key(tile)
+    custom_col = None
+    if color_key is not None:
+        custom_col = _lerp_color(color_key, (255, 255, 255), 0.35)
+    if custom_col is None:
+        fill_col = _scale_color(ENEMY_PAINT_FILL_COLOR, 0.65 + 0.35 * vis_intensity)
+        edge_col = _lerp_color(ENEMY_PAINT_FILL_COLOR, ENEMY_PAINT_EDGE_COLOR, 0.55 + 0.35 * vis_intensity)
+        highlight_col = _lerp_color(ENEMY_PAINT_EDGE_COLOR, ENEMY_PAINT_EDGE_HIGHLIGHT, 0.45 + 0.45 * shimmer)
+        particle_col = ENEMY_PAINT_PARTICLE_COLOR
+    else:
+        fill_col = _scale_color(custom_col, 0.55 + 0.45 * vis_intensity)
+        edge_col = _lerp_color(custom_col, (255, 255, 255), 0.35 + 0.35 * vis_intensity)
+        highlight_col = _lerp_color(edge_col, (255, 255, 255), 0.4 + 0.4 * shimmer)
+        particle_col = _scale_color(custom_col, 0.35)
+    intensity_pow = vis_intensity ** 0.65
+    fill_alpha = int(210 * intensity_pow * (0.7 + 0.3 * pulse))
+    ring_alpha = int(230 * intensity_pow * shimmer)
+    edge2_alpha = int(140 * intensity_pow * shimmer)
+    cx = gx * CELL_SIZE + CELL_SIZE * 0.5
+    cy = gy * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
+    fill_points = None
+    if fill_alpha > 0:
+        fill_points = _enemy_paint_blob_points(tile, cx, cy, base_r, 0.0, 0.0, t, wiggle)
+    ring_points = None
+    if ring_alpha > 0 or edge2_alpha > 0:
+        ring_points = _enemy_paint_blob_points(tile, cx, cy, base_r * (1.05 + 0.05 * pulse), 0.0, 0.0, t, wiggle)
+    particles = []
+    if vis_intensity > 0.2:
+        pcount = 2 if vis_intensity < 0.5 else 3
+        particle_speed = 10.0 * (0.4 + 0.6 * vis_intensity)
+        for i in range(pcount):
+            phase = base_t + i * 2.1
+            ang = t * (0.7 + 0.15 * i) + phase
+            drift = (base_t * particle_speed + i * 5.3) % (base_r * 0.55)
+            rad = base_r * (0.18 + 0.12 * math.sin(base_t * 1.3 + i)) + drift * 0.5
+            px = cx + math.cos(ang) * rad
+            py = cy + math.sin(ang) * rad * 0.6 - drift * 0.25
+            sx, sy = iso_world_px_to_screen(px, py, 0.0, 0.0, 0.0)
+            size = max(1, int(2 * vis_intensity))
+            particles.append((sx, sy, size))
+    return {
+        "key": (vis_intensity, color_key),
+        "fill_points": fill_points,
+        "ring_points": ring_points,
+        "fill_rgba": (*fill_col, fill_alpha),
+        "ring_rgba": (*edge_col, ring_alpha),
+        "edge2_rgba": (*highlight_col, edge2_alpha),
+        "particles": particles,
+        "particle_color": particle_col,
+    }
+
+
 def draw_enemy_paint_tile_iso(surface: pygame.Surface, gx: int, gy: int, tile: "PaintTile",
-                              camx: float, camy: float) -> None:
+                              camx: float, camy: float, *, static: bool = False) -> None:
     if getattr(tile, "paint_owner", 0) != 2:
         return
     intensity = max(0.0, min(1.0, float(getattr(tile, "paint_intensity", 0.0))))
@@ -10484,6 +10558,27 @@ def draw_enemy_paint_tile_iso(surface: pygame.Surface, gx: int, gy: int, tile: "
         blend = max(0.0, min(1.0, age / blend_in))
         blend = blend * blend * (3.0 - 2.0 * blend)
     vis_intensity = max(0.0, min(1.0, intensity * blend))
+    if vis_intensity <= 0.0:
+        return
+    if static and blend >= 0.999:
+        cache_key = (vis_intensity, _enemy_paint_static_color_key(tile))
+        cache = getattr(tile, "_static_cache", None)
+        if not cache or cache.get("key") != cache_key:
+            cache = _build_enemy_paint_static_cache(gx, gy, tile, vis_intensity)
+            tile._static_cache = cache
+        if not cache:
+            return
+        if cache.get("fill_points") and cache["fill_rgba"][3] > 0:
+            points = [(px - camx, py - camy) for px, py in cache["fill_points"]]
+            _draw_poly_alpha(surface, cache["fill_rgba"], points)
+        if cache.get("ring_points") and cache["ring_rgba"][3] > 0:
+            ring_points = [(px - camx, py - camy) for px, py in cache["ring_points"]]
+            _draw_polyline_alpha(surface, cache["ring_rgba"], ring_points, width=2)
+            if cache["edge2_rgba"][3] > 0:
+                _draw_polyline_alpha(surface, cache["edge2_rgba"], ring_points, width=1)
+        for sx, sy, size in cache.get("particles", []):
+            pygame.draw.circle(surface, cache["particle_color"], (int(sx - camx), int(sy - camy)), size)
+        return
     base_t = pygame.time.get_ticks() * 0.001
     anim_rate = 0.35 + 0.65 * intensity
     t = base_t * anim_rate
@@ -12755,17 +12850,44 @@ class GameState:
             pygame.draw.rect(screen, (120, 80, 20), body, 2, border_radius=6)
 
     def draw_paint_iso(self, screen, cam_x, cam_y):
+        # Cull paint outside the current view to avoid per-frame work.
+        corners = (
+            iso_screen_to_world_px(0, 0, cam_x, cam_y),
+            iso_screen_to_world_px(VIEW_W, 0, cam_x, cam_y),
+            iso_screen_to_world_px(0, VIEW_H, cam_x, cam_y),
+            iso_screen_to_world_px(VIEW_W, VIEW_H, cam_x, cam_y),
+        )
+        min_x = min(p[0] for p in corners)
+        max_x = max(p[0] for p in corners)
+        min_y = min(p[1] for p in corners)
+        max_y = max(p[1] for p in corners)
+        pad_px = int(CELL_SIZE * 2)
+        min_x -= pad_px
+        max_x += pad_px
+        min_y -= pad_px
+        max_y += pad_px
+        margin = 2
+        gx_min = max(0, int(min_x // CELL_SIZE) - margin)
+        gx_max = min(GRID_SIZE - 1, int(max_x // CELL_SIZE) + margin)
+        gy_min = max(0, int((min_y - INFO_BAR_HEIGHT) // CELL_SIZE) - margin)
+        gy_max = min(GRID_SIZE - 1, int((max_y - INFO_BAR_HEIGHT) // CELL_SIZE) + margin)
+        hell = (getattr(self, "biome_active", None) == "Scorched Hell")
+        static_enemy = hell and HELL_ENEMY_PAINT_STATIC
         # Enemy Paint (corrupt trail)
         if hasattr(self, "paint_active") and hasattr(self, "paint_grid"):
-            for gx, gy in list(getattr(self, "paint_active", [])):
+            for gx, gy in getattr(self, "paint_active", ()):
+                if gx < gx_min or gx > gx_max or gy < gy_min or gy > gy_max:
+                    continue
                 if not (0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE):
                     continue
                 tile = self.paint_grid[gy][gx]
                 if getattr(tile, "paint_owner", 0) != 2:
                     continue
-                draw_enemy_paint_tile_iso(screen, gx, gy, tile, cam_x, cam_y)
+                draw_enemy_paint_tile_iso(screen, gx, gy, tile, cam_x, cam_y, static=static_enemy)
         # Curing Paint (player trail)
-        for p in list(getattr(self, "curing_paint", [])):
+        for p in getattr(self, "curing_paint", ()):
+            if p.x < min_x or p.x > max_x or p.y < min_y or p.y > max_y:
+                continue
             tile = self.paint_tile_at_world(p.x, p.y)
             if tile is not None and getattr(tile, "paint_owner", 0) != 1:
                 continue
