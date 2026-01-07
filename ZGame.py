@@ -656,7 +656,7 @@ def apply_domain_buffs_for_level(game_state, player):
     if b == "Misty Forest":
         # Same fog feel as Lv10
         game_state.request_fog_field(player)
-        game_state._fog_biome_forced = Trues
+        game_state._fog_biome_forced = True
         # Tradeoff: foggy vision but +30% XP gains
         player.xp_gain_mult = 1.3
     elif b == "Scorched Hell":
@@ -9691,6 +9691,8 @@ class CuringPaintFootprint:
         self._blob_noise = [random.uniform(0.82, 1.18) for _ in range(count)]
         self._blob_phase = [random.uniform(0.0, math.tau) for _ in range(count)]
         self._blob_rot = random.uniform(0.0, math.tau)
+        self._static_cache = None
+        self._static_t = None
 
     @property
     def intensity(self) -> float:
@@ -10400,14 +10402,98 @@ def _curing_paint_blob_points(paint: "CuringPaintFootprint", radius: float,
     return points
 
 
+def _curing_paint_static_color_key(paint: "CuringPaintFootprint") -> tuple[int, int, int]:
+    base_col = getattr(paint, "base_color", CURING_PAINT_FILL_COLOR)
+    return (int(base_col[0]), int(base_col[1]), int(base_col[2]))
+
+
+def _build_curing_paint_static_cache(paint: "CuringPaintFootprint") -> dict | None:
+    life0 = max(0.001, float(getattr(paint, "life0", paint.t)))
+    t_left = max(0.0, float(getattr(paint, "t", 0.0)))
+    if t_left <= 0.0:
+        return None
+    intensity = max(0.0, min(1.0, t_left / life0))
+    if intensity <= 0.0:
+        return None
+    age = max(0.0, life0 - t_left)
+    t = getattr(paint, "_static_t", None)
+    if t is None:
+        t = pygame.time.get_ticks() * 0.001
+        paint._static_t = t
+    if CURING_PAINT_SPLASH_TIME > 0.0 and age < CURING_PAINT_SPLASH_TIME:
+        prog = age / CURING_PAINT_SPLASH_TIME
+        scale = CURING_PAINT_SPLASH_SCALE_START + prog * (
+            CURING_PAINT_SPLASH_SCALE_PEAK - CURING_PAINT_SPLASH_SCALE_START
+        )
+    elif CURING_PAINT_SPLASH_SETTLE > 0.0 and age < CURING_PAINT_SPLASH_TIME + CURING_PAINT_SPLASH_SETTLE:
+        settle = (age - CURING_PAINT_SPLASH_TIME) / CURING_PAINT_SPLASH_SETTLE
+        scale = CURING_PAINT_SPLASH_SCALE_PEAK - (CURING_PAINT_SPLASH_SCALE_PEAK - 1.0) * settle
+    else:
+        scale = 1.0
+    pulse = 0.84 + 0.16 * math.sin(t * 3.2 + (paint.x + paint.y) * 0.012)
+    shimmer = 0.74 + 0.26 * math.sin(t * 6.0 + (paint.x - paint.y) * 0.02)
+    base_r = float(paint.r) * scale
+    wiggle = CURING_PAINT_WIGGLE_STRENGTH * intensity * (0.6 + 0.4 * shimmer)
+    base_col = _curing_paint_static_color_key(paint)
+    brightness = CURING_PAINT_BRIGHTNESS_MIN + (1.0 - CURING_PAINT_BRIGHTNESS_MIN) * intensity
+    fill_col = _scale_color(base_col, brightness)
+    red_edge = _lerp_color(base_col, CURING_PAINT_EDGE_COLOR, 0.55 + 0.25 * intensity)
+    cyan_edge = _lerp_color(base_col, CURING_PAINT_SPARK_COLORS[0], 0.35 + 0.25 * shimmer)
+    fill_alpha = int(150 * intensity * (0.7 + 0.3 * pulse))
+    ring_alpha = int(210 * intensity * shimmer)
+    cyan_alpha = int(120 * intensity * shimmer)
+    core_alpha = int(90 * intensity * pulse)
+    fill_points = None
+    if fill_alpha > 0:
+        fill_points = _curing_paint_blob_points(paint, base_r, 0.0, 0.0, t, wiggle)
+    ring_points = None
+    if ring_alpha > 0 or cyan_alpha > 0:
+        ring_points = _curing_paint_blob_points(
+            paint, base_r * (1.05 + 0.05 * pulse), 0.0, 0.0, t, wiggle + 0.02
+        )
+    core_points = None
+    if core_alpha > 0:
+        core_points = _curing_paint_blob_points(paint, base_r * 0.45, 0.0, 0.0, t, wiggle * 0.6)
+    return {
+        "key": (intensity, base_col),
+        "fill_points": fill_points,
+        "fill_rgba": (*fill_col, fill_alpha),
+        "ring_points": ring_points,
+        "ring_rgba": (*red_edge, ring_alpha),
+        "cyan_rgba": (*cyan_edge, cyan_alpha),
+        "core_points": core_points,
+        "core_rgba": (*_lerp_color(base_col, CURING_PAINT_EDGE_HIGHLIGHT, 0.45), core_alpha),
+    }
+
+
 def draw_curing_paint_iso(surface: pygame.Surface, paint: "CuringPaintFootprint",
-                          camx: float, camy: float) -> None:
+                          camx: float, camy: float, *, static: bool = False) -> None:
     life0 = max(0.001, float(getattr(paint, "life0", paint.t)))
     t_left = max(0.0, float(getattr(paint, "t", 0.0)))
     if t_left <= 0.0:
         return
     intensity = max(0.0, min(1.0, t_left / life0))
     if intensity <= 0.0:
+        return
+    if static:
+        cache_key = (intensity, _curing_paint_static_color_key(paint))
+        cache = getattr(paint, "_static_cache", None)
+        if not cache or cache.get("key") != cache_key:
+            cache = _build_curing_paint_static_cache(paint)
+            paint._static_cache = cache
+        if not cache:
+            return
+        if cache.get("fill_points") and cache["fill_rgba"][3] > 0:
+            points = [(px - camx, py - camy) for px, py in cache["fill_points"]]
+            _draw_poly_alpha(surface, cache["fill_rgba"], points)
+        if cache.get("ring_points") and cache["ring_rgba"][3] > 0:
+            ring_points = [(px - camx, py - camy) for px, py in cache["ring_points"]]
+            _draw_polyline_alpha(surface, cache["ring_rgba"], ring_points, width=2)
+            if cache["cyan_rgba"][3] > 0:
+                _draw_polyline_alpha(surface, cache["cyan_rgba"], ring_points, width=1)
+        if cache.get("core_points") and cache["core_rgba"][3] > 0:
+            core_points = [(px - camx, py - camy) for px, py in cache["core_points"]]
+            _draw_poly_alpha(surface, cache["core_rgba"], core_points)
         return
     age = max(0.0, life0 - t_left)
     t = pygame.time.get_ticks() * 0.001
@@ -10425,7 +10511,7 @@ def draw_curing_paint_iso(surface: pygame.Surface, paint: "CuringPaintFootprint"
     shimmer = 0.74 + 0.26 * math.sin(t * 6.0 + (paint.x - paint.y) * 0.02)
     base_r = float(paint.r) * scale
     wiggle = CURING_PAINT_WIGGLE_STRENGTH * intensity * (0.6 + 0.4 * shimmer)
-    base_col = tuple(getattr(paint, "base_color", CURING_PAINT_FILL_COLOR))
+    base_col = _curing_paint_static_color_key(paint)
     brightness = CURING_PAINT_BRIGHTNESS_MIN + (1.0 - CURING_PAINT_BRIGHTNESS_MIN) * intensity
     fill_col = _scale_color(base_col, brightness)
     red_edge = _lerp_color(base_col, CURING_PAINT_EDGE_COLOR, 0.55 + 0.25 * intensity)
@@ -11744,6 +11830,9 @@ class GameState:
         self._curing_paint_t = 0.0
         self._curing_paint_d = 0.0
         self._curing_paint_tick_t = float(CURING_PAINT_TICK_INTERVAL)
+        self._curing_paint_bins = {}
+        self._curing_paint_max_r = 0.0
+        self._curing_paint_recent = []
         self.biome_curing_paint_bonus = 0
         self.paint_grid = [[PaintTile() for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
         self.paint_active = set()
@@ -12153,6 +12242,9 @@ class GameState:
         if lvl <= 0 or player is None:
             if self.curing_paint:
                 self.curing_paint = []
+            self._curing_paint_bins = {}
+            self._curing_paint_max_r = 0.0
+            self._curing_paint_recent = []
             self._curing_paint_t = 0.0
             self._curing_paint_d = 0.0
             self._curing_paint_tick_t = float(CURING_PAINT_TICK_INTERVAL)
@@ -12173,29 +12265,63 @@ class GameState:
                 lifetime = float(CURING_PAINT_LIFETIMES[lvl_idx])
                 px, py = player.rect.centerx, player.rect.centery
                 base_color = curing_paint_base_color(player)
-                self.curing_paint.append(
-                    CuringPaintFootprint(px, py, radius, lifetime, lvl, base_color)
-                )
+                new_paint = CuringPaintFootprint(px, py, radius, lifetime, lvl, base_color)
+                self.curing_paint.append(new_paint)
+                self._curing_paint_max_r = max(float(self._curing_paint_max_r), float(radius))
+                if hell:
+                    gx = int(new_paint.x // CELL_SIZE)
+                    gy = int((new_paint.y - INFO_BAR_HEIGHT) // CELL_SIZE)
+                    self._curing_paint_bins.setdefault((gx, gy), []).append(new_paint)
+                    recent = getattr(self, "_curing_paint_recent", None)
+                    if recent is None:
+                        recent = []
+                        self._curing_paint_recent = recent
+                    recent.append(new_paint)
                 self.apply_player_paint(px, py, radius, paint_type="curing_paint")
                 self._curing_paint_t = 0.0
                 self._curing_paint_d = 0.0
-        alive = []
-        spark_chance = float(CURING_PAINT_SPARK_RATE) * dt
-        for p in self.curing_paint:
-            tile = self.paint_tile_at_world(p.x, p.y)
-            if tile is not None and getattr(tile, "paint_owner", 0) != 1:
-                continue
-            if not hell:
+        if hell:
+            lifetime = float(self.player_paint_lifetime())
+            denom = max(0.01, float(CURING_PAINT_SPAWN_INTERVAL))
+            anim_limit = max(6, int(math.ceil(lifetime / denom)))
+            recent = getattr(self, "_curing_paint_recent", []) or []
+            if not recent and self.curing_paint:
+                recent = list(self.curing_paint[-anim_limit:])
+            if len(recent) > anim_limit:
+                recent = recent[-anim_limit:]
+            spark_chance = float(CURING_PAINT_SPARK_RATE) * dt
+            if recent:
+                alive_recent = []
+                for p in recent:
+                    tile = self.paint_tile_at_world(p.x, p.y)
+                    if tile is not None and getattr(tile, "paint_owner", 0) != 1:
+                        continue
+                    if random.random() < spark_chance:
+                        spawn_curing_paint_spark_vfx(self, p.x, p.y, 1.0)
+                    alive_recent.append(p)
+                self._curing_paint_recent = alive_recent
+            else:
+                self._curing_paint_recent = recent
+        else:
+            alive = []
+            new_bins = {}
+            spark_chance = float(CURING_PAINT_SPARK_RATE) * dt
+            for p in self.curing_paint:
+                tile = self.paint_tile_at_world(p.x, p.y)
+                if tile is not None and getattr(tile, "paint_owner", 0) != 1:
+                    continue
                 p.t -= dt
                 if p.t <= 0:
                     continue
                 intensity = p.intensity
-            else:
-                intensity = 1.0
-            if intensity >= 0.1 and random.random() < spark_chance * (intensity ** 1.35):
-                spawn_curing_paint_spark_vfx(self, p.x, p.y, intensity)
-            alive.append(p)
-        self.curing_paint = alive
+                if intensity >= 0.1 and random.random() < spark_chance * (intensity ** 1.35):
+                    spawn_curing_paint_spark_vfx(self, p.x, p.y, intensity)
+                alive.append(p)
+                gx = int(p.x // CELL_SIZE)
+                gy = int((p.y - INFO_BAR_HEIGHT) // CELL_SIZE)
+                new_bins.setdefault((gx, gy), []).append(p)
+            self.curing_paint = alive
+            self._curing_paint_bins = new_bins
         tick_interval = float(CURING_PAINT_TICK_INTERVAL)
         tick_t = float(getattr(self, "_curing_paint_tick_t", tick_interval)) - dt
         if tick_t > 0.0:
@@ -12206,34 +12332,40 @@ class GameState:
         self._curing_paint_tick_t = tick_t
         if not enemies or not self.curing_paint:
             return
-        paint_fields = []
-        for p in self.curing_paint:
-            tile = self.paint_tile_at_world(p.x, p.y)
-            if tile is not None and getattr(tile, "paint_owner", 0) != 1:
-                continue
-            intensity = 1.0 if hell else p.intensity
-            if intensity <= 0.0:
-                continue
-            paint_fields.append((p.x, p.y, p.r, intensity))
-        if not paint_fields:
+        paint_bins = getattr(self, "_curing_paint_bins", {})
+        if not paint_bins:
             return
         bullet_base = int(getattr(player, "bullet_damage", BULLET_DAMAGE_ENEMY))
         dmg_per_tick, _, _ = curing_paint_stats(lvl, bullet_base)
         base_dmg = float(dmg_per_tick) * float(ticks)
         kill_bonus = curing_paint_kill_bonus(int(META.get("kill_count", 0)))
+        max_r = max(float(self._curing_paint_max_r), float(radius))
         for z in enemies:
             if getattr(z, "hp", 0) <= 0:
                 continue
             zx, zy = z.rect.center
             zr = float(getattr(z, "radius", getattr(z, "size", CELL_SIZE) * 0.5))
+            search_r = max_r + zr
+            gx_min = max(0, int((zx - search_r) // CELL_SIZE) - 1)
+            gx_max = min(GRID_SIZE - 1, int((zx + search_r) // CELL_SIZE) + 1)
+            gy_min = max(0, int((zy - search_r - INFO_BAR_HEIGHT) // CELL_SIZE) - 1)
+            gy_max = min(GRID_SIZE - 1, int((zy + search_r - INFO_BAR_HEIGHT) // CELL_SIZE) + 1)
             max_intensity = 0.0
-            for px, py, pr, intensity in paint_fields:
-                dx = zx - px
-                dy = zy - py
-                rsum = pr + zr
-                if dx * dx + dy * dy <= rsum * rsum:
-                    if intensity > max_intensity:
-                        max_intensity = intensity
+            for gx in range(gx_min, gx_max + 1):
+                for gy in range(gy_min, gy_max + 1):
+                    for p in paint_bins.get((gx, gy), []):
+                        tile = self.paint_tile_at_world(p.x, p.y)
+                        if tile is not None and getattr(tile, "paint_owner", 0) != 1:
+                            continue
+                        intensity = 1.0 if hell else p.intensity
+                        if intensity <= 0.0:
+                            continue
+                        dx = zx - p.x
+                        dy = zy - p.y
+                        rsum = float(p.r) + zr
+                        if dx * dx + dy * dy <= rsum * rsum:
+                            if intensity > max_intensity:
+                                max_intensity = intensity
             if max_intensity <= 0.0:
                 continue
             total = base_dmg * kill_bonus * max_intensity
@@ -12873,6 +13005,15 @@ class GameState:
         gy_max = min(GRID_SIZE - 1, int((max_y - INFO_BAR_HEIGHT) // CELL_SIZE) + margin)
         hell = (getattr(self, "biome_active", None) == "Scorched Hell")
         static_enemy = hell and HELL_ENEMY_PAINT_STATIC
+        curing_paint = getattr(self, "curing_paint", ())
+        anim_start = 0
+        recent_paints = None
+        if hell and curing_paint:
+            lifetime = float(self.player_paint_lifetime())
+            denom = max(0.01, float(CURING_PAINT_SPAWN_INTERVAL))
+            anim_limit = max(6, int(math.ceil(lifetime / denom)))
+            anim_start = max(0, len(curing_paint) - anim_limit)
+            recent_paints = set(curing_paint[anim_start:])
         # Enemy Paint (corrupt trail)
         if hasattr(self, "paint_active") and hasattr(self, "paint_grid"):
             for gx, gy in getattr(self, "paint_active", ()):
@@ -12885,13 +13026,26 @@ class GameState:
                     continue
                 draw_enemy_paint_tile_iso(screen, gx, gy, tile, cam_x, cam_y, static=static_enemy)
         # Curing Paint (player trail)
-        for p in getattr(self, "curing_paint", ()):
-            if p.x < min_x or p.x > max_x or p.y < min_y or p.y > max_y:
-                continue
-            tile = self.paint_tile_at_world(p.x, p.y)
-            if tile is not None and getattr(tile, "paint_owner", 0) != 1:
-                continue
-            draw_curing_paint_iso(screen, p, cam_x, cam_y)
+        paint_bins = getattr(self, "_curing_paint_bins", {})
+        if paint_bins:
+            for gx in range(gx_min, gx_max + 1):
+                for gy in range(gy_min, gy_max + 1):
+                    for p in paint_bins.get((gx, gy), []):
+                        if p.x < min_x or p.x > max_x or p.y < min_y or p.y > max_y:
+                            continue
+                        tile = self.paint_tile_at_world(p.x, p.y)
+                        if tile is not None and getattr(tile, "paint_owner", 0) != 1:
+                            continue
+                        static_paint = bool(hell and recent_paints is not None and p not in recent_paints)
+                        draw_curing_paint_iso(screen, p, cam_x, cam_y, static=static_paint)
+        else:
+            for idx, p in enumerate(curing_paint):
+                if p.x < min_x or p.x > max_x or p.y < min_y or p.y > max_y:
+                    continue
+                tile = self.paint_tile_at_world(p.x, p.y)
+                if tile is not None and getattr(tile, "paint_owner", 0) != 1:
+                    continue
+                draw_curing_paint_iso(screen, p, cam_x, cam_y, static=(hell and idx < anim_start))
 
     def draw_hazards_iso(self, screen, cam_x, cam_y):
         for p in list(getattr(self, "aegis_pulses", [])):
