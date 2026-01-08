@@ -3917,13 +3917,11 @@ def draw_settings_gear(screen, x, y):
 
 INSTRUCTION_LINES = [
     "WASD to move. Survive until the timer hits 00:00 to win.",
-    "Break yellow blocks to reach hidden fragments.",
     "Enemies deal contact damage. Avoid or kite them.",
     "Auto-fire targets the closest enemy/block in range.",
     "Bandits: Radar tags them in red; intercept before they flee.",
     "Shop between levels to upgrade (turrets, bullets, economy).",
-    "Lockbox protects a portion of coins; Golden Interest pays interest.",
-    "Pause: ESC to open menu; Restart/Home keep your meta upgrades.",
+    "Pause: ESC to open menu.",
 ]
 INSTRUCTION_Y_START = 110
 INSTRUCTION_LINE_SPACING = 38
@@ -4802,7 +4800,8 @@ def render_start_menu_surface(saved_exists: bool):
     info_font = pygame.font.SysFont("Consolas", 18)
     draw_neuro_home_header(surf, header_font)
     rects = neuro_menu_layout(include_continue=saved_exists)
-    draw_neuro_button(surf, rects["start"], "START NEW", btn_font, hovered=False, disabled=False, t=wave_t)
+    start_label = "START NEW" if saved_exists else "START"
+    draw_neuro_button(surf, rects["start"], start_label, btn_font, hovered=False, disabled=False, t=wave_t)
     if saved_exists:
         draw_neuro_button(surf, rects["continue"], "CONTINUE", btn_font,
                           hovered=False, disabled=False, t=wave_t)
@@ -4865,7 +4864,8 @@ def show_start_menu(screen, *, skip_intro: bool = False):
 
         draw_neuro_home_header(screen, header_font)
         drawn_rects = {}
-        drawn_rects["start"] = draw_neuro_button(screen, base_rects["start"], "START NEW", btn_font,
+        start_label = "START NEW" if saved_exists else "START"
+        drawn_rects["start"] = draw_neuro_button(screen, base_rects["start"], start_label, btn_font,
                                                  hovered=hover_id == "start", disabled=False, t=t)
         if saved_exists:
             drawn_rects["continue"] = draw_neuro_button(
