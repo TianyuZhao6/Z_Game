@@ -181,7 +181,8 @@ def update_hit_flash_timer(entity, dt: float) -> None:
         entity._curing_paint_glow_intensity = 0.0
 
 
-def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -> None:
+def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
+                   enemies: list | None = None) -> None:
     """
     顶栏 HUD（绝对屏幕坐标，不受相机/等距相机影响）
     - 必须在世界/实体都画完之后再调用（最上层）
@@ -376,6 +377,7 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
     spoils_text = hud_font.render(f"{spoils_total}", True, (255, 255, 255))
     screen.blit(spoils_text, (coin_x + 14, coin_y))
     # ===== 屏幕中央：一过性横幅 =====
+    banner_drawn = False
     bt = float(getattr(game_state, "banner_t", 0.0))
     if bt > 0.0 and getattr(game_state, "banner_text", None):
         # 计算经过时间，做 1s 倒计时
@@ -416,9 +418,38 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None) -
         s.blit(shadow, shadow.get_rect(center=(s.get_width() // 2 + 1, s.get_height() // 2 + 1)))
         s.blit(txt, txt.get_rect(center=(s.get_width() // 2, s.get_height() // 2)))
         screen.blit(s, banner_rect.topleft)
+        banner_drawn = True
         # 倒计时结束后清理
         if game_state.banner_t <= 0.0:
             game_state.banner_text = None
+    # ===== Bandit escape countdown (reuse the same banner slot) =====
+    if not banner_drawn:
+        bandit_escape = None
+        if enemies:
+            for z in enemies:
+                if getattr(z, "type", "") == "bandit":
+                    esc = float(getattr(z, "escape_t", BANDIT_ESCAPE_TIME_BASE))
+                    if bandit_escape is None or esc < bandit_escape:
+                        bandit_escape = esc
+        if bandit_escape is not None:
+            esc = max(0.0, float(bandit_escape))
+            secs = int(esc)
+            centi = int((esc - secs) * 100)
+            if centi > 99:
+                centi = 99
+            msg = f"{secs:02d}:{centi:02d}"
+            font_big = mono_font(34)
+            txt = font_big.render(msg, True, (255, 230, 140))
+            pad_x = 36
+            bar_h = 64
+            top_y = INFO_BAR_HEIGHT + 220
+            banner_rect = pygame.Rect(pad_x, top_y, VIEW_W - pad_x * 2, bar_h)
+            s = pygame.Surface(banner_rect.size, pygame.SRCALPHA)
+            pygame.draw.rect(s, (20, 20, 20, 170), s.get_rect(), border_radius=12)
+            shadow = font_big.render(msg, True, (0, 0, 0))
+            s.blit(shadow, shadow.get_rect(center=(s.get_width() // 2 + 1, s.get_height() // 2 + 1)))
+            s.blit(txt, txt.get_rect(center=(s.get_width() // 2, s.get_height() // 2)))
+            screen.blit(s, banner_rect.topleft)
 
 
 def _find_current_boss(enemies):
@@ -13886,7 +13917,9 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
     #    —— 为避免重复代码，可以把那段 HUD 抽成一个小函数，这里调用即可。
-    draw_ui_topbar(screen, game_state, player, time_left=globals().get("_time_left_runtime"))
+    draw_ui_topbar(screen, game_state, player,
+                   time_left=globals().get("_time_left_runtime"),
+                   enemies=enemies)
     bosses = _find_all_bosses(enemies)
     if len(bosses) >= 2:
         draw_boss_hp_bars_twin(screen, bosses[:2])
