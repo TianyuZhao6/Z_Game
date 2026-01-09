@@ -422,22 +422,42 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
         # 倒计时结束后清理
         if game_state.banner_t <= 0.0:
             game_state.banner_text = None
-    # ===== Bandit escape countdown (reuse the same banner slot) =====
-    if not banner_drawn:
-        bandit_escape = None
-        if enemies:
-            for z in enemies:
-                if getattr(z, "type", "") == "bandit":
-                    esc = float(getattr(z, "escape_t", BANDIT_ESCAPE_TIME_BASE))
-                    if bandit_escape is None or esc < bandit_escape:
-                        bandit_escape = esc
-        if bandit_escape is not None:
-            esc = max(0.0, float(bandit_escape))
-            secs = int(esc)
-            centi = int((esc - secs) * 100)
-            if centi > 99:
-                centi = 99
-            msg = f"{secs:02d}:{centi:02d}"
+    # ===== Bandit escape countdown (center briefly, then top-right flash) =====
+    bandit_escape = None
+    if enemies:
+        for z in enemies:
+            if getattr(z, "type", "") == "bandit":
+                esc = float(getattr(z, "escape_t", BANDIT_ESCAPE_TIME_BASE))
+                if bandit_escape is None or esc < bandit_escape:
+                    bandit_escape = esc
+    if bandit_escape is None:
+        if hasattr(game_state, "bandit_countdown_center_t"):
+            game_state.bandit_countdown_center_t = 0.0
+        game_state._bandit_countdown_tick_ms = None
+    else:
+        center_t = float(getattr(game_state, "bandit_countdown_center_t", 0.0))
+        if banner_drawn:
+            game_state._bandit_countdown_tick_ms = None
+        else:
+            if center_t > 0.0:
+                now = pygame.time.get_ticks()
+                last = getattr(game_state, "_bandit_countdown_tick_ms", None)
+                if last is None:
+                    game_state._bandit_countdown_tick_ms = now
+                else:
+                    dt = (now - last) / 1000.0
+                    game_state._bandit_countdown_tick_ms = now
+                    center_t = max(0.0, center_t - dt)
+                    game_state.bandit_countdown_center_t = center_t
+            else:
+                game_state._bandit_countdown_tick_ms = None
+        esc = max(0.0, float(bandit_escape))
+        secs = int(esc)
+        centi = int((esc - secs) * 100)
+        if centi > 99:
+            centi = 99
+        msg = f"{secs:02d}:{centi:02d}"
+        if (not banner_drawn) and center_t > 0.0:
             font_big = mono_font(34)
             txt = font_big.render(msg, True, (255, 230, 140))
             pad_x = 36
@@ -450,6 +470,27 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
             s.blit(shadow, shadow.get_rect(center=(s.get_width() // 2 + 1, s.get_height() // 2 + 1)))
             s.blit(txt, txt.get_rect(center=(s.get_width() // 2, s.get_height() // 2)))
             screen.blit(s, banner_rect.topleft)
+        elif not banner_drawn:
+            font_small = mono_font(26)
+            txt = font_small.render(msg, True, (255, 230, 140))
+            pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.03)
+            txt.set_alpha(int(170 + 85 * pulse))
+            pad_x = 10
+            pad_y = 5
+            w = txt.get_width() + pad_x * 2
+            h = txt.get_height() + pad_y * 2
+            x = VIEW_W - w - 10
+            y = INFO_BAR_HEIGHT + 6
+            s = pygame.Surface((w, h), pygame.SRCALPHA)
+            bg_alpha = int(70 + 60 * pulse)
+            border_alpha = int(140 + 80 * pulse)
+            pygame.draw.rect(s, (10, 10, 10, bg_alpha), s.get_rect(), border_radius=10)
+            pygame.draw.rect(s, (255, 220, 140, border_alpha), s.get_rect(), width=2, border_radius=10)
+            shadow = font_small.render(msg, True, (0, 0, 0))
+            shadow.set_alpha(int(120 + 60 * pulse))
+            s.blit(shadow, (pad_x + 1, pad_y + 1))
+            s.blit(txt, (pad_x, pad_y))
+            screen.blit(s, (x, y))
 
 
 def _find_current_boss(enemies):
@@ -1071,6 +1112,7 @@ BANDIT_BASE_HP = 150
 BANDIT_BASE_SPEED = 2.35  # 相对普通僵尸更快（再叠加z_level等成长）
 BANDIT_ESCAPE_TIME_BASE = 18.0  # 逃跑倒计时（秒）
 BANDIT_ESCAPE_TIME_MIN = 10.0  # 下限
+BANDIT_COUNTDOWN_CENTER_TIME = 1.0  # center countdown duration before moving to top-right
 BANDIT_STEAL_RATE_MIN = 2  # 每秒最少偷取金币
 BANDIT_STEAL_RATE_MAX = 10  # 每秒最多偷取金币
 BANDIT_BONUS_RATE = 0.25  # 击杀后额外奖励比例（在偷取总额基础上再+25%）
@@ -6968,6 +7010,8 @@ def spawn_wave_with_budget(game_state: "GameState",
             game_state.flash_banner("COIN BANDIT!", sec=1.5)
         else:
             game_state.add_damage_text(cx, cy, "COIN BANDIT!", crit=True, kind="shield")
+        game_state.bandit_countdown_center_t = float(BANDIT_COUNTDOWN_CENTER_TIME)
+        game_state._bandit_countdown_tick_ms = None
         # 可选：地面金色提示圈（用 TelegraphCircle）
         if hasattr(game_state, "telegraphs"):
             game_state.telegraphs.append(
