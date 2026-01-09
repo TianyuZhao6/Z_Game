@@ -1113,6 +1113,9 @@ BANDIT_BASE_SPEED = 2.35  # 相对普通僵尸更快（再叠加z_level等成长
 BANDIT_ESCAPE_TIME_BASE = 18.0  # 逃跑倒计时（秒）
 BANDIT_ESCAPE_TIME_MIN = 10.0  # 下限
 BANDIT_COUNTDOWN_CENTER_TIME = 1.0  # center countdown duration before moving to top-right
+BANDIT_HP_DPS_MULT_MIN = 2.6  # Lv3-5: lower DPS scaling
+BANDIT_HP_DPS_MULT_MID = 3.1  # Lv6-10: medium DPS scaling
+BANDIT_HP_DPS_MULT_MAX = 4.0  # Lv11+: cap (matches previous tuning)
 BANDIT_STEAL_RATE_MIN = 2  # 每秒最少偷取金币
 BANDIT_STEAL_RATE_MAX = 10  # 每秒最多偷取金币
 BANDIT_BONUS_RATE = 0.25  # 击杀后额外奖励比例（在偷取总额基础上再+25%）
@@ -11225,9 +11228,18 @@ def make_coin_bandit(world_xy, level_idx: int, wave_idx: int, budget: int, playe
     z.stuck_origin_pos = (z.x, z.y)
     z.escape_dir = (0.0, 0.0)
     z.escape_timer = 0.0
-    # --- 生命值 = max(基础血, 玩家DPS × 4) ---
+    # --- 生命值 = 基础血 + 玩家DPS × 等级分段倍率 ---
     dps = float(player_dps) if player_dps is not None else float(compute_player_dps(None))
-    target_hp = int(math.ceil(BANDIT_BASE_HP + dps * 3.5))
+    lvl = max(1, int(level_idx) + 1)  # display level (1-based)
+    if lvl <= 5:
+        t = 0.0 if lvl <= 3 else (lvl - 3) / 2.0
+        dps_mult = BANDIT_HP_DPS_MULT_MIN + (BANDIT_HP_DPS_MULT_MID - BANDIT_HP_DPS_MULT_MIN) * t
+    elif lvl <= 10:
+        t = (lvl - 6) / 4.0
+        dps_mult = BANDIT_HP_DPS_MULT_MID + (BANDIT_HP_DPS_MULT_MAX - BANDIT_HP_DPS_MULT_MID) * t
+    else:
+        dps_mult = BANDIT_HP_DPS_MULT_MAX
+    target_hp = int(math.ceil(BANDIT_BASE_HP + dps * dps_mult))
     z.max_hp = target_hp
     z.hp = target_hp
     z.attack = 1  # 不是用来打人的
