@@ -971,6 +971,7 @@ COIN_POP_VY = -120.0  # initial vertical (screen-space) pop
 COIN_GRAVITY = 400.0  # gravity pulling coin back to ground
 COIN_RESTITUTION = 0.45  # energy kept on bounce
 COIN_MIN_BOUNCE = 30.0  # stop bouncing when below this upward speed
+COIN_PICKUP_RADIUS_BASE = 60  # small default coin pickup buffer (px)
 RAVAGER_HP_MULT = 10.0  # Ravager: 10x base HP
 RAVAGER_ATK_MULT = 2.0  # 2.0x contact damage
 RAVAGER_SIZE_MULT = 1.25  # bigger than normal, smaller than boss
@@ -11974,19 +11975,20 @@ class GameState:
 
     def update_spoils(self, dt: float, player: "Player"):
         """
-        Update coin bounce, and if Coin Magnet is bought, gently pull coins toward the player.
+        Update coin bounce, and gently pull coins toward the player within pickup range.
         Actual pickup still happens in collect_spoils when a coin overlaps the player.
         """
         # 1) basic vertical bounce
         for s in self.spoils:
             s.update(dt)
-        # 2) magnet attraction — only if the shop item has added a radius
+        # 2) magnet attraction — base pickup radius + any shop radius
         magnet_radius = int(META.get("coin_magnet_radius", 0) or 0)
-        if magnet_radius <= 0:
+        pull_radius = max(0, int(COIN_PICKUP_RADIUS_BASE + magnet_radius))
+        if pull_radius <= 0:
             return
         px, py = player.rect.center
         pull_speed = 480.0  # px/s, tweak for feel
-        r2 = float(magnet_radius * magnet_radius)
+        r2 = float(pull_radius * pull_radius)
         for s in self.spoils:
             cx, cy = s.rect.center
             dx = px - cx
@@ -12017,7 +12019,7 @@ class GameState:
         return False
 
     def collect_spoils(self, player_rect: pygame.Rect) -> int:
-        """Collect spoils that actually touch the player."""
+        """Collect spoils that touch the player."""
         gained = 0
         pickup_rect = player_rect
         for s in list(self.spoils):
