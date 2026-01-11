@@ -14022,19 +14022,19 @@ class GameSound:
         # --- pick a path ---
         here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
         candidates = [
-            # preferred intro BGM
-            os.path.join(here, "assets", "Intro_V0.wav"),
-            os.path.join(here, "Z_Game", "assets", "Intro_V0.wav"),
-            os.path.join(os.getcwd(), "assets", "Intro_V0.wav"),
-            os.path.join(os.getcwd(), "Z_Game", "assets", "Intro_V0.wav"),
-            # project-typical
-            os.path.join(here, "Z_Game", "assets", "ZGAME.wav"),
-            os.path.join(here, "assets", "ZGAME.wav"),
+            # preferred intro BGM (music folder)
+            os.path.join(here, "assets", "music", "Intro_V0.wav"),
+            os.path.join(here, "Z_Game", "assets", "music", "Intro_V0.wav"),
+            os.path.join(os.getcwd(), "assets", "music", "Intro_V0.wav"),
+            os.path.join(os.getcwd(), "Z_Game", "assets", "music", "Intro_V0.wav"),
+            # project-typical main BGM (music folder)
+            os.path.join(here, "Z_Game", "assets", "music", "ZGAME.wav"),
+            os.path.join(here, "assets", "music", "ZGAME.wav"),
             # run-from-working-dir
-            os.path.join(os.getcwd(), "Z_Game", "assets", "ZGAME.wav"),
-            os.path.join(os.getcwd(), "assets", "ZGAME.wav"),
+            os.path.join(os.getcwd(), "Z_Game", "assets", "music", "ZGAME.wav"),
+            os.path.join(os.getcwd(), "assets", "music", "ZGAME.wav"),
             # user-provided absolute-like hint (DON'T rely on drive root)
-            r"C:\Users\%USERNAME%\Z_Game\assets\ZGAME.wav".replace("%USERNAME%", os.environ.get("USERNAME", "")),
+            r"C:\Users\%USERNAME%\Z_Game\assets\music\ZGAME.wav".replace("%USERNAME%", os.environ.get("USERNAME", "")),
         ]
         if music_path:
             candidates.insert(0, music_path)
@@ -14152,15 +14152,15 @@ def play_intro_bgm():
     """Play Intro_V0 if present (home/start), fallback to ZGAME.wav."""
     here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
     intro_candidates = [
-        os.path.join(here, "assets", "Intro_V0.wav"),
-        os.path.join(here, "Z_Game", "assets", "Intro_V0.wav"),
-        os.path.join(os.getcwd(), "assets", "Intro_V0.wav"),
-        os.path.join(os.getcwd(), "Z_Game", "assets", "Intro_V0.wav"),
+        os.path.join(here, "assets", "music", "Intro_V0.wav"),
+        os.path.join(here, "Z_Game", "assets", "music", "Intro_V0.wav"),
+        os.path.join(os.getcwd(), "assets", "music", "Intro_V0.wav"),
+        os.path.join(os.getcwd(), "Z_Game", "assets", "music", "Intro_V0.wav"),
         # fallback
-        os.path.join(here, "assets", "ZGAME.wav"),
-        os.path.join(here, "Z_Game", "assets", "ZGAME.wav"),
-        os.path.join(os.getcwd(), "assets", "ZGAME.wav"),
-        os.path.join(os.getcwd(), "Z_Game", "assets", "ZGAME.wav"),
+        os.path.join(here, "assets", "music", "ZGAME.wav"),
+        os.path.join(here, "Z_Game", "assets", "music", "ZGAME.wav"),
+        os.path.join(os.getcwd(), "assets", "music", "ZGAME.wav"),
+        os.path.join(os.getcwd(), "Z_Game", "assets", "music", "ZGAME.wav"),
     ]
     _play_bgm_candidates(intro_candidates, volume=BGM_VOLUME / 100.0)
 
@@ -14169,10 +14169,10 @@ def play_combat_bgm():
     """Play the main combat/shop track (ZGAME.wav)."""
     here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
     combat_candidates = [
-        os.path.join(here, "assets", "ZGAME.wav"),
-        os.path.join(here, "Z_Game", "assets", "ZGAME.wav"),
-        os.path.join(os.getcwd(), "assets", "ZGAME.wav"),
-        os.path.join(os.getcwd(), "Z_Game", "assets", "ZGAME.wav"),
+        os.path.join(here, "assets", "music", "ZGAME.wav"),
+        os.path.join(here, "Z_Game", "assets", "music", "ZGAME.wav"),
+        os.path.join(os.getcwd(), "assets", "music", "ZGAME.wav"),
+        os.path.join(os.getcwd(), "Z_Game", "assets", "music", "ZGAME.wav"),
     ]
     _play_bgm_candidates(combat_candidates, volume=BGM_VOLUME / 100.0)
 
