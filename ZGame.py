@@ -2292,6 +2292,44 @@ BASE_DIR = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
 SAVE_DIR = os.path.join(BASE_DIR, "TEMP")
 os.makedirs(SAVE_DIR, exist_ok=True)
 SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
+_shop_sprite_cache: dict[str, pygame.Surface | bool] = {}
+
+
+def _load_shop_sprite(filename: str, max_size: tuple[int, int]) -> Optional["pygame.Surface"]:
+    """Load and cache a sprite from assets/sprites, scaled to max_size."""
+    if not filename:
+        return None
+    rel_path = os.path.normpath(filename)
+    key = f"{rel_path}|{int(max_size[0])}x{int(max_size[1])}"
+    if key in _shop_sprite_cache:
+        cached = _shop_sprite_cache[key]
+        return cached if cached is not False else None
+    candidates = [
+        os.path.join(BASE_DIR, "assets", "sprites", rel_path),
+        os.path.join(os.getcwd(), "assets", "sprites", rel_path),
+    ]
+    _shop_sprite_cache[key] = False
+    for p in candidates:
+        if p and os.path.exists(p):
+            try:
+                img = pygame.image.load(p).convert_alpha()
+                if max_size:
+                    max_w, max_h = int(max_size[0]), int(max_size[1])
+                    if max_w > 0 and max_h > 0:
+                        w, h = img.get_size()
+                        if w > 0 and h > 0:
+                            scale = min(max_w / w, max_h / h, 1.0)
+                            if scale != 1.0:
+                                img = pygame.transform.smoothscale(
+                                    img,
+                                    (max(1, int(w * scale)), max(1, int(h * scale))),
+                                )
+                _shop_sprite_cache[key] = img
+                break
+            except Exception:
+                _shop_sprite_cache[key] = False
+    cached = _shop_sprite_cache[key]
+    return cached if cached is not False else None
 
 
 def _clear_shop_cache():
@@ -5947,6 +5985,8 @@ def show_shop_screen(screen) -> Optional[str]:
         SHOP_BOX_BORDER_HOVER = UI_BORDER_HOVER
         SHOP_BOX_BG_DISABLED = UI_PANEL_DARK  # capped / disabled
         SHOP_BOX_BORDER_DISABLED = (70, 90, 120)
+        auto_turret_sprite = _load_shop_sprite("prop-icon/auto-turret.png", (150, 110))
+        stationary_turret_sprite = _load_shop_sprite("prop-icon/Stationary Turret.png", (150, 110))
       
         # --- catalog of shop props ---
         catalog = [
@@ -6509,6 +6549,18 @@ def show_shop_screen(screen) -> Optional[str]:
             else:
                 name_surf = font.render(it["name"], True, (235, 235, 235))
                 screen.blit(name_surf, name_surf.get_rect(midtop=(r.centerx, r.y + 10)))
+                if it.get("id") == "auto_turret" and auto_turret_sprite:
+                    sprite_top = r.y + 36
+                    sprite_bottom = r.bottom - 36
+                    sprite_center_y = (sprite_top + sprite_bottom) // 2
+                    sprite_rect = auto_turret_sprite.get_rect(center=(r.centerx, sprite_center_y))
+                    screen.blit(auto_turret_sprite, sprite_rect)
+                elif it.get("id") == "stationary_turret" and stationary_turret_sprite:
+                    sprite_top = r.y + 36
+                    sprite_bottom = r.bottom - 36
+                    sprite_center_y = (sprite_top + sprite_bottom) // 2
+                    sprite_rect = stationary_turret_sprite.get_rect(center=(r.centerx, sprite_center_y))
+                    screen.blit(stationary_turret_sprite, sprite_rect)
                 col = ((255, 230, 120) if META["spoils"] >= dyn_cost else (160, 140, 120))
                 price_txt = f"$ {dyn_cost}"
                 price_surf = font.render(price_txt, True, col)
@@ -15235,6 +15287,9 @@ if __name__ == "__main__":
         globals().pop("_last_spoils", None)
         globals().pop("_next_biome", None)
         globals().pop("_last_biome", None)
+    START_IN_SHOP_FOR_TEST = True
+    if START_IN_SHOP_FOR_TEST:
+        globals()["_pending_shop"] = True
     while True:
         # If we saved while in the shop last time, reopen the shop first
         if globals().get("_pending_shop", False):
