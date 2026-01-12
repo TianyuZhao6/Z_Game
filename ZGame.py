@@ -5261,9 +5261,10 @@ def show_pause_menu(screen, background_surf):
     y_offset += 30
     # --- speed ---
     spd_mult = float(META.get("speed_mult", 1.0))
-    cur_speed = float(getattr(p, "speed", base_speed * spd_mult + META.get("speed", 0)))
+    cur_speed = float(base_speed * spd_mult)
+    bonus_speed = cur_speed - base_speed
     spd_text = font_tiny.render(
-        f"Speed: {cur_speed:.1f}  (Lv1 {base_speed:.1f}, x{spd_mult:.2f}, +{int(META.get('speed', 0))} shop)",
+        f"Speed: {cur_speed:.1f}  (Lv1 {base_speed:.1f}, {bonus_speed:+.1f} levelup)",
         True, (100, 100, 230)
     )
     screen.blit(spd_text, (left_margin, y_offset));
@@ -7361,6 +7362,9 @@ class Player:
         self._enemy_paint_vignette_t = 0.0
         self.dot_ticks = []  # list[(dps, t_left)]
         self.apply_slow_extra = 0.0  # extra slow gathered each frame (hazards add to this)
+        self.facing = "S"  # N/NE/E/SE/S/SW/W/NW for sprite selection
+        self.status = "S"
+        self.is_moving = False
         # Active skills
         self.blast_cd = 0.0
         self.teleport_cd = 0.0
@@ -7369,6 +7373,29 @@ class Player:
         self.skill_target_valid = False
         self.skill_target_origin = None  # anchor for range clamp (blast stays stable vs forces)
         self.skill_flash = {"blast": 0.0, "teleport": 0.0}
+
+    @staticmethod
+    def _dir8_from_vec(dx: float, dy: float) -> Optional[str]:
+        if dx == 0 and dy == 0:
+            return None
+        ang = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
+        idx = int((ang + 22.5) // 45.0) % 8
+        return ["E", "SE", "S", "SW", "W", "NW", "N", "NE"][idx]
+
+    def _update_move_status(self, dx: float, dy: float) -> None:
+        if dx == 0 and dy == 0:
+            self.is_moving = False
+            return
+        self.is_moving = True
+        if USE_ISO:
+            screen_dx = dx - dy
+            screen_dy = dx + dy
+        else:
+            screen_dx, screen_dy = dx, dy
+        new_dir = self._dir8_from_vec(screen_dx, screen_dy)
+        if new_dir:
+            self.facing = new_dir
+            self.status = new_dir
 
     @property
     def pos(self):
@@ -7461,6 +7488,7 @@ class Player:
             dy = (my / length)
         else:
             dx = dy = 0.0
+        self._update_move_status(dx, dy)
         frame_scale = dt * 60.0  # keep speed tuned for a 60 FPS baseline
         # 基础速度
         spd = int(self.speed)
@@ -13899,15 +13927,29 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             screen.blit(sh, sh.get_rect(center=(cx, cy + 6)))
             rect = pygame.Rect(0, 0, player_size, player_size);
             rect.midbottom = (cx, cy)
-            col = (240, 80, 80) if (p.hit_cd > 0 and (pygame.time.get_ticks() // 80) % 2 == 0) else (0, 255, 0)
-            pygame.draw.rect(screen, col, rect)
+            player_sprite = _load_shop_sprite(
+                "characters/player/sheets/player.png",
+                (int(player_size * 2.0), int(player_size * 2.4)),
+            )
+            sprite_rect = rect
+            hit_blink = (p.hit_cd > 0 and (pygame.time.get_ticks() // 80) % 2 == 0)
+            if player_sprite:
+                sprite_rect = player_sprite.get_rect(midbottom=rect.midbottom)
+                screen.blit(player_sprite, sprite_rect)
+                if hit_blink:
+                    tint = pygame.Surface(sprite_rect.size, pygame.SRCALPHA)
+                    tint.fill((240, 80, 80, 120))
+                    screen.blit(tint, sprite_rect)
+            else:
+                col = (240, 80, 80) if hit_blink else (0, 255, 0)
+                pygame.draw.rect(screen, col, rect)
             pygame.draw.rect(screen, (80, 220, 255), rect.inflate(6, 6), 2, border_radius=4)
             flash_t = float(getattr(p, "_hit_flash", 0.0))
             if flash_t > 0.0 and HIT_FLASH_DURATION > 0:
                 flash_ratio = min(1.0, flash_t / HIT_FLASH_DURATION)
-                overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
+                overlay = pygame.Surface(sprite_rect.size, pygame.SRCALPHA)
                 overlay.fill((255, 255, 255, int(200 * flash_ratio)))
-                screen.blit(overlay, rect.topleft)
+                screen.blit(overlay, sprite_rect.topleft)
             carapace_hp = int(getattr(p, "carapace_hp", 0))
             total_shield = int(getattr(p, "shield_hp", 0)) + carapace_hp
             if total_shield > 0:
