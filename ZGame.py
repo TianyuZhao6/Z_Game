@@ -15581,7 +15581,7 @@ if __name__ == "__main__":
 # The item collection system can be hugely impact this game to next level
 # Player and Enemy both can collect item to upgrade, after kill enemy, player can get the experience to upgrade, and
 # I set a timer each game for winning condition, as long as player still alive, after the time is running out
-# player won, vice versa. And after each combat, shop( roguelike feature) will appear for player to trade with item
+# player won, vice versa. And after each combat, shop(roguelike feature) will appear for player to trade with item
 # using the item they collect in the combat
 # enemy's health, attack accumulate via level increases
 # Special weapon can be trade in shop using big items collected in game(GOLDCOLLECTOR, etc.) OR
