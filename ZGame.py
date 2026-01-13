@@ -801,7 +801,9 @@ def draw_shield_outline(screen, rect):
 GAME_TITLE = "NEURONVIVOR"
 INFO_BAR_HEIGHT = 40
 GRID_SIZE = 36
-CELL_SIZE = 40
+WORLD_SCALE = 1.5
+BASE_CELL_SIZE = 40
+CELL_SIZE = int(BASE_CELL_SIZE * WORLD_SCALE)
 WINDOW_SIZE = GRID_SIZE * CELL_SIZE
 TOTAL_HEIGHT = WINDOW_SIZE + INFO_BAR_HEIGHT
 # Viewport (overridden at runtime when display is created)
@@ -811,9 +813,9 @@ OBSTACLE_HEALTH = 20
 MAIN_BLOCK_HEALTH = 40
 # --- view style ---
 USE_ISO = True  # True: 伪3D等距渲染；False: 保持现在的纯2D
-ISO_CELL_W = 64  # 等距砖块在画面上的“菱形”宽
-ISO_CELL_H = 32  # 等距砖块在画面上的“菱形”半高（顶点到中心）
-ISO_WALL_Z = 22  # 障碍“墙体”抬起的高度（屏幕像素）
+ISO_CELL_W = int(64 * WORLD_SCALE)  # 等距砖块在画面上的“菱形”宽
+ISO_CELL_H = int(32 * WORLD_SCALE)  # 等距砖块在画面上的“菱形”半高（顶点到中心）
+ISO_WALL_Z = int(22 * WORLD_SCALE)  # 障碍“墙体”抬起的高度（屏幕像素）
 ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
 SPATIAL_CELL = int(CELL_SIZE * 1.25)  # 统一网格大小
 WALL_STYLE = "hybrid"  # "billboard" | "prism" | "hybrid"
