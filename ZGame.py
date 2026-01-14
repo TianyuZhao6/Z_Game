@@ -793,6 +793,31 @@ def draw_shield_outline(screen, rect):
     screen.blit(s, s.get_rect(center=rect.center))
 
 
+_SPRITE_ALPHA_MASK_CACHE: dict[int, pygame.Surface] = {}
+
+
+def _sprite_alpha_mask(sprite: "pygame.Surface") -> "pygame.Surface":
+    key = id(sprite)
+    mask = _SPRITE_ALPHA_MASK_CACHE.get(key)
+    if mask is None or mask.get_size() != sprite.get_size():
+        mask = sprite.copy()
+        mask.fill((255, 255, 255, 255), special_flags=pygame.BLEND_RGB_MAX)
+        _SPRITE_ALPHA_MASK_CACHE[key] = mask
+    return mask
+
+
+def blit_sprite_tint(screen: "pygame.Surface", sprite: "pygame.Surface",
+                     dest_pos: tuple[int, int], color: tuple[int, int, int, int]) -> None:
+    if sprite is None:
+        return
+    if len(color) == 3:
+        color = (color[0], color[1], color[2], 255)
+    tint = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+    tint.fill(color)
+    tint.blit(_sprite_alpha_mask(sprite), (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    screen.blit(tint, dest_pos)
+
+
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
 # - Card system UI polish (later pass)
@@ -854,6 +879,7 @@ def _get_sekuya_font(size: int) -> pygame.font.Font:
     return font
 # 角色圆形碰撞半径
 PLAYER_RADIUS = int(CELL_SIZE * 0.30)  # matches 0.6×CELL_SIZE footprint
+PLAYER_SPRITE_SCALE = 1.2  # visual-only scale vs collision footprint
 ENEMY_RADIUS = int(CELL_SIZE * 0.30)
 HIT_FLASH_DURATION = 0.18  # seconds a white hit flash stays on screen
 # 成长模式：'linear'（当前默认）或 'exp'（推荐）
@@ -2297,12 +2323,13 @@ SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
 _shop_sprite_cache: dict[str, pygame.Surface | bool] = {}
 
 
-def _load_shop_sprite(filename: str, max_size: tuple[int, int]) -> Optional["pygame.Surface"]:
+def _load_shop_sprite(filename: str, max_size: tuple[int, int],
+                      *, allow_upscale: bool = False) -> Optional["pygame.Surface"]:
     """Load and cache a sprite from assets/sprites, scaled to max_size."""
     if not filename:
         return None
     rel_path = os.path.normpath(filename)
-    key = f"{rel_path}|{int(max_size[0])}x{int(max_size[1])}"
+    key = f"{rel_path}|{int(max_size[0])}x{int(max_size[1])}|up{int(allow_upscale)}"
     if key in _shop_sprite_cache:
         cached = _shop_sprite_cache[key]
         return cached if cached is not False else None
@@ -2320,7 +2347,9 @@ def _load_shop_sprite(filename: str, max_size: tuple[int, int]) -> Optional["pyg
                     if max_w > 0 and max_h > 0:
                         w, h = img.get_size()
                         if w > 0 and h > 0:
-                            scale = min(max_w / w, max_h / h, 1.0)
+                            scale = min(max_w / w, max_h / h)
+                            if not allow_upscale:
+                                scale = min(scale, 1.0)
                             if scale != 1.0:
                                 img = pygame.transform.smoothscale(
                                     img,
@@ -13929,9 +13958,12 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             screen.blit(sh, sh.get_rect(center=(cx, cy + 6)))
             rect = pygame.Rect(0, 0, player_size, player_size);
             rect.midbottom = (cx, cy)
+            sprite_w = int(player_size * 2.0 * PLAYER_SPRITE_SCALE)
+            sprite_h = int(player_size * 2.4 * PLAYER_SPRITE_SCALE)
             player_sprite = _load_shop_sprite(
                 "characters/player/sheets/player.png",
-                (int(player_size * 2.0), int(player_size * 2.4)),
+                (sprite_w, sprite_h),
+                allow_upscale=True,
             )
             sprite_rect = rect
             hit_blink = (p.hit_cd > 0 and (pygame.time.get_ticks() // 80) % 2 == 0)
@@ -13939,19 +13971,24 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 sprite_rect = player_sprite.get_rect(midbottom=rect.midbottom)
                 screen.blit(player_sprite, sprite_rect)
                 if hit_blink:
-                    tint = pygame.Surface(sprite_rect.size, pygame.SRCALPHA)
-                    tint.fill((240, 80, 80, 120))
-                    screen.blit(tint, sprite_rect)
+                    blit_sprite_tint(screen, player_sprite, sprite_rect.topleft, (240, 80, 80, 120))
             else:
                 col = (240, 80, 80) if hit_blink else (0, 255, 0)
                 pygame.draw.rect(screen, col, rect)
-            pygame.draw.rect(screen, (80, 220, 255), rect.inflate(6, 6), 2, border_radius=4)
             flash_t = float(getattr(p, "_hit_flash", 0.0))
             if flash_t > 0.0 and HIT_FLASH_DURATION > 0:
                 flash_ratio = min(1.0, flash_t / HIT_FLASH_DURATION)
-                overlay = pygame.Surface(sprite_rect.size, pygame.SRCALPHA)
-                overlay.fill((255, 255, 255, int(200 * flash_ratio)))
-                screen.blit(overlay, sprite_rect.topleft)
+                if player_sprite:
+                    blit_sprite_tint(
+                        screen,
+                        player_sprite,
+                        sprite_rect.topleft,
+                        (255, 255, 255, int(200 * flash_ratio)),
+                    )
+                else:
+                    overlay = pygame.Surface(sprite_rect.size, pygame.SRCALPHA)
+                    overlay.fill((255, 255, 255, int(200 * flash_ratio)))
+                    screen.blit(overlay, sprite_rect.topleft)
             carapace_hp = int(getattr(p, "carapace_hp", 0))
             total_shield = int(getattr(p, "shield_hp", 0)) + carapace_hp
             if total_shield > 0:
@@ -15331,7 +15368,7 @@ if __name__ == "__main__":
         globals().pop("_last_spoils", None)
         globals().pop("_next_biome", None)
         globals().pop("_last_biome", None)
-    START_IN_SHOP_FOR_TEST = True
+    START_IN_SHOP_FOR_TEST = False
     if START_IN_SHOP_FOR_TEST:
         globals()["_pending_shop"] = True
     while True:
