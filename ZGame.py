@@ -794,6 +794,8 @@ def draw_shield_outline(screen, rect):
 
 
 _SPRITE_ALPHA_MASK_CACHE: dict[int, pygame.Surface] = {}
+_SPRITE_OUTLINE_CACHE: dict[int, dict] = {}
+_RECT_SPRITE_CACHE: dict[tuple[int, int], pygame.Surface] = {}
 
 
 def _sprite_alpha_mask(sprite: "pygame.Surface") -> "pygame.Surface":
@@ -816,6 +818,39 @@ def blit_sprite_tint(screen: "pygame.Surface", sprite: "pygame.Surface",
     tint.fill(color)
     tint.blit(_sprite_alpha_mask(sprite), (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
     screen.blit(tint, dest_pos)
+
+
+def _sprite_outline_points(sprite: "pygame.Surface") -> list[tuple[int, int]]:
+    key = id(sprite)
+    cached = _SPRITE_OUTLINE_CACHE.get(key)
+    if cached and cached.get("size") == sprite.get_size():
+        return cached.get("pts", [])
+    mask = pygame.mask.from_surface(sprite, 1)
+    pts = mask.outline()
+    _SPRITE_OUTLINE_CACHE[key] = {"size": sprite.get_size(), "pts": pts}
+    return pts
+
+
+def draw_sprite_outline(screen: "pygame.Surface", sprite: "pygame.Surface",
+                        dest_pos: tuple[int, int], color: tuple[int, int, int, int],
+                        width: int = 3) -> None:
+    pts = _sprite_outline_points(sprite)
+    if not pts:
+        return
+    ox, oy = dest_pos
+    outline_pts = [(ox + x, oy + y) for x, y in pts]
+    pygame.draw.lines(screen, color, True, outline_pts, max(1, int(width)))
+
+
+def _rect_sprite(w: int, h: int) -> "pygame.Surface":
+    key = (max(1, int(w)), max(1, int(h)))
+    cached = _RECT_SPRITE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    surf = pygame.Surface(key, pygame.SRCALPHA)
+    surf.fill((255, 255, 255, 255))
+    _RECT_SPRITE_CACHE[key] = surf
+    return surf
 
 
 # ==================== 游戏常量配置 ====================
@@ -13765,7 +13800,16 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 outline_rect = body.inflate(6, 6)
                 pygame.draw.rect(screen, (230, 210, 230), outline_rect, 2, border_radius=4)
             if getattr(z, "shield_hp", 0) > 0:
-                draw_shield_outline(screen, body)
+                t = pygame.time.get_ticks() * 0.006
+                a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
+                shield_sprite = _rect_sprite(body.width, body.height)
+                draw_sprite_outline(
+                    screen,
+                    shield_sprite,
+                    body.topleft,
+                    (90, 180, 255, a),
+                    width=3,
+                )
             # 强化视觉：持币较多时加金色外轮廓
             coins = int(getattr(z, "spoils", 0))
             if coins >= Z_SPOIL_SPD_STEP:
@@ -13929,7 +13973,16 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 draw_tapered_x(mark, size, black_col, red_col)
                 screen.blit(mark, mark_rect)
             if getattr(z, "shield_hp", 0) > 0:
-                draw_shield_outline(screen, body)
+                t = pygame.time.get_ticks() * 0.006
+                a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
+                shield_sprite = _rect_sprite(body.width, body.height)
+                draw_sprite_outline(
+                    screen,
+                    shield_sprite,
+                    body.topleft,
+                    (90, 180, 255, a),
+                    width=3,
+                )
         elif kind == "player":
             p, cx, cy = data["p"], data["cx"], data["cy"]
             player_size = int(CELL_SIZE * 0.6)  # match footprint used in collisions
@@ -13992,7 +14045,16 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             carapace_hp = int(getattr(p, "carapace_hp", 0))
             total_shield = int(getattr(p, "shield_hp", 0)) + carapace_hp
             if total_shield > 0:
-                draw_shield_outline(screen, rect)
+                if player_sprite:
+                    t = pygame.time.get_ticks() * 0.006
+                    a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
+                    draw_sprite_outline(
+                        screen,
+                        player_sprite,
+                        sprite_rect.topleft,
+                        (90, 180, 255, a),
+                        width=3,
+                    )
             if carapace_hp > 0:
                 glow_rect = rect.inflate(18, 18)
                 glow = pygame.Surface(glow_rect.size, pygame.SRCALPHA)
