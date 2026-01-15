@@ -797,6 +797,7 @@ _SPRITE_ALPHA_MASK_CACHE: dict[int, pygame.Surface] = {}
 _SPRITE_OUTLINE_CACHE: dict[int, dict] = {}
 _RECT_SPRITE_CACHE: dict[tuple[int, int], pygame.Surface] = {}
 _STATIONARY_TURRET_ASSET_CACHE: dict[str, object] = {}
+_AUTO_TURRET_ASSET_CACHE: dict[str, pygame.Surface | None] = {}
 
 
 def _sprite_alpha_mask(sprite: "pygame.Surface") -> "pygame.Surface":
@@ -884,6 +885,25 @@ def get_stationary_turret_assets() -> tuple[pygame.Surface | None, int, int]:
     )
 
 
+def _auto_turret_sprite(dir_key: str) -> pygame.Surface | None:
+    dir_key = dir_key.lower()
+    cached = _AUTO_TURRET_ASSET_CACHE.get(dir_key)
+    if dir_key in _AUTO_TURRET_ASSET_CACHE:
+        return cached
+    path_map = {
+        "right": "props/auto-turret/right.png",
+        "left": "props/auto-turret/left.png",
+        "up": "props/auto-turret/back.png",
+        "down": "props/auto-turret/down(front).png",
+    }
+    path = path_map.get(dir_key)
+    surf = None
+    if path:
+        surf = _load_shop_sprite(path, (AUTO_TURRET_MAX_W, AUTO_TURRET_MAX_H), allow_upscale=False)
+    _AUTO_TURRET_ASSET_CACHE[dir_key] = surf
+    return surf
+
+
 # ==================== 游戏常量配置 ====================
 # NOTE: Keep design notes & TODOs below; do not delete when refactoring.
 # - Card system UI polish (later pass)
@@ -892,7 +912,7 @@ def get_stationary_turret_assets() -> tuple[pygame.Surface | None, int, int]:
 GAME_TITLE = "NEURONVIVOR"
 INFO_BAR_HEIGHT = 40
 GRID_SIZE = 36
-WORLD_SCALE = 1.5
+WORLD_SCALE = 1.0
 BASE_CELL_SIZE = 40
 CELL_SIZE = int(BASE_CELL_SIZE * WORLD_SCALE)
 WINDOW_SIZE = GRID_SIZE * CELL_SIZE
@@ -1335,6 +1355,8 @@ AUTO_TURRET_FIRE_INTERVAL = 0.9  # seconds between shots
 AUTO_TURRET_RANGE_MULT = 0.8  # fraction of player range
 AUTO_TURRET_OFFSET_RADIUS = 40.0  # distance from player center
 AUTO_TURRET_ORBIT_SPEED = 2.0  # radians per second
+AUTO_TURRET_MAX_W = int(CELL_SIZE * 0.55)  # ~half player footprint width
+AUTO_TURRET_MAX_H = int(CELL_SIZE * 0.50)
 STATIONARY_TURRET_MAX_W = int(CELL_SIZE * 1.35)
 STATIONARY_TURRET_MAX_H = int(CELL_SIZE * 1.18)
 STATIONARY_TURRET_FOOTPRINT_W_FRAC = 0.78  # portion of sprite bbox used for collision width
@@ -13774,6 +13796,42 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                     base_r = 10
                     pygame.draw.circle(screen, (80, 180, 255), (cx, cy), base_r)
                     pygame.draw.circle(screen, (250, 250, 255), (cx, cy), base_r - 4, 2)
+            elif isinstance(obj, AutoTurret):
+                owner = getattr(obj, "owner", None)
+                dir_key = None
+                facing = getattr(owner, "facing", None)
+                if facing:
+                    if facing in ("E", "SE", "NE"):
+                        dir_key = "right"
+                    elif facing in ("W", "SW", "NW"):
+                        dir_key = "left"
+                    elif facing in ("N",):
+                        dir_key = "up"
+                    elif facing in ("S",):
+                        dir_key = "down"
+                if dir_key is None:
+                    if owner and hasattr(owner, "rect"):
+                        ox, oy = owner.rect.center
+                        dx, dy = cx - ox, cy - oy
+                    else:
+                        dx = dy = 0
+                    if abs(dx) >= abs(dy):
+                        dir_key = "right" if dx >= 0 else "left"
+                    else:
+                        dir_key = "down" if dy >= 0 else "up"
+                sprite = _auto_turret_sprite(dir_key)
+                if sprite:
+                    shadow_w = max(int(sprite.get_width() * 0.6), int(CELL_SIZE * 0.6))
+                    shadow_h = max(int(sprite.get_height() * 0.32), int(CELL_SIZE * 0.28))
+                    shadow = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
+                    pygame.draw.ellipse(shadow, (0, 0, 0, ISO_SHADOW_ALPHA), shadow.get_rect())
+                    screen.blit(shadow, shadow.get_rect(center=(cx, cy + 6)))
+                    rect = sprite.get_rect(midbottom=(cx, cy))
+                    screen.blit(sprite, rect)
+                else:
+                    base_r = 9
+                    pygame.draw.circle(screen, (80, 200, 255), (cx, cy), base_r)
+                    pygame.draw.circle(screen, (240, 240, 255), (cx, cy), base_r - 3, 2)
             else:
                 base_r = 10
                 pygame.draw.circle(screen, (80, 180, 255), (cx, cy), base_r)
