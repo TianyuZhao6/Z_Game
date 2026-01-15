@@ -796,6 +796,7 @@ def draw_shield_outline(screen, rect):
 _SPRITE_ALPHA_MASK_CACHE: dict[int, pygame.Surface] = {}
 _SPRITE_OUTLINE_CACHE: dict[int, dict] = {}
 _RECT_SPRITE_CACHE: dict[tuple[int, int], pygame.Surface] = {}
+_STATIONARY_TURRET_ASSET_CACHE: dict[str, object] = {}
 
 
 def _sprite_alpha_mask(sprite: "pygame.Surface") -> "pygame.Surface":
@@ -851,6 +852,36 @@ def _rect_sprite(w: int, h: int) -> "pygame.Surface":
     surf.fill((255, 255, 255, 255))
     _RECT_SPRITE_CACHE[key] = surf
     return surf
+
+
+def get_stationary_turret_assets() -> tuple[pygame.Surface | None, int, int]:
+    target = (int(STATIONARY_TURRET_MAX_W), int(STATIONARY_TURRET_MAX_H))
+    sprite = _STATIONARY_TURRET_ASSET_CACHE.get("sprite")
+    cached_size = _STATIONARY_TURRET_ASSET_CACHE.get("size")
+    if sprite is None or cached_size != target:
+        sprite = _load_shop_sprite(
+            "props/Stationary Turret/Stationary Turret.png",
+            target,
+            allow_upscale=False,
+        )
+        _STATIONARY_TURRET_ASSET_CACHE.clear()
+        _STATIONARY_TURRET_ASSET_CACHE["sprite"] = sprite
+        _STATIONARY_TURRET_ASSET_CACHE["size"] = target
+        if sprite:
+            mask = pygame.mask.from_surface(sprite, 1)
+            rects = mask.get_bounding_rects()
+            bbox = rects[0] if rects else mask.get_rect()
+            foot_w = max(12, int(bbox.width * STATIONARY_TURRET_FOOTPRINT_W_FRAC))
+            foot_h = max(8, int(bbox.height * STATIONARY_TURRET_FOOTPRINT_H_FRAC))
+        else:
+            foot_w = foot_h = int(CELL_SIZE * 0.7)
+        _STATIONARY_TURRET_ASSET_CACHE["foot_w"] = foot_w
+        _STATIONARY_TURRET_ASSET_CACHE["foot_h"] = foot_h
+    return (
+        _STATIONARY_TURRET_ASSET_CACHE.get("sprite"),
+        int(_STATIONARY_TURRET_ASSET_CACHE.get("foot_w", int(CELL_SIZE * 0.7)) or 0),
+        int(_STATIONARY_TURRET_ASSET_CACHE.get("foot_h", int(CELL_SIZE * 0.7)) or 0),
+    )
 
 
 # ==================== 游戏常量配置 ====================
@@ -1304,6 +1335,10 @@ AUTO_TURRET_FIRE_INTERVAL = 0.9  # seconds between shots
 AUTO_TURRET_RANGE_MULT = 0.8  # fraction of player range
 AUTO_TURRET_OFFSET_RADIUS = 40.0  # distance from player center
 AUTO_TURRET_ORBIT_SPEED = 2.0  # radians per second
+STATIONARY_TURRET_MAX_W = int(CELL_SIZE * 1.35)
+STATIONARY_TURRET_MAX_H = int(CELL_SIZE * 1.18)
+STATIONARY_TURRET_FOOTPRINT_W_FRAC = 0.78  # portion of sprite bbox used for collision width
+STATIONARY_TURRET_FOOTPRINT_H_FRAC = 0.45  # focus collision on the lower silhouette
 # --- targeting / auto-aim (new) ---
 PLAYER_TARGET_RANGE = PLAYER_RANGE_DEFAULT  # 射程内才会当候选（默认=子弹射程）
 PLAYER_BLOCK_FORCE_RANGE_TILES = 2  # 玩家两格内遇到可破坏物 → 强制优先
@@ -9775,6 +9810,13 @@ class StationaryTurret:
         self.range_mult = float(range_mult)
         # desync cooldown a bit so multiple turrets don't fire in perfect sync
         self.cd = random.random() * self.fire_interval
+        _, foot_w, foot_h = get_stationary_turret_assets()
+        self.rect = pygame.Rect(0, 0, max(6, int(foot_w)), max(6, int(foot_h)))
+        self.rect.midbottom = (int(self.x), int(self.y))
+        self.grid_pos = (
+            int(self.rect.centerx // CELL_SIZE),
+            int((self.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE),
+        )
 
     def update(self, dt: float, game_state: "GameState",
                enemies: List["Enemy"], bullets: List["Bullet"]):
@@ -9814,6 +9856,21 @@ class StationaryTurret:
             )
         )
         self.cd = self.fire_interval
+
+
+class StationaryTurretObstacle:
+    def __init__(self, rect: pygame.Rect):
+        self.type = "StationaryTurret"
+        self.health = None
+        self.nonblocking = False
+        self.rect = rect.copy()
+
+    @property
+    def grid_pos(self):
+        return (
+            int(self.rect.centerx // CELL_SIZE),
+            int((self.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE),
+        )
 
 
 class Spoil:
@@ -13580,14 +13637,16 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
     drawables = []
     # 3.1 障碍（立体墙砖，按“底边 y + 墙高”排）
     for (gx, gy), ob in game_state.obstacles.items():
+        if getattr(ob, "type", "") == "Lantern":
+            continue
+        if getattr(ob, "type", "") == "StationaryTurret":
+            continue  # visual comes from turret drawable; keep collision only
         base_col = (120, 120, 120) if ob.type == "Indestructible" else (200, 80, 80)
         if ob.type == "Destructible" and ob.health is not None:
             t = max(0.4, min(1.0, ob.health / float(max(1, OBSTACLE_HEALTH))))
             base_col = (int(200 * t), int(80 * t), int(80 * t))
         top_pts = iso_tile_points(gx, gy, camx, camy)
         sort_y = top_pts[2][1] + (ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
-        if getattr(ob, "type", "") == "Lantern":
-            continue
         drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": base_col}))
     # 3.2 地面上的小物：金币 / 治疗（存屏幕像素坐标）
     for s in getattr(game_state, "spoils", []):
@@ -13598,7 +13657,7 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
     for t in getattr(game_state, "turrets", []):
         wx, wy = t.x / CELL_SIZE, (t.y - INFO_BAR_HEIGHT) / CELL_SIZE
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-        drawables.append(("turret", sy, {"cx": sx, "cy": sy}))
+        drawables.append(("turret", sy, {"cx": sx, "cy": sy, "obj": t}))
     for h in getattr(game_state, "heals", []):
         wx, wy = h.base_x / CELL_SIZE, (h.base_y - h.h - INFO_BAR_HEIGHT) / CELL_SIZE
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
@@ -13699,10 +13758,26 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             pygame.draw.circle(screen, (255, 224, 0), (cx, cy), r)
             pygame.draw.circle(screen, (255, 255, 180), (cx, cy), r, 2)
         elif kind == "turret":
-            cx, cy = data["cx"], data["cy"]
-            base_r = 10
-            pygame.draw.circle(screen, (80, 180, 255), (cx, cy), base_r)
-            pygame.draw.circle(screen, (250, 250, 255), (cx, cy), base_r - 4, 2)
+            cx, cy = int(data["cx"]), int(data["cy"])
+            obj = data.get("obj")
+            if isinstance(obj, StationaryTurret):
+                sprite, foot_w, foot_h = get_stationary_turret_assets()
+                if sprite:
+                    shadow_w = max(int(foot_w * 1.4), int(CELL_SIZE * 0.9))
+                    shadow_h = max(int(foot_h * 0.8), int(CELL_SIZE * 0.4))
+                    shadow = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
+                    pygame.draw.ellipse(shadow, (0, 0, 0, ISO_SHADOW_ALPHA), shadow.get_rect())
+                    screen.blit(shadow, shadow.get_rect(center=(cx, cy + 6)))
+                    rect = sprite.get_rect(midbottom=(cx, cy))
+                    screen.blit(sprite, rect)
+                else:
+                    base_r = 10
+                    pygame.draw.circle(screen, (80, 180, 255), (cx, cy), base_r)
+                    pygame.draw.circle(screen, (250, 250, 255), (cx, cy), base_r - 4, 2)
+            else:
+                base_r = 10
+                pygame.draw.circle(screen, (80, 180, 255), (cx, cy), base_r)
+                pygame.draw.circle(screen, (250, 250, 255), (cx, cy), base_r - 4, 2)
         elif kind == "bullet":
             cx, cy = data["cx"], data["cy"]
             rad = int(data.get("r", BULLET_RADIUS))
@@ -14445,6 +14520,7 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
             turrets.append(AutoTurret(player, (off_x, off_y)))
     # --- Stationary turrets from META ---
     stationary_count = int(META.get("stationary_turret_count", 0))
+    added_stationary = False
     if stationary_count > 0:
         for _ in range(stationary_count):
             # try a few times to find a clear tile (no obstacle)
@@ -14456,8 +14532,13 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
                 # center of the tile in world coords (respect INFO_BAR_HEIGHT)
                 wx = gx * CELL_SIZE + CELL_SIZE // 2
                 wy = gy * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT
-                turrets.append(StationaryTurret(wx, wy))
+                turret = StationaryTurret(wx, wy)
+                turrets.append(turret)
+                game_state.obstacles[(gx, gy)] = StationaryTurretObstacle(turret.rect)
+                added_stationary = True
                 break
+    if added_stationary and hasattr(game_state, "mark_nav_dirty"):
+        game_state.mark_nav_dirty()
     game_state.turrets = turrets
     ztype_map = {
         "enemy_fast": "fast",
@@ -14950,10 +15031,17 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     level_idx = int(meta.get("current_level", current_level))
     # Recreate entities
     obstacles: Dict[Tuple[int, int], Obstacle] = {}
+    stationary_from_save: List[StationaryTurret] = []
     for o in snap.get("obstacles", []):
         typ = o.get("type", "Indestructible")
         x, y = int(o.get("x", 0)), int(o.get("y", 0))
-        if o.get("main", False):
+        if typ == "StationaryTurret":
+            cx = x * CELL_SIZE + CELL_SIZE // 2
+            cy = y * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT
+            turret = StationaryTurret(cx, cy)
+            stationary_from_save.append(turret)
+            ob = StationaryTurretObstacle(turret.rect)
+        elif o.get("main", False):
             ob = MainBlock(x, y, health=o.get("health", MAIN_BLOCK_HEALTH))
         else:
             ob = Obstacle(x, y, typ, health=o.get("health", None))
@@ -14994,7 +15082,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
     player._flash_prev_hp = int(player.hp)
     # Auto-turrets when resuming (use saved meta if present, else global META)
     turret_level = int(meta.get("auto_turret_level", META.get("auto_turret_level", 0)))
-    turrets: List[AutoTurret] = []
+    turrets: List[AutoTurret | StationaryTurret] = []
     if turret_level > 0:
         for i in range(turret_level):
             angle = 2.0 * math.pi * i / max(1, turret_level)
@@ -15002,9 +15090,12 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             off_y = math.sin(angle) * AUTO_TURRET_OFFSET_RADIUS
             turrets.append(AutoTurret(player, (off_x, off_y)))
     # Stationary turrets from META on resume
+    turrets.extend(stationary_from_save)
     stationary_count = int(meta.get("stationary_turret_count", 0))
-    if stationary_count > 0:
-        for _ in range(stationary_count):
+    added_stationary = False
+    remaining = max(0, stationary_count - len(stationary_from_save))
+    if remaining > 0:
+        for _ in range(remaining):
             for _attempt in range(40):
                 gx = random.randrange(GRID_SIZE)
                 gy = random.randrange(GRID_SIZE)
@@ -15012,8 +15103,13 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                     continue
                 wx = gx * CELL_SIZE + CELL_SIZE // 2
                 wy = gy * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT
-                turrets.append(StationaryTurret(wx, wy))
+                turret = StationaryTurret(wx, wy)
+                turrets.append(turret)
+                game_state.obstacles[(gx, gy)] = StationaryTurretObstacle(turret.rect)
+                added_stationary = True
                 break
+    if (added_stationary or stationary_from_save) and hasattr(game_state, "mark_nav_dirty"):
+        game_state.mark_nav_dirty()
     game_state.turrets = turrets
     # Enemies
     enemies: List[Enemy] = []
