@@ -912,7 +912,7 @@ def _auto_turret_sprite(dir_key: str) -> pygame.Surface | None:
 GAME_TITLE = "NEURONVIVOR"
 INFO_BAR_HEIGHT = 40
 GRID_SIZE = 36
-WORLD_SCALE = 1.0
+WORLD_SCALE = 1.3
 BASE_CELL_SIZE = 40
 CELL_SIZE = int(BASE_CELL_SIZE * WORLD_SCALE)
 WINDOW_SIZE = GRID_SIZE * CELL_SIZE
@@ -2889,6 +2889,16 @@ def clamp_coin_loss_with_lockbox(coins_before: int, raw_loss: int, level: int | 
     return min(loss, max_loss)
 
 
+def _atomic_write_json(path: str, data: dict) -> None:
+    """Write json to a temp file then replace so crashes can't zero the save."""
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
 def save_progress(current_level: int,
                   max_wave_reached: int | None = None,
                   pending_shop: bool = False):
@@ -2980,8 +2990,7 @@ def save_progress(current_level: int,
     if baseline_bundle:
         data["baseline"] = baseline_bundle  # ← survive across Save & Quit
     try:
-        with open(SAVE_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        _atomic_write_json(SAVE_FILE, data)
     except Exception as e:
         print("save_progress error:", e)
 
@@ -3046,8 +3055,7 @@ def capture_snapshot(game_state, player, enemies, current_level: int,
 def save_snapshot(snapshot: dict) -> None:
     """Write a snapshot dict to disk."""
     try:
-        with open(SAVE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(snapshot, f)
+        _atomic_write_json(SAVE_FILE, snapshot)
     except Exception as e:
         print(f"[Save] Failed to write snapshot: {e}", file=sys.stderr)
 
