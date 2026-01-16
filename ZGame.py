@@ -7718,11 +7718,7 @@ class AfterImageGhost:
         self.w = int(w);
         self.h = int(h)
         r, g, b = base_color if base_color else (120, 220, 160)
-        MIX = 0.42  # 0..1, how much to pull toward white
-        r = int(r + (255 - r) * MIX)
-        g = int(g + (255 - g) * MIX)
-        b = int(b + (255 - b) * MIX)
-        self.color = (r, g, b)
+        self.color = (int(r), int(g), int(b))
         self.ttl = float(ttl);
         self.life0 = float(ttl)
         self.sprite = sprite
@@ -13667,6 +13663,20 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             camx=camx, camy=camy,
             fill=True
         )
+    # Ravager/other afterimages (rendered under entities)
+    player_rect = getattr(player, "rect", None)
+    enemy_rects = [getattr(z, "rect", None) for z in enemies if getattr(z, "rect", None)]
+    for g in getattr(game_state, "ghosts", []):
+        gw = getattr(g, "w", 0)
+        gh = getattr(g, "h", 0)
+        if gw and gh:
+            ghost_rect = pygame.Rect(0, 0, int(gw), int(gh))
+            ghost_rect.midbottom = (int(getattr(g, "x", 0)), int(getattr(g, "y", 0)))
+            if player_rect and ghost_rect.colliderect(player_rect):
+                continue
+            if enemy_rects and any(ghost_rect.colliderect(er) for er in enemy_rects if er):
+                continue
+        g.draw_iso(screen, camx, camy)
     if hasattr(game_state, "draw_paint_iso"):
         game_state.draw_paint_iso(screen, camx, camy)
     # 3) 收集需要按底部Y排序的可绘制体
@@ -13684,11 +13694,6 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
         top_pts = iso_tile_points(gx, gy, camx, camy)
         sort_y = top_pts[2][1] + (ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
         drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": base_col}))
-    # afterimages (as own layer, ordered by foot y)
-    for g in getattr(game_state, "ghosts", []):
-        wx, wy = g.x / CELL_SIZE, (g.y - INFO_BAR_HEIGHT) / CELL_SIZE
-        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-        drawables.append(("ghost", sy, {"g": g}))
     # 3.2 地面上的小物：金币 / 治疗（存屏幕像素坐标）
     for s in getattr(game_state, "spoils", []):
         wx, wy = s.base_x / CELL_SIZE, (s.base_y - s.h - INFO_BAR_HEIGHT) / CELL_SIZE
@@ -13752,10 +13757,6 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
     COL_PLAYER_BULLET = (199, 68, 12) if hell else (120, 204, 121)  # color in Hell, white elsewhere
     COL_ENEMY_SHOT = (255, 80, 80) if hell else (255, 120, 50)  # hot red in Hell, orange elsewhere
     for kind, _, data in drawables:
-        if kind == "ghost":
-            g = data["g"]
-            g.draw_iso(screen, camx, camy)
-            continue
         if kind == "wall":
             gx, gy, col = data["gx"], data["gy"], data["color"]
             if WALL_STYLE == "prism":
@@ -13926,6 +13927,8 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 draw_size = max(player_size * 2, int(z.rect.w * 2))
             else:
                 draw_size = player_size  # match player footprint to avoid getting stuck
+            body = pygame.Rect(0, 0, draw_size, draw_size)
+            body.midbottom = (cx, cy)
             enemy_sprite = _enemy_sprite(getattr(z, "type", ""), draw_size)
             # shadow scaled to body size
             sh_w = max(8, int(draw_size * 0.9))
@@ -13933,8 +13936,7 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             sh = pygame.Surface((sh_w, sh_h), pygame.SRCALPHA)
             pygame.draw.ellipse(sh, (0, 0, 0, ISO_SHADOW_ALPHA), sh.get_rect())
             screen.blit(sh, sh.get_rect(center=(cx, cy + 6)))
-            body = pygame.Rect(0, 0, draw_size, draw_size)
-            body.midbottom = (cx, cy)
+            sprite_rect = body
             # 拾取光晕（金色）
             if getattr(z, "_gold_glow_t", 0.0) > 0.0:
                 glow = pygame.Surface((int(draw_size * 1.6), int(draw_size * 1.0)), pygame.SRCALPHA)
@@ -13963,14 +13965,14 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             if getattr(z, "shield_hp", 0) > 0:
                 t = pygame.time.get_ticks() * 0.006
                 a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
-                shield_sprite = _rect_sprite(body.width, body.height)
-                draw_sprite_outline(
-                    screen,
-                    shield_sprite,
-                    body.topleft,
-                    (90, 180, 255, a),
-                    width=3,
-                )
+                if enemy_sprite:
+                    draw_sprite_outline(
+                        screen,
+                        enemy_sprite,
+                        sprite_rect.topleft,
+                        (90, 180, 255, a),
+                        width=3,
+                    )
             # 强化视觉：持币较多时加金色外轮廓
             coins = int(getattr(z, "spoils", 0))
             if coins >= Z_SPOIL_SPD_STEP:
@@ -14143,7 +14145,8 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 mark = pygame.Surface(mark_rect.size, pygame.SRCALPHA)
                 draw_tapered_x(mark, size, black_col, red_col)
                 screen.blit(mark, mark_rect)
-            if getattr(z, "shield_hp", 0) > 0:
+            if getattr(z, "shield_hp", 0) > 0 and not enemy_sprite:
+                # Fallback shield outline only when we don't have a sprite; otherwise the sprite-outline block above handles it.
                 t = pygame.time.get_ticks() * 0.006
                 a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
                 shield_sprite = _rect_sprite(body.width, body.height)
