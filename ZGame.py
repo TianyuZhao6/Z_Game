@@ -1053,7 +1053,6 @@ SPOILS_PER_TYPE = {  # average coins per enemy type (rounded when spawning)
     "bomber": (1, 2),  # alias for suicide, if used
     "splinter": (1, 2),
     "splinterling": (0, 1),
-    "trailrunner": (1, 2),
     "ravager": (2, 5),
 }
 # --- Twin Boss (Level 5 only) ---
@@ -1157,7 +1156,6 @@ XP_PER_ENEMY_TYPE = {
     "shielder": 8,
     "splinter": 8,
     "splinterling": 4,
-    "trailrunner": 8,
 }
 XP_ZLEVEL_BONUS = 2  # bonus XP per enemy level above 1
 ENEMY_XP_TO_LEVEL = 15  # per level step for monsters
@@ -2182,7 +2180,6 @@ ENEMY_COLORS = {
     "splinter": (180, 120, 250),
     "splinterling": (210, 160, 255),
     "mistling": (228, 218, 255),
-    "trailrunner": (90, 190, 120),
     "bandit": (255, 215, 0),  # 金币大盗：金色
 }
 # --- colors (add) ---
@@ -2241,7 +2238,6 @@ THREAT_COSTS = {
     "tank": 4,
     "ravager": 5,
     "splinter": 4,
-    "trailrunner": 3,
 }
 # (Optional) relative preference if multiple types fit the remaining budget
 THREAT_WEIGHTS = {
@@ -2255,7 +2251,6 @@ THREAT_WEIGHTS = {
     "tank": 6,
     "ravager": 8,
     "splinter": 10,
-    "trailrunner": 12,
 }
 # derive cooldown from either explicit FIRE_RATE or SPACING
 if FIRE_RATE:
@@ -7767,7 +7762,8 @@ class Enemy:
         self._vy = 0.0
         self.attack = attack
         self.speed = speed
-        self.type = ztype
+        # Normalize deprecated/alias types
+        self.type = "fast" if ztype == "trailrunner" else ztype
         self.color = ENEMY_COLORS.get(self.type, (255, 60, 60))
         # === special type state ===
         # Suicide types start unarmed; fuse begins when near the player
@@ -7813,10 +7809,9 @@ class Enemy:
         if ztype == "fast":
             self.speed = max(int(self.speed + 1), int(self.speed * 1.5))
             base_hp = int(base_hp * 0.7)
-        if ztype == "trailrunner":
-            self.speed = max(int(self.speed + 1), int(self.speed * 1.4))
-            base_hp = int(base_hp * 0.85)
-            self._display_name = "Corrupt Trailrunner"
+        if self.type == "strong":
+            base_hp = int(base_hp * 1.35)
+            self.attack = max(1, int(self.attack * 1.15))
         if ztype == "tank":
             self.attack = int(self.attack * 0.6)
             base_hp = int(base_hp * 1.8)
@@ -8577,7 +8572,7 @@ class Enemy:
         # record this frame's foot point
         self._foot_curr = (self.rect.centerx, self.rect.bottom)
         if game_state is not None and getattr(game_state, "biome_active", None) == "Scorched Hell":
-            if getattr(self, "type", "") != "trailrunner" and getattr(self, "hp", 0) > 0:
+            if getattr(self, "hp", 0) > 0:
                 f0 = getattr(self, "_foot_prev", (self.rect.centerx, self.rect.bottom))
                 f1 = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))
                 moved = math.hypot(f1[0] - f0[0], f1[1] - f0[1])
@@ -9109,33 +9104,6 @@ class Enemy:
                         next_cd = random.uniform(4.5, 6.0)
                     self._dash_cd = next_cd * cd_mult
                     self._dash_cd_next = None
-        if self.type == "trailrunner" and game_state and getattr(self, "hp", 0) > 0:
-            f0 = getattr(self, "_foot_prev", (self.rect.centerx, self.rect.bottom))
-            f1 = getattr(self, "_foot_curr", (self.rect.centerx, self.rect.bottom))
-            moved = math.hypot(f1[0] - f0[0], f1[1] - f0[1])
-            if moved > 0.05:
-                enemy_trace_timer = float(getattr(self, "enemy_trace_timer", 0.0)) + float(dt)
-                last_paint_pos = getattr(self, "last_paint_pos", None)
-                if not (isinstance(last_paint_pos, (tuple, list)) and len(last_paint_pos) == 2):
-                    last_paint_pos = (f1[0], f1[1])
-                dx = f1[0] - float(last_paint_pos[0])
-                dy = f1[1] - float(last_paint_pos[1])
-                dist = math.hypot(dx, dy)
-                if (enemy_trace_timer >= ENEMY_PAINT_SPAWN_INTERVAL
-                        or dist >= ENEMY_PAINT_SPAWN_DIST):
-                    paint_color = None
-                    if getattr(game_state, "biome_active", None) == "Scorched Hell":
-                        paint_color = getattr(self, "color", None)
-                    game_state.apply_enemy_paint(
-                        f1[0], f1[1], ENEMY_PAINT_RADIUS,
-                        paint_type="corrupt_trail",
-                        paint_color=paint_color,
-                    )
-                    enemy_trace_timer = 0.0
-                    last_paint_pos = (f1[0], f1[1])
-                self.enemy_trace_timer = enemy_trace_timer
-                self.last_paint_pos = last_paint_pos
-
     def draw(self, screen):
         if getattr(self, "type", "") == "bandit":
             cx, cy = self.rect.centerx, self.rect.bottom
@@ -14662,7 +14630,6 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
             ("basic", 50),
             ("fast", 15),
             ("tank", 10),
-            ("trailrunner", 8),
             ("ranged", 12),
             ("suicide", 8),
             ("buffer", 3),
