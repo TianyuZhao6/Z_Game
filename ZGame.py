@@ -798,6 +798,7 @@ _SPRITE_OUTLINE_CACHE: dict[int, dict] = {}
 _RECT_SPRITE_CACHE: dict[tuple[int, int], pygame.Surface] = {}
 _STATIONARY_TURRET_ASSET_CACHE: dict[str, object] = {}
 _AUTO_TURRET_ASSET_CACHE: dict[str, pygame.Surface | None] = {}
+_ENEMY_SPRITE_CACHE: dict[tuple[str, int], pygame.Surface | None] = {}
 
 
 def _sprite_alpha_mask(sprite: "pygame.Surface") -> "pygame.Surface":
@@ -902,6 +903,23 @@ def _auto_turret_sprite(dir_key: str) -> pygame.Surface | None:
         surf = _load_shop_sprite(path, (AUTO_TURRET_MAX_W, AUTO_TURRET_MAX_H), allow_upscale=False)
     _AUTO_TURRET_ASSET_CACHE[dir_key] = surf
     return surf
+
+
+def _enemy_sprite(ztype: str, size_px: int) -> pygame.Surface | None:
+    key = (ztype, int(size_px))
+    if key in _ENEMY_SPRITE_CACHE:
+        return _ENEMY_SPRITE_CACHE[key]
+    path_map = {
+        "basic": "characters/enemies/basic/basic.png",
+    }
+    path = path_map.get(ztype, None)
+    sprite = None
+    if path:
+        # match player visual scale (~2x footprint)
+        target = (int(size_px * 2.0), int(size_px * 2.0))
+        sprite = _load_shop_sprite(path, target, allow_upscale=False)
+    _ENEMY_SPRITE_CACHE[key] = sprite
+    return sprite
 
 
 # ==================== 游戏常量配置 ====================
@@ -13911,6 +13929,7 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 draw_size = max(player_size, int(z.rect.w))
             else:
                 draw_size = player_size  # match player footprint to avoid getting stuck
+            enemy_sprite = _enemy_sprite(getattr(z, "type", ""), draw_size)
             # shadow scaled to body size
             sh_w = max(8, int(draw_size * 0.9))
             sh_h = max(4, int(draw_size * 0.45))
@@ -13936,10 +13955,14 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                     min(255, int(col[1] + (255 - col[1]) * f)),
                     min(255, int(col[2] + (255 - col[2]) * f)),
                 )
-            pygame.draw.rect(screen, col, body)
-            if not getattr(z, "is_boss", False):
-                outline_rect = body.inflate(6, 6)
-                pygame.draw.rect(screen, (230, 210, 230), outline_rect, 2, border_radius=4)
+            if enemy_sprite:
+                sprite_rect = enemy_sprite.get_rect(midbottom=body.midbottom)
+                screen.blit(enemy_sprite, sprite_rect)
+            else:
+                pygame.draw.rect(screen, col, body)
+                if not getattr(z, "is_boss", False):
+                    outline_rect = body.inflate(6, 6)
+                    pygame.draw.rect(screen, (230, 210, 230), outline_rect, 2, border_radius=4)
             if getattr(z, "shield_hp", 0) > 0:
                 t = pygame.time.get_ticks() * 0.006
                 a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
@@ -14037,8 +14060,10 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 f = pygame.font.SysFont(None, 18)
                 txt = f.render(f"{coins}", True, (255, 225, 120))
                 screen.blit(txt, txt.get_rect(midbottom=(cx, body.top - 4)))
-            if z.is_boss: pygame.draw.rect(screen, (255, 215, 0), body.inflate(4, 4), 3)
-            pygame.draw.rect(screen, col, body)
+            if z.is_boss and not enemy_sprite:
+                pygame.draw.rect(screen, (255, 215, 0), body.inflate(4, 4), 3)
+            if not enemy_sprite:
+                pygame.draw.rect(screen, col, body)
             paint_intensity = 0.0
             if hasattr(game_state, "paint_intensity_at_world"):
                 paint_intensity = game_state.paint_intensity_at_world(z.rect.centerx, z.rect.centery, owner=2)
@@ -14052,9 +14077,17 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             flash_t = float(getattr(z, "_hit_flash", 0.0))
             if flash_t > 0.0 and HIT_FLASH_DURATION > 0:
                 flash_ratio = min(1.0, flash_t / HIT_FLASH_DURATION)
-                overlay = pygame.Surface(body.size, pygame.SRCALPHA)
-                overlay.fill((255, 255, 255, int(200 * flash_ratio)))
-                screen.blit(overlay, body.topleft)
+                if enemy_sprite:
+                    blit_sprite_tint(
+                        screen,
+                        enemy_sprite,
+                        sprite_rect.topleft,
+                        (255, 255, 255, int(200 * flash_ratio)),
+                    )
+                else:
+                    overlay = pygame.Surface(body.size, pygame.SRCALPHA)
+                    overlay.fill((255, 255, 255, int(200 * flash_ratio)))
+                    screen.blit(overlay, body.topleft)
             mark_t = float(getattr(z, "_vuln_mark_t", 0.0))
             if mark_t > 0.0:
                 flash = float(getattr(z, "_vuln_hit_flash", 0.0))
