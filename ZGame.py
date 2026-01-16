@@ -911,6 +911,11 @@ def _enemy_sprite(ztype: str, size_px: int) -> pygame.Surface | None:
         return _ENEMY_SPRITE_CACHE[key]
     path_map = {
         "basic": "characters/enemies/basic/basic.png",
+        "fast": "characters/enemies/fast/fast.png",
+        "tank": "characters/enemies/tank/tank.png",
+        "ranged": "characters/enemies/ranged/ranged.png",
+        "buffer": "characters/enemies/buffer/buffer.png",
+        "ravager": "characters/enemies/ravager/ravager.png",
     }
     path = path_map.get(ztype, None)
     sprite = None
@@ -7707,7 +7712,7 @@ def spawn_splinter_children(parent: "Enemy",
 
 
 class AfterImageGhost:
-    def __init__(self, x, y, w, h, base_color, ttl=AFTERIMAGE_TTL):
+    def __init__(self, x, y, w, h, base_color, ttl=AFTERIMAGE_TTL, sprite: pygame.Surface | None = None):
         self.x = int(x);
         self.y = int(y)  # 脚底世界像素
         self.w = int(w);
@@ -7720,6 +7725,7 @@ class AfterImageGhost:
         self.color = (r, g, b)
         self.ttl = float(ttl);
         self.life0 = float(ttl)
+        self.sprite = sprite
 
     def update(self, dt):
         self.ttl -= dt
@@ -7744,9 +7750,16 @@ class AfterImageGhost:
         sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
         rect = pygame.Rect(0, 0, self.w, self.h)
         rect.midbottom = (int(sx), int(sy))
-        s = pygame.Surface(rect.size, pygame.SRCALPHA)
-        s.fill((*self.color, alpha))
-        screen.blit(s, rect.topleft)
+        if self.sprite:
+            tint = pygame.Surface(self.sprite.get_size(), pygame.SRCALPHA)
+            tint.fill((*self.color, alpha))
+            mask = _sprite_alpha_mask(self.sprite)
+            tint.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            screen.blit(tint, self.sprite.get_rect(midbottom=rect.midbottom))
+        else:
+            s = pygame.Surface(rect.size, pygame.SRCALPHA)
+            s.fill((*self.color, alpha))
+            screen.blit(s, rect.topleft)
 
     # 兜底（仍有旧调用时，尽量别用它）
     def draw(self, screen):
@@ -8720,9 +8733,16 @@ class Enemy:
                         t = (i + 1) / (n + 1)
                         gx = f0[0] * (1 - t) + f1[0] * t
                         gy = f0[1] * (1 - t) + f1[1] * t
+                        ghost_size = int(self.size * 2)
+                        ghost_sprite = _enemy_sprite("ravager", ghost_size)
                         game_state.ghosts.append(
-                            AfterImageGhost(gx, gy, self.size, self.size, ENEMY_COLORS.get("ravager", self.color),
-                                            ttl=AFTERIMAGE_TTL))
+                            AfterImageGhost(
+                                gx, gy, ghost_size, ghost_size,
+                                ENEMY_COLORS.get("ravager", self.color),
+                                ttl=AFTERIMAGE_TTL,
+                                sprite=ghost_sprite,
+                            )
+                        )
                 if self._dash_t <= 0.0:
                     self._dash_state = "idle"
                     self.can_crush_all_blocks = False
@@ -13664,6 +13684,11 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
         top_pts = iso_tile_points(gx, gy, camx, camy)
         sort_y = top_pts[2][1] + (ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
         drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": base_col}))
+    # afterimages (as own layer, ordered by foot y)
+    for g in getattr(game_state, "ghosts", []):
+        wx, wy = g.x / CELL_SIZE, (g.y - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+        drawables.append(("ghost", sy, {"g": g}))
     # 3.2 地面上的小物：金币 / 治疗（存屏幕像素坐标）
     for s in getattr(game_state, "spoils", []):
         wx, wy = s.base_x / CELL_SIZE, (s.base_y - s.h - INFO_BAR_HEIGHT) / CELL_SIZE
@@ -13727,6 +13752,10 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
     COL_PLAYER_BULLET = (199, 68, 12) if hell else (120, 204, 121)  # color in Hell, white elsewhere
     COL_ENEMY_SHOT = (255, 80, 80) if hell else (255, 120, 50)  # hot red in Hell, orange elsewhere
     for kind, _, data in drawables:
+        if kind == "ghost":
+            g = data["g"]
+            g.draw_iso(screen, camx, camy)
+            continue
         if kind == "wall":
             gx, gy, col = data["gx"], data["gy"], data["color"]
             if WALL_STYLE == "prism":
@@ -13894,7 +13923,7 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             cy = int(round(cy))
             player_size = int(CELL_SIZE * 0.6)
             if getattr(z, "is_boss", False) or getattr(z, "type", "") == "ravager":
-                draw_size = max(player_size, int(z.rect.w))
+                draw_size = max(player_size * 2, int(z.rect.w * 2))
             else:
                 draw_size = player_size  # match player footprint to avoid getting stuck
             enemy_sprite = _enemy_sprite(getattr(z, "type", ""), draw_size)
@@ -14262,8 +14291,6 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
         screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
     # Skill targeting overlay drawn on top of obstacles so it never appears blocked
     _draw_skill_overlay(screen, player, camx, camy)
-    for g in getattr(game_state, "ghosts", []):
-        g.draw_iso(screen, camx, camy)
     game_state.draw_hazards_iso(screen, camx, camy)
     if hasattr(game_state, "draw_comet_blasts"):
         game_state.draw_comet_blasts(screen, camx, camy)
