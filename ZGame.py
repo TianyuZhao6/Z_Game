@@ -993,7 +993,7 @@ PLAYER_RADIUS = int(CELL_SIZE * 0.30)  # matches 0.6×CELL_SIZE footprint
 PLAYER_SPRITE_SCALE = 1.2  # visual-only scale vs collision footprint
 ENEMY_RADIUS = int(CELL_SIZE * 0.30)
 TANK_SIZE_MULT = 0.80  # tank footprint vs CELL_SIZE; slightly larger than basic
-SHIELDER_SIZE_MULT = 0.78  # shielder footprint vs CELL_SIZE; bulkier for presence
+SHIELDER_SIZE_MULT = 0.80  # shielder footprint vs CELL_SIZE; bulkier for presence
 STRONG_SIZE_MULT = 0.70  # strong footprint vs CELL_SIZE; hits harder visually too
 HIT_FLASH_DURATION = 0.18  # seconds a white hit flash stays on screen
 # 成长模式：'linear'（当前默认）或 'exp'（推荐）
