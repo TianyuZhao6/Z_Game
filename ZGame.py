@@ -913,8 +913,10 @@ def _enemy_sprite(ztype: str, size_px: int) -> pygame.Surface | None:
         "basic": "characters/enemies/basic/basic.png",
         "fast": "characters/enemies/fast/fast.png",
         "tank": "characters/enemies/tank/tank.png",
+        "strong": "characters/enemies/strong/strong.png",
         "ranged": "characters/enemies/ranged/ranged.png",
         "buffer": "characters/enemies/buffer/buffer.png",
+        "shielder": "characters/enemies/shielder/shielder.png",
         "ravager": "characters/enemies/ravager/ravager.png",
     }
     path = path_map.get(ztype, None)
@@ -991,6 +993,8 @@ PLAYER_RADIUS = int(CELL_SIZE * 0.30)  # matches 0.6×CELL_SIZE footprint
 PLAYER_SPRITE_SCALE = 1.2  # visual-only scale vs collision footprint
 ENEMY_RADIUS = int(CELL_SIZE * 0.30)
 TANK_SIZE_MULT = 0.80  # tank footprint vs CELL_SIZE; slightly larger than basic
+SHIELDER_SIZE_MULT = 0.78  # shielder footprint vs CELL_SIZE; bulkier for presence
+STRONG_SIZE_MULT = 0.70  # strong footprint vs CELL_SIZE; hits harder visually too
 HIT_FLASH_DURATION = 0.18  # seconds a white hit flash stays on screen
 # 成长模式：'linear'（当前默认）或 'exp'（推荐）
 MON_SCALE_MODE = "exp"  # "linear" / "exp"
@@ -7833,6 +7837,12 @@ class Enemy:
         if self.type == "tank":
             base_size = int(CELL_SIZE * TANK_SIZE_MULT)
             self._size_override = base_size  # preserve the larger footprint when scaling
+        elif self.type == "strong":
+            base_size = int(CELL_SIZE * STRONG_SIZE_MULT)
+            self._size_override = base_size  # keep the heavier footprint after scaling
+        elif self.type == "shielder":
+            base_size = int(CELL_SIZE * SHIELDER_SIZE_MULT)
+            self._size_override = base_size  # preserve the bulkier footprint when scaling
         self.size = base_size
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.radius = int(self.size * 0.5)
@@ -13971,6 +13981,12 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 if not getattr(z, "is_boss", False):
                     outline_rect = body.inflate(6, 6)
                     pygame.draw.rect(screen, (230, 210, 230), outline_rect, 2, border_radius=4)
+            # silhouette-aligned flash highlight for sprites
+            if flash > 0.0 and enemy_sprite:
+                flash_ratio = min(1.0, flash * 2.8)
+                flash_alpha = int(200 * flash_ratio)
+                if flash_alpha > 0:
+                    blit_sprite_tint(screen, enemy_sprite, sprite_rect.topleft, (255, 255, 255, flash_alpha))
             if getattr(z, "shield_hp", 0) > 0:
                 t = pygame.time.get_ticks() * 0.006
                 a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
@@ -13984,10 +14000,25 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                     )
             # 强化视觉：持币较多时加金色外轮廓
             coins = int(getattr(z, "spoils", 0))
+            outline_color = None
+            outline_w = 0
             if coins >= Z_SPOIL_SPD_STEP:
-                pygame.draw.rect(screen, (255, 215, 0), body, 3)
+                outline_color = (255, 215, 0, 255)
+                outline_w = 3
             elif coins >= Z_SPOIL_ATK_STEP:
-                pygame.draw.rect(screen, (220, 180, 80), body, 2)
+                outline_color = (220, 180, 80, 255)
+                outline_w = 2
+            if outline_color:
+                if enemy_sprite:
+                    draw_sprite_outline(
+                        screen,
+                        enemy_sprite,
+                        sprite_rect.topleft,
+                        outline_color,
+                        width=outline_w,
+                    )
+                else:
+                    pygame.draw.rect(screen, outline_color[:3], body, outline_w)
             dot_ratio, dot_count = dot_rounds_visual_state(z)
             if dot_ratio > 0.0:
                 glow_w = max(12, int(draw_size * 1.1))
