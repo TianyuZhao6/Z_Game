@@ -990,6 +990,7 @@ def _get_sekuya_font(size: int) -> pygame.font.Font:
 PLAYER_RADIUS = int(CELL_SIZE * 0.30)  # matches 0.6×CELL_SIZE footprint
 PLAYER_SPRITE_SCALE = 1.2  # visual-only scale vs collision footprint
 ENEMY_RADIUS = int(CELL_SIZE * 0.30)
+TANK_SIZE_MULT = 0.80  # tank footprint vs CELL_SIZE; slightly larger than basic
 HIT_FLASH_DURATION = 0.18  # seconds a white hit flash stays on screen
 # 成长模式：'linear'（当前默认）或 'exp'（推荐）
 MON_SCALE_MODE = "exp"  # "linear" / "exp"
@@ -7828,8 +7829,13 @@ class Enemy:
         self.max_hp = self.hp
         self._hit_flash = 0.0
         self._flash_prev_hp = int(self.hp)
-        self.size = int(CELL_SIZE * 0.6)
+        base_size = int(CELL_SIZE * 0.6)
+        if self.type == "tank":
+            base_size = int(CELL_SIZE * TANK_SIZE_MULT)
+            self._size_override = base_size  # preserve the larger footprint when scaling
+        self.size = base_size
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
+        self.radius = int(self.size * 0.5)
         # track trailing foot points for afterimage
         self._foot_prev = (self.rect.centerx, self.rect.bottom)
         self._foot_curr = (self.rect.centerx, self.rect.bottom)
@@ -7862,9 +7868,12 @@ class Enemy:
             self.max_hp = int(self.max_hp * 1.10 + 1)
             self.hp = min(self.max_hp, self.hp + 2)
         if not getattr(self, "is_boss", False):
-            # Keep regular enemies at player size to avoid path-sticking; Ravager keeps its larger override.
-            if getattr(self, "type", "") == "ravager":
-                base = getattr(self, "_size_override", int(CELL_SIZE * RAVAGER_SIZE_MULT))
+            # Keep regular enemies at their intended footprint; respect type-specific overrides.
+            base_override = getattr(self, "_size_override", None)
+            if base_override is not None:
+                base = int(base_override)
+            elif getattr(self, "type", "") == "ravager":
+                base = int(CELL_SIZE * RAVAGER_SIZE_MULT)
             else:
                 base = int(CELL_SIZE * 0.6)  # match player footprint
             new_size = base
@@ -13926,7 +13935,7 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             if getattr(z, "is_boss", False) or getattr(z, "type", "") == "ravager":
                 draw_size = max(player_size * 2, int(z.rect.w * 2))
             else:
-                draw_size = player_size  # match player footprint to avoid getting stuck
+                draw_size = max(player_size, int(z.rect.w))  # use footprint so larger types render correctly
             body = pygame.Rect(0, 0, draw_size, draw_size)
             body.midbottom = (cx, cy)
             enemy_sprite = _enemy_sprite(getattr(z, "type", ""), draw_size)
