@@ -9468,6 +9468,12 @@ class Bullet:
             return
         _rr = int(getattr(self, "r", BULLET_RADIUS))
         r = pygame.Rect(int(self.x - _rr), int(self.y - _rr), _rr * 2, _rr * 2)
+        # narrow collision candidates via spatial hash (if available)
+        spatial = getattr(game_state, "spatial", None)
+        if spatial:
+            nearby_enemies = spatial.query_circle(self.x, self.y, max(_rr, CELL_SIZE))
+        else:
+            nearby_enemies = list(enemies)
 
         # try ricochet helper (player bullets only)
         def try_ricochet(hit_x: float, hit_y: float) -> bool:
@@ -9503,7 +9509,7 @@ class Bullet:
             return True
 
         # 1) enemies
-        for z in list(enemies):
+        for z in list(nearby_enemies):
             if r.colliderect(z.rect):
                 # --- crit roll (use player's stats if available) ---
                 crit_p = float(getattr(player, "crit_chance", CRIT_CHANCE_BASE))
@@ -14619,6 +14625,7 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
     # 生成完 obstacles 后 —— 调用兜底
     ensure_passage_budget(obstacles, GRID_SIZE, player_start)
     game_state = GameState(obstacles, items, main_item_list, decorations)
+    game_state.spatial = spatial  # spatial hash for cheap proximity queries (bullets, effects)
     game_state.current_level = current_level
     game_state.bandit_spawned_this_level = False
     wp = int(META.get("wanted_poster_waves", 0))
@@ -15040,6 +15047,9 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
         # Auto-turrets firing
         for t in getattr(game_state, "turrets", []):
             t.update(dt, game_state, enemies, bullets)
+        # Spatial hash rebuild (once per frame) to accelerate bullet collision checks
+        if getattr(game_state, "spatial", None):
+            game_state.spatial.rebuild(enemies)
         # Update bullets
         for b in list(bullets):
             b.update(dt, game_state, enemies, player)
