@@ -9468,10 +9468,17 @@ class Bullet:
             return
         _rr = int(getattr(self, "r", BULLET_RADIUS))
         r = pygame.Rect(int(self.x - _rr), int(self.y - _rr), _rr * 2, _rr * 2)
-        # narrow collision candidates via spatial hash (if available)
+        # narrow collision candidates via spatial hash (if available), sized to current player range (cached)
         spatial = getattr(game_state, "spatial", None)
         if spatial:
-            nearby_enemies = spatial.query_circle(self.x, self.y, max(_rr, CELL_SIZE))
+            cached_r = int(getattr(game_state, "spatial_query_radius", 0) or 0)
+            if cached_r <= 0:
+                if player is not None:
+                    cached_r = int(clamp_player_range(getattr(player, "range", PLAYER_RANGE_DEFAULT)))
+                else:
+                    cached_r = int(PLAYER_RANGE_MAX)
+            query_r = max(_rr, cached_r)
+            nearby_enemies = spatial.query_circle(self.x, self.y, query_r)
         else:
             nearby_enemies = list(enemies)
 
@@ -15049,6 +15056,11 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
             t.update(dt, game_state, enemies, bullets)
         # Spatial hash rebuild (once per frame) to accelerate bullet collision checks
         if getattr(game_state, "spatial", None):
+            # cache query radius from current player range to avoid per-bullet recompute
+            game_state.spatial_query_radius = max(
+                CELL_SIZE,
+                int(clamp_player_range(getattr(player, "range", PLAYER_RANGE_DEFAULT)) or PLAYER_RANGE_DEFAULT),
+            )
             game_state.spatial.rebuild(enemies)
         # Update bullets
         for b in list(bullets):
