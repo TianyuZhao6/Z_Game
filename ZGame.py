@@ -1552,11 +1552,53 @@ ENEMY_PAINT_EDGE_HIGHLIGHT = (130, 255, 190)
 ENEMY_PAINT_GLOW_COLOR = (50, 140, 90)
 ENEMY_PAINT_PARTICLE_COLOR = (8, 18, 10)
 ENEMY_PAINT_BLEND_IN = 0.12
+# --- Enemy paint size tiers ---
+PAINT_SIZE_NORMAL = CELL_SIZE * 0.60  # baseline (previous default)
+PAINT_SIZE_ELITE = CELL_SIZE * 0.80   # bulkier elites
+PAINT_SIZE_BOSS = CELL_SIZE * 1.10    # large boss splats
+ENEMY_SIZE_NORMAL = "NORMAL"
+ENEMY_SIZE_ELITE = "ELITE"
+ENEMY_SIZE_BOSS = "BOSS"
+ENEMY_PAINT_ELITE_SIZE_THRESHOLD = CELL_SIZE * 0.95  # floor: must meet/exceed threshold to bump tier
+ENEMY_PAINT_BOSS_SIZE_THRESHOLD = CELL_SIZE * 1.30   # floor: bosses/very large units
 # --- Hell biome enemy paint (all enemies) ---
 HELL_ENEMY_PAINT_SPAWN_INTERVAL = 0.45
 HELL_ENEMY_PAINT_SPAWN_DIST = 0.70 * CELL_SIZE
 HELL_ENEMY_PAINT_RADIUS = CELL_SIZE * 0.45
 HELL_ENEMY_PAINT_STATIC = True
+
+
+def determine_enemy_size_category(z) -> str:
+    """Classify an enemy into paint size tiers. Rounds down between thresholds."""
+    if z is None:
+        return ENEMY_SIZE_NORMAL
+    if getattr(z, "is_boss", False):
+        return ENEMY_SIZE_BOSS
+    size_px = max(0, int(getattr(z, "size", CELL_SIZE)))
+    # Boss-size override uses floor thresholds so in-between sizes stay smaller
+    if size_px >= int(ENEMY_PAINT_BOSS_SIZE_THRESHOLD):
+        return ENEMY_SIZE_BOSS
+    if getattr(z, "type", "") == "ravager" or getattr(z, "is_elite", False):
+        return ENEMY_SIZE_ELITE
+    if size_px >= int(ENEMY_PAINT_ELITE_SIZE_THRESHOLD):
+        return ENEMY_SIZE_ELITE
+    return ENEMY_SIZE_NORMAL
+
+
+def set_enemy_size_category(z) -> str:
+    cat = determine_enemy_size_category(z)
+    if z is not None:
+        z.size_category = cat
+    return cat
+
+
+def enemy_paint_radius_for(z) -> float:
+    cat = determine_enemy_size_category(z)
+    if cat == ENEMY_SIZE_BOSS:
+        return float(PAINT_SIZE_BOSS)
+    if cat == ENEMY_SIZE_ELITE:
+        return float(PAINT_SIZE_ELITE)
+    return float(PAINT_SIZE_NORMAL)
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -7154,6 +7196,7 @@ def promote_to_boss(z: "Enemy"):
     # 同步世界坐标（你的 move/渲染有用到 x/y）
     z.x = float(z.rect.x)
     z.y = float(z.rect.y - INFO_BAR_HEIGHT)
+    set_enemy_size_category(z)
 
 
 def spawn_wave_with_budget(game_state: "GameState",
@@ -7779,6 +7822,7 @@ class Enemy:
         # Normalize deprecated/alias types
         self.type = "fast" if ztype == "trailrunner" else ztype
         self.color = ENEMY_COLORS.get(self.type, (255, 60, 60))
+        self.size_category = ENEMY_SIZE_NORMAL
         # === special type state ===
         # Suicide types start unarmed; fuse begins when near the player
         self.fuse = None
@@ -7846,6 +7890,7 @@ class Enemy:
         self.size = base_size
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.radius = int(self.size * 0.5)
+        set_enemy_size_category(self)
         # track trailing foot points for afterimage
         self._foot_prev = (self.rect.centerx, self.rect.bottom)
         self._foot_curr = (self.rect.centerx, self.rect.bottom)
@@ -7897,6 +7942,7 @@ class Enemy:
                 # 用最终矩形重置残影足点，保证轨迹贴合
                 self._foot_prev = (self.rect.centerx, self.rect.bottom)
                 self._foot_curr = (self.rect.centerx, self.rect.bottom)
+                set_enemy_size_category(self)
 
     def add_spoils(self, n: int):
         """僵尸拾取金币后的即时强化。"""
@@ -8614,8 +8660,9 @@ class Enemy:
                     dist = math.hypot(dx, dy)
                     if (hell_t >= HELL_ENEMY_PAINT_SPAWN_INTERVAL
                             or dist >= HELL_ENEMY_PAINT_SPAWN_DIST):
+                        paint_r = enemy_paint_radius_for(self)
                         game_state.apply_enemy_paint(
-                            f1[0], f1[1], HELL_ENEMY_PAINT_RADIUS,
+                            f1[0], f1[1], paint_r,
                             paint_type="hell_trail",
                             paint_color=getattr(self, "color", None),
                         )
@@ -9210,6 +9257,7 @@ class MemoryDevourerBoss(Enemy):
         self.is_enraged = False
         # 出生延迟维持一致
         self.spawn_delay = 0.6
+        set_enemy_size_category(self)
 
     def bind_twin(self, other, twin_id):
         import weakref
@@ -9286,6 +9334,7 @@ class MistweaverBoss(Enemy):
         self._ring_bursts_left = 0
         self._ring_burst_t = 0.0
         self.is_boss_shot = True
+        set_enemy_size_category(self)
 
     def _has_clones(self, enemies):
         n = 0
@@ -10049,7 +10098,7 @@ class CuringPaintFootprint:
 
 class PaintTile:
     __slots__ = ("paint_owner", "paint_intensity", "paint_age", "paint_type", "paint_life0", "paint_color",
-                 "_blob_noise", "_blob_phase", "_blob_rot", "_spark_phase", "_static_cache")
+                 "paint_radius", "_blob_noise", "_blob_phase", "_blob_rot", "_spark_phase", "_static_cache")
 
     def __init__(self):
         self.paint_owner = 0
@@ -10058,6 +10107,7 @@ class PaintTile:
         self.paint_type = None
         self.paint_life0 = 0.0
         self.paint_color = None
+        self.paint_radius = 0.0
         self._blob_noise = None
         self._blob_phase = None
         self._blob_rot = 0.0
@@ -10921,7 +10971,7 @@ def _build_enemy_paint_static_cache(gx: int, gy: int, tile: "PaintTile",
     t = base_t * (0.35 + 0.65 * vis_intensity)
     shimmer = 0.7 + 0.3 * math.sin(t * (4.0 + 2.0 * vis_intensity) + base_t)
     pulse = 0.82 + 0.18 * math.sin(t * (2.4 + 1.6 * vis_intensity) + (gx + gy) * 0.38)
-    base_r = float(ENEMY_PAINT_RADIUS) * (0.85 + 0.15 * vis_intensity)
+    base_r = float(getattr(tile, "paint_radius", ENEMY_PAINT_RADIUS)) * (0.85 + 0.15 * vis_intensity)
     base_r *= (0.95 + 0.05 * math.sin(t * 2.0 + base_t))
     wiggle = ENEMY_PAINT_WIGGLE_STRENGTH * (0.4 + 0.6 * vis_intensity) * (0.6 + 0.4 * shimmer)
     color_key = _enemy_paint_static_color_key(tile)
@@ -11018,7 +11068,7 @@ def draw_enemy_paint_tile_iso(surface: pygame.Surface, gx: int, gy: int, tile: "
     cy = gy * CELL_SIZE + CELL_SIZE * 0.5 + INFO_BAR_HEIGHT
     shimmer = 0.7 + 0.3 * math.sin(t * (4.0 + 2.0 * intensity) + float(getattr(tile, "_spark_phase", 0.0)))
     pulse = 0.82 + 0.18 * math.sin(t * (2.4 + 1.6 * intensity) + (gx + gy) * 0.38)
-    base_r = float(ENEMY_PAINT_RADIUS) * (0.85 + 0.15 * vis_intensity)
+    base_r = float(getattr(tile, "paint_radius", ENEMY_PAINT_RADIUS)) * (0.85 + 0.15 * vis_intensity)
     base_r *= (0.9 + 0.1 * blend)
     base_r *= (0.95 + 0.05 * math.sin(t * 2.0 + float(getattr(tile, "_spark_phase", 0.0))))
     wiggle = ENEMY_PAINT_WIGGLE_STRENGTH * (0.4 + 0.6 * intensity) * (0.6 + 0.4 * shimmer)
@@ -11471,6 +11521,7 @@ def make_scaled_enemy(pos: Tuple[int, int], ztype: str, game_level: int, wave_in
         z._current_color = ENEMY_COLORS.get("ravager", z.color)
     # ← cap final move speed
     z.speed = min(ENEMY_SPEED_MAX, max(1, z.speed))
+    set_enemy_size_category(z)
     return z
 
 
@@ -12500,6 +12551,7 @@ class GameState:
                 tile.paint_type = paint_type
                 tile.paint_life0 = life0
                 tile.paint_color = tuple(int(c) for c in paint_color[:3]) if paint_color else None
+                tile.paint_radius = r
                 tile.refresh_visuals()
                 self.paint_active.add((gx, gy))
 
@@ -12539,6 +12591,7 @@ class GameState:
                 tile.paint_age = 0.0
                 tile.paint_type = None
                 tile.paint_color = None
+                tile.paint_radius = 0.0
                 self.paint_active.discard((gx, gy))
                 continue
             tile.paint_age = float(getattr(tile, "paint_age", 0.0)) + float(dt)
