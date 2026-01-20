@@ -1566,6 +1566,8 @@ HELL_ENEMY_PAINT_SPAWN_INTERVAL = 0.45
 HELL_ENEMY_PAINT_SPAWN_DIST = 0.70 * CELL_SIZE
 HELL_ENEMY_PAINT_RADIUS = CELL_SIZE * 0.45
 HELL_ENEMY_PAINT_STATIC = True
+# === DEBUG: Ultimate test mode (easy to delete) ===
+ULTIMATE_HP_VALUE = 10_000_000
 
 
 def determine_enemy_size_category(z) -> str:
@@ -1599,6 +1601,18 @@ def enemy_paint_radius_for(z) -> float:
     if cat == ENEMY_SIZE_ELITE:
         return float(PAINT_SIZE_ELITE)
     return float(PAINT_SIZE_NORMAL)
+
+
+def activate_ultimate_mode(player, game_state=None):
+    """Grant the player effectively infinite HP for testing; keep together for easy removal."""
+    if player is None:
+        return
+    player._ultimate_debug = True
+    player.max_hp = max(int(getattr(player, "max_hp", PLAYER_MAX_HP)), ULTIMATE_HP_VALUE)
+    player.hp = player.max_hp
+    player.shield_hp = max(getattr(player, "shield_hp", 0), int(ULTIMATE_HP_VALUE * 0.1))
+    if game_state and hasattr(game_state, "flash_banner"):
+        game_state.flash_banner("ULTIMATE MODE (DEBUG)", sec=1.5)
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -12875,6 +12889,9 @@ class GameState:
         self.ground_spikes = remaining
 
     def damage_player(self, player, dmg, kind="hp"):
+        if getattr(player, "_ultimate_debug", False):
+            player.hp = max(player.hp, getattr(player, "max_hp", PLAYER_MAX_HP))
+            return 0
         dmg = int(max(0, dmg))
         if dmg <= 0:
             return 0
@@ -14962,6 +14979,8 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
                 player.targeting_skill = None
                 player.skill_target_origin = None
                 continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_t:
+                activate_ultimate_mode(player, game_state)
             if is_action_event(event, "teleport") and getattr(player, "targeting_skill", None) == "teleport":
                 player.targeting_skill = None
                 player.skill_target_origin = None
@@ -15464,6 +15483,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
             if is_action_event(event, "blast") and getattr(player, "targeting_skill", None) == "blast":
                 player.targeting_skill = None
                 continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_t:
+                activate_ultimate_mode(player, game_state)
             if is_action_event(event, "teleport") and getattr(player, "targeting_skill", None) == "teleport":
                 player.targeting_skill = None
                 continue
