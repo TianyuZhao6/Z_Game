@@ -690,7 +690,7 @@ def ensure_passage_budget(obstacles: dict, grid_size: int, player_spawn: tuple, 
     # 预先收集可破坏障碍坐标
     destructibles = [pos for pos, ob in obstacles.items() if getattr(ob, "type", "") == "Destructible"]
     for _ in range(tries):
-        mask = _expanded_block_mask(obstacles, grid_size, PLAYER_RADIUS)
+        mask = _expanded_block_mask(obstacles, grid_size, NAV_CLEAR_RADIUS)
         if _reachable_to_edge(player_spawn, mask):
             return  # OK
         if not destructibles:
@@ -1051,6 +1051,16 @@ SPOILS_PER_BLOCK = 1
 # ----- spoils UI & drop tuning -----
 SPOILS_DROP_CHANCE = 0.35  # 35% drop chance on enemy deaths
 SPOILS_BLOCK_DROP_CHANCE = 0.50  # 50% 概率掉 1 枚（必要时再调）
+# ----- enemy coin absorption scaling -----
+COIN_ABSORB_TIER1_MAX_COINS = 10
+COIN_ABSORB_TIER2_MAX_COINS = 20
+COIN_ABSORB_SCALE_TIER1 = 1.10  # ~+10% by 10 coins
+COIN_ABSORB_SCALE_TIER2 = 1.25  # ~+25% by 20 coins
+COIN_ABSORB_SCALE_TIER3 = 1.40  # cap scale for 20+ coins
+NAV_CLEAR_RADIUS = max(
+    PLAYER_RADIUS,
+    int(CELL_SIZE * 0.6 * COIN_ABSORB_SCALE_TIER3 * 0.5),
+)  # ensure enlarged basics can navigate passages
 SPOILS_PER_TYPE = {  # average coins per enemy type (rounded when spawning)
     "basic": (1, 1),  # min, max
     "fast": (1, 2),
@@ -1613,6 +1623,52 @@ def activate_ultimate_mode(player, game_state=None):
     player.shield_hp = max(getattr(player, "shield_hp", 0), int(ULTIMATE_HP_VALUE * 0.1))
     if game_state and hasattr(game_state, "flash_banner"):
         game_state.flash_banner("ULTIMATE MODE (DEBUG)", sec=1.5)
+
+
+def coin_absorb_scale(z) -> float:
+    """Linear tiered scale based on coins absorbed; clamps to tier3 cap."""
+    coins = int(getattr(z, "coins_absorbed", getattr(z, "spoils", 0)))
+    c1 = int(COIN_ABSORB_TIER1_MAX_COINS)
+    c2 = int(COIN_ABSORB_TIER2_MAX_COINS)
+    s1 = float(COIN_ABSORB_SCALE_TIER1)
+    s2 = float(COIN_ABSORB_SCALE_TIER2)
+    s3 = float(COIN_ABSORB_SCALE_TIER3)
+    if coins <= 0 or c1 <= 0:
+        return 1.0
+    if coins < c1:
+        t = coins / float(c1)
+        return 1.0 + (s1 - 1.0) * t
+    if coins < c2:
+        span = max(1, c2 - c1)
+        t = (coins - c1) / float(span)
+        return s1 + (s2 - s1) * t
+    # Tier3: grow toward cap, but never exceed it
+    over = coins - c2
+    # Use a soft span of 10 coins to reach the cap; floor behavior by clamping
+    t = min(1.0, over / 10.0)
+    return min(s3, s2 + (s3 - s2) * t)
+
+
+def apply_coin_absorb_scale(z) -> None:
+    """Apply coin-based scale to enemy size/rect/radius."""
+    if z is None:
+        return
+    if not getattr(z, "_base_size", None):
+        z._base_size = int(getattr(z, "size", CELL_SIZE * 0.6))
+    scale = coin_absorb_scale(z)
+    new_size = max(2, int(z._base_size * scale))
+    if new_size == getattr(z, "size", new_size):
+        return
+    cx, cy = z.rect.center
+    z.size = new_size
+    z.rect = pygame.Rect(0, 0, z.size, z.size)
+    z.rect.center = (cx, cy)
+    z.x = float(z.rect.x)
+    z.y = float(z.rect.y - INFO_BAR_HEIGHT)
+    z.radius = int(z.size * 0.5)
+    # reset foot points to avoid afterimage drift
+    z._foot_prev = (z.rect.centerx, z.rect.bottom)
+    z._foot_curr = (z.rect.centerx, z.rect.bottom)
 # --- Mark of Vulnerability (offensive mark) ---
 VULN_MARK_INTERVALS = (5.0, 4.0, 3.0)  # seconds between new marks (lv1→lv3)
 VULN_MARK_BONUS = (0.15, 0.22, 0.30)  # damage taken multiplier bonus per level
@@ -7210,6 +7266,7 @@ def promote_to_boss(z: "Enemy"):
     # 同步世界坐标（你的 move/渲染有用到 x/y）
     z.x = float(z.rect.x)
     z.y = float(z.rect.y - INFO_BAR_HEIGHT)
+    z._base_size = int(z.size)
     set_enemy_size_category(z)
 
 
@@ -7849,6 +7906,7 @@ class Enemy:
         self.buff_t = 0.0  # 自身被增益剩余时间
         self.buff_atk_mult = 1.0
         self.buff_spd_add = 0
+        self.coins_absorbed = 0
         # XP & rank
         self.z_level = 1
         self.xp = 0
@@ -7904,6 +7962,7 @@ class Enemy:
         self.size = base_size
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.radius = int(self.size * 0.5)
+        self._base_size = int(self.size)
         set_enemy_size_category(self)
         # track trailing foot points for afterimage
         self._foot_prev = (self.rect.centerx, self.rect.bottom)
@@ -7956,6 +8015,7 @@ class Enemy:
                 # 用最终矩形重置残影足点，保证轨迹贴合
                 self._foot_prev = (self.rect.centerx, self.rect.bottom)
                 self._foot_curr = (self.rect.centerx, self.rect.bottom)
+                apply_coin_absorb_scale(self)
                 set_enemy_size_category(self)
 
     def add_spoils(self, n: int):
@@ -7963,6 +8023,7 @@ class Enemy:
         n = int(max(0, n))
         if n <= 0:
             return
+        self.coins_absorbed = int(getattr(self, "coins_absorbed", 0)) + n
         # 逐枚处理，确保跨阈值时触发攻击/速度加成
         for _ in range(n):
             self.spoils += 1
@@ -7975,6 +8036,8 @@ class Enemy:
             # 速度阈值
             if self.spoils % Z_SPOIL_SPD_STEP == 0:
                 self.speed = min(Z_SPOIL_SPD_CAP, float(self.speed) + float(Z_SPOIL_SPD_ADD))
+        # coin-based scaling
+        apply_coin_absorb_scale(self)
         # 触发拾取光晕
         self._gold_glow_t = float(Z_GLOW_TIME)
 
@@ -9261,6 +9324,7 @@ class MemoryDevourerBoss(Enemy):
                                 self.y + INFO_BAR_HEIGHT,
                                 self.size, self.size)
         self.radius = int(self.size * 0.50)
+        self._base_size = int(self.size)
         # Twin boss bulldozer: can crush any obstacle
         self.can_crush_all_blocks = True
         self.no_clip_t = 0.0  # ghost through collisions for a few frames after crush
@@ -9332,6 +9396,7 @@ class MistweaverBoss(Enemy):
         self.size = int(CELL_SIZE * 1.6)
         self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
         self.radius = int(self.size * 0.50)
+        self._base_size = int(self.size)
         # 阶段
         self.phase = 1
         self._storm_cd = 2.0
@@ -11533,6 +11598,7 @@ def make_scaled_enemy(pos: Tuple[int, int], ztype: str, game_level: int, wave_in
         z._foot_prev = (z.rect.centerx, z.rect.bottom)
         z._foot_curr = (z.rect.centerx, z.rect.bottom)
         z._current_color = ENEMY_COLORS.get("ravager", z.color)
+        z._base_size = int(z.size)
     # ← cap final move speed
     z.speed = min(ENEMY_SPEED_MAX, max(1, z.speed))
     set_enemy_size_category(z)
@@ -14081,27 +14147,7 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                         (90, 180, 255, a),
                         width=3,
                     )
-            # 强化视觉：持币较多时加金色外轮廓
-            coins = int(getattr(z, "spoils", 0))
-            outline_color = None
-            outline_w = 0
-            if coins >= Z_SPOIL_SPD_STEP:
-                outline_color = (255, 215, 0, 255)
-                outline_w = 3
-            elif coins >= Z_SPOIL_ATK_STEP:
-                outline_color = (220, 180, 80, 255)
-                outline_w = 2
-            if outline_color:
-                if enemy_sprite:
-                    draw_sprite_outline(
-                        screen,
-                        enemy_sprite,
-                        sprite_rect.topleft,
-                        outline_color,
-                        width=outline_w,
-                    )
-                else:
-                    pygame.draw.rect(screen, outline_color[:3], body, outline_w)
+            # (outline indicator removed; coin absorption now shown via size scaling)
             dot_ratio, dot_count = dot_rounds_visual_state(z)
             if dot_ratio > 0.0:
                 glow_w = max(12, int(draw_size * 1.1))
@@ -14178,6 +14224,7 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                     fill = pygame.Rect(bar_bg.left + 1, bar_bg.top + 1, int((bar_w - 2) * hp_ratio), bar_h - 2)
                     pygame.draw.rect(screen, (210, 70, 70), fill, border_radius=2)
             # 头顶显示金币数量
+            coins = int(getattr(z, "spoils", 0))
             if coins > 0:
                 f = pygame.font.SysFont(None, 18)
                 txt = f.render(f"{coins}", True, (255, 225, 120))
