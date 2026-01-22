@@ -1,5 +1,6 @@
 Working on the art of the game
 Working on the game scene design
+Working on moving the rendering system to GPU
 ===================PATH==============================================
 !!! Unlocking a piece of equipment can trigger a chain reaction,
     achieving a special effect with another piece of equipment.
