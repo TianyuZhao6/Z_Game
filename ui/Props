@@ -28,9 +28,9 @@ Multi-element attribute synergy:
 
 
 
-经济流 & 控场流做成通用支线，可以跟任何主流派混搭。
+经济流 & 控场流做成通用支线，可以跟任何主流派混搭.
 
-状态流 / 仆从流 / 赌狗流 等核心够稳的时候，再慢慢加进。
+状态流 / 仆从流 / 赌狗流 等核心够稳的时候，再慢慢加进.
 
 Boss: Anti-U
 ================================RARITY=====================================
@@ -43,7 +43,8 @@ Let’s use numeric rarity for easy tuning:
 4 – Epic: Very low chance in shop; most often from bosses.
 
 Rule you wanted:
-The higher the rarity, the lower the probability of appearing in the shop (but the refresh chance increases as levels increase).
+The higher the rarity, the lower the probability of appearing in the shop 
+(but the refresh chance increases as levels increase).
 
 So for the shop we’ll:
 Give lower base weight to higher rarity.
@@ -97,7 +98,8 @@ Max Level: 3
 
 Spawn a small AoE explosion centered on that enemy.
 Explosion damage is based only on the player base bullet damage (pre-crit).
-If the explosion kills another enemy, it chains: that enemy also spawns its own explosion with the same stats.
+If the explosion kills another enemy, it chains: 
+that enemy also spawns its own explosion with the same stats.
 Explosion damage against bosses is 50%.
 Explosion does not hurt the player.
 
@@ -137,7 +139,9 @@ Level 3: spike_damage = 0.50 * bullet_base, lifetime = 5.0s, max_active = 14
 
 Not just raw HP—give them interesting defensive patterns.
 ;2.1. Bone Plating rarity: 2  √  ==========================================================================
-Effect: Every 6 seconds, gain 2hp plating. Stacks are unlimited (reset each level). Purchase limit 5, once capped, any time you have plating it negates the next hit entirely (consuming one stack even if the damage exceeds the plating).
+Effect: Every 6 seconds, gain 2hp plating. Stacks are unlimited (reset each level). 
+Purchase limit 5, once capped, any time you have plating it negates the next hit entirely 
+(consuming one stack even if the damage exceeds the plating).
 Synergy:
 Strong for beginners / melee risk-takers.
 Combos with high speed playstyles (you can dash in to grab coins safely).
@@ -184,10 +188,6 @@ Effect:
 When you pick up a heal while at full HP, 
 transfer certain ratio of the heal instead grants temporary shield HP.
 At higher levels, overheal conversion (10/15/20)% goes up.
-
-Combos:
-Carapace + Shield Capacitor → Heals become extra layers on top of your base shield, making Carapace scale really hard later.
-Bone Plating + Shield Capacitor → Constant trickle of plating plus overheal > you become a walking shield sandwich.
 
 2.8. Mirror Shell
 
