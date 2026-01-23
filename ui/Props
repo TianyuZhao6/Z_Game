@@ -7,9 +7,9 @@ Working on moving the rendering system to GPU Unity system
 Multi-element attribute synergy:
  e.g., Water + Lightning = AOE, linking enemies within the electric shock range.
 
-弹道流 已经有雏形（Pierce / Ricochet / Shrapnel）。
-炮台流 有 Auto / Stationary。
-护盾流 刚做了 Carapace + Bone Plating + Shield AOE。
+弹道流 已经有雏形(Pierce / Ricochet / Shrapnel).
+炮台流 有 Auto / Stationary.
+护盾流 刚做了 Carapace + Bone Plating + Shield AOE.
 经济流 有 Coin / Coupon / Reroll 基础
 
 状态流 有 Buff / Debuff / Status 基础 
