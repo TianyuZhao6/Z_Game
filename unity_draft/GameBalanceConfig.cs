@@ -43,6 +43,14 @@ namespace ZGame.UnityDraft
         public int spoilSpdStep = 10;
         public float spoilSpdAdd = 0.5f;
         public float spoilSpdCap = 4.5f; // align with enemySpeedMax
+        [Header("Bullet/Explosive/Shrapnel")]
+        public float critChance = 0.05f;
+        public float critMult = 1.8f;
+        public int shrapnelCount = 4;
+        public float shrapnelDamageFrac = 0.4f;
+        public float shrapnelRangeFrac = 0.5f;
+        public float explosiveRadius = 80f;
+        public float explosiveDamageFrac = 0.75f;
 
         [Header("Spoils per Type (min/max)")]
         public EnemySpoilRange[] spoilRanges =

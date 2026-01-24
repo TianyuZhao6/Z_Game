@@ -18,6 +18,7 @@ namespace ZGame.UnityDraft
         public int maxHp;
         public int attack;
         public float speed;
+        public int shieldHp; // for shielder buffs
         public int spoils;          // coins held
         public int coinsAbsorbed;   // total absorbed
         public float baseSizePx;    // unscaled footprint in world px (e.g., cellSize * 0.6)

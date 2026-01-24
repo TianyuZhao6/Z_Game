@@ -41,8 +41,12 @@ namespace ZGame.UnityDraft.Combat
             // Pull crit from balance if provided
             if (balance != null)
             {
-                critChance = 0.05f; // align with ZGame.py CRIT_CHANCE_BASE
-                critMult = 1.8f;    // align with CRIT_MULT_BASE
+                critChance = balance.critChance;
+                critMult = balance.critMult;
+                shrapnelCount = balance.shrapnelCount;
+                shrapnelDamageFrac = balance.shrapnelDamageFrac;
+                shrapnelRangeFrac = balance.shrapnelRangeFrac;
+                explosiveRadius = balance.explosiveRadius;
             }
         }
 
@@ -88,15 +92,26 @@ namespace ZGame.UnityDraft.Combat
 
         private void ApplyDamageToEnemy(Enemy enemy, Bullet b)
         {
+            // TODO: pass attacker player ref if you track source -> crit based on player stats.
             int dealt = ComputeCritDamage(b.damage, out bool isCrit);
+            // Shield routing for enemies (e.g., shielder buff)
+            if (enemy.shieldHp > 0)
+            {
+                int blocked = Mathf.Min(dealt, enemy.shieldHp);
+                enemy.shieldHp -= blocked;
+                dealt -= blocked;
+            }
             enemy.hp = Mathf.Max(0, enemy.hp - dealt);
             bool killed = enemy.hp <= 0;
             if (killed)
             {
                 enemy.gameObject.SetActive(false);
                 // Hook: Explosive rounds/shrapnel
-                TriggerExplosive(enemy.transform.position, b);
-                SpawnShrapnel(enemy.transform.position, b);
+                if (b.source == "player")
+                {
+                    TriggerExplosive(enemy.transform.position, b);
+                    SpawnShrapnel(enemy.transform.position, b);
+                }
             }
 
             // Pierce/ricochet handling
@@ -165,6 +180,8 @@ namespace ZGame.UnityDraft.Combat
         }
 
         // Placeholder hooks for explosive/shrapnel; implement pooling/spawn when VFX/system exists.
+        public ExplosionVFX explosionPrefab; // optional VFX
+
         private void TriggerExplosive(Vector3 pos, Bullet b)
         {
             // Apply AoE damage to nearby enemies using defaultHitRadius as baseline for enemies
@@ -176,12 +193,18 @@ namespace ZGame.UnityDraft.Combat
                 if (!col) continue;
                 var enemy = col.GetComponentInParent<Enemy>();
                 if (enemy == null || enemy.hp <= 0) continue;
-                int dealt = Mathf.Max(1, Mathf.RoundToInt(b.damage * 0.75f)); // AoE reduced damage
+                float aoeFrac = balance != null ? balance.explosiveDamageFrac : 0.75f;
+                int dealt = Mathf.Max(1, Mathf.RoundToInt(b.damage * aoeFrac)); // AoE reduced damage
                 enemy.hp = Mathf.Max(0, enemy.hp - dealt);
                 if (enemy.hp <= 0)
                 {
                     enemy.gameObject.SetActive(false);
                 }
+            }
+            if (explosionPrefab != null)
+            {
+                var vfx = Instantiate(explosionPrefab, pos, Quaternion.identity);
+                vfx.gameObject.SetActive(true);
             }
         }
 
@@ -204,14 +227,10 @@ namespace ZGame.UnityDraft.Combat
             }
         }
 
-        private int ComputeCritDamage(float baseDamage, out bool isCrit)
+        private int ComputeCritDamage(float baseDamage, out bool isCrit, Player attacker = null)
         {
-            float chance = critChance;
-            float mult = critMult;
-            if (balance != null)
-            {
-                // If balance exposed crit values, plug them here; defaults already match Python.
-            }
+            float chance = attacker ? attacker.critChance : critChance;
+            float mult = attacker ? attacker.critMult : critMult;
             isCrit = Random.value < chance;
             float dmg = baseDamage * (isCrit ? mult : 1f);
             return Mathf.Max(1, Mathf.RoundToInt(dmg));

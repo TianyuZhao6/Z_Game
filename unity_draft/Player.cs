@@ -19,6 +19,8 @@ namespace ZGame.UnityDraft
         public float fireCdTimer = 0f;
         public int attack = 10;
         public int shieldHp = 0; // placeholder for shield routing
+        public float critChance = 0.05f;
+        public float critMult = 1.8f;
 
         [Header("Runtime")]
         public float radiusPx;
