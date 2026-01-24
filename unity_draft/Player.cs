@@ -19,6 +19,8 @@ namespace ZGame.UnityDraft
         public float fireCdTimer = 0f;
         public int attack = 10;
         public int shieldHp = 0; // placeholder for shield routing
+        public float bonePlatingHp = 0f;
+        public float carapaceHp = 0f;
         public float critChance = 0.05f;
         public float critMult = 1.8f;
 
@@ -40,6 +42,8 @@ namespace ZGame.UnityDraft
 
         public void Damage(int dmg)
         {
+            var status = GetComponent<Systems.StatusEffect>();
+            if (status != null) status.TryAbsorb(ref dmg);
             hp = Mathf.Max(0, hp - Mathf.Max(0, dmg));
         }
 

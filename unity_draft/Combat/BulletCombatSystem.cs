@@ -133,7 +133,7 @@ namespace ZGame.UnityDraft.Combat
             bool killed = enemy.hp <= 0;
             if (killed)
             {
-                enemy.gameObject.SetActive(false);
+                enemy.Kill();
                 if (meta != null)
                 {
                     if (awardKills) meta.AddKill(1);
@@ -246,7 +246,7 @@ namespace ZGame.UnityDraft.Combat
                 enemy.hp = Mathf.Max(0, enemy.hp - dealt);
                 if (enemy.hp <= 0)
                 {
-                    enemy.gameObject.SetActive(false);
+                    enemy.Kill();
                     if (meta != null)
                     {
                         if (awardKills) meta.AddKill(1);

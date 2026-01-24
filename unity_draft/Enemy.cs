@@ -24,6 +24,7 @@ namespace ZGame.UnityDraft
         public float baseSizePx;    // unscaled footprint in world px (e.g., cellSize * 0.6)
         public float critChance = 0.0f;
         public float critMult = 1.0f;
+        public System.Action OnKilled;
 
         private SpriteRenderer _sr;
         private Collider2D _collider;
@@ -95,11 +96,20 @@ namespace ZGame.UnityDraft
 
         public void Damage(int dmg)
         {
+            var status = GetComponent<ZGame.UnityDraft.Systems.StatusEffect>();
+            if (status != null) status.TryAbsorb(ref dmg);
             hp = Mathf.Max(0, hp - Mathf.Max(0, dmg));
             if (hp <= 0)
             {
-                gameObject.SetActive(false);
+                Kill();
             }
+        }
+
+        public void Kill()
+        {
+            if (hp > 0) hp = 0;
+            OnKilled?.Invoke();
+            gameObject.SetActive(false);
         }
 
         private float CoinAbsorbScale(int coins)

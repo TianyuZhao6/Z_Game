@@ -40,6 +40,7 @@ namespace ZGame.UnityDraft
         private Vector2 _lastPos;
         private float _stuckTimer;
         private float _repathTimer;
+        public Systems.WindBiomeModifier windModifier;
 
         private void Awake()
         {
@@ -146,6 +147,7 @@ namespace ZGame.UnityDraft
             if (_rb)
             {
                 _rb.velocity = desired;
+                windModifier?.ApplyIfBiome(_enemy?.balance?.name, _rb);
             }
             else
             {
