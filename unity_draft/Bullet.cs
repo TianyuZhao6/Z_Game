@@ -8,16 +8,23 @@ namespace ZGame.UnityDraft
     /// </summary>
     public class Bullet : MonoBehaviour
     {
+        public enum Faction
+        {
+            Player,
+            Enemy,
+            Neutral
+        }
         public float damage = 10f;
         public float speed = 520f;
         public float maxDist = 600f;
         public Vector2 dir = Vector2.right;
         public bool alive = true;
         public string source = "player"; // extend as needed
+        public Faction faction = Faction.Player;
         public int pierceLeft = 0;
         public int ricochetLeft = 0;
         public float hitRadius = 0f; // 0 => use system default
-        public Player attacker; // optional, for crit stats
+        public ICritSource attacker; // optional, for crit stats
 
         private Vector3 _spawnPos;
 
@@ -39,6 +46,7 @@ namespace ZGame.UnityDraft
             pierceLeft = 0;
             ricochetLeft = 0;
             source = "player";
+            faction = Faction.Player;
             hitRadius = 0f;
             attacker = null;
         }

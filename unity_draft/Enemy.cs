@@ -7,7 +7,7 @@ namespace ZGame.UnityDraft
     /// Hook this up to your spawn system and movement/AI later.
     /// </summary>
     [RequireComponent(typeof(SpriteRenderer))]
-    public class Enemy : MonoBehaviour
+    public class Enemy : MonoBehaviour, ICritSource
     {
         [Header("Config")]
         public EnemyTypeConfig typeConfig;
@@ -22,6 +22,8 @@ namespace ZGame.UnityDraft
         public int spoils;          // coins held
         public int coinsAbsorbed;   // total absorbed
         public float baseSizePx;    // unscaled footprint in world px (e.g., cellSize * 0.6)
+        public float critChance = 0.0f;
+        public float critMult = 1.0f;
 
         private SpriteRenderer _sr;
         private Collider2D _collider;
@@ -43,6 +45,8 @@ namespace ZGame.UnityDraft
             hp = maxHp;
             attack = Mathf.Max(1, cfg.attack);
             speed = cfg.speed;
+            critChance = cfg.critChance;
+            critMult = cfg.critMult;
 
             ApplyCoinAbsorbScale(); // set initial scale (no coins → 1.0)
 

@@ -24,6 +24,14 @@ namespace ZGame.UnityDraft
         public bool usePathfinding = false;
         public Transform[] waypoints; // simple waypoint fallback if pathfinding is on
         private int _waypointIndex = 0;
+        public GridManager gridManager;
+        public bool[,] gridBlocked;
+        public Vector2Int currentCell;
+        private List<Vector2Int> _path = new();
+        public float navRefreshInterval = 0.5f;
+        private float _navRefreshTimer = 0f;
+        [Tooltip("Rebuild grid automatically when navDirty is flagged on GridManager.")]
+        public bool autoRefreshGrid = true;
 
         private Enemy _enemy;
         private Rigidbody2D _rb;
@@ -47,17 +55,56 @@ namespace ZGame.UnityDraft
                 Vector2 dir = ((Vector2)target.position - (Vector2)transform.position).normalized;
                 vel += dir;
             }
-            else if (usePathfinding && waypoints != null && waypoints.Length > 0)
+            else if (usePathfinding)
             {
-                Transform wp = waypoints[_waypointIndex % waypoints.Length];
-                Vector2 dir = ((Vector2)wp.position - (Vector2)transform.position);
-                if (dir.magnitude < 0.2f)
+                Vector3 dest = target ? target.position : transform.position;
+                if (gridManager != null && gridBlocked != null)
                 {
-                    _waypointIndex = (_waypointIndex + 1) % waypoints.Length;
+                    Vector2Int start = gridManager.WorldToGrid(transform.position);
+                    Vector2Int goal = gridManager.WorldToGrid(dest);
+                    _navRefreshTimer -= Time.fixedDeltaTime;
+                    bool needsRefresh = gridManager.navDirty && autoRefreshGrid;
+                    if (_repathTimer <= 0f || _path == null || _path.Count == 0 || needsRefresh || _navRefreshTimer <= 0f)
+                    {
+                        if (gridManager != null)
+                        {
+                            gridBlocked = gridManager.BuildBlockedGrid();
+                        }
+                        _path = Pathfinding.GridPathfinder.FindPath(gridBlocked, start, goal);
+                        _repathTimer = rePathInterval;
+                        _navRefreshTimer = navRefreshInterval;
+                    }
+                    if (_path != null && _path.Count > 1)
+                    {
+                        Vector2Int nextCell = _path[1];
+                        Vector2 worldTarget = gridManager.GridToWorldCenter(nextCell);
+                        Vector2 dir = (worldTarget - (Vector2)transform.position);
+                        if (dir.magnitude < 0.1f)
+                        {
+                            _path.RemoveAt(0);
+                        }
+                        else
+                        {
+                            vel += dir.normalized;
+                        }
+                    }
                 }
                 else
                 {
-                    vel += dir.normalized;
+                    // fallback: waypoint loop
+                    if (waypoints != null && waypoints.Length > 0)
+                    {
+                        Transform wp = waypoints[_waypointIndex % waypoints.Length];
+                        Vector2 dir = ((Vector2)wp.position - (Vector2)transform.position);
+                        if (dir.magnitude < 0.2f)
+                        {
+                            _waypointIndex = (_waypointIndex + 1) % waypoints.Length;
+                        }
+                        else
+                        {
+                            vel += dir.normalized;
+                        }
+                    }
                 }
             }
             // Simple avoidance of nearby enemies

@@ -12,14 +12,38 @@ namespace ZGame.UnityDraft.Combat
         public EnemyShotPool enemyShotPool;
         public BulletCombatSystem bulletSystem;
         public Transform target; // player transform
+        private Enemy _enemy;
 
         [Header("Stats")]
         public float damage = 8f;
         public float speed = 420f;
         public float range = 520f;
         public float fireCooldown = 1.2f;
+        [Tooltip("Allow friendly fire on shrapnel/explosive? If false, only player bullets trigger those effects.")]
+        public bool allowFriendlyExplosive = false;
 
         private float _cd;
+
+        private void Awake()
+        {
+            _enemy = GetComponent<Enemy>();
+            if (balance != null)
+            {
+                // If this enemy has a config, pull ranged stats
+                if (_enemy != null && _enemy.typeConfig != null)
+                {
+                    damage = _enemy.typeConfig.rangedDamage;
+                    speed = _enemy.typeConfig.rangedSpeed;
+                    range = _enemy.typeConfig.rangedRange;
+                    fireCooldown = _enemy.typeConfig.rangedCooldown;
+                }
+            }
+            if (target == null)
+            {
+                var p = FindObjectOfType<Player>();
+                if (p != null) target = p.transform;
+            }
+        }
 
         private void Update()
         {
@@ -40,7 +64,10 @@ namespace ZGame.UnityDraft.Combat
             }
             if (shot == null) return;
             shot.source = "enemy";
+            shot.faction = Bullet.Faction.Enemy;
             shot.Init(transform.position, dir, damage, range, speed);
+            shot.attacker = GetComponent<Enemy>();
+            if (balance != null) shot.hitRadius = balance.enemyShotHitRadius;
             bulletSystem.RegisterBullet(shot);
             _cd = fireCooldown;
         }

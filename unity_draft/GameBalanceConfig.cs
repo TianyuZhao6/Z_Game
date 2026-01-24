@@ -51,6 +51,9 @@ namespace ZGame.UnityDraft
         public float shrapnelRangeFrac = 0.5f;
         public float explosiveRadius = 80f;
         public float explosiveDamageFrac = 0.75f;
+        [Header("Hit/Collision Tuning")]
+        public float bulletHitRadius = 8f;
+        public float enemyShotHitRadius = 8f;
         [Header("Shielder Aura")]
         public float shielderRadius = 220f;
         public int shielderShieldAmount = 25;

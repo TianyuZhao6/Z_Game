@@ -38,6 +38,7 @@ namespace ZGame.UnityDraft
             b.pierceLeft = bulletPierce;
             b.ricochetLeft = bulletRicochet;
             b.attacker = player;
+            b.faction = Bullet.Faction.Player;
             bulletSystem.RegisterBullet(b);
             player.ConsumeFireCd();
         }

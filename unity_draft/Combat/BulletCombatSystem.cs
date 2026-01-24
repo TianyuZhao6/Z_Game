@@ -13,6 +13,8 @@ namespace ZGame.UnityDraft.Combat
         public LayerMask enemyMask;
         [Tooltip("Layer mask for player (for enemy shots).")]
         public LayerMask playerMask;
+        [Tooltip("Layer mask for neutral (if used).")]
+        public LayerMask neutralMask;
         [Tooltip("Radius for circle hit test (world units).")]
         public float defaultHitRadius = 8f;
         [Tooltip("Reference to shared balance.")]
@@ -26,6 +28,9 @@ namespace ZGame.UnityDraft.Combat
         public float critChance = 0.05f;
         public float critMult = 1.8f;
         public int playerShieldHp = 0; // placeholder; tie to player data if needed
+        [Header("Friendly Fire")]
+        public bool allowEnemyExplosive = false;
+        public bool allowEnemyShrapnel = false;
 
         private readonly List<Bullet> _bullets = new();
         private readonly Collider2D[] _hitBuffer = new Collider2D[16];
@@ -47,6 +52,7 @@ namespace ZGame.UnityDraft.Combat
                 shrapnelDamageFrac = balance.shrapnelDamageFrac;
                 shrapnelRangeFrac = balance.shrapnelRangeFrac;
                 explosiveRadius = balance.explosiveRadius;
+                defaultHitRadius = balance.bulletHitRadius;
             }
         }
 
@@ -69,7 +75,19 @@ namespace ZGame.UnityDraft.Combat
 
         private void ProcessHit(Bullet b)
         {
-            LayerMask mask = b.source == "enemy" ? playerMask : enemyMask;
+            LayerMask mask = enemyMask;
+            switch (b.faction)
+            {
+                case Bullet.Faction.Player:
+                    mask = enemyMask;
+                    break;
+                case Bullet.Faction.Enemy:
+                    mask = playerMask;
+                    break;
+                case Bullet.Faction.Neutral:
+                    mask = neutralMask != 0 ? neutralMask : (enemyMask | playerMask);
+                    break;
+            }
             float radius = b.hitRadius > 0f ? b.hitRadius : defaultHitRadius;
             int count = Physics2D.OverlapCircleNonAlloc(b.transform.position, radius, _hitBuffer, mask);
             if (count <= 0) return;
@@ -77,7 +95,7 @@ namespace ZGame.UnityDraft.Combat
             {
                 var col = _hitBuffer[i];
                 if (!col) continue;
-                if (b.source == "enemy")
+                if (b.faction == Bullet.Faction.Enemy)
                 {
                     var player = col.GetComponentInParent<Player>();
                     if (player == null) continue;
@@ -95,7 +113,7 @@ namespace ZGame.UnityDraft.Combat
 
         private void ApplyDamageToEnemy(Enemy enemy, Bullet b)
         {
-            Player attacker = b.attacker;
+            ICritSource attacker = b.attacker;
             int dealt = ComputeCritDamage(b.damage, out bool isCrit, attacker);
             // Shield routing for enemies (e.g., shielder buff)
             if (enemy.shieldHp > 0)
@@ -110,9 +128,12 @@ namespace ZGame.UnityDraft.Combat
             {
                 enemy.gameObject.SetActive(false);
                 // Hook: Explosive rounds/shrapnel
-                if (b.source == "player")
+                if (b.source == "player" || (b.source == "enemy" && allowEnemyExplosive))
                 {
                     TriggerExplosive(enemy.transform.position, b);
+                }
+                if (b.source == "player" || (b.source == "enemy" && allowEnemyShrapnel))
+                {
                     SpawnShrapnel(enemy.transform.position, b);
                 }
             }
@@ -249,10 +270,10 @@ namespace ZGame.UnityDraft.Combat
             }
         }
 
-        private int ComputeCritDamage(float baseDamage, out bool isCrit, Player attacker = null)
+        private int ComputeCritDamage(float baseDamage, out bool isCrit, ICritSource attacker = null)
         {
-            float chance = attacker ? attacker.critChance : critChance;
-            float mult = attacker ? attacker.critMult : critMult;
+            float chance = attacker != null ? attacker.CritChance : critChance;
+            float mult = attacker != null ? attacker.CritMult : critMult;
             isCrit = Random.value < chance;
             float dmg = baseDamage * (isCrit ? mult : 1f);
             return Mathf.Max(1, Mathf.RoundToInt(dmg));
