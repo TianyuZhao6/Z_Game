@@ -15,7 +15,11 @@ namespace ZGame.UnityDraft
         Shielder,
         Splinter,
         Bandit,
-        BossStub
+        BossStub,
+        BossMistweaver,
+        BossMemoryDevourer,
+        BossTwinMain,
+        BossTwinPartner
     }
 
     /// <summary>
@@ -31,6 +35,7 @@ namespace ZGame.UnityDraft
         public EnemyFactory factory;
         public Transform target;
         public BulletCombatSystem bulletSystem;
+        public BulletPool bulletPool;
 
         [Header("Dash (Ravager/Boss)")]
         public float dashInterval = 3f;
@@ -57,6 +62,13 @@ namespace ZGame.UnityDraft
         public float stealRadius = 1.2f;
         public float fleeDuration = 2.0f;
         public float fleeSpeedMult = 1.4f;
+        public int stealCoins = 3;
+        public int stealEscalation = 2;
+        public int stealMax = 12;
+        public bool stealBanked = false; // steal from meta bank if allowed
+        public MetaProgression meta;
+        public float dropChanceOnDeath = 0.5f;
+        public GameObject coinPrefab;
         private bool _fleeing;
         private float _fleeTimer;
         private Vector2 _fleeDir;
@@ -65,6 +77,28 @@ namespace ZGame.UnityDraft
         public float phaseDuration = 6f;
         private float _phaseTimer;
         private bool _phaseDash;
+
+        [Header("Boss Mistweaver")]
+        public float mistTeleportInterval = 5f;
+        public float mistVolleyInterval = 2.5f;
+        public int mistVolleyProjectiles = 8;
+        public float mistTeleportRange = 6f;
+        private float _mistTeleportTimer;
+        private float _mistVolleyTimer;
+
+        [Header("Boss Memory Devourer")]
+        public float devourerPulseInterval = 3f;
+        public float devourerPulseRadius = 3f;
+        public int devourerPulseDamage = 12;
+        public float devourerSummonInterval = 7f;
+        public string devourerSummonType = "basic";
+        private float _devourerPulseTimer;
+        private float _devourerSummonTimer;
+
+        [Header("Twin Boss")]
+        public EnemyBehavior twinPartner;
+        public float twinEnrageMult = 1.3f;
+        private bool _enraged;
 
         private Enemy _enemy;
         private Rigidbody2D _rb;
@@ -80,6 +114,7 @@ namespace ZGame.UnityDraft
             if (crush == null) crush = GetComponent<ObstacleCrushOnContact>();
             if (factory == null) factory = FindObjectOfType<EnemyFactory>();
             if (bulletSystem == null) bulletSystem = FindObjectOfType<BulletCombatSystem>();
+            if (bulletPool == null) bulletPool = FindObjectOfType<BulletPool>();
             if (target == null)
             {
                 var p = FindObjectOfType<Player>();
@@ -87,6 +122,7 @@ namespace ZGame.UnityDraft
             }
             if (_enemy != null) _enemy.OnKilled += HandleKilled;
             _phaseTimer = phaseDuration;
+            if (meta == null) meta = FindObjectOfType<MetaProgression>();
         }
 
         private void Update()
@@ -116,6 +152,16 @@ namespace ZGame.UnityDraft
                     break;
                 case EnemyBehaviorType.BossStub:
                     UpdateBossStub();
+                    break;
+                case EnemyBehaviorType.BossMistweaver:
+                    UpdateMistweaver();
+                    break;
+                case EnemyBehaviorType.BossMemoryDevourer:
+                    UpdateMemoryDevourer();
+                    break;
+                case EnemyBehaviorType.BossTwinMain:
+                case EnemyBehaviorType.BossTwinPartner:
+                    UpdateTwinBoss();
                     break;
             }
         }
@@ -214,6 +260,7 @@ namespace ZGame.UnityDraft
                 var coin = h.GetComponentInParent<CoinPickup>();
                 if (coin != null)
                 {
+                    StealFromPlayer();
                     coin.Award();
                     _fleeing = true;
                     _fleeTimer = fleeDuration;
@@ -226,6 +273,25 @@ namespace ZGame.UnityDraft
                     return;
                 }
             }
+        }
+
+        private void StealFromPlayer()
+        {
+            if (meta == null) return;
+            int stealAmt = Mathf.Clamp(stealCoins, 1, stealMax);
+            if (stealBanked)
+            {
+                int taken = Mathf.Min(meta.bankedCoins, stealAmt);
+                meta.SpendBankedCoins(taken);
+                _enemy.spoils += taken;
+            }
+            else
+            {
+                int taken = Mathf.Min(meta.runCoins, stealAmt);
+                meta.SpendRunCoins(taken);
+                _enemy.spoils += taken;
+            }
+            stealCoins = Mathf.Min(stealMax, stealCoins + stealEscalation);
         }
 
         private void UpdateBossStub()
@@ -251,6 +317,52 @@ namespace ZGame.UnityDraft
             }
         }
 
+        private void UpdateMistweaver()
+        {
+            UpdateBossStub(); // reuse phase swap: dash vs ranged volley
+            _mistTeleportTimer -= Time.deltaTime;
+            _mistVolleyTimer -= Time.deltaTime;
+            if (_mistTeleportTimer <= 0f)
+            {
+                _mistTeleportTimer = mistTeleportInterval;
+                TeleportNearTarget();
+            }
+            if (_mistVolleyTimer <= 0f)
+            {
+                _mistVolleyTimer = mistVolleyInterval;
+                RadialVolley(mistVolleyProjectiles, 360f);
+            }
+        }
+
+        private void UpdateMemoryDevourer()
+        {
+            _devourerPulseTimer -= Time.deltaTime;
+            _devourerSummonTimer -= Time.deltaTime;
+            if (_devourerPulseTimer <= 0f)
+            {
+                _devourerPulseTimer = devourerPulseInterval;
+                PulseAoE(devourerPulseRadius, devourerPulseDamage);
+            }
+            if (_devourerSummonTimer <= 0f)
+            {
+                _devourerSummonTimer = devourerSummonInterval;
+                factory?.SpawnAround(devourerSummonType, transform.position);
+            }
+        }
+
+        private void UpdateTwinBoss()
+        {
+            UpdateBossStub();
+            if (_enraged || twinPartner == null) return;
+            if (twinPartner._enemy == null || twinPartner._enemy.hp <= 0 || !twinPartner.gameObject.activeSelf)
+            {
+                _enraged = true;
+                _enemy.speed *= twinEnrageMult;
+                _enemy.attack = Mathf.RoundToInt(_enemy.attack * twinEnrageMult);
+                if (shooter != null) shooter.fireCooldown *= 0.7f;
+            }
+        }
+
         private void HandleKilled()
         {
             if (behavior == EnemyBehaviorType.Splinter && factory != null)
@@ -259,6 +371,58 @@ namespace ZGame.UnityDraft
                 {
                     factory.SpawnAround(splinterTypeId, transform.position);
                 }
+            }
+            if (behavior == EnemyBehaviorType.BossTwinMain && twinPartner != null)
+            {
+                twinPartner._enraged = true;
+            }
+            if (behavior == EnemyBehaviorType.Bandit)
+            {
+                if (Random.value < dropChanceOnDeath && coinPrefab != null && meta != null)
+                {
+                    var c = Instantiate(coinPrefab, transform.position, Quaternion.identity);
+                    var cp = c.GetComponent<CoinPickup>();
+                    if (cp != null)
+                    {
+                        cp.amount = stealCoins;
+                        cp.meta = meta;
+                    }
+                }
+            }
+        }
+
+        private void TeleportNearTarget()
+        {
+            if (target == null) return;
+            Vector2 dir = Random.insideUnitCircle.normalized;
+            Vector3 candidate = target.position + (Vector3)(dir * mistTeleportRange);
+            transform.position = candidate;
+        }
+
+        private void RadialVolley(int count, float arcDeg)
+        {
+            if (bulletPool == null || bulletSystem == null) return;
+            float step = arcDeg / count;
+            for (int i = 0; i < count; i++)
+            {
+                float ang = step * i * Mathf.Deg2Rad;
+                Vector2 dir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
+                var b = bulletPool.Get();
+                b.source = "enemy";
+                b.faction = Bullet.Faction.Enemy;
+                float dmg = _enemy != null ? _enemy.attack : 10;
+                b.Init(transform.position, dir, dmg, range: 8f, speed: 420f);
+                bulletSystem.RegisterBullet(b);
+            }
+        }
+
+        private void PulseAoE(float radius, int damage)
+        {
+            var hits = Physics2D.OverlapCircleAll(transform.position, radius, bulletSystem != null ? bulletSystem.playerMask : LayerMask.GetMask("Player"));
+            foreach (var h in hits)
+            {
+                var p = h.GetComponentInParent<Player>();
+                if (p != null) p.Damage(damage);
             }
         }
     }

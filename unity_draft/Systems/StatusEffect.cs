@@ -24,15 +24,29 @@ namespace ZGame.UnityDraft.Systems
         public float carapaceHp = 0f;
         public bool painted = false;
         public bool acid = false;
+        [Header("Paint Hooks")]
+        public PaintSystem paintSystem;
+        public Color paintColor = new Color(0.2f, 0.8f, 1f, 0.35f);
+        public Color acidColor = new Color(0.4f, 1f, 0.4f, 0.35f);
+        public float paintRadius = 0.5f;
+        public float paintLifetime = 6f;
+        public float acidRadius = 0.4f;
+        public float acidLifetime = 4f;
 
         private readonly List<EffectInstance> _effects = new();
         private Enemy _enemy;
         private Player _player;
+        private static PaintSystem _defaultPaint;
 
         private void Awake()
         {
             _enemy = GetComponent<Enemy>();
             _player = GetComponent<Player>();
+            if (paintSystem == null)
+            {
+                paintSystem = _defaultPaint ?? FindObjectOfType<PaintSystem>();
+                _defaultPaint = paintSystem;
+            }
         }
 
         private void Update()
@@ -51,6 +65,10 @@ namespace ZGame.UnityDraft.Systems
                         if (e.tickDamage > 0f)
                         {
                             ApplyDamageTick(Mathf.RoundToInt(e.tickDamage));
+                            if (acid && paintSystem != null)
+                            {
+                                paintSystem.SpawnEnemyPaint(transform.position, acidRadius, acidLifetime, acidColor);
+                            }
                         }
                     }
                 }
@@ -83,6 +101,10 @@ namespace ZGame.UnityDraft.Systems
             var s = go.GetComponent<StatusEffect>() ?? go.AddComponent<StatusEffect>();
             s.painted = true;
             s._effects.Add(new EffectInstance { id = "paint", duration = duration });
+            if (s.paintSystem != null)
+            {
+                s.paintSystem.SpawnEnemyPaint(go.transform.position, s.paintRadius, s.paintLifetime, s.paintColor);
+            }
         }
 
         public static void ApplyAcid(GameObject go, float damagePerSecond, float duration)
@@ -97,6 +119,10 @@ namespace ZGame.UnityDraft.Systems
                 tickInterval = 1f,
                 tickTimer = 1f
             });
+            if (s.paintSystem != null)
+            {
+                s.paintSystem.SpawnEnemyPaint(go.transform.position, s.acidRadius, s.acidLifetime, s.acidColor);
+            }
         }
 
         public static void ApplyBonePlating(GameObject go, float hp)

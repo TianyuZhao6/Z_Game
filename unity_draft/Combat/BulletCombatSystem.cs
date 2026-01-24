@@ -33,11 +33,18 @@ namespace ZGame.UnityDraft.Combat
         [Header("Friendly Fire")]
         public bool allowEnemyExplosive = false;
         public bool allowEnemyShrapnel = false;
+        public bool allowEnemyVsEnemy = false;
+        public bool allowPlayerVsPlayer = false; // for co-op future
         [Header("Meta Hooks")]
         public MetaProgression meta;
         public HUDController hud;
         public bool awardKills = true;
         public bool awardSpoils = true;
+        [Header("Paint on Hit")]
+        public PaintSystem paintSystem;
+        public Color paintHitColor = new Color(0.2f, 0.8f, 1f, 0.25f);
+        public float paintHitRadius = 0.4f;
+        public float paintHitLifetime = 4f;
 
         private readonly List<Bullet> _bullets = new();
         private readonly Collider2D[] _hitBuffer = new Collider2D[16];
@@ -86,10 +93,10 @@ namespace ZGame.UnityDraft.Combat
             switch (b.faction)
             {
                 case Bullet.Faction.Player:
-                    mask = enemyMask;
+                    mask = allowPlayerVsPlayer ? (enemyMask | playerMask) : enemyMask;
                     break;
                 case Bullet.Faction.Enemy:
-                    mask = playerMask;
+                    mask = allowEnemyVsEnemy ? (playerMask | enemyMask) : playerMask;
                     break;
                 case Bullet.Faction.Neutral:
                     mask = neutralMask != 0 ? neutralMask : (enemyMask | playerMask);
@@ -129,6 +136,8 @@ namespace ZGame.UnityDraft.Combat
                 enemy.shieldHp -= blocked;
                 dealt -= blocked;
             }
+            var status = enemy.GetComponent<ZGame.UnityDraft.Systems.StatusEffect>();
+            status?.TryAbsorb(ref dealt);
             enemy.hp = Mathf.Max(0, enemy.hp - dealt);
             bool killed = enemy.hp <= 0;
             if (killed)
@@ -173,6 +182,11 @@ namespace ZGame.UnityDraft.Combat
 
             b.alive = false;
             b.gameObject.SetActive(false);
+
+            if (paintSystem != null)
+            {
+                paintSystem.SpawnEnemyPaint(enemy.transform.position, paintHitRadius, paintHitLifetime, paintHitColor);
+            }
         }
 
         private bool TryRicochet(Bullet b, Vector3 hitPos)
@@ -243,6 +257,8 @@ namespace ZGame.UnityDraft.Combat
                 if (enemy == null || enemy.hp <= 0) continue;
                 float aoeFrac = balance != null ? balance.explosiveDamageFrac : 0.75f;
                 int dealt = Mathf.Max(1, Mathf.RoundToInt(b.damage * aoeFrac)); // AoE reduced damage
+                var status = enemy.GetComponent<ZGame.UnityDraft.Systems.StatusEffect>();
+                status?.TryAbsorb(ref dealt);
                 enemy.hp = Mathf.Max(0, enemy.hp - dealt);
                 if (enemy.hp <= 0)
                 {
