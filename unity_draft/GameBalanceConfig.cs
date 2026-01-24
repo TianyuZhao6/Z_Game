@@ -51,6 +51,11 @@ namespace ZGame.UnityDraft
         public float shrapnelRangeFrac = 0.5f;
         public float explosiveRadius = 80f;
         public float explosiveDamageFrac = 0.75f;
+        [Header("Shielder Aura")]
+        public float shielderRadius = 220f;
+        public int shielderShieldAmount = 25;
+        public float shielderShieldDuration = 5f;
+        public float shielderCooldown = 9f;
 
         [Header("Spoils per Type (min/max)")]
         public EnemySpoilRange[] spoilRanges =

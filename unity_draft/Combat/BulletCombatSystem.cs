@@ -50,7 +50,10 @@ namespace ZGame.UnityDraft.Combat
             }
         }
 
-        public void RegisterBullet(Bullet b) => _bullets.Add(b);
+        public void RegisterBullet(Bullet b)
+        {
+            if (b != null) _bullets.Add(b);
+        }
 
         public void Tick(float dt)
         {
@@ -92,8 +95,8 @@ namespace ZGame.UnityDraft.Combat
 
         private void ApplyDamageToEnemy(Enemy enemy, Bullet b)
         {
-            // TODO: pass attacker player ref if you track source -> crit based on player stats.
-            int dealt = ComputeCritDamage(b.damage, out bool isCrit);
+            Player attacker = b.attacker;
+            int dealt = ComputeCritDamage(b.damage, out bool isCrit, attacker);
             // Shield routing for enemies (e.g., shielder buff)
             if (enemy.shieldHp > 0)
             {
@@ -175,12 +178,19 @@ namespace ZGame.UnityDraft.Combat
             {
                 player.Damage(dealt);
             }
+            if (hitSfx != null)
+            {
+                AudioSource.PlayClipAtPoint(hitSfx, player.transform.position);
+            }
             b.alive = false;
             b.gameObject.SetActive(false);
         }
 
         // Placeholder hooks for explosive/shrapnel; implement pooling/spawn when VFX/system exists.
         public ExplosionVFX explosionPrefab; // optional VFX
+        public ZGame.UnityDraft.VFX.VFXPool vfxPool;
+        public AudioClip explosionSfx;
+        public AudioClip hitSfx;
 
         private void TriggerExplosive(Vector3 pos, Bullet b)
         {
@@ -203,8 +213,20 @@ namespace ZGame.UnityDraft.Combat
             }
             if (explosionPrefab != null)
             {
-                var vfx = Instantiate(explosionPrefab, pos, Quaternion.identity);
-                vfx.gameObject.SetActive(true);
+                if (vfxPool != null)
+                {
+                    var vfx = vfxPool.Get();
+                    vfx.transform.position = pos;
+                }
+                else
+                {
+                    var vfx = Object.Instantiate(explosionPrefab, pos, Quaternion.identity);
+                    vfx.gameObject.SetActive(true);
+                }
+            }
+            if (explosionSfx != null)
+            {
+                AudioSource.PlayClipAtPoint(explosionSfx, pos);
             }
         }
 

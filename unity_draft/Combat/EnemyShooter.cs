@@ -9,7 +9,7 @@ namespace ZGame.UnityDraft.Combat
     public class EnemyShooter : MonoBehaviour
     {
         public GameBalanceConfig balance;
-        public BulletPool bulletPool;
+        public EnemyShotPool enemyShotPool;
         public BulletCombatSystem bulletSystem;
         public Transform target; // player transform
 
@@ -31,7 +31,14 @@ namespace ZGame.UnityDraft.Combat
             if (dir.sqrMagnitude <= 0.001f) return;
             dir.Normalize();
 
-            var shot = bulletPool.Get();
+            var shot = enemyShotPool != null ? enemyShotPool.Get() as Bullet : null;
+            if (shot == null && enemyShotPool == null && bulletSystem != null)
+            {
+                // fallback: try to get from a global BulletPool if present
+                var pool = GetComponent<BulletPool>();
+                if (pool != null) shot = pool.Get();
+            }
+            if (shot == null) return;
             shot.source = "enemy";
             shot.Init(transform.position, dir, damage, range, speed);
             bulletSystem.RegisterBullet(shot);

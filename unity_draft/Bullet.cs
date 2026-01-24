@@ -17,6 +17,7 @@ namespace ZGame.UnityDraft
         public int pierceLeft = 0;
         public int ricochetLeft = 0;
         public float hitRadius = 0f; // 0 => use system default
+        public Player attacker; // optional, for crit stats
 
         private Vector3 _spawnPos;
 
@@ -39,6 +40,7 @@ namespace ZGame.UnityDraft
             ricochetLeft = 0;
             source = "player";
             hitRadius = 0f;
+            attacker = null;
         }
 
         public void Tick(float dt)
