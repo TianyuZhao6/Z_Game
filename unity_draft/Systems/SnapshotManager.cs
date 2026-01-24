@@ -11,6 +11,7 @@ namespace ZGame.UnityDraft.Systems
         public GameManager gameManager;
         public MetaProgression meta;
         public Player player;
+        public LevelUpPicker levelUpPicker;
 
         private string SnapshotPath => Path.Combine(Application.persistentDataPath, "zgame_snapshot.json");
 
@@ -18,30 +19,46 @@ namespace ZGame.UnityDraft.Systems
         public class SnapshotData
         {
             public int levelIdx;
+            public bool bossLevel;
+            public bool twinBoss;
+            public bool banditAllowed;
+            public string biome;
             public int bankedCoins;
             public int runCoins;
             public int killCount;
             public int coupons;
+            public int couponCap;
             public bool wantedActive;
             public int wantedBounty;
             public int wantedKillTarget;
             public MetaProgression.ConsumableStack[] consumables;
             public int playerHp;
             public int playerMaxHp;
+            public int playerLevel;
+            public int playerXp;
             public float playerSpeed;
             public float playerRangeMult;
+            public string[] ownedUpgrades;
         }
 
         public void SaveSnapshot()
         {
             var data = new SnapshotData();
             data.levelIdx = gameManager != null ? gameManager.currentLevelIndex : 0;
+            if (gameManager != null)
+            {
+                data.bossLevel = gameManager.bossLevel;
+                data.twinBoss = gameManager.twinBoss;
+                data.banditAllowed = gameManager.banditAllowed;
+                data.biome = gameManager.biome;
+            }
             if (meta != null)
             {
                 data.bankedCoins = meta.bankedCoins;
                 data.runCoins = meta.runCoins;
                 data.killCount = meta.killCount;
                 data.coupons = meta.coupons;
+                data.couponCap = meta.couponCap;
                 data.wantedActive = meta.wantedActive;
                 data.wantedBounty = meta.wantedBounty;
                 data.wantedKillTarget = meta.wantedKillTarget;
@@ -51,8 +68,14 @@ namespace ZGame.UnityDraft.Systems
             {
                 data.playerHp = player.hp;
                 data.playerMaxHp = player.maxHp;
+                data.playerLevel = player.level;
+                data.playerXp = player.xp;
                 data.playerSpeed = player.speed;
                 data.playerRangeMult = player.rangeMult;
+            }
+            if (levelUpPicker != null)
+            {
+                data.ownedUpgrades = levelUpPicker.ownedUpgrades.ToArray();
             }
             var json = JsonUtility.ToJson(data);
             File.WriteAllText(SnapshotPath, json);
@@ -66,12 +89,20 @@ namespace ZGame.UnityDraft.Systems
             if (data == null) return false;
 
             if (gameManager != null) gameManager.currentLevelIndex = data.levelIdx;
+            if (gameManager != null)
+            {
+                gameManager.bossLevel = data.bossLevel;
+                gameManager.twinBoss = data.twinBoss;
+                gameManager.banditAllowed = data.banditAllowed;
+                gameManager.biome = data.biome;
+            }
             if (meta != null)
             {
                 meta.bankedCoins = data.bankedCoins;
                 meta.runCoins = data.runCoins;
                 meta.killCount = data.killCount;
                 meta.coupons = data.coupons;
+                meta.couponCap = data.couponCap;
                 meta.wantedActive = data.wantedActive;
                 meta.wantedBounty = data.wantedBounty;
                 meta.wantedKillTarget = data.wantedKillTarget;
@@ -82,8 +113,15 @@ namespace ZGame.UnityDraft.Systems
             {
                 player.maxHp = data.playerMaxHp;
                 player.hp = data.playerHp;
+                player.level = data.playerLevel;
+                player.xp = data.playerXp;
                 player.speed = data.playerSpeed;
                 player.rangeMult = data.playerRangeMult;
+            }
+            if (levelUpPicker != null)
+            {
+                levelUpPicker.ownedUpgrades.Clear();
+                if (data.ownedUpgrades != null) levelUpPicker.ownedUpgrades.AddRange(data.ownedUpgrades);
             }
             return true;
         }

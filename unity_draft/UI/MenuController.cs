@@ -23,6 +23,8 @@ namespace ZGame.UnityDraft.UI
         public GameObject failPanel;
         public GameObject levelUpPanel;
         public GameObject shopPanel;
+        public GameObject startPanel;
+        public GameObject endPanel;
         [Header("Level-Up Picker")]
         public UnityEvent<int> onLevelUpChoice;
         public TMPro.TextMeshProUGUI levelUpTitle;
@@ -34,6 +36,8 @@ namespace ZGame.UnityDraft.UI
         public UnityEngine.UI.Button failRetryButton;
         public UnityEngine.UI.Button homeButton;
         public UnityEngine.UI.Button[] levelUpOptionButtons;
+        public UnityEngine.UI.Button startContinueButton;
+        public UnityEngine.UI.Button endContinueButton;
 
         private void Start()
         {
@@ -71,6 +75,26 @@ namespace ZGame.UnityDraft.UI
         {
             onLevelUp?.Invoke();
             if (levelUpPanel != null) levelUpPanel.SetActive(true);
+        }
+
+        public void ShowStartSequence()
+        {
+            if (startPanel != null) startPanel.SetActive(true);
+        }
+
+        public void HideStartSequence()
+        {
+            if (startPanel != null) startPanel.SetActive(false);
+        }
+
+        public void ShowEndSequence()
+        {
+            if (endPanel != null) endPanel.SetActive(true);
+        }
+
+        public void HideEndSequence()
+        {
+            if (endPanel != null) endPanel.SetActive(false);
         }
 
         public void BindLevelUpOptions(string title, string[] options)
@@ -118,6 +142,8 @@ namespace ZGame.UnityDraft.UI
             if (successContinueButton) { successContinueButton.onClick.RemoveAllListeners(); successContinueButton.onClick.AddListener(Resume); }
             if (failRetryButton) { failRetryButton.onClick.RemoveAllListeners(); failRetryButton.onClick.AddListener(Restart); }
             if (homeButton) { homeButton.onClick.RemoveAllListeners(); homeButton.onClick.AddListener(Home); }
+            if (startContinueButton) { startContinueButton.onClick.RemoveAllListeners(); startContinueButton.onClick.AddListener(HideStartSequence); }
+            if (endContinueButton) { endContinueButton.onClick.RemoveAllListeners(); endContinueButton.onClick.AddListener(HideEndSequence); }
             if (levelUpOptionButtons != null && levelUpOptionButtons.Length > 0)
             {
                 for (int i = 0; i < levelUpOptionButtons.Length; i++)

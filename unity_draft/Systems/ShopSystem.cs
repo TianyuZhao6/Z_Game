@@ -20,6 +20,8 @@ namespace ZGame.UnityDraft.Systems
         public int couponMaxUsePerPurchase = 1;
         [Header("Currency Routing")]
         public bool useRunCoinsFirst = false; // allow spending run coins before banked coins
+        [Header("Consumable Effects (IDs -> Actions)")]
+        public UnityEngine.Events.UnityEvent<string> onConsumableUsed;
 
         public int GetPrice(ShopItem item, int levelIdx, int ownedCount = 0)
         {
@@ -76,6 +78,11 @@ namespace ZGame.UnityDraft.Systems
                 if (item.activateWanted)
                 {
                     meta.ActivateWanted(item.wantedBounty > 0 ? item.wantedBounty : meta.killCount + 5);
+                }
+                if (!string.IsNullOrEmpty(item.consumableEffect))
+                {
+                    // fire-and-forget effect ID for external listeners (e.g., heal, buff, reroll)
+                    onConsumableUsed?.Invoke(item.consumableEffect);
                 }
             }
         }

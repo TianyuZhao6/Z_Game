@@ -1,11 +1,12 @@
 using UnityEngine;
+using System.Collections;
 using ZGame.UnityDraft.UI;
 
 namespace ZGame.UnityDraft.Systems
 {
     /// <summary>
     /// Simple level session coordinator: wires GameManager to MenuController and LevelFlow.
-    /// Replace with your scene-specific loader as you build content.
+    /// Handles start/end sequences and level-up pickers.
     /// </summary>
     public class LevelSession : MonoBehaviour
     {
@@ -13,10 +14,14 @@ namespace ZGame.UnityDraft.Systems
         public MenuController menu;
         public WaveSpawner waveSpawner;
         public ShopUI shopUI;
+        public LevelUpPicker levelUpPicker;
         [Tooltip("Open shop after success before next level.")]
         public bool openShopOnSuccess = true;
         [Tooltip("Auto-pause when shop is open.")]
         public bool pauseOnShop = true;
+        [Header("Sequences")]
+        public float startSequenceDuration = 1.5f;
+        public float endSequenceDuration = 1f;
         [Header("Scene Navigation")]
         public string homeSceneName = "Home";
         public string levelSceneName = "Level";
@@ -27,6 +32,7 @@ namespace ZGame.UnityDraft.Systems
             if (waveSpawner == null) waveSpawner = FindObjectOfType<WaveSpawner>();
             if (menu == null) menu = FindObjectOfType<MenuController>();
             if (shopUI == null) shopUI = FindObjectOfType<ShopUI>();
+            if (levelUpPicker == null) levelUpPicker = FindObjectOfType<LevelUpPicker>();
             if (waveSpawner != null && waveSpawner.enemyFactory == null)
             {
                 waveSpawner.enemyFactory = FindObjectOfType<EnemyFactory>();
@@ -42,6 +48,20 @@ namespace ZGame.UnityDraft.Systems
 
         public void StartLevel(int levelIdx)
         {
+            StartCoroutine(StartLevelRoutine(levelIdx));
+        }
+
+        private IEnumerator StartLevelRoutine(int levelIdx)
+        {
+            Time.timeScale = 0f;
+            if (menu != null) menu.ShowStartSequence();
+            float t = 0f;
+            while (t < startSequenceDuration)
+            {
+                t += Time.unscaledDeltaTime;
+                yield return null;
+            }
+            if (menu != null) menu.HideStartSequence();
             Time.timeScale = 1f;
             gameManager?.StartLevel(levelIdx);
             if (waveSpawner != null && gameManager != null)
@@ -62,17 +82,20 @@ namespace ZGame.UnityDraft.Systems
         private void HandleLevelCompleted()
         {
             if (menu != null) menu.ShowSuccess();
+            if (levelUpPicker != null) levelUpPicker.OfferLevelUp();
             if (openShopOnSuccess && shopUI != null)
             {
                 shopUI.gameObject.SetActive(true);
                 shopUI.Populate();
                 if (pauseOnShop) Time.timeScale = 0f;
             }
+            StartCoroutine(EndSequenceRoutine());
         }
 
         private void HandleLevelFailed()
         {
             if (menu != null) menu.ShowFail();
+            StartCoroutine(EndSequenceRoutine());
         }
 
         public void OnRestartRequested()
@@ -91,6 +114,19 @@ namespace ZGame.UnityDraft.Systems
             {
                 UnityEngine.SceneManagement.SceneManager.LoadScene(homeSceneName);
             }
+        }
+
+        private IEnumerator EndSequenceRoutine()
+        {
+            Time.timeScale = 0f;
+            if (menu != null) menu.ShowEndSequence();
+            float t = 0f;
+            while (t < endSequenceDuration)
+            {
+                t += Time.unscaledDeltaTime;
+                yield return null;
+            }
+            if (menu != null) menu.HideEndSequence();
         }
     }
 }

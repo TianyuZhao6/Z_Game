@@ -13,10 +13,14 @@ namespace ZGame.UnityDraft.Systems
         public int bankedCoins = 0;   // persistent bank
         public int runCoins = 0;      // earned in current run
         public int bankCap = 999999;
+        public float bankInterestRate = 0.02f; // simple interest on carry-over
+        public int bankInterestLevelGate = 3;
 
         [Header("Progress")]
         public int killCount = 0;
         public int coupons = 0;
+        public int couponCap = 99;
+        public int killsPerCoupon = 50;
 
         [Header("Wanted Poster")]
         public bool wantedActive = false;
@@ -52,15 +56,37 @@ namespace ZGame.UnityDraft.Systems
 
         public void SpendBankedCoins(int amount) => bankedCoins = Mathf.Max(0, bankedCoins - Mathf.Max(0, amount));
 
-        public void AddKill(int amount = 1) => killCount += Mathf.Max(0, amount);
+        public void AddKill(int amount = 1)
+        {
+            int add = Mathf.Max(0, amount);
+            killCount += add;
+            // Coupon reward on thresholds
+            if (killsPerCoupon > 0)
+            {
+                int couponsAward = killCount / killsPerCoupon;
+                AddCoupon(couponsAward);
+            }
+            // Wanted poster completion
+            if (WantedSatisfied() && wantedBounty > 0)
+            {
+                AddRunCoins(wantedBounty);
+                ClearWanted();
+            }
+        }
 
         public void OnLevelComplete(int levelIdx)
         {
             BankRunCoins();
             ClearWanted(); // wanted poster resets on success by default
+            // Simple bank interest after level gate
+            if (levelIdx + 1 >= bankInterestLevelGate && bankInterestRate > 0f)
+            {
+                int interest = Mathf.FloorToInt(bankedCoins * bankInterestRate);
+                AddBankedCoins(interest);
+            }
         }
 
-        public void AddCoupon(int amount = 1) => coupons += Mathf.Max(0, amount);
+        public void AddCoupon(int amount = 1) => coupons = Mathf.Clamp(coupons + Mathf.Max(0, amount), 0, couponCap);
 
         public void ActivateWanted(int bounty)
         {

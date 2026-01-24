@@ -45,12 +45,15 @@ namespace ZGame.UnityDraft
         {
             int n = balance != null ? balance.gridSize : 0;
             bool[,] blocked = new bool[n, n];
-            foreach (var kv in obstacles)
+            if (obstacles != null)
             {
-                Vector2Int gp = kv.Key;
-                if (gp.x >= 0 && gp.x < n && gp.y >= 0 && gp.y < n)
+                foreach (var kv in obstacles)
                 {
-                    blocked[gp.x, gp.y] = true;
+                    Vector2Int gp = kv.Key;
+                    if (gp.x >= 0 && gp.x < n && gp.y >= 0 && gp.y < n)
+                    {
+                        blocked[gp.x, gp.y] = true;
+                    }
                 }
             }
             navDirty = false;
@@ -61,6 +64,24 @@ namespace ZGame.UnityDraft
         {
             obstacles[cell] = col;
             navDirty = true;
+        }
+
+        public void AddObstacle(Vector3 worldPos, float radius = 0f)
+        {
+            var cell = WorldToGrid(worldPos);
+            AddObstacle(cell, null);
+        }
+
+        public void RemoveObstacle(Vector3 worldPos)
+        {
+            var cell = WorldToGrid(worldPos);
+            RemoveObstacle(cell);
+        }
+
+        public bool IsBlocked(Vector3 worldPos)
+        {
+            var cell = WorldToGrid(worldPos);
+            return obstacles.ContainsKey(cell);
         }
 
         public void RemoveObstacle(Vector2Int cell)

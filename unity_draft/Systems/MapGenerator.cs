@@ -1,0 +1,204 @@
+using UnityEngine;
+using System.Collections.Generic;
+
+namespace ZGame.UnityDraft.Systems
+{
+    /// <summary>
+    /// Lightweight procedural placement for obstacles, decor, and items.
+    /// Mirrors the Python generate_game_entities intent with an ensure_passage_budget check.
+    /// </summary>
+    public class MapGenerator : MonoBehaviour
+    {
+        [Header("Refs")]
+        public GameBalanceConfig balance;
+        public GridManager gridManager;
+        public Transform obstaclesRoot;
+        public Transform decorRoot;
+        public Transform itemsRoot;
+
+        [Header("Prefabs")]
+        public GameObject obstaclePrefab;
+        public GameObject destructiblePrefab;
+        public GameObject decorPrefab;
+        public GameObject coinPrefab;
+        public GameObject itemPickupPrefab;
+
+        [Header("Counts")]
+        public int obstacleCount = 40;
+        public int destructibleCount = 10;
+        public int decorCount = 20;
+        public int itemPickupCount = 8;
+
+        [Header("Placement")]
+        public float innerRadius = 4f; // keep spawn clear near player center
+        public float mapRadius = 18f;
+        public float minObstacleSpacing = 1.2f;
+        [Tooltip("Ensure corridors from center to edges by carving if needed.")]
+        public bool ensurePassage = true;
+
+        private readonly List<Vector2> _placed = new();
+        private readonly Dictionary<Vector2Int, GameObject> _obstacleLookup = new();
+
+        public void Generate(Vector3 center)
+        {
+            if (gridManager == null) gridManager = FindObjectOfType<GridManager>();
+            _placed.Clear();
+            _obstacleLookup.Clear();
+            PlaceBatch(obstaclePrefab, obstacleCount, center, obstaclesRoot, solid:true, destructible:false);
+            PlaceBatch(destructiblePrefab, destructibleCount, center, obstaclesRoot, solid:true, destructible:true);
+            PlaceBatch(decorPrefab, decorCount, center, decorRoot, solid:false, destructible:false);
+            PlaceItems(itemPickupPrefab, itemPickupCount, center, itemsRoot);
+            PlaceCoins(coinPrefab, Mathf.CeilToInt(itemPickupCount * 0.5f), center, itemsRoot);
+            gridManager?.BuildBlockedGrid();
+            if (ensurePassage && gridManager != null) EnsurePassages(center);
+        }
+
+        private void PlaceBatch(GameObject prefab, int count, Vector3 center, Transform parent, bool solid, bool destructible)
+        {
+            if (prefab == null || count <= 0) return;
+            for (int i = 0; i < count; i++)
+            {
+                Vector3 pos;
+                if (!TryFindSpot(center, out pos)) continue;
+                var go = Instantiate(prefab, pos, Quaternion.identity, parent);
+                _placed.Add(pos);
+                if (solid && gridManager != null)
+                {
+                    gridManager.AddObstacle(pos, 0);
+                    var cell = gridManager.WorldToGrid(pos);
+                    if (!_obstacleLookup.ContainsKey(cell))
+                    {
+                        _obstacleLookup.Add(cell, go);
+                    }
+                }
+                if (destructible)
+                {
+                    var d = go.GetComponent<DestructibleObstacle>();
+                    if (d == null) d = go.AddComponent<DestructibleObstacle>();
+                    d.gridManager = gridManager;
+                }
+            }
+        }
+
+        private void PlaceItems(GameObject prefab, int count, Vector3 center, Transform parent)
+        {
+            if (prefab == null || count <= 0) return;
+            for (int i = 0; i < count; i++)
+            {
+                if (!TryFindSpot(center, out var pos)) continue;
+                Instantiate(prefab, pos, Quaternion.identity, parent);
+            }
+        }
+
+        private void PlaceCoins(GameObject prefab, int count, Vector3 center, Transform parent)
+        {
+            if (prefab == null || count <= 0) return;
+            for (int i = 0; i < count; i++)
+            {
+                if (!TryFindSpot(center, out var pos)) continue;
+                Instantiate(prefab, pos, Quaternion.identity, parent);
+            }
+        }
+
+        private bool TryFindSpot(Vector3 center, out Vector3 pos)
+        {
+            int attempts = 32;
+            float clearRadius = balance != null ? balance.navClearRadiusPx : 1f;
+            while (attempts-- > 0)
+            {
+                float r = Random.Range(innerRadius, mapRadius);
+                float ang = Random.Range(0f, Mathf.PI * 2f);
+                Vector3 p = center + new Vector3(Mathf.Cos(ang), Mathf.Sin(ang), 0f) * r;
+                if (IsClear(p, clearRadius))
+                {
+                    pos = p;
+                    return true;
+                }
+            }
+            pos = Vector3.zero;
+            return false;
+        }
+
+        private bool IsClear(Vector3 pos, float radius)
+        {
+            foreach (var p in _placed)
+            {
+                if ((p - (Vector2)pos).sqrMagnitude < minObstacleSpacing * minObstacleSpacing) return false;
+            }
+            if (gridManager != null)
+            {
+                // ensure passage clearance
+                if (gridManager.IsBlocked(pos)) return false;
+            }
+            return true;
+        }
+
+        private void EnsurePassages(Vector3 center)
+        {
+            int n = balance != null ? balance.gridSize : 32;
+            float cs = balance != null ? balance.cellSize : 1f;
+            var start = gridManager.WorldToGrid(center);
+            var goals = new List<Vector2Int>
+            {
+                new Vector2Int(start.x, 0),
+                new Vector2Int(start.x, n-1),
+                new Vector2Int(0, start.y),
+                new Vector2Int(n-1, start.y),
+            };
+            var blocked = gridManager.BuildBlockedGrid();
+            foreach (var g in goals)
+            {
+                var path = Pathfinding.GridPathfinder.FindPath(blocked, start, g);
+                if (path == null)
+                {
+                    CarveCorridor(blocked, start, g);
+                }
+            }
+            gridManager.BuildBlockedGrid();
+        }
+
+        private void CarveCorridor(bool[,] blocked, Vector2Int start, Vector2Int goal)
+        {
+            var line = Bresenham(start, goal);
+            foreach (var cell in line)
+            {
+                if (_obstacleLookup.TryGetValue(cell, out var go))
+                {
+                    if (go != null) Destroy(go);
+                    _obstacleLookup.Remove(cell);
+                }
+                gridManager.RemoveObstacle(cell);
+                blocked[cell.x, cell.y] = false;
+            }
+        }
+
+        private List<Vector2Int> Bresenham(Vector2Int a, Vector2Int b)
+        {
+            List<Vector2Int> pts = new();
+            int dx = Mathf.Abs(b.x - a.x);
+            int dy = Mathf.Abs(b.y - a.y);
+            int sx = a.x < b.x ? 1 : -1;
+            int sy = a.y < b.y ? 1 : -1;
+            int err = dx - dy;
+            int x = a.x;
+            int y = a.y;
+            while (true)
+            {
+                pts.Add(new Vector2Int(x, y));
+                if (x == b.x && y == b.y) break;
+                int e2 = 2 * err;
+                if (e2 > -dy)
+                {
+                    err -= dy;
+                    x += sx;
+                }
+                if (e2 < dx)
+                {
+                    err += dx;
+                    y += sy;
+                }
+            }
+            return pts;
+        }
+    }
+}

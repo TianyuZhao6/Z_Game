@@ -32,5 +32,6 @@ namespace ZGame.UnityDraft.Systems
         [Header("Consumable")]
         public string consumableId;
         public int consumableCount = 0;
+        public string consumableEffect; // optional effect ID
     }
 }
