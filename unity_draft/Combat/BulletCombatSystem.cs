@@ -1,5 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
+using ZGame.UnityDraft.Systems;
+using ZGame.UnityDraft;
 
 namespace ZGame.UnityDraft.Combat
 {
@@ -31,6 +33,11 @@ namespace ZGame.UnityDraft.Combat
         [Header("Friendly Fire")]
         public bool allowEnemyExplosive = false;
         public bool allowEnemyShrapnel = false;
+        [Header("Meta Hooks")]
+        public MetaProgression meta;
+        public HUDController hud;
+        public bool awardKills = true;
+        public bool awardSpoils = true;
 
         private readonly List<Bullet> _bullets = new();
         private readonly Collider2D[] _hitBuffer = new Collider2D[16];
@@ -127,6 +134,16 @@ namespace ZGame.UnityDraft.Combat
             if (killed)
             {
                 enemy.gameObject.SetActive(false);
+                if (meta != null)
+                {
+                    if (awardKills) meta.AddKill(1);
+                    if (awardSpoils && enemy.spoils > 0)
+                    {
+                        meta.AddRunCoins(enemy.spoils);
+                        if (hud != null) hud.SetCoins(meta.runCoins + meta.bankedCoins);
+                        enemy.spoils = 0;
+                    }
+                }
                 // Hook: Explosive rounds/shrapnel
                 if (b.source == "player" || (b.source == "enemy" && allowEnemyExplosive))
                 {
@@ -230,6 +247,16 @@ namespace ZGame.UnityDraft.Combat
                 if (enemy.hp <= 0)
                 {
                     enemy.gameObject.SetActive(false);
+                    if (meta != null)
+                    {
+                        if (awardKills) meta.AddKill(1);
+                        if (awardSpoils && enemy.spoils > 0)
+                        {
+                            meta.AddRunCoins(enemy.spoils);
+                            if (hud != null) hud.SetCoins(meta.runCoins + meta.bankedCoins);
+                            enemy.spoils = 0;
+                        }
+                    }
                 }
             }
             if (explosionPrefab != null)

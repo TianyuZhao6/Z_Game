@@ -8,6 +8,7 @@ namespace ZGame.UnityDraft
     [RequireComponent(typeof(Enemy))]
     public class EnemyMover : MonoBehaviour
     {
+        public bool useNavMeshAgent = false;
         public Transform target;
         public float avoidRadius = 0.4f; // in world units; keep small
         public float avoidForce = 1.0f;
@@ -35,6 +36,7 @@ namespace ZGame.UnityDraft
 
         private Enemy _enemy;
         private Rigidbody2D _rb;
+        private Nav.NavAgent2D _navAgent2D;
         private Vector2 _lastPos;
         private float _stuckTimer;
         private float _repathTimer;
@@ -43,12 +45,18 @@ namespace ZGame.UnityDraft
         {
             _enemy = GetComponent<Enemy>();
             _rb = GetComponent<Rigidbody2D>();
+            _navAgent2D = GetComponent<Nav.NavAgent2D>();
             _lastPos = transform.position;
         }
 
         private void FixedUpdate()
         {
             if (!_enemy || !_enemy.gameObject.activeSelf) return;
+            if (useNavMeshAgent && _navAgent2D != null && _navAgent2D.enabled)
+            {
+                if (_rb) _rb.velocity = Vector2.zero;
+                return;
+            }
             Vector2 vel = Vector2.zero;
             if (target)
             {
