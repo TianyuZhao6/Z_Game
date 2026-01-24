@@ -8,6 +8,7 @@ namespace ZGame.UnityDraft.Combat
     /// </summary>
     public class EnemyShooter : MonoBehaviour
     {
+        public enum FirePattern { Straight, Spread, LobArc }
         public GameBalanceConfig balance;
         public EnemyShotPool enemyShotPool;
         public BulletCombatSystem bulletSystem;
@@ -19,6 +20,14 @@ namespace ZGame.UnityDraft.Combat
         public float speed = 420f;
         public float range = 520f;
         public float fireCooldown = 1.2f;
+        public float fireCooldownJitter = 0.25f;
+        public FirePattern pattern = FirePattern.Straight;
+        [Header("Spread")]
+        public int spreadCount = 3;
+        public float spreadArc = 30f;
+        [Header("Lob")]
+        public float lobUpBias = 0.35f;
+        public float lobGravity = -980f;
         [Tooltip("Allow friendly fire on shrapnel/explosive? If false, only player bullets trigger those effects.")]
         public bool allowFriendlyExplosive = false;
 
@@ -55,13 +64,41 @@ namespace ZGame.UnityDraft.Combat
             if (dir.sqrMagnitude <= 0.001f) return;
             dir.Normalize();
 
-            var shot = enemyShotPool != null ? enemyShotPool.Get() as Bullet : null;
+            Fire(dir);
+        }
+
+        private void Fire(Vector2 dir)
+        {
+            switch (pattern)
+            {
+                case FirePattern.Spread:
+                    FireSpread(dir);
+                    break;
+                case FirePattern.LobArc:
+                    FireLob(dir);
+                    break;
+                default:
+                    FireSingle(dir);
+                    break;
+            }
+            float jitter = fireCooldownJitter > 0f ? Random.Range(-fireCooldownJitter, fireCooldownJitter) : 0f;
+            _cd = Mathf.Max(0.1f, fireCooldown + jitter);
+        }
+
+        private Bullet GetShot()
+        {
+            Bullet shot = enemyShotPool != null ? enemyShotPool.Get() as Bullet : null;
             if (shot == null && enemyShotPool == null && bulletSystem != null)
             {
-                // fallback: try to get from a global BulletPool if present
                 var pool = GetComponent<BulletPool>();
                 if (pool != null) shot = pool.Get();
             }
+            return shot;
+        }
+
+        private void FireSingle(Vector2 dir)
+        {
+            var shot = GetShot();
             if (shot == null) return;
             shot.source = "enemy";
             shot.faction = Bullet.Faction.Enemy;
@@ -69,7 +106,34 @@ namespace ZGame.UnityDraft.Combat
             shot.attacker = GetComponent<Enemy>();
             if (balance != null) shot.hitRadius = balance.enemyShotHitRadius;
             bulletSystem.RegisterBullet(shot);
-            _cd = fireCooldown;
+        }
+
+        private void FireSpread(Vector2 dir)
+        {
+            int count = Mathf.Max(1, spreadCount);
+            float arc = spreadArc;
+            float start = -arc * 0.5f;
+            for (int i = 0; i < count; i++)
+            {
+                float t = count == 1 ? 0f : i / (float)(count - 1);
+                float ang = start + arc * t;
+                Vector2 d = Quaternion.Euler(0, 0, ang) * dir;
+                FireSingle(d.normalized);
+            }
+        }
+
+        private void FireLob(Vector2 dir)
+        {
+            var shot = GetShot();
+            if (shot == null) return;
+            shot.source = "enemy";
+            shot.faction = Bullet.Faction.Enemy;
+            Vector2 aim = (dir + Vector2.up * lobUpBias).normalized;
+            Vector2 vel = aim * speed;
+            shot.InitBallistic(transform.position, vel, damage, range, lobGravity);
+            shot.attacker = GetComponent<Enemy>();
+            if (balance != null) shot.hitRadius = balance.enemyShotHitRadius;
+            bulletSystem.RegisterBullet(shot);
         }
     }
 }

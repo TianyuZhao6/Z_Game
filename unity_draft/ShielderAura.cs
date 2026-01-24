@@ -11,6 +11,9 @@ namespace ZGame.UnityDraft
         public GameBalanceConfig balance;
         public LayerMask enemyMask;
         public float shieldDuration = 5f;
+        public GameObject shieldVfx;
+        public AudioClip shieldSfx;
+        public bool refreshOnlyWhenExpired = true;
 
         private float _cd;
 
@@ -45,6 +48,12 @@ namespace ZGame.UnityDraft
             {
                 var e = h.GetComponentInParent<Enemy>();
                 if (e == null || !e.gameObject.activeSelf) continue;
+                bool shouldApply = true;
+                if (refreshOnlyWhenExpired && e.shieldHp > 0)
+                {
+                    shouldApply = false;
+                }
+                if (!shouldApply) continue;
                 e.shieldHp = Mathf.Max(e.shieldHp, amount);
                 // Track duration per enemy
                 var timed = e.GetComponent<TimedShield>();
@@ -53,6 +62,15 @@ namespace ZGame.UnityDraft
                     timed = e.gameObject.AddComponent<TimedShield>();
                 }
                 timed.SetShield(amount, shieldDuration);
+                if (shieldVfx != null)
+                {
+                    var v = Instantiate(shieldVfx, e.transform.position, Quaternion.identity, e.transform);
+                    v.SetActive(true);
+                }
+                if (shieldSfx != null)
+                {
+                    AudioSource.PlayClipAtPoint(shieldSfx, e.transform.position);
+                }
             }
         }
     }

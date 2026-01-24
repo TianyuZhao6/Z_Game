@@ -48,15 +48,28 @@ namespace ZGame.UnityDraft
         public float fuseTime = 1.0f;
         public float suicideDamage = 20f;
         private float _fuseTimer = -1f;
+        public GameObject fuseVfx;
+        public AudioClip fuseSfx;
+        public Color fuseFlashColor = Color.red;
+        public float fuseFlashSpeed = 10f;
+        private SpriteRenderer _sr;
+        private Color _baseColor;
 
         [Header("Buffer")]
         public float buffRadius = 3f;
         public float buffSpeedMult = 1.15f;
         public float buffDuration = 3f;
+        public int buffMaxStacks = 3;
+        public GameObject buffVfx;
 
         [Header("Splinter")]
         public string splinterTypeId = "splinterling";
         public int splinterCount = 2;
+        public float splinterSpeedMult = 1.2f;
+        public float splinterAttackMult = 0.7f;
+        public float splinterHpMult = 0.5f;
+        public int splinterSpoils = 0;
+        public EnemyBehaviorType splinterBehavior = EnemyBehaviorType.SuicideFuse;
 
         [Header("Bandit")]
         public float stealRadius = 1.2f;
@@ -115,6 +128,8 @@ namespace ZGame.UnityDraft
             if (factory == null) factory = FindObjectOfType<EnemyFactory>();
             if (bulletSystem == null) bulletSystem = FindObjectOfType<BulletCombatSystem>();
             if (bulletPool == null) bulletPool = FindObjectOfType<BulletPool>();
+            _sr = GetComponent<SpriteRenderer>();
+            if (_sr != null) _baseColor = _sr.color;
             if (target == null)
             {
                 var p = FindObjectOfType<Player>();
@@ -198,10 +213,23 @@ namespace ZGame.UnityDraft
             if (_fuseTimer < 0f && dist <= fuseRange)
             {
                 _fuseTimer = fuseTime;
+                if (fuseVfx != null) Instantiate(fuseVfx, transform.position, Quaternion.identity);
+                if (fuseSfx != null) AudioSource.PlayClipAtPoint(fuseSfx, transform.position);
+            }
+            else if (_fuseTimer > 0f && dist > fuseRange * 1.25f)
+            {
+                // cancel fuse if target escapes
+                _fuseTimer = -1f;
+                if (_sr != null) _sr.color = _baseColor;
             }
             if (_fuseTimer >= 0f)
             {
                 _fuseTimer -= Time.deltaTime;
+                if (_sr != null)
+                {
+                    float t = Mathf.Abs(Mathf.Sin(Time.time * fuseFlashSpeed));
+                    _sr.color = Color.Lerp(_baseColor, fuseFlashColor, t);
+                }
                 if (_fuseTimer <= 0f)
                 {
                     ExplodeSelf();
@@ -222,6 +250,7 @@ namespace ZGame.UnityDraft
                 }
             }
             _enemy.Kill();
+            if (_sr != null) _sr.color = _baseColor;
         }
 
         private void UpdateBuffer()
@@ -233,7 +262,13 @@ namespace ZGame.UnityDraft
                 var e = h.GetComponentInParent<Enemy>();
                 if (e != null && e != _enemy)
                 {
-                    e.speed *= buffSpeedMult;
+                    var buff = e.GetComponent<ZGame.UnityDraft.Systems.BuffStatus>() ?? e.gameObject.AddComponent<ZGame.UnityDraft.Systems.BuffStatus>();
+                    buff.ApplyBuff(buffSpeedMult, 1f, buffDuration, buffMaxStacks);
+                    if (buffVfx != null)
+                    {
+                        var v = Object.Instantiate(buffVfx, e.transform.position, Quaternion.identity);
+                        v.SetActive(true);
+                    }
                 }
             }
         }
@@ -369,7 +404,19 @@ namespace ZGame.UnityDraft
             {
                 for (int i = 0; i < splinterCount; i++)
                 {
-                    factory.SpawnAround(splinterTypeId, transform.position);
+                    var child = factory.SpawnAround(splinterTypeId, transform.position);
+                    if (child != null)
+                    {
+                        child.speed *= splinterSpeedMult;
+                        child.attack = Mathf.Max(1, Mathf.RoundToInt(child.attack * splinterAttackMult));
+                        child.hp = child.maxHp = Mathf.Max(1, Mathf.RoundToInt(child.maxHp * splinterHpMult));
+                        child.spoils = splinterSpoils;
+                        var beh = child.GetComponent<EnemyBehavior>();
+                        if (beh != null && splinterBehavior != EnemyBehaviorType.None)
+                        {
+                            beh.behavior = splinterBehavior;
+                        }
+                    }
                 }
             }
             if (behavior == EnemyBehaviorType.BossTwinMain && twinPartner != null)
