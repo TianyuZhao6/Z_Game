@@ -14,6 +14,8 @@ namespace ZGame.UnityDraft
         public GridManager gridManager;
         public GameObject destroyVfx;
         public AudioClip destroySfx;
+        public ZGame.UnityDraft.VFX.VfxPlayer vfxPlayer;
+        public ZGame.UnityDraft.VFX.SfxPlayer sfxPlayer;
 
         public void Damage(int amount)
         {
@@ -33,12 +35,20 @@ namespace ZGame.UnityDraft
         {
             if (gridManager == null) gridManager = FindObjectOfType<GridManager>();
             if (gridManager != null) gridManager.RemoveObstacle(transform.position);
-            if (destroyVfx != null)
+            if (vfxPlayer != null && destroyVfx != null)
+            {
+                vfxPlayer.Play(destroyVfx.name, transform.position);
+            }
+            else if (destroyVfx != null)
             {
                 var v = Instantiate(destroyVfx, transform.position, Quaternion.identity);
                 v.SetActive(true);
             }
-            if (destroySfx != null)
+            if (sfxPlayer != null && destroySfx != null)
+            {
+                sfxPlayer.Play(destroySfx.name, transform.position);
+            }
+            else if (destroySfx != null)
             {
                 AudioSource.PlayClipAtPoint(destroySfx, transform.position);
             }

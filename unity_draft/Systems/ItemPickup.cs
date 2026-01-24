@@ -18,6 +18,8 @@ namespace ZGame.UnityDraft.Systems
         [Header("FX")]
         public GameObject pickupVfx;
         public AudioClip pickupSfx;
+        public ZGame.UnityDraft.VFX.VfxPlayer vfxPlayer;
+        public ZGame.UnityDraft.VFX.SfxPlayer sfxPlayer;
 
         private void OnTriggerEnter2D(Collider2D other)
         {
@@ -26,12 +28,17 @@ namespace ZGame.UnityDraft.Systems
             Apply(player);
             if (pickupVfx != null)
             {
-                var v = Instantiate(pickupVfx, transform.position, Quaternion.identity);
-                v.SetActive(true);
+                if (vfxPlayer != null) vfxPlayer.Play(pickupVfx.name, transform.position);
+                else
+                {
+                    var v = Instantiate(pickupVfx, transform.position, Quaternion.identity);
+                    v.SetActive(true);
+                }
             }
             if (pickupSfx != null)
             {
-                AudioSource.PlayClipAtPoint(pickupSfx, transform.position);
+                if (sfxPlayer != null) sfxPlayer.Play(pickupSfx.name, transform.position);
+                else AudioSource.PlayClipAtPoint(pickupSfx, transform.position);
             }
             gameObject.SetActive(false);
         }

@@ -54,6 +54,8 @@ namespace ZGame.UnityDraft
         public float fuseFlashSpeed = 10f;
         private SpriteRenderer _sr;
         private Color _baseColor;
+        public ZGame.UnityDraft.VFX.VfxPlayer vfxPlayer;
+        public ZGame.UnityDraft.VFX.SfxPlayer sfxPlayer;
 
         [Header("Buffer")]
         public float buffRadius = 3f;
@@ -128,6 +130,8 @@ namespace ZGame.UnityDraft
             if (factory == null) factory = FindObjectOfType<EnemyFactory>();
             if (bulletSystem == null) bulletSystem = FindObjectOfType<BulletCombatSystem>();
             if (bulletPool == null) bulletPool = FindObjectOfType<BulletPool>();
+            if (vfxPlayer == null) vfxPlayer = FindObjectOfType<ZGame.UnityDraft.VFX.VfxPlayer>();
+            if (sfxPlayer == null) sfxPlayer = FindObjectOfType<ZGame.UnityDraft.VFX.SfxPlayer>();
             _sr = GetComponent<SpriteRenderer>();
             if (_sr != null) _baseColor = _sr.color;
             if (target == null)
@@ -213,8 +217,10 @@ namespace ZGame.UnityDraft
             if (_fuseTimer < 0f && dist <= fuseRange)
             {
                 _fuseTimer = fuseTime;
-                if (fuseVfx != null) Instantiate(fuseVfx, transform.position, Quaternion.identity);
-                if (fuseSfx != null) AudioSource.PlayClipAtPoint(fuseSfx, transform.position);
+                if (vfxPlayer != null && fuseVfx != null) vfxPlayer.Play(fuseVfx.name, transform.position);
+                else if (fuseVfx != null) Instantiate(fuseVfx, transform.position, Quaternion.identity);
+                if (sfxPlayer != null && fuseSfx != null) sfxPlayer.Play(fuseSfx.name, transform.position);
+                else if (fuseSfx != null) AudioSource.PlayClipAtPoint(fuseSfx, transform.position);
             }
             else if (_fuseTimer > 0f && dist > fuseRange * 1.25f)
             {

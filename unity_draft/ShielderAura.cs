@@ -14,6 +14,8 @@ namespace ZGame.UnityDraft
         public GameObject shieldVfx;
         public AudioClip shieldSfx;
         public bool refreshOnlyWhenExpired = true;
+        public ZGame.UnityDraft.VFX.VfxPlayer vfxPlayer;
+        public ZGame.UnityDraft.VFX.SfxPlayer sfxPlayer;
 
         private float _cd;
 
@@ -64,12 +66,17 @@ namespace ZGame.UnityDraft
                 timed.SetShield(amount, shieldDuration);
                 if (shieldVfx != null)
                 {
-                    var v = Instantiate(shieldVfx, e.transform.position, Quaternion.identity, e.transform);
-                    v.SetActive(true);
+                    if (vfxPlayer != null) vfxPlayer.Play(shieldVfx.name, e.transform.position);
+                    else
+                    {
+                        var v = Instantiate(shieldVfx, e.transform.position, Quaternion.identity, e.transform);
+                        v.SetActive(true);
+                    }
                 }
                 if (shieldSfx != null)
                 {
-                    AudioSource.PlayClipAtPoint(shieldSfx, e.transform.position);
+                    if (sfxPlayer != null) sfxPlayer.Play(shieldSfx.name, e.transform.position);
+                    else AudioSource.PlayClipAtPoint(shieldSfx, e.transform.position);
                 }
             }
         }
