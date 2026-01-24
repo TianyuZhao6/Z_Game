@@ -13,6 +13,9 @@ namespace ZGame.UnityDraft.Systems
         public Transform contentRoot;
         public GameObject itemEntryPrefab;
         public int levelIdx;
+        [Header("Bindings")]
+        public TextMeshProUGUI coinsText;
+        public TextMeshProUGUI couponsText;
 
         private void Start()
         {
@@ -22,6 +25,7 @@ namespace ZGame.UnityDraft.Systems
         public void Populate()
         {
             if (shop == null || contentRoot == null || itemEntryPrefab == null) return;
+            BindMeta();
             foreach (Transform child in contentRoot) Destroy(child.gameObject);
             foreach (var item in shop.inventory)
             {
@@ -30,6 +34,13 @@ namespace ZGame.UnityDraft.Systems
                 if (ui != null) ui.Bind(item, shop, levelIdx);
             }
         }
+
+        public void BindMeta()
+        {
+            if (shop == null || shop.meta == null) return;
+            if (coinsText) coinsText.text = (shop.meta.runCoins + shop.meta.bankedCoins).ToString();
+            if (couponsText) couponsText.text = shop.meta.coupons.ToString();
+        }
     }
 
     public class ShopUIEntry : MonoBehaviour
@@ -37,6 +48,7 @@ namespace ZGame.UnityDraft.Systems
         public TextMeshProUGUI nameText;
         public TextMeshProUGUI descText;
         public TextMeshProUGUI priceText;
+        public TextMeshProUGUI ownedText;
         public Button buyButton;
 
         private ShopItem _item;
@@ -51,6 +63,7 @@ namespace ZGame.UnityDraft.Systems
             if (nameText) nameText.text = item.displayName;
             if (descText) descText.text = item.description;
             RefreshPrice();
+            RefreshOwned();
             if (buyButton)
             {
                 buyButton.onClick.RemoveAllListeners();
@@ -67,12 +80,22 @@ namespace ZGame.UnityDraft.Systems
             }
         }
 
+        private void RefreshOwned()
+        {
+            if (ownedText && _shop != null && _item != null)
+            {
+                bool owned = _shop.ownedItems.Contains(_item.itemId);
+                ownedText.text = owned ? "Owned" : string.Empty;
+            }
+        }
+
         private void Buy()
         {
             if (_shop != null && _item != null)
             {
                 _shop.TryPurchase(_item, _levelIdx);
                 RefreshPrice();
+                RefreshOwned();
             }
         }
     }

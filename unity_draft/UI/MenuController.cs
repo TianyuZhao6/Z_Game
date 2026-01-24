@@ -38,6 +38,15 @@ namespace ZGame.UnityDraft.UI
         public UnityEngine.UI.Button[] levelUpOptionButtons;
         public UnityEngine.UI.Button startContinueButton;
         public UnityEngine.UI.Button endContinueButton;
+        [Header("Data Bindings (optional)")]
+        public TMPro.TextMeshProUGUI coinsText;
+        public TMPro.TextMeshProUGUI couponsText;
+        public TMPro.TextMeshProUGUI killsText;
+        public TMPro.TextMeshProUGUI levelText;
+        public TMPro.TextMeshProUGUI wantedText;
+        public TMPro.TextMeshProUGUI pauseInfoText;
+        public TMPro.TextMeshProUGUI successInfoText;
+        public TMPro.TextMeshProUGUI failInfoText;
 
         private void Start()
         {
@@ -152,6 +161,30 @@ namespace ZGame.UnityDraft.UI
                     levelUpOptionButtons[i].onClick.RemoveAllListeners();
                     levelUpOptionButtons[i].onClick.AddListener(() => ChooseLevelUpOption(idx));
                 }
+            }
+        }
+
+        public void BindMeta(ZGame.UnityDraft.Systems.MetaProgression meta, ZGame.UnityDraft.Systems.GameManager gm)
+        {
+            if (coinsText) coinsText.text = meta != null ? meta.runCoins.ToString() : "0";
+            if (couponsText) couponsText.text = meta != null ? meta.coupons.ToString() : "0";
+            if (killsText) killsText.text = meta != null ? meta.killCount.ToString() : "0";
+            if (levelText) levelText.text = gm != null ? (gm.currentLevelIndex + 1).ToString() : "-";
+            if (wantedText && meta != null)
+            {
+                wantedText.text = meta.wantedActive ? $"Wanted {meta.wantedBounty}" : "Wanted: None";
+            }
+            if (pauseInfoText && gm != null)
+            {
+                pauseInfoText.text = $"Level {gm.currentLevelIndex + 1}";
+            }
+            if (successInfoText && gm != null)
+            {
+                successInfoText.text = $"Completed Level {gm.currentLevelIndex + 1}";
+            }
+            if (failInfoText && gm != null)
+            {
+                failInfoText.text = $"Failed Level {gm.currentLevelIndex + 1}";
             }
         }
 

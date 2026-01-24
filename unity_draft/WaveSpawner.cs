@@ -33,8 +33,16 @@ namespace ZGame.UnityDraft
         };
 
         public float spawnInterval = 8f;
+        public float minSpawnInterval = 2.5f;
         public int enemyCap = 30;
         private float _timer;
+        [Header("Budget Scaling")]
+        public int baseBudget = 12;
+        public int budgetPerLevel = 4;
+        public float budgetRegenPerSecond = 2f;
+        private float _budget;
+        private int _levelIdx;
+        private List<ThreatEntry> _scaledThreatTable = new();
         [Header("Special Flags")]
         public bool bossMode;
         public bool twinBoss;
@@ -48,6 +56,15 @@ namespace ZGame.UnityDraft
         public Systems.EnemyFactory enemyFactory;
         public Transform spawnCenter;
         public float spawnRadius = 14f;
+        [Header("Boss Waves")]
+        public List<ThreatEntry> bossMinions = new()
+        {
+            new ThreatEntry{ typeId = "basic", cost = 1, weight = 30 },
+            new ThreatEntry{ typeId = "ranged", cost = 2, weight = 20 },
+            new ThreatEntry{ typeId = "fast", cost = 2, weight = 20 }
+        };
+        public float bossMinionInterval = 6f;
+        private float _bossMinionTimer;
 
         private readonly Queue<string> _specialQueue = new();
         private bool _bossSpawned = false;
@@ -75,6 +92,9 @@ namespace ZGame.UnityDraft
                 _timer = 0f;
                 TrySpawn();
             }
+
+            // Budget regen
+            _budget += budgetRegenPerSecond * Time.deltaTime;
         }
 
         private void SpawnSpecialIfNeeded()
@@ -84,6 +104,16 @@ namespace ZGame.UnityDraft
             var typeId = _specialQueue.Dequeue();
             SpawnImmediate(typeId);
             _bossSpawned = true;
+        }
+
+        private void SpawnBossMinions()
+        {
+            _bossMinionTimer -= Time.deltaTime;
+            if (_bossMinionTimer > 0f) return;
+            _bossMinionTimer = bossMinionInterval;
+            var entry = PickByWeight(bossMinions);
+            if (string.IsNullOrEmpty(entry.typeId)) return;
+            SpawnImmediate(entry.typeId);
         }
 
         private void SpawnImmediate(string typeId)
@@ -101,34 +131,30 @@ namespace ZGame.UnityDraft
 
         private void TrySpawn()
         {
-            // Placeholder: choose by weighted random and emit a request.
-            var entry = PickByWeight();
+            // Budgeted spawn
+            var entry = PickByWeight(_scaledThreatTable.Count > 0 ? _scaledThreatTable : threatTable);
             if (!string.IsNullOrEmpty(entry.typeId))
             {
-                if (OnSpawnRequested != null)
-                {
-                    OnSpawnRequested.Invoke(entry.typeId);
-                }
-                else if (enemyFactory != null)
-                {
-                    enemyFactory.Spawn(entry.typeId, PickSpawnPos());
-                }
+                if (_budget < entry.cost) return;
+                _budget -= entry.cost;
+                SpawnImmediate(entry.typeId);
             }
         }
 
-        private ThreatEntry PickByWeight()
+        private ThreatEntry PickByWeight(List<ThreatEntry> table = null)
         {
+            var list = table ?? threatTable;
             int total = 0;
-            foreach (var t in threatTable) total += t.weight;
+            foreach (var t in list) total += t.weight;
             if (total <= 0) return default;
             int r = Random.Range(0, total);
             int acc = 0;
-            foreach (var t in threatTable)
+            foreach (var t in list)
             {
                 acc += t.weight;
                 if (r < acc) return t;
             }
-            return threatTable[^1];
+            return list[^1];
         }
 
         public void ConfigureForLevel(Systems.GameManager gm, Systems.LevelFlow flow)
@@ -136,6 +162,7 @@ namespace ZGame.UnityDraft
             bossMode = gm != null && gm.bossLevel;
             twinBoss = gm != null && gm.twinBoss;
             banditAllowed = gm != null && gm.banditAllowed;
+            _levelIdx = gm != null ? gm.currentLevelIndex : 0;
             if (flow != null)
             {
                 bossTypeId = flow.bossTypeId;
@@ -149,9 +176,21 @@ namespace ZGame.UnityDraft
             _bossSpawned = false;
             if (bossMode)
             {
-                _specialQueue.Enqueue(twinBoss ? twinBossTypeId : bossTypeId);
+                if (twinBoss)
+                {
+                    _specialQueue.Enqueue(twinBossTypeId);
+                    _specialQueue.Enqueue(twinBossTypeId);
+                }
+                else
+                {
+                    _specialQueue.Enqueue(bossTypeId);
+                }
+                _bossMinionTimer = bossMinionInterval;
             }
             _nextBanditTime = banditAllowed ? Time.time + banditFirstDelay : float.PositiveInfinity;
+            _budget = baseBudget + budgetPerLevel * _levelIdx;
+            spawnInterval = Mathf.Max(minSpawnInterval, spawnInterval - 0.15f * _levelIdx);
+            _scaledThreatTable = BuildScaledThreats(_levelIdx);
         }
 
         private Vector3 PickSpawnPos()
@@ -160,6 +199,21 @@ namespace ZGame.UnityDraft
             float ang = Random.Range(0f, Mathf.PI * 2f);
             float r = Random.Range(spawnRadius * 0.3f, spawnRadius);
             return center + new Vector3(Mathf.Cos(ang), Mathf.Sin(ang), 0f) * r;
+        }
+
+        private List<ThreatEntry> BuildScaledThreats(int levelIdx)
+        {
+            var list = new List<ThreatEntry>(threatTable.Count);
+            foreach (var t in threatTable)
+            {
+                var te = t;
+                // increase weight slightly with level, and bias higher-cost units after level 3
+                float levelBias = 1f + levelIdx * 0.05f;
+                if (levelIdx >= 3 && te.cost >= 3) levelBias += 0.2f;
+                te.weight = Mathf.Max(1, Mathf.RoundToInt(te.weight * levelBias));
+                list.Add(te);
+            }
+            return list;
         }
     }
 }

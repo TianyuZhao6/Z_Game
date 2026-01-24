@@ -20,6 +20,11 @@ namespace ZGame.UnityDraft
         }
 
         public List<PaintInstance> enemyPaint = new();
+        [Header("Rendering")]
+        public bool gpuRender = true;
+        public Material paintMaterial;
+        public float quadSize = 1f;
+        public int maxBatch = 512;
 
         public void SpawnEnemyPaint(Vector2 pos, float radius, float lifetime, Color color)
         {

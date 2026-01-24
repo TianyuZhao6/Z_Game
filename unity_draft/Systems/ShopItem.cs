@@ -17,6 +17,7 @@ namespace ZGame.UnityDraft.Systems
         public ShopItemType type = ShopItemType.Upgrade;
         public int baseCost = 50;
         public string description;
+        public UpgradeEffect upgradeEffect = UpgradeEffect.Attack;
 
         [Header("Effect")]
         public int addAttack = 0;

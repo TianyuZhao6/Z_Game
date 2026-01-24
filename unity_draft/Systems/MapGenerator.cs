@@ -22,6 +22,8 @@ namespace ZGame.UnityDraft.Systems
         public GameObject decorPrefab;
         public GameObject coinPrefab;
         public GameObject itemPickupPrefab;
+        public ObstacleSet obstacleSet;
+        public ItemCatalog itemCatalog;
 
         [Header("Counts")]
         public int obstacleCount = 40;
@@ -53,6 +55,15 @@ namespace ZGame.UnityDraft.Systems
             if (ensurePassage && gridManager != null) EnsurePassages(center);
         }
 
+        private GameObject PickFromSet(GameObject fallback, GameObject[] set)
+        {
+            if (set != null && set.Length > 0)
+            {
+                return set[Random.Range(0, set.Length)];
+            }
+            return fallback;
+        }
+
         private void PlaceBatch(GameObject prefab, int count, Vector3 center, Transform parent, bool solid, bool destructible)
         {
             if (prefab == null || count <= 0) return;
@@ -60,7 +71,14 @@ namespace ZGame.UnityDraft.Systems
             {
                 Vector3 pos;
                 if (!TryFindSpot(center, out pos)) continue;
-                var go = Instantiate(prefab, pos, Quaternion.identity, parent);
+                GameObject chosen = prefab;
+                if (obstacleSet != null)
+                {
+                    if (solid && !destructible) chosen = PickFromSet(prefab, obstacleSet.solids);
+                    if (solid && destructible) chosen = PickFromSet(destructiblePrefab, obstacleSet.destructibles);
+                    if (!solid) chosen = PickFromSet(decorPrefab, obstacleSet.decor);
+                }
+                var go = Instantiate(chosen, pos, Quaternion.identity, parent);
                 _placed.Add(pos);
                 if (solid && gridManager != null)
                 {
@@ -82,11 +100,26 @@ namespace ZGame.UnityDraft.Systems
 
         private void PlaceItems(GameObject prefab, int count, Vector3 center, Transform parent)
         {
-            if (prefab == null || count <= 0) return;
+            if ((prefab == null && itemCatalog == null) || count <= 0) return;
             for (int i = 0; i < count; i++)
             {
                 if (!TryFindSpot(center, out var pos)) continue;
-                Instantiate(prefab, pos, Quaternion.identity, parent);
+                GameObject chosen = prefab;
+                ItemPickupDef def = null;
+                if (itemCatalog != null && itemCatalog.items.Count > 0)
+                {
+                    def = PickItemDef();
+                    if (def != null && def.prefab != null) chosen = def.prefab;
+                }
+                var go = Instantiate(chosen, pos, Quaternion.identity, parent);
+                if (def != null)
+                {
+                    var ip = go.GetComponent<ItemPickup>() ?? go.AddComponent<ItemPickup>();
+                    ip.type = def.type;
+                    ip.amount = def.amount;
+                    ip.consumableId = def.consumableId;
+                    ip.consumableCount = def.consumableCount;
+                }
             }
         }
 
@@ -199,6 +232,20 @@ namespace ZGame.UnityDraft.Systems
                 }
             }
             return pts;
+        }
+
+        private ItemPickupDef PickItemDef()
+        {
+            if (itemCatalog == null || itemCatalog.items.Count == 0) return null;
+            float total = 0f;
+            foreach (var i in itemCatalog.items) total += Mathf.Max(0.01f, i.weight);
+            float r = Random.value * total;
+            foreach (var i in itemCatalog.items)
+            {
+                r -= Mathf.Max(0.01f, i.weight);
+                if (r <= 0f) return i;
+            }
+            return itemCatalog.items[itemCatalog.items.Count - 1];
         }
     }
 }

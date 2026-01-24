@@ -12,6 +12,7 @@ namespace ZGame.UnityDraft.Systems
         public MetaProgression meta;
         public Player player;
         public List<ShopItem> inventory = new();
+        public List<string> ownedItems = new();
 
         [Header("Pricing")]
         public float priceExp = 1.12f; // matches SHOP_PRICE_EXP
@@ -22,6 +23,8 @@ namespace ZGame.UnityDraft.Systems
         public bool useRunCoinsFirst = false; // allow spending run coins before banked coins
         [Header("Consumable Effects (IDs -> Actions)")]
         public UnityEngine.Events.UnityEvent<string> onConsumableUsed;
+        [Header("UI Bindings (optional)")]
+        public UI.MenuController menu;
 
         public int GetPrice(ShopItem item, int levelIdx, int ownedCount = 0)
         {
@@ -49,6 +52,8 @@ namespace ZGame.UnityDraft.Systems
             if (remaining > 0) meta.SpendBankedCoins(remaining);
             meta.ConsumeCoupons(couponMaxUsePerPurchase);
             ApplyItem(item);
+            if (!ownedItems.Contains(item.itemId)) ownedItems.Add(item.itemId);
+            menu?.BindMeta(meta, null);
             return true;
         }
 
@@ -57,6 +62,35 @@ namespace ZGame.UnityDraft.Systems
             // Apply to player/meta; extend with upgrade flags
             if (player != null)
             {
+                switch (item.upgradeEffect)
+                {
+                    case UpgradeEffect.Attack:
+                        player.attack += Mathf.RoundToInt(item.addAttack != 0 ? item.addAttack : item.baseCost * 0.05f);
+                        break;
+                    case UpgradeEffect.Speed:
+                        player.speed += item.addSpeed != 0 ? item.addSpeed : 0.2f;
+                        break;
+                    case UpgradeEffect.RangeMult:
+                        player.rangeMult += item.addRangeMult != 0f ? item.addRangeMult : 0.05f;
+                        break;
+                    case UpgradeEffect.Shield:
+                        player.shieldHp = Mathf.Max(player.shieldHp, item.addShield > 0 ? item.addShield : 10);
+                        break;
+                    case UpgradeEffect.CritChance:
+                        player.critChance += 0.02f;
+                        break;
+                    case UpgradeEffect.CritMult:
+                        player.critMult += 0.1f;
+                        break;
+                    case UpgradeEffect.BonePlating:
+                        Systems.StatusEffect.ApplyBonePlating(player.gameObject, 20);
+                        break;
+                    case UpgradeEffect.Carapace:
+                        Systems.StatusEffect.ApplyCarapace(player.gameObject, 30);
+                        break;
+                    default:
+                        break;
+                }
                 player.attack += item.addAttack;
                 player.speed += item.addSpeed;
                 if (item.addRangeMult != 0f)
@@ -71,6 +105,10 @@ namespace ZGame.UnityDraft.Systems
                 meta.AddRunCoins(item.addRunCoins);
                 meta.AddBankedCoins(item.addBankedCoins);
                 meta.AddKill(item.addKills);
+                if (item.upgradeEffect == UpgradeEffect.Coupon) meta.AddCoupon(Mathf.Max(1, item.addCoupons));
+                if (item.upgradeEffect == UpgradeEffect.WantedBounty) meta.ActivateWanted(Mathf.RoundToInt(item.wantedBounty > 0 ? item.wantedBounty : 5));
+                if (item.upgradeEffect == UpgradeEffect.RunCoins) meta.AddRunCoins(Mathf.RoundToInt(Mathf.Max(item.addRunCoins, item.baseCost * 0.2f)));
+                if (item.upgradeEffect == UpgradeEffect.BankCoins) meta.AddBankedCoins(Mathf.RoundToInt(Mathf.Max(item.addBankedCoins, item.baseCost * 0.1f)));
                 if (!string.IsNullOrEmpty(item.consumableId) && item.consumableCount > 0)
                 {
                     meta.AddConsumable(item.consumableId, item.consumableCount);

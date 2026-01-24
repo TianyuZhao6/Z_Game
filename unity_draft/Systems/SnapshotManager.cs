@@ -39,6 +39,7 @@ namespace ZGame.UnityDraft.Systems
             public float playerSpeed;
             public float playerRangeMult;
             public string[] ownedUpgrades;
+            public string[] shopOwnedItems;
         }
 
         public void SaveSnapshot()
@@ -77,6 +78,7 @@ namespace ZGame.UnityDraft.Systems
             {
                 data.ownedUpgrades = levelUpPicker.ownedUpgrades.ToArray();
             }
+            // Shop-owned persistence stub: if you track purchases, add here
             var json = JsonUtility.ToJson(data);
             File.WriteAllText(SnapshotPath, json);
         }
