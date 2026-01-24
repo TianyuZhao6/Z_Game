@@ -17,11 +17,14 @@ namespace ZGame.UnityDraft.Systems
         public float slowDuration = 2f;
         public bool applyPaint = false;
         public bool applyAcid = false;
+        public bool inheritPlayerCrit = true;
         private float _cd;
+        private Player _player;
 
         private void Awake()
         {
             if (combat == null) combat = FindObjectOfType<BulletCombatSystem>();
+            _player = GetComponent<Player>();
         }
 
         private void Update()
@@ -41,7 +44,16 @@ namespace ZGame.UnityDraft.Systems
             {
                 var e = h.GetComponentInParent<Enemy>();
                 if (e == null) continue;
-                e.Damage(damage);
+                int dealt = damage;
+                if (inheritPlayerCrit && _player != null)
+                {
+                    // basic crit roll
+                    if (Random.value < _player.critChance)
+                    {
+                        dealt = Mathf.RoundToInt(dealt * _player.critMult);
+                    }
+                }
+                e.Damage(dealt);
                 if (slowAmount > 0f) StatusEffect.ApplySlow(e.gameObject, slowAmount, slowDuration);
                 if (applyPaint) StatusEffect.ApplyPaint(e.gameObject, slowDuration);
                 if (applyAcid) StatusEffect.ApplyAcid(e.gameObject, damagePerSecond:5, duration:2f);

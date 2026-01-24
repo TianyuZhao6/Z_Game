@@ -28,6 +28,19 @@ namespace ZGame.UnityDraft
     [RequireComponent(typeof(Enemy))]
     public class EnemyBehavior : MonoBehaviour
     {
+        [System.Serializable]
+        public enum BossAttackType { Pause, Teleport, Volley, Spiral, Fog, Hazard, Summon, Clone }
+        [System.Serializable]
+        public class BossAttackStep
+        {
+            public BossAttackType type = BossAttackType.Pause;
+            public float duration = 1f;
+            public int intParam = 0;
+            public float floatParam = 0f;
+            public float floatParam2 = 0f;
+            public float floatParam3 = 0f;
+        }
+
         public EnemyBehaviorType behavior;
         public EnemyMover mover;
         public EnemyShooter shooter;
@@ -98,8 +111,17 @@ namespace ZGame.UnityDraft
         public float mistVolleyInterval = 2.5f;
         public int mistVolleyProjectiles = 8;
         public float mistTeleportRange = 6f;
+        public float mistFogInterval = 4f;
+        public float mistFogRadius = 2.2f;
+        public float mistFogDuration = 5f;
+        public Color mistFogColor = new Color(0.6f, 0.8f, 1f, 0.35f);
+        public float mistSpiralStepDeg = 18f;
+        public string mistCloneTypeId = "mist_clone";
+        private int _mistPhase = 0;
         private float _mistTeleportTimer;
         private float _mistVolleyTimer;
+        private float _mistFogTimer;
+        private float _mistSpiralAngle;
 
         [Header("Boss Memory Devourer")]
         public float devourerPulseInterval = 3f;
@@ -107,13 +129,33 @@ namespace ZGame.UnityDraft
         public int devourerPulseDamage = 12;
         public float devourerSummonInterval = 7f;
         public string devourerSummonType = "basic";
+        public float devourerSpiralInterval = 2.2f;
+        public int devourerSpiralProjectiles = 10;
+        public float devourerSpiralStepDeg = 12f;
+        public float devourerHazardInterval = 5f;
+        public float devourerHazardRadius = 2.4f;
+        public float devourerHazardDuration = 6f;
+        public Color devourerHazardColor = new Color(0.8f, 0.2f, 0.2f, 0.35f);
         private float _devourerPulseTimer;
         private float _devourerSummonTimer;
+        private float _devourerSpiralTimer;
+        private float _devourerSpiralAngle;
+        private float _devourerHazardTimer;
 
         [Header("Twin Boss")]
         public EnemyBehavior twinPartner;
         public float twinEnrageMult = 1.3f;
+        public float twinVolleyInterval = 3.5f;
+        public int twinVolleyCount = 6;
+        private float _twinVolleyTimer;
         private bool _enraged;
+
+        [Header("Scripted Sequences")]
+        public bool useScriptedPattern = false;
+        public BossAttackStep[] mistPattern;
+        public BossAttackStep[] devourerPattern;
+        public BossAttackStep[] twinPattern;
+        private Coroutine _patternRoutine;
 
         private Enemy _enemy;
         private Rigidbody2D _rb;
@@ -142,10 +184,15 @@ namespace ZGame.UnityDraft
             if (_enemy != null) _enemy.OnKilled += HandleKilled;
             _phaseTimer = phaseDuration;
             if (meta == null) meta = FindObjectOfType<MetaProgression>();
+            if (useScriptedPattern && _patternRoutine == null)
+            {
+                _patternRoutine = StartCoroutine(RunPattern());
+            }
         }
 
         private void Update()
         {
+            if (useScriptedPattern) return; // pattern coroutine drives actions
             switch (behavior)
             {
                 case EnemyBehaviorType.RavagerDash:
@@ -182,6 +229,29 @@ namespace ZGame.UnityDraft
                 case EnemyBehaviorType.BossTwinPartner:
                     UpdateTwinBoss();
                     break;
+            }
+        }
+
+        private void UpdatePhase()
+        {
+            if (_enemy == null || _enemy.maxHp <= 0) return;
+            float hpFrac = _enemy.hp / (float)_enemy.maxHp;
+            int phase = 0;
+            if (hpFrac <= 0.66f) phase = 1;
+            if (hpFrac <= 0.33f) phase = 2;
+            if (behavior == EnemyBehaviorType.BossMistweaver)
+            {
+                _mistPhase = phase;
+            }
+            if (behavior == EnemyBehaviorType.BossMemoryDevourer)
+            {
+                _enraged = phase >= 2;
+            }
+            if ((behavior == EnemyBehaviorType.BossTwinMain || behavior == EnemyBehaviorType.BossTwinPartner) && !_enraged && hpFrac <= 0.5f)
+            {
+                _enraged = true;
+                _enemy.speed *= twinEnrageMult;
+                _enemy.attack = Mathf.RoundToInt(_enemy.attack * twinEnrageMult);
             }
         }
 
@@ -360,25 +430,40 @@ namespace ZGame.UnityDraft
 
         private void UpdateMistweaver()
         {
+            UpdatePhase();
             UpdateBossStub(); // reuse phase swap: dash vs ranged volley
             _mistTeleportTimer -= Time.deltaTime;
             _mistVolleyTimer -= Time.deltaTime;
+            _mistFogTimer -= Time.deltaTime;
             if (_mistTeleportTimer <= 0f)
             {
                 _mistTeleportTimer = mistTeleportInterval;
                 TeleportNearTarget();
+                if (_mistPhase >= 1) SpawnMistClone();
             }
             if (_mistVolleyTimer <= 0f)
             {
                 _mistVolleyTimer = mistVolleyInterval;
-                RadialVolley(mistVolleyProjectiles, 360f);
+                float arc = _mistPhase >= 2 ? 360f : 180f;
+                RadialVolley(mistVolleyProjectiles, arc);
             }
+            if (_mistFogTimer <= 0f)
+            {
+                _mistFogTimer = mistFogInterval;
+                SpawnMistFog();
+            }
+            // slow spiral volley
+            _mistSpiralAngle += mistSpiralStepDeg * Time.deltaTime * 10f;
+            if (_mistPhase >= 1) SpiralVolley(mistVolleyProjectiles, mistSpiralStepDeg, ref _mistSpiralAngle);
         }
 
         private void UpdateMemoryDevourer()
         {
+            UpdatePhase();
             _devourerPulseTimer -= Time.deltaTime;
             _devourerSummonTimer -= Time.deltaTime;
+            _devourerSpiralTimer -= Time.deltaTime;
+            _devourerHazardTimer -= Time.deltaTime;
             if (_devourerPulseTimer <= 0f)
             {
                 _devourerPulseTimer = devourerPulseInterval;
@@ -389,11 +474,32 @@ namespace ZGame.UnityDraft
                 _devourerSummonTimer = devourerSummonInterval;
                 factory?.SpawnAround(devourerSummonType, transform.position);
             }
+            if (_devourerSpiralTimer <= 0f)
+            {
+                _devourerSpiralTimer = devourerSpiralInterval;
+                SpiralVolley(devourerSpiralProjectiles, devourerSpiralStepDeg, ref _devourerSpiralAngle);
+            }
+            if (_devourerHazardTimer <= 0f)
+            {
+                _devourerHazardTimer = devourerHazardInterval;
+                DropHazard();
+            }
         }
 
         private void UpdateTwinBoss()
         {
             UpdateBossStub();
+            _twinVolleyTimer -= Time.deltaTime;
+            if (!_enraged && _twinVolleyTimer <= 0f && twinPartner != null && twinPartner.gameObject.activeSelf && twinPartner._enemy != null && twinPartner._enemy.hp > 0)
+            {
+                _twinVolleyTimer = twinVolleyInterval;
+                // crossfire: both fire offset volleys
+                RadialVolley(twinVolleyCount, 120f);
+                if (twinPartner.shooter != null && twinPartner.target != null)
+                {
+                    twinPartner.RadialVolley(twinVolleyCount, 120f);
+                }
+            }
             if (_enraged || twinPartner == null) return;
             if (twinPartner._enemy == null || twinPartner._enemy.hp <= 0 || !twinPartner.gameObject.activeSelf)
             {
@@ -464,9 +570,28 @@ namespace ZGame.UnityDraft
                 b.source = "enemy";
                 b.faction = Bullet.Faction.Enemy;
                 float dmg = _enemy != null ? _enemy.attack : 10;
-                b.Init(transform.position, dir, dmg, range: 8f, speed: 420f);
+                float spd = _mistPhase >= 2 ? 520f : 420f;
+                b.Init(transform.position, dir, dmg, range: 10f, speed: spd);
                 bulletSystem.RegisterBullet(b);
             }
+        }
+
+        private void SpiralVolley(int count, float stepDeg, ref float angleOffset)
+        {
+            if (bulletPool == null || bulletSystem == null) return;
+            float ang = angleOffset;
+            for (int i = 0; i < count; i++)
+            {
+                float a = (ang + i * stepDeg) * Mathf.Deg2Rad;
+                Vector2 dir = new Vector2(Mathf.Cos(a), Mathf.Sin(a));
+                var b = bulletPool.Get();
+                b.source = "enemy";
+                b.faction = Bullet.Faction.Enemy;
+                float dmg = _enemy != null ? _enemy.attack * 0.8f : 8f;
+                b.Init(transform.position, dir, dmg, range: 10f, speed: 360f);
+                bulletSystem.RegisterBullet(b);
+            }
+            angleOffset += stepDeg * 0.5f;
         }
 
         private void PulseAoE(float radius, int damage)
@@ -476,6 +601,87 @@ namespace ZGame.UnityDraft
             {
                 var p = h.GetComponentInParent<Player>();
                 if (p != null) p.Damage(damage);
+            }
+        }
+
+        private void SpawnMistFog()
+        {
+            var paint = FindObjectOfType<PaintSystem>();
+            if (paint != null)
+            {
+                paint.SpawnEnemyPaint(transform.position, mistFogRadius, mistFogDuration, mistFogColor);
+            }
+        }
+
+        private void SpawnMistClone()
+        {
+            if (factory == null || string.IsNullOrEmpty(mistCloneTypeId)) return;
+            factory.SpawnAround(mistCloneTypeId, transform.position);
+        }
+
+        private void DropHazard()
+        {
+            var paint = FindObjectOfType<PaintSystem>();
+            if (paint != null)
+            {
+                paint.SpawnEnemyPaint(transform.position, devourerHazardRadius, devourerHazardDuration, devourerHazardColor);
+            }
+        }
+
+        private IEnumerator RunPattern()
+        {
+            BossAttackStep[] seq = null;
+            switch (behavior)
+            {
+                case EnemyBehaviorType.BossMistweaver: seq = mistPattern; break;
+                case EnemyBehaviorType.BossMemoryDevourer: seq = devourerPattern; break;
+                case EnemyBehaviorType.BossTwinMain:
+                case EnemyBehaviorType.BossTwinPartner: seq = twinPattern; break;
+            }
+            while (useScriptedPattern && seq != null && seq.Length > 0)
+            {
+                foreach (var step in seq)
+                {
+                    yield return ExecuteStep(step);
+                }
+            }
+        }
+
+        private IEnumerator ExecuteStep(BossAttackStep step)
+        {
+            switch (step.type)
+            {
+                case BossAttackType.Pause:
+                    yield return new WaitForSeconds(step.duration);
+                    break;
+                case BossAttackType.Teleport:
+                    TeleportNearTarget();
+                    yield return new WaitForSeconds(step.duration);
+                    break;
+                case BossAttackType.Volley:
+                    RadialVolley(step.intParam > 0 ? step.intParam : mistVolleyProjectiles, step.floatParam > 0 ? step.floatParam : 180f);
+                    yield return new WaitForSeconds(step.duration);
+                    break;
+                case BossAttackType.Spiral:
+                    SpiralVolley(step.intParam > 0 ? step.intParam : devourerSpiralProjectiles, step.floatParam > 0 ? step.floatParam : devourerSpiralStepDeg, ref _devourerSpiralAngle);
+                    yield return new WaitForSeconds(step.duration);
+                    break;
+                case BossAttackType.Fog:
+                    SpawnMistFog();
+                    yield return new WaitForSeconds(step.duration);
+                    break;
+                case BossAttackType.Hazard:
+                    DropHazard();
+                    yield return new WaitForSeconds(step.duration);
+                    break;
+                case BossAttackType.Summon:
+                    factory?.SpawnAround(devourerSummonType, transform.position);
+                    yield return new WaitForSeconds(step.duration);
+                    break;
+                case BossAttackType.Clone:
+                    SpawnMistClone();
+                    yield return new WaitForSeconds(step.duration);
+                    break;
             }
         }
     }

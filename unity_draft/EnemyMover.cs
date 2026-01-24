@@ -41,6 +41,7 @@ namespace ZGame.UnityDraft
         private float _stuckTimer;
         private float _repathTimer;
         public Systems.WindBiomeModifier windModifier;
+        private bool _subscribedNavDirty = false;
 
         private void Awake()
         {
@@ -48,6 +49,15 @@ namespace ZGame.UnityDraft
             _rb = GetComponent<Rigidbody2D>();
             _navAgent2D = GetComponent<Nav.NavAgent2D>();
             _lastPos = transform.position;
+        }
+
+        private void OnDestroy()
+        {
+            if (_subscribedNavDirty && gridManager != null)
+            {
+                gridManager.OnNavDirty -= HandleNavDirty;
+                _subscribedNavDirty = false;
+            }
         }
 
         private void FixedUpdate()
@@ -69,6 +79,7 @@ namespace ZGame.UnityDraft
                 Vector3 dest = target ? target.position : transform.position;
                 if (gridManager != null && gridBlocked != null)
                 {
+                    EnsureNavSubscription();
                     Vector2Int start = gridManager.WorldToGrid(transform.position);
                     Vector2Int goal = gridManager.WorldToGrid(dest);
                     _navRefreshTimer -= Time.fixedDeltaTime;
@@ -180,6 +191,20 @@ namespace ZGame.UnityDraft
             {
                 _repathTimer = 0f;
             }
+        }
+
+        private void HandleNavDirty()
+        {
+            if (!autoRefreshGrid || gridManager == null) return;
+            gridBlocked = gridManager.BuildBlockedGrid();
+            _repathTimer = 0f;
+        }
+
+        private void EnsureNavSubscription()
+        {
+            if (_subscribedNavDirty || gridManager == null) return;
+            gridManager.OnNavDirty += HandleNavDirty;
+            _subscribedNavDirty = true;
         }
     }
 }

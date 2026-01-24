@@ -12,6 +12,8 @@ namespace ZGame.UnityDraft.Systems
         public MetaProgression meta;
         public Player player;
         public LevelUpPicker levelUpPicker;
+        public ShopSystem shop;
+        public WaveSpawner waveSpawner;
 
         private string SnapshotPath => Path.Combine(Application.persistentDataPath, "zgame_snapshot.json");
 
@@ -40,6 +42,29 @@ namespace ZGame.UnityDraft.Systems
             public float playerRangeMult;
             public string[] ownedUpgrades;
             public string[] shopOwnedItems;
+            public WaveState wave;
+            public MetaState metaState;
+        }
+
+        [System.Serializable]
+        public class WaveState
+        {
+            public int levelIdx;
+            public float budget;
+            public float spawnTimer;
+        }
+
+        [System.Serializable]
+        public class MetaState
+        {
+            public int banked;
+            public int run;
+            public int kills;
+            public int coupons;
+            public bool wanted;
+            public int wantedBounty;
+            public int wantedKillTarget;
+            public MetaProgression.ConsumableStack[] consumables;
         }
 
         public void SaveSnapshot()
@@ -78,7 +103,33 @@ namespace ZGame.UnityDraft.Systems
             {
                 data.ownedUpgrades = levelUpPicker.ownedUpgrades.ToArray();
             }
-            // Shop-owned persistence stub: if you track purchases, add here
+            if (shop != null)
+            {
+                data.shopOwnedItems = shop.ownedItems.ToArray();
+            }
+            if (waveSpawner != null)
+            {
+                data.wave = new WaveState
+                {
+                    levelIdx = data.levelIdx,
+                    budget = waveSpawner.CurrentBudget,
+                    spawnTimer = waveSpawner.CurrentSpawnTimer
+                };
+            }
+            if (meta != null)
+            {
+                data.metaState = new MetaState
+                {
+                    banked = meta.bankedCoins,
+                    run = meta.runCoins,
+                    kills = meta.killCount,
+                    coupons = meta.coupons,
+                    wanted = meta.wantedActive,
+                    wantedBounty = meta.wantedBounty,
+                    wantedKillTarget = meta.wantedKillTarget,
+                    consumables = meta.consumables.ToArray()
+                };
+            }
             var json = JsonUtility.ToJson(data);
             File.WriteAllText(SnapshotPath, json);
         }
@@ -124,6 +175,27 @@ namespace ZGame.UnityDraft.Systems
             {
                 levelUpPicker.ownedUpgrades.Clear();
                 if (data.ownedUpgrades != null) levelUpPicker.ownedUpgrades.AddRange(data.ownedUpgrades);
+            }
+            if (shop != null)
+            {
+                shop.ownedItems.Clear();
+                if (data.shopOwnedItems != null) shop.ownedItems.AddRange(data.shopOwnedItems);
+            }
+            if (waveSpawner != null && data.wave != null)
+            {
+                waveSpawner.RestoreState(data.wave.budget, data.wave.spawnTimer);
+            }
+            if (meta != null && data.metaState != null)
+            {
+                meta.bankedCoins = data.metaState.banked;
+                meta.runCoins = data.metaState.run;
+                meta.killCount = data.metaState.kills;
+                meta.coupons = data.metaState.coupons;
+                meta.wantedActive = data.metaState.wanted;
+                meta.wantedBounty = data.metaState.wantedBounty;
+                meta.wantedKillTarget = data.metaState.wantedKillTarget;
+                meta.consumables.Clear();
+                if (data.metaState.consumables != null) meta.consumables.AddRange(data.metaState.consumables);
             }
             return true;
         }

@@ -15,6 +15,7 @@ namespace ZGame.UnityDraft
         [Tooltip("Obstacles keyed by grid (x,y).")]
         public Dictionary<Vector2Int, Collider2D> obstacles = new();
         public bool navDirty = true;
+        public event System.Action OnNavDirty;
 
         public Vector3 GridToWorldCenter(Vector2Int cell)
         {
@@ -64,6 +65,7 @@ namespace ZGame.UnityDraft
         {
             obstacles[cell] = col;
             navDirty = true;
+            OnNavDirty?.Invoke();
         }
 
         public void AddObstacle(Vector3 worldPos, float radius = 0f)
@@ -89,12 +91,14 @@ namespace ZGame.UnityDraft
             if (obstacles.Remove(cell))
             {
                 navDirty = true;
+                OnNavDirty?.Invoke();
             }
         }
 
         public void MarkNavDirty()
         {
             navDirty = true;
+            OnNavDirty?.Invoke();
         }
     }
 }

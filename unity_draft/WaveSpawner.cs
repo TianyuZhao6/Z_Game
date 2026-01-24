@@ -69,6 +69,8 @@ namespace ZGame.UnityDraft
         private readonly Queue<string> _specialQueue = new();
         private bool _bossSpawned = false;
         private float _nextBanditTime = float.PositiveInfinity;
+        public float CurrentBudget => _budget;
+        public float CurrentSpawnTimer => _timer;
 
         public System.Action<string> OnSpawnRequested; // hook to actual spawn logic with typeId
 
@@ -191,6 +193,12 @@ namespace ZGame.UnityDraft
             _budget = baseBudget + budgetPerLevel * _levelIdx;
             spawnInterval = Mathf.Max(minSpawnInterval, spawnInterval - 0.15f * _levelIdx);
             _scaledThreatTable = BuildScaledThreats(_levelIdx);
+        }
+
+        public void RestoreState(float budget, float spawnTimer)
+        {
+            _budget = budget;
+            _timer = spawnTimer;
         }
 
         private Vector3 PickSpawnPos()
