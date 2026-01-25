@@ -156,6 +156,8 @@ namespace ZGame.UnityDraft
         public BossAttackStep[] devourerPattern;
         public BossAttackStep[] twinPattern;
         private Coroutine _patternRoutine;
+        [Header("Default Pattern (Python-inspired)")]
+        public bool useDefaultPattern = true;
 
         private Enemy _enemy;
         private Rigidbody2D _rb;
@@ -186,6 +188,7 @@ namespace ZGame.UnityDraft
             if (meta == null) meta = FindObjectOfType<MetaProgression>();
             if (useScriptedPattern && _patternRoutine == null)
             {
+                if (useDefaultPattern) SeedDefaultPatterns();
                 _patternRoutine = StartCoroutine(RunPattern());
             }
         }
@@ -638,12 +641,49 @@ namespace ZGame.UnityDraft
                 case EnemyBehaviorType.BossTwinMain:
                 case EnemyBehaviorType.BossTwinPartner: seq = twinPattern; break;
             }
+            if (seq == null || seq.Length == 0) yield break;
             while (useScriptedPattern && seq != null && seq.Length > 0)
             {
                 foreach (var step in seq)
                 {
                     yield return ExecuteStep(step);
                 }
+            }
+        }
+
+        private void SeedDefaultPatterns()
+        {
+            if (behavior == EnemyBehaviorType.BossMistweaver && (mistPattern == null || mistPattern.Length == 0))
+            {
+                mistPattern = new BossAttackStep[]
+                {
+                    new BossAttackStep{ type=BossAttackType.Teleport, duration=0.4f },
+                    new BossAttackStep{ type=BossAttackType.Volley, intParam=8, floatParam=180f, duration=0.6f },
+                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=6, floatParam=15f, duration=0.6f },
+                    new BossAttackStep{ type=BossAttackType.Fog, duration=0.2f },
+                    new BossAttackStep{ type=BossAttackType.Clone, duration=0.2f },
+                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.5f }
+                };
+            }
+            if (behavior == EnemyBehaviorType.BossMemoryDevourer && (devourerPattern == null || devourerPattern.Length == 0))
+            {
+                devourerPattern = new BossAttackStep[]
+                {
+                    new BossAttackStep{ type=BossAttackType.Hazard, duration=0.2f },
+                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=10, floatParam=12f, duration=0.6f },
+                    new BossAttackStep{ type=BossAttackType.Summon, duration=0.5f },
+                    new BossAttackStep{ type=BossAttackType.Volley, intParam=12, floatParam=240f, duration=0.6f },
+                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.5f }
+                };
+            }
+            if ((behavior == EnemyBehaviorType.BossTwinMain || behavior == EnemyBehaviorType.BossTwinPartner) && (twinPattern == null || twinPattern.Length == 0))
+            {
+                twinPattern = new BossAttackStep[]
+                {
+                    new BossAttackStep{ type=BossAttackType.Volley, intParam=6, floatParam=120f, duration=0.5f },
+                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=4, floatParam=30f, duration=0.5f },
+                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.4f }
+                };
             }
         }
 
