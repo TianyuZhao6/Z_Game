@@ -29,7 +29,7 @@ namespace ZGame.UnityDraft
     public class EnemyBehavior : MonoBehaviour
     {
         [System.Serializable]
-        public enum BossAttackType { Pause, Teleport, Volley, Spiral, Fog, Hazard, Summon, Clone }
+        public enum BossAttackType { Pause, Teleport, Volley, Spiral, Fog, Hazard, Summon, Clone, AimedBurst, RingHazard }
         [System.Serializable]
         public class BossAttackStep
         {
@@ -158,6 +158,14 @@ namespace ZGame.UnityDraft
         private Coroutine _patternRoutine;
         [Header("Default Pattern (Python-inspired)")]
         public bool useDefaultPattern = true;
+        [Header("Aimed Burst Settings")]
+        public int aimedBurstProjectiles = 5;
+        public float aimedBurstSpreadDeg = 20f;
+        public float aimedBurstSpeed = 520f;
+
+        [Header("Ring Hazard Settings")]
+        public int ringHazardCount = 6;
+        public float ringHazardRadius = 4f;
 
         private Enemy _enemy;
         private Rigidbody2D _rb;
@@ -631,6 +639,40 @@ namespace ZGame.UnityDraft
             }
         }
 
+        private void AimedBurst(int count, float spreadDeg, float speedOverride)
+        {
+            if (bulletPool == null || bulletSystem == null || target == null) return;
+            Vector2 baseDir = (target.position - transform.position);
+            if (baseDir.sqrMagnitude < 0.01f) baseDir = Vector2.right;
+            baseDir.Normalize();
+            float start = -spreadDeg * 0.5f;
+            for (int i = 0; i < count; i++)
+            {
+                float t = count == 1 ? 0f : i / (float)(count - 1);
+                float ang = start + spreadDeg * t;
+                Vector2 d = Quaternion.Euler(0, 0, ang) * baseDir;
+                var b = bulletPool.Get();
+                b.source = "enemy";
+                b.faction = Bullet.Faction.Enemy;
+                float dmg = _enemy != null ? _enemy.attack : 10;
+                b.Init(transform.position, d.normalized, dmg, range: 12f, speed: speedOverride);
+                bulletSystem.RegisterBullet(b);
+            }
+        }
+
+        private void RingHazard(int count, float radius)
+        {
+            var paint = FindObjectOfType<PaintSystem>();
+            if (paint == null) return;
+            float step = 360f / Mathf.Max(1, count);
+            for (int i = 0; i < count; i++)
+            {
+                float ang = step * i * Mathf.Deg2Rad;
+                Vector3 pos = transform.position + new Vector3(Mathf.Cos(ang), Mathf.Sin(ang), 0f) * radius;
+                paint.SpawnEnemyPaint(pos, devourerHazardRadius, devourerHazardDuration, devourerHazardColor);
+            }
+        }
+
         private IEnumerator RunPattern()
         {
             BossAttackStep[] seq = null;
@@ -659,6 +701,7 @@ namespace ZGame.UnityDraft
                 {
                     new BossAttackStep{ type=BossAttackType.Teleport, duration=0.4f },
                     new BossAttackStep{ type=BossAttackType.Volley, intParam=8, floatParam=180f, duration=0.6f },
+                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=6, floatParam=25f, floatParam2=520f, duration=0.5f },
                     new BossAttackStep{ type=BossAttackType.Spiral, intParam=6, floatParam=15f, duration=0.6f },
                     new BossAttackStep{ type=BossAttackType.Fog, duration=0.2f },
                     new BossAttackStep{ type=BossAttackType.Clone, duration=0.2f },
@@ -670,6 +713,7 @@ namespace ZGame.UnityDraft
                 devourerPattern = new BossAttackStep[]
                 {
                     new BossAttackStep{ type=BossAttackType.Hazard, duration=0.2f },
+                    new BossAttackStep{ type=BossAttackType.RingHazard, intParam=8, floatParam=3.5f, duration=0.2f },
                     new BossAttackStep{ type=BossAttackType.Spiral, intParam=10, floatParam=12f, duration=0.6f },
                     new BossAttackStep{ type=BossAttackType.Summon, duration=0.5f },
                     new BossAttackStep{ type=BossAttackType.Volley, intParam=12, floatParam=240f, duration=0.6f },
@@ -720,6 +764,14 @@ namespace ZGame.UnityDraft
                     break;
                 case BossAttackType.Clone:
                     SpawnMistClone();
+                    yield return new WaitForSeconds(step.duration);
+                    break;
+                case BossAttackType.AimedBurst:
+                    AimedBurst(step.intParam > 0 ? step.intParam : aimedBurstProjectiles, step.floatParam > 0 ? step.floatParam : aimedBurstSpreadDeg, step.floatParam2 > 0 ? step.floatParam2 : aimedBurstSpeed);
+                    yield return new WaitForSeconds(step.duration);
+                    break;
+                case BossAttackType.RingHazard:
+                    RingHazard(step.intParam > 0 ? step.intParam : ringHazardCount, step.floatParam > 0 ? step.floatParam : ringHazardRadius);
                     yield return new WaitForSeconds(step.duration);
                     break;
             }
