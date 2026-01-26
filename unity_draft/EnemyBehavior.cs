@@ -155,6 +155,15 @@ namespace ZGame.UnityDraft
         public BossAttackStep[] mistPattern;
         public BossAttackStep[] devourerPattern;
         public BossAttackStep[] twinPattern;
+        [Header("Phase Patterns (optional)")]
+        public BossAttackStep[] mistPhase0Pattern;
+        public BossAttackStep[] mistPhase1Pattern;
+        public BossAttackStep[] mistPhase2Pattern;
+        public BossAttackStep[] devourerPhase0Pattern;
+        public BossAttackStep[] devourerPhase1Pattern;
+        public BossAttackStep[] devourerPhase2Pattern;
+        public BossAttackStep[] twinPhase0Pattern;
+        public BossAttackStep[] twinEnragePattern;
         private Coroutine _patternRoutine;
         [Header("Default Pattern (Python-inspired)")]
         public bool useDefaultPattern = true;
@@ -624,6 +633,30 @@ namespace ZGame.UnityDraft
             }
         }
 
+        private BossAttackStep[] CurrentPattern()
+        {
+            switch (behavior)
+            {
+                case EnemyBehaviorType.BossMistweaver:
+                    if (_mistPhase >= 2 && mistPhase2Pattern != null && mistPhase2Pattern.Length > 0) return mistPhase2Pattern;
+                    if (_mistPhase >= 1 && mistPhase1Pattern != null && mistPhase1Pattern.Length > 0) return mistPhase1Pattern;
+                    if (mistPhase0Pattern != null && mistPhase0Pattern.Length > 0) return mistPhase0Pattern;
+                    return mistPattern;
+                case EnemyBehaviorType.BossMemoryDevourer:
+                    if (_enraged && devourerPhase2Pattern != null && devourerPhase2Pattern.Length > 0) return devourerPhase2Pattern;
+                    if (devourerPhase1Pattern != null && devourerPhase1Pattern.Length > 0) return devourerPhase1Pattern;
+                    if (devourerPhase0Pattern != null && devourerPhase0Pattern.Length > 0) return devourerPhase0Pattern;
+                    return devourerPattern;
+                case EnemyBehaviorType.BossTwinMain:
+                case EnemyBehaviorType.BossTwinPartner:
+                    if (_enraged && twinEnragePattern != null && twinEnragePattern.Length > 0) return twinEnragePattern;
+                    if (twinPhase0Pattern != null && twinPhase0Pattern.Length > 0) return twinPhase0Pattern;
+                    return twinPattern;
+                default:
+                    return null;
+            }
+        }
+
         private void SpawnMistClone()
         {
             if (factory == null || string.IsNullOrEmpty(mistCloneTypeId)) return;
@@ -675,17 +708,10 @@ namespace ZGame.UnityDraft
 
         private IEnumerator RunPattern()
         {
-            BossAttackStep[] seq = null;
-            switch (behavior)
+            while (useScriptedPattern)
             {
-                case EnemyBehaviorType.BossMistweaver: seq = mistPattern; break;
-                case EnemyBehaviorType.BossMemoryDevourer: seq = devourerPattern; break;
-                case EnemyBehaviorType.BossTwinMain:
-                case EnemyBehaviorType.BossTwinPartner: seq = twinPattern; break;
-            }
-            if (seq == null || seq.Length == 0) yield break;
-            while (useScriptedPattern && seq != null && seq.Length > 0)
-            {
+                var seq = CurrentPattern();
+                if (seq == null || seq.Length == 0) yield return null;
                 foreach (var step in seq)
                 {
                     yield return ExecuteStep(step);
@@ -697,36 +723,75 @@ namespace ZGame.UnityDraft
         {
             if (behavior == EnemyBehaviorType.BossMistweaver && (mistPattern == null || mistPattern.Length == 0))
             {
-                mistPattern = new BossAttackStep[]
+                mistPhase0Pattern = new BossAttackStep[]
                 {
-                    new BossAttackStep{ type=BossAttackType.Teleport, duration=0.4f },
-                    new BossAttackStep{ type=BossAttackType.Volley, intParam=8, floatParam=180f, duration=0.6f },
-                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=6, floatParam=25f, floatParam2=520f, duration=0.5f },
-                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=6, floatParam=15f, duration=0.6f },
+                    new BossAttackStep{ type=BossAttackType.Teleport, duration=0.3f },
+                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=5, floatParam=18f, floatParam2=500f, duration=0.4f },
+                    new BossAttackStep{ type=BossAttackType.Volley, intParam=8, floatParam=180f, duration=0.55f },
+                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.45f }
+                };
+                mistPhase1Pattern = new BossAttackStep[]
+                {
+                    new BossAttackStep{ type=BossAttackType.Teleport, duration=0.25f },
+                    new BossAttackStep{ type=BossAttackType.Fog, duration=0.2f },
+                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=7, floatParam=22f, floatParam2=540f, duration=0.45f },
+                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=8, floatParam=14f, duration=0.6f },
+                    new BossAttackStep{ type=BossAttackType.Clone, duration=0.2f },
+                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.45f }
+                };
+                mistPhase2Pattern = new BossAttackStep[]
+                {
+                    new BossAttackStep{ type=BossAttackType.Teleport, duration=0.2f },
+                    new BossAttackStep{ type=BossAttackType.Volley, intParam=12, floatParam=240f, duration=0.6f },
+                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=10, floatParam=12f, duration=0.6f },
                     new BossAttackStep{ type=BossAttackType.Fog, duration=0.2f },
                     new BossAttackStep{ type=BossAttackType.Clone, duration=0.2f },
-                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.5f }
+                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=8, floatParam=20f, floatParam2=560f, duration=0.5f },
+                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.4f }
                 };
             }
             if (behavior == EnemyBehaviorType.BossMemoryDevourer && (devourerPattern == null || devourerPattern.Length == 0))
             {
-                devourerPattern = new BossAttackStep[]
+                devourerPhase0Pattern = new BossAttackStep[]
                 {
                     new BossAttackStep{ type=BossAttackType.Hazard, duration=0.2f },
-                    new BossAttackStep{ type=BossAttackType.RingHazard, intParam=8, floatParam=3.5f, duration=0.2f },
+                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=8, floatParam=14f, duration=0.55f },
+                    new BossAttackStep{ type=BossAttackType.Summon, duration=0.45f },
+                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.45f }
+                };
+                devourerPhase1Pattern = new BossAttackStep[]
+                {
+                    new BossAttackStep{ type=BossAttackType.RingHazard, intParam=10, floatParam=3.5f, duration=0.25f },
                     new BossAttackStep{ type=BossAttackType.Spiral, intParam=10, floatParam=12f, duration=0.6f },
-                    new BossAttackStep{ type=BossAttackType.Summon, duration=0.5f },
-                    new BossAttackStep{ type=BossAttackType.Volley, intParam=12, floatParam=240f, duration=0.6f },
-                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.5f }
+                    new BossAttackStep{ type=BossAttackType.Summon, duration=0.4f },
+                    new BossAttackStep{ type=BossAttackType.Volley, intParam=12, floatParam=260f, duration=0.6f },
+                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.45f }
+                };
+                devourerPhase2Pattern = new BossAttackStep[]
+                {
+                    new BossAttackStep{ type=BossAttackType.RingHazard, intParam=12, floatParam=4f, duration=0.25f },
+                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=12, floatParam=10f, duration=0.65f },
+                    new BossAttackStep{ type=BossAttackType.Summon, duration=0.35f },
+                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=8, floatParam=18f, floatParam2=560f, duration=0.45f },
+                    new BossAttackStep{ type=BossAttackType.Volley, intParam=14, floatParam=280f, duration=0.6f },
+                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.4f }
                 };
             }
             if ((behavior == EnemyBehaviorType.BossTwinMain || behavior == EnemyBehaviorType.BossTwinPartner) && (twinPattern == null || twinPattern.Length == 0))
             {
-                twinPattern = new BossAttackStep[]
+                twinPhase0Pattern = new BossAttackStep[]
                 {
-                    new BossAttackStep{ type=BossAttackType.Volley, intParam=6, floatParam=120f, duration=0.5f },
-                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=4, floatParam=30f, duration=0.5f },
+                    new BossAttackStep{ type=BossAttackType.Volley, intParam=6, floatParam=140f, duration=0.45f },
+                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=4, floatParam=16f, floatParam2=520f, duration=0.35f },
+                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=4, floatParam=30f, duration=0.45f },
                     new BossAttackStep{ type=BossAttackType.Pause, duration=0.4f }
+                };
+                twinEnragePattern = new BossAttackStep[]
+                {
+                    new BossAttackStep{ type=BossAttackType.Volley, intParam=8, floatParam=180f, duration=0.45f },
+                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=6, floatParam=18f, floatParam2=560f, duration=0.35f },
+                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=6, floatParam=24f, duration=0.45f },
+                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.35f }
                 };
             }
         }
