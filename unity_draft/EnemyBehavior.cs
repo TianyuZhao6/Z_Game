@@ -29,7 +29,7 @@ namespace ZGame.UnityDraft
     public class EnemyBehavior : MonoBehaviour
     {
         [System.Serializable]
-        public enum BossAttackType { Pause, Teleport, Volley, Spiral, Fog, Hazard, Summon, Clone, AimedBurst, RingHazard }
+        public enum BossAttackType { Pause, Teleport, Volley, Spiral, Fog, Hazard, Summon, Clone, AimedBurst, RingHazard, Dash, ConeBurst, RingBurst }
         [System.Serializable]
         public class BossAttackStep
         {
@@ -175,6 +175,17 @@ namespace ZGame.UnityDraft
         [Header("Ring Hazard Settings")]
         public int ringHazardCount = 6;
         public float ringHazardRadius = 4f;
+        [Header("Dash / Cone / Ring Attacks")]
+        public float dashWindup = 0.4f;
+        public float dashTime = 0.6f;
+        public float dashSpeedMult = 3.5f;
+        public float coneCount = 7;
+        public float coneArcDeg = 55f;
+        public float coneSpeed = 380f;
+        public int ringBursts = 2;
+        public int ringProjectiles = 20;
+        public float ringSpeed = 420f;
+        public float ringDelay = 0.3f;
 
         private Enemy _enemy;
         private Rigidbody2D _rb;
@@ -672,6 +683,62 @@ namespace ZGame.UnityDraft
             }
         }
 
+        private IEnumerator DashAttack(float windup, float goTime, float speedMult)
+        {
+            yield return new WaitForSeconds(windup);
+            float original = _enemy.speed;
+            _enemy.speed = original * speedMult;
+            float t = goTime;
+            while (t > 0f)
+            {
+                t -= Time.deltaTime;
+                yield return null;
+            }
+            _enemy.speed = original;
+        }
+
+        private void ConeBurst(int count, float arcDeg, float spd)
+        {
+            if (bulletPool == null || bulletSystem == null || target == null) return;
+            Vector2 baseDir = (target.position - transform.position);
+            if (baseDir.sqrMagnitude < 0.01f) baseDir = Vector2.right;
+            baseDir.Normalize();
+            float start = -arcDeg * 0.5f;
+            for (int i = 0; i < count; i++)
+            {
+                float t = count == 1 ? 0f : i / (float)(count - 1);
+                float ang = start + arcDeg * t;
+                Vector2 d = Quaternion.Euler(0, 0, ang) * baseDir;
+                var b = bulletPool.Get();
+                b.source = "enemy";
+                b.faction = Bullet.Faction.Enemy;
+                float dmg = _enemy != null ? _enemy.attack : 12;
+                b.Init(transform.position, d.normalized, dmg, range: 12f, speed: spd);
+                bulletSystem.RegisterBullet(b);
+            }
+        }
+
+        private IEnumerator RingBurst(int bursts, float delay, float projectiles, float spd)
+        {
+            if (bulletPool == null || bulletSystem == null) yield break;
+            for (int bidx = 0; bidx < bursts; bidx++)
+            {
+                float step = 360f / Mathf.Max(1, projectiles);
+                for (int i = 0; i < projectiles; i++)
+                {
+                    float ang = (step * i + bidx * 8f) * Mathf.Deg2Rad;
+                    Vector2 dir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
+                    var b = bulletPool.Get();
+                    b.source = "enemy";
+                    b.faction = Bullet.Faction.Enemy;
+                    float dmg = _enemy != null ? _enemy.attack * 0.8f : 10f;
+                    b.Init(transform.position, dir, dmg, range: 14f, speed: spd);
+                    bulletSystem.RegisterBullet(b);
+                }
+                yield return new WaitForSeconds(delay);
+            }
+        }
+
         private void AimedBurst(int count, float spreadDeg, float speedOverride)
         {
             if (bulletPool == null || bulletSystem == null || target == null) return;
@@ -838,6 +905,23 @@ namespace ZGame.UnityDraft
                 case BossAttackType.RingHazard:
                     RingHazard(step.intParam > 0 ? step.intParam : ringHazardCount, step.floatParam > 0 ? step.floatParam : ringHazardRadius);
                     yield return new WaitForSeconds(step.duration);
+                    break;
+                case BossAttackType.Dash:
+                    yield return DashAttack(step.floatParam > 0 ? step.floatParam : dashWindup,
+                                             step.floatParam2 > 0 ? step.floatParam2 : dashTime,
+                                             step.floatParam3 > 0 ? step.floatParam3 : dashSpeedMult);
+                    break;
+                case BossAttackType.ConeBurst:
+                    ConeBurst(step.intParam > 0 ? step.intParam : (int)coneCount,
+                              step.floatParam > 0 ? step.floatParam : coneArcDeg,
+                              step.floatParam2 > 0 ? step.floatParam2 : coneSpeed);
+                    yield return new WaitForSeconds(step.duration);
+                    break;
+                case BossAttackType.RingBurst:
+                    yield return RingBurst(step.intParam > 0 ? step.intParam : ringBursts,
+                                           step.floatParam > 0 ? step.floatParam : ringDelay,
+                                           step.floatParam2 > 0 ? step.floatParam2 : ringProjectiles,
+                                           step.floatParam3 > 0 ? step.floatParam3 : ringSpeed);
                     break;
             }
         }
