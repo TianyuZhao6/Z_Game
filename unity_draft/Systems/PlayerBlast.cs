@@ -18,6 +18,9 @@ namespace ZGame.UnityDraft.Systems
         public bool applyPaint = false;
         public bool applyAcid = false;
         public bool inheritPlayerCrit = true;
+        public bool applyVulnerabilityOnCrit = true;
+        public float vulnMult = 1.2f;
+        public float vulnDuration = 2f;
         private float _cd;
         private Player _player;
 
@@ -51,6 +54,7 @@ namespace ZGame.UnityDraft.Systems
                     if (Random.value < _player.critChance)
                     {
                         dealt = Mathf.RoundToInt(dealt * _player.critMult);
+                        if (applyVulnerabilityOnCrit) StatusEffect.ApplyVulnerability(e.gameObject, vulnMult, vulnDuration);
                     }
                 }
                 e.Damage(dealt);

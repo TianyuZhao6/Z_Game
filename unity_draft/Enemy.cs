@@ -24,6 +24,10 @@ namespace ZGame.UnityDraft
         public float baseSizePx;    // unscaled footprint in world px (e.g., cellSize * 0.6)
         public float critChance = 0.0f;
         public float critMult = 1.0f;
+        public bool radarTagged = false;
+        public float radarSlowLeft = 0f;
+        public float radarRingPeriod = 2f;
+        public float radarRingPhase = 0f;
         public System.Action OnKilled;
 
         private SpriteRenderer _sr;

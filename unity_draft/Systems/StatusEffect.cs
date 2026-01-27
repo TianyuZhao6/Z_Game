@@ -24,6 +24,8 @@ namespace ZGame.UnityDraft.Systems
         public float carapaceHp = 0f;
         public bool painted = false;
         public bool acid = false;
+        public bool vulnerable = false;
+        public float vulnerabilityMult = 1.0f;
         [Header("Paint Hooks")]
         public PaintSystem paintSystem;
         public Color paintColor = new Color(0.2f, 0.8f, 1f, 0.35f);
@@ -78,6 +80,7 @@ namespace ZGame.UnityDraft.Systems
                     if (e.id == "slow") slowMult = 1f;
                     if (e.id == "paint") painted = false;
                     if (e.id == "acid") acid = false;
+                    if (e.id == "vuln") { vulnerable = false; vulnerabilityMult = 1f; }
                 }
             }
         }
@@ -123,6 +126,14 @@ namespace ZGame.UnityDraft.Systems
             {
                 s.paintSystem.SpawnEnemyPaint(go.transform.position, s.acidRadius, s.acidLifetime, s.acidColor);
             }
+        }
+
+        public static void ApplyVulnerability(GameObject go, float mult, float duration)
+        {
+            var s = go.GetComponent<StatusEffect>() ?? go.AddComponent<StatusEffect>();
+            s.vulnerable = true;
+            s.vulnerabilityMult = Mathf.Max(1f, mult);
+            s._effects.Add(new EffectInstance { id = "vuln", duration = duration });
         }
 
         public static void ApplyBonePlating(GameObject go, float hp)

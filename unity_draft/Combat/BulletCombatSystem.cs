@@ -50,6 +50,9 @@ namespace ZGame.UnityDraft.Combat
         public ZGame.UnityDraft.VFX.SfxPlayer sfxPlayer;
         public string enemyDeathVfxId = "enemy_death";
         public string enemyDeathSfxId = "enemy_die";
+        [Header("Damage Synergy")]
+        public float paintBonusMult = 1.10f;
+        public float vulnBonusMult = 1.20f;
 
         private readonly List<Bullet> _bullets = new();
         private readonly Collider2D[] _hitBuffer = new Collider2D[16];
@@ -143,6 +146,11 @@ namespace ZGame.UnityDraft.Combat
             }
             var status = enemy.GetComponent<ZGame.UnityDraft.Systems.StatusEffect>();
             status?.TryAbsorb(ref dealt);
+            if (status != null)
+            {
+                if (status.painted) dealt = Mathf.RoundToInt(dealt * paintBonusMult);
+                if (status.vulnerable) dealt = Mathf.RoundToInt(dealt * Mathf.Max(vulnBonusMult, status.vulnerabilityMult));
+            }
             enemy.hp = Mathf.Max(0, enemy.hp - dealt);
             bool killed = enemy.hp <= 0;
             if (killed)
