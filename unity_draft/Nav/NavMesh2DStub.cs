@@ -14,6 +14,8 @@ namespace ZGame.UnityDraft.Nav
 #if UNITY_AI_NAVIGATION
         public NavMeshSurface navSurface;
         public bool autoBuild = true;
+        public float buildDelay = 0.2f;
+        private float _dirtyTimer = 0f;
 
         private void Awake()
         {
@@ -39,11 +41,21 @@ namespace ZGame.UnityDraft.Nav
             }
         }
 
-        public void Rebuild()
+        public void MarkDirty()
         {
-            if (navSurface != null)
+            _dirtyTimer = buildDelay;
+        }
+
+        private void Update()
+        {
+            if (!autoBuild || navSurface == null) return;
+            if (_dirtyTimer > 0f)
             {
-                navSurface.BuildNavMeshAsync();
+                _dirtyTimer -= Time.deltaTime;
+                if (_dirtyTimer <= 0f)
+                {
+                    navSurface.BuildNavMeshAsync();
+                }
             }
         }
 #else

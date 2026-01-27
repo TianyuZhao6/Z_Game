@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace ZGame.UnityDraft
 {
@@ -42,12 +43,18 @@ namespace ZGame.UnityDraft
         private float _repathTimer;
         public Systems.WindBiomeModifier windModifier;
         private bool _subscribedNavDirty = false;
+        public Nav.NavMesh2DStub navMesh2D;
+        public NavMeshAgent navAgent3D;
 
         private void Awake()
         {
             _enemy = GetComponent<Enemy>();
             _rb = GetComponent<Rigidbody2D>();
             _navAgent2D = GetComponent<Nav.NavAgent2D>();
+            navMesh2D = FindObjectOfType<Nav.NavMesh2DStub>();
+#if UNITY_AI_NAVIGATION
+            navAgent3D = GetComponent<NavMeshAgent>();
+#endif
             _lastPos = transform.position;
         }
 
@@ -68,6 +75,13 @@ namespace ZGame.UnityDraft
                 if (_rb) _rb.velocity = Vector2.zero;
                 return;
             }
+#if UNITY_AI_NAVIGATION
+            if (useNavMeshAgent && navAgent3D != null && navAgent3D.enabled)
+            {
+                if (target != null) navAgent3D.SetDestination(target.position);
+                return;
+            }
+#endif
             Vector2 vel = Vector2.zero;
             if (target)
             {
@@ -197,6 +211,7 @@ namespace ZGame.UnityDraft
         {
             if (!autoRefreshGrid || gridManager == null) return;
             gridBlocked = gridManager.BuildBlockedGrid();
+            if (navMesh2D != null) navMesh2D.MarkDirty();
             _repathTimer = 0f;
         }
 

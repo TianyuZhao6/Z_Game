@@ -134,7 +134,7 @@ namespace ZGame.UnityDraft
         private void TrySpawn()
         {
             // Budgeted spawn
-            var entry = PickByWeight(threatTable);
+            var entry = PickByWeight(threatTable, _levelIdx);
             if (string.IsNullOrEmpty(entry.typeId)) return;
             if (_currentBudget < entry.cost) return;
             _currentBudget -= entry.cost;

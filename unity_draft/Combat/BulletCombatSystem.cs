@@ -45,6 +45,11 @@ namespace ZGame.UnityDraft.Combat
         public Color paintHitColor = new Color(0.2f, 0.8f, 1f, 0.25f);
         public float paintHitRadius = 0.4f;
         public float paintHitLifetime = 4f;
+        [Header("VFX/SFX")]
+        public ZGame.UnityDraft.VFX.VfxPlayer vfxPlayer;
+        public ZGame.UnityDraft.VFX.SfxPlayer sfxPlayer;
+        public string enemyDeathVfxId = "enemy_death";
+        public string enemyDeathSfxId = "enemy_die";
 
         private readonly List<Bullet> _bullets = new();
         private readonly Collider2D[] _hitBuffer = new Collider2D[16];
@@ -143,6 +148,9 @@ namespace ZGame.UnityDraft.Combat
             if (killed)
             {
                 enemy.Kill();
+                if (vfxPlayer != null) vfxPlayer.Play(enemyDeathVfxId, enemy.transform.position);
+                else if (paintSystem != null) paintSystem.SpawnEnemyPaint(enemy.transform.position, paintHitRadius, paintHitLifetime, paintHitColor);
+                if (sfxPlayer != null) sfxPlayer.Play(enemyDeathSfxId, enemy.transform.position);
                 if (meta != null)
                 {
                     if (awardKills) meta.AddKill(1);
