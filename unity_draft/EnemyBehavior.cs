@@ -179,13 +179,13 @@ namespace ZGame.UnityDraft
         public float dashWindup = 0.4f;
         public float dashTime = 0.6f;
         public float dashSpeedMult = 3.5f;
-        public float coneCount = 7;
-        public float coneArcDeg = 55f;
-        public float coneSpeed = 380f;
-        public int ringBursts = 2;
-        public int ringProjectiles = 20;
-        public float ringSpeed = 420f;
-        public float ringDelay = 0.3f;
+        public float coneCount = 7;          // BOSS_VOMIT_COUNT
+        public float coneArcDeg = 55f;       // BOSS_VOMIT_CONE_DEG
+        public float coneSpeed = 380f;       // BOSS_VOMIT_SPEED
+        public int ringBursts = 2;           // BOSS_RING_BURSTS
+        public int ringProjectiles = 20;     // BOSS_RING_PROJECTILES
+        public float ringSpeed = 420f;       // BOSS_RING_SPEED
+        public float ringDelay = 2.0f;       // derived from BOSS_RING_CD / bursts (approx)
 
         private Enemy _enemy;
         private Rigidbody2D _rb;
@@ -793,27 +793,26 @@ namespace ZGame.UnityDraft
                 mistPhase0Pattern = new BossAttackStep[]
                 {
                     new BossAttackStep{ type=BossAttackType.Teleport, duration=0.3f },
-                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=5, floatParam=18f, floatParam2=500f, duration=0.4f },
-                    new BossAttackStep{ type=BossAttackType.Volley, intParam=8, floatParam=180f, duration=0.55f },
-                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.45f }
+                    new BossAttackStep{ type=BossAttackType.ConeBurst, intParam=7, floatParam=55f, floatParam2=380f, duration=0.45f }, // vomit
+                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=6, floatParam=15f, duration=0.5f },
+                    new BossAttackStep{ type=BossAttackType.Pause, duration=0.5f }
                 };
                 mistPhase1Pattern = new BossAttackStep[]
                 {
                     new BossAttackStep{ type=BossAttackType.Teleport, duration=0.25f },
                     new BossAttackStep{ type=BossAttackType.Fog, duration=0.2f },
-                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=7, floatParam=22f, floatParam2=540f, duration=0.45f },
-                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=8, floatParam=14f, duration=0.6f },
-                    new BossAttackStep{ type=BossAttackType.Clone, duration=0.2f },
+                    new BossAttackStep{ type=BossAttackType.ConeBurst, intParam=7, floatParam=55f, floatParam2=380f, duration=0.45f },
+                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=6, floatParam=22f, floatParam2=520f, duration=0.4f },
+                    new BossAttackStep{ type=BossAttackType.Spiral, intParam=8, floatParam=12f, duration=0.55f },
                     new BossAttackStep{ type=BossAttackType.Pause, duration=0.45f }
                 };
                 mistPhase2Pattern = new BossAttackStep[]
                 {
                     new BossAttackStep{ type=BossAttackType.Teleport, duration=0.2f },
-                    new BossAttackStep{ type=BossAttackType.Volley, intParam=12, floatParam=240f, duration=0.6f },
+                    new BossAttackStep{ type=BossAttackType.Dash, floatParam=0.65f, floatParam2=0.55f, floatParam3=3.25f, duration=0.0f }, // toxic dash
+                    new BossAttackStep{ type=BossAttackType.ConeBurst, intParam=7, floatParam=55f, floatParam2=380f, duration=0.45f },
+                    new BossAttackStep{ type=BossAttackType.RingBurst, intParam=2, floatParam=2.0f, floatParam2=20f, floatParam3=420f, duration=0.0f },
                     new BossAttackStep{ type=BossAttackType.Spiral, intParam=10, floatParam=12f, duration=0.6f },
-                    new BossAttackStep{ type=BossAttackType.Fog, duration=0.2f },
-                    new BossAttackStep{ type=BossAttackType.Clone, duration=0.2f },
-                    new BossAttackStep{ type=BossAttackType.AimedBurst, intParam=8, floatParam=20f, floatParam2=560f, duration=0.5f },
                     new BossAttackStep{ type=BossAttackType.Pause, duration=0.4f }
                 };
             }
@@ -823,7 +822,7 @@ namespace ZGame.UnityDraft
                 {
                     new BossAttackStep{ type=BossAttackType.Hazard, duration=0.2f },
                     new BossAttackStep{ type=BossAttackType.Spiral, intParam=8, floatParam=14f, duration=0.55f },
-                    new BossAttackStep{ type=BossAttackType.Summon, duration=0.45f },
+                    new BossAttackStep{ type=BossAttackType.Summon, duration=0.45f }, // one summon
                     new BossAttackStep{ type=BossAttackType.Pause, duration=0.45f }
                 };
                 devourerPhase1Pattern = new BossAttackStep[]
