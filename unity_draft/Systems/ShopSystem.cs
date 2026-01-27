@@ -28,11 +28,11 @@ namespace ZGame.UnityDraft.Systems
 
         public int GetPrice(ShopItem item, int levelIdx, int ownedCount = 0)
         {
-            int couponsUsed = meta != null ? Mathf.Min(meta.coupons, couponMaxUsePerPurchase) : 0;
+            int couponsUsed = meta != null ? Mathf.Min(meta.coupons + meta.couponLevel, couponMaxUsePerPurchase) : 0;
             float discountMult = 1f - couponDiscountPer * Mathf.Max(0, couponsUsed);
             float exp = Mathf.Pow(priceExp, levelIdx);
             float lin = 1f + priceLinear * levelIdx;
-            float stack = Mathf.Pow(1.0f, ownedCount); // placeholder stack factor
+            float stack = Mathf.Pow(1.15f, ownedCount); // mild stack like Python SHOP_PRICE_STACK
             return Mathf.Max(1, Mathf.RoundToInt(item.baseCost * exp * lin * stack * discountMult));
         }
 
@@ -102,6 +102,7 @@ namespace ZGame.UnityDraft.Systems
             if (meta != null)
             {
                 meta.AddCoupon(item.addCoupons);
+                meta.couponLevel += (item.upgradeEffect == UpgradeEffect.Coupon) ? 1 : 0;
                 meta.AddRunCoins(item.addRunCoins);
                 meta.AddBankedCoins(item.addBankedCoins);
                 meta.AddKill(item.addKills);
@@ -121,7 +122,32 @@ namespace ZGame.UnityDraft.Systems
                 {
                     // fire-and-forget effect ID for external listeners (e.g., heal, buff, reroll)
                     onConsumableUsed?.Invoke(item.consumableEffect);
+                    ApplyConsumableEffect(item.consumableEffect);
                 }
+            }
+        }
+
+        private void ApplyConsumableEffect(string effectId)
+        {
+            if (player == null || meta == null || string.IsNullOrEmpty(effectId)) return;
+            switch (effectId)
+            {
+                case "heal_big":
+                    player.hp = Mathf.Min(player.maxHp, player.hp + 25);
+                    break;
+                case "reroll_shop":
+                    // simple reroll: shuffle inventory order
+                    inventory.Sort((a, b) => Random.Range(-1, 2));
+                    break;
+                case "clear_wanted":
+                    meta.ClearWanted();
+                    break;
+                case "gold_bonus":
+                    meta.AddRunCoins(30);
+                    break;
+                case "coupon_gain":
+                    meta.AddCoupon(2);
+                    break;
             }
         }
     }

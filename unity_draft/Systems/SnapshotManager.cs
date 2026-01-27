@@ -29,10 +29,13 @@ namespace ZGame.UnityDraft.Systems
             public int runCoins;
             public int killCount;
             public int coupons;
+            public int couponLevel;
             public int couponCap;
             public bool wantedActive;
             public int wantedBounty;
             public int wantedKillTarget;
+            public int wantedPosterWaves;
+            public int goldenInterestLevel;
             public MetaProgression.ConsumableStack[] consumables;
             public int playerHp;
             public int playerMaxHp;
@@ -84,10 +87,13 @@ namespace ZGame.UnityDraft.Systems
                 data.runCoins = meta.runCoins;
                 data.killCount = meta.killCount;
                 data.coupons = meta.coupons;
+                data.couponLevel = meta.couponLevel;
                 data.couponCap = meta.couponCap;
                 data.wantedActive = meta.wantedActive;
                 data.wantedBounty = meta.wantedBounty;
                 data.wantedKillTarget = meta.wantedKillTarget;
+                data.wantedPosterWaves = meta.wantedPosterWaves;
+                data.goldenInterestLevel = meta.goldenInterestLevel;
                 data.consumables = meta.consumables.ToArray();
             }
             if (player != null)
@@ -155,10 +161,13 @@ namespace ZGame.UnityDraft.Systems
                 meta.runCoins = data.runCoins;
                 meta.killCount = data.killCount;
                 meta.coupons = data.coupons;
+                meta.couponLevel = data.couponLevel;
                 meta.couponCap = data.couponCap;
                 meta.wantedActive = data.wantedActive;
                 meta.wantedBounty = data.wantedBounty;
                 meta.wantedKillTarget = data.wantedKillTarget;
+                meta.wantedPosterWaves = data.wantedPosterWaves;
+                meta.goldenInterestLevel = data.goldenInterestLevel;
                 meta.consumables.Clear();
                 if (data.consumables != null) meta.consumables.AddRange(data.consumables);
             }

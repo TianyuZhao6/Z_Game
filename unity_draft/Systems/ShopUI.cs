@@ -16,6 +16,7 @@ namespace ZGame.UnityDraft.Systems
         [Header("Bindings")]
         public TextMeshProUGUI coinsText;
         public TextMeshProUGUI couponsText;
+        public TextMeshProUGUI couponLevelText;
 
         private void Start()
         {
@@ -40,6 +41,7 @@ namespace ZGame.UnityDraft.Systems
             if (shop == null || shop.meta == null) return;
             if (coinsText) coinsText.text = (shop.meta.runCoins + shop.meta.bankedCoins).ToString();
             if (couponsText) couponsText.text = shop.meta.coupons.ToString();
+            if (couponLevelText) couponLevelText.text = $"Lv {shop.meta.couponLevel}";
         }
     }
 

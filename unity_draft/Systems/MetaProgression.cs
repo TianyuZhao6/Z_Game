@@ -15,17 +15,20 @@ namespace ZGame.UnityDraft.Systems
         public int bankCap = 999999;
         public float bankInterestRate = 0.02f; // simple interest on carry-over
         public int bankInterestLevelGate = 3;
+        public int goldenInterestLevel = 0;
 
         [Header("Progress")]
         public int killCount = 0;
         public int coupons = 0;
         public int couponCap = 99;
         public int killsPerCoupon = 50;
+        public int couponLevel = 0;
 
         [Header("Wanted Poster")]
         public bool wantedActive = false;
         public int wantedBounty = 0;
         public int wantedKillTarget = 0;
+        public int wantedPosterWaves = 0;
 
         [Header("Consumables")]
         [System.Serializable]
