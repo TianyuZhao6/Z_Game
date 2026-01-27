@@ -14,6 +14,9 @@ namespace ZGame.UnityDraft
         public Material material;
         public Mesh quadMesh;
         public Camera targetCamera;
+        [Header("Render Tuning")]
+        public int queueOffset = 0; // adjust render order relative to Transparent (3000)
+        public bool autoCreateMaterial = true;
 
         private Matrix4x4[] _matrices;
         private Vector4[] _colors;
@@ -23,6 +26,20 @@ namespace ZGame.UnityDraft
         {
             if (paintSystem == null) paintSystem = GetComponent<PaintSystem>();
             if (material == null) material = paintSystem != null ? paintSystem.paintMaterial : null;
+            if (material == null && autoCreateMaterial)
+            {
+                var shader = Shader.Find("ZGame/PaintDecal");
+                if (shader != null) material = new Material(shader);
+            }
+            if (material != null)
+            {
+                material.renderQueue = 3000 + queueOffset;
+                // if paintSystem has tint, apply as base
+                if (paintSystem != null && paintSystem.paintMaterial != null && paintSystem.paintMaterial.HasProperty("_Tint"))
+                {
+                    material.SetColor("_Tint", paintSystem.paintMaterial.GetColor("_Tint"));
+                }
+            }
             if (quadMesh == null) quadMesh = CreateQuad();
             _mpb = new MaterialPropertyBlock();
             int maxBatch = paintSystem != null ? Mathf.Max(64, paintSystem.maxBatch) : 512;
