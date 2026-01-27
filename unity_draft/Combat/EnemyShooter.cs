@@ -28,6 +28,9 @@ namespace ZGame.UnityDraft.Combat
         [Header("Lob")]
         public float lobUpBias = 0.35f;
         public float lobGravity = -980f;
+        [Header("Targeting")]
+        public bool leadShots = true;
+        public float leadAdjust = 0.6f; // 0..1 bias toward predicted target
         [Tooltip("Allow friendly fire on shrapnel/explosive? If false, only player bullets trigger those effects.")]
         public bool allowFriendlyExplosive = false;
 
@@ -61,6 +64,17 @@ namespace ZGame.UnityDraft.Combat
             if (!target) return;
 
             Vector2 dir = (target.position - transform.position);
+            if (leadShots)
+            {
+                var rb = target.GetComponent<Rigidbody2D>();
+                if (rb != null)
+                {
+                    // simple lead: assume target keeps current velocity, adjust a bit
+                    float t = range / Mathf.Max(1f, speed);
+                    Vector2 predicted = (Vector2)target.position + rb.velocity * t * leadAdjust;
+                    dir = predicted - (Vector2)transform.position;
+                }
+            }
             if (dir.sqrMagnitude <= 0.001f) return;
             dir.Normalize();
 

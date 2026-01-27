@@ -52,8 +52,9 @@ namespace ZGame.UnityDraft
 
         [Header("Dash (Ravager/Boss)")]
         public float dashInterval = 3f;
+        public float dashIntervalMax = 4.5f;
         public float dashDuration = 0.65f;
-        public float dashSpeedMult = 2.2f;
+        public float dashSpeedMult = 2.0f;
         public ObstacleCrushOnContact crush;
 
         [Header("Suicide")]
@@ -291,7 +292,7 @@ namespace ZGame.UnityDraft
             _dashTimer -= Time.deltaTime;
             if (_dashTimer <= 0f)
             {
-                _dashTimer = dashInterval;
+                _dashTimer = Random.Range(dashInterval, dashIntervalMax);
                 StartCoroutine(DashRoutine());
             }
         }

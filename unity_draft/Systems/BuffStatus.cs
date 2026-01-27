@@ -19,6 +19,7 @@ namespace ZGame.UnityDraft.Systems
         private Enemy _enemy;
         private float _baseSpeed;
         private int _baseAttack;
+        private float _baseAccel;
 
         private void Awake()
         {
