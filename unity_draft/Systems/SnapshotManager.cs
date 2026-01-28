@@ -36,6 +36,7 @@ namespace ZGame.UnityDraft.Systems
             public int wantedKillTarget;
             public int wantedPosterWaves;
             public int goldenInterestLevel;
+            public int banditRadarLevel;
             public MetaProgression.ConsumableStack[] consumables;
             public int playerHp;
             public int playerMaxHp;
@@ -94,6 +95,7 @@ namespace ZGame.UnityDraft.Systems
                 data.wantedKillTarget = meta.wantedKillTarget;
                 data.wantedPosterWaves = meta.wantedPosterWaves;
                 data.goldenInterestLevel = meta.goldenInterestLevel;
+                data.banditRadarLevel = meta.banditRadarLevel;
                 data.consumables = meta.consumables.ToArray();
             }
             if (player != null)
@@ -168,6 +170,7 @@ namespace ZGame.UnityDraft.Systems
                 meta.wantedKillTarget = data.wantedKillTarget;
                 meta.wantedPosterWaves = data.wantedPosterWaves;
                 meta.goldenInterestLevel = data.goldenInterestLevel;
+                meta.banditRadarLevel = data.banditRadarLevel;
                 meta.consumables.Clear();
                 if (data.consumables != null) meta.consumables.AddRange(data.consumables);
             }

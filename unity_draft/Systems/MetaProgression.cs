@@ -45,6 +45,8 @@ namespace ZGame.UnityDraft.Systems
         }
 
         public List<ConsumableStack> consumables = new();
+        [Header("Bandit Radar")]
+        public int banditRadarLevel = 0;
 
         public void AddRunCoins(int amount) => runCoins = Mathf.Max(0, runCoins + Mathf.Max(0, amount));
         public void SpendRunCoins(int amount) => runCoins = Mathf.Max(0, runCoins - Mathf.Max(0, amount));
