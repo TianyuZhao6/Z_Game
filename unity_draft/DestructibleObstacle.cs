@@ -16,6 +16,12 @@ namespace ZGame.UnityDraft
         public AudioClip destroySfx;
         public ZGame.UnityDraft.VFX.VfxPlayer vfxPlayer;
         public ZGame.UnityDraft.VFX.SfxPlayer sfxPlayer;
+        [Header("Drops")]
+        public GameObject coinPrefab;
+        public int coinMin = 0;
+        public int coinMax = 0;
+        public GameObject itemDropPrefab;
+        public float dropChance = 0.2f;
 
         public void Damage(int amount)
         {
@@ -52,7 +58,24 @@ namespace ZGame.UnityDraft
             {
                 AudioSource.PlayClipAtPoint(destroySfx, transform.position);
             }
+            TryDrop();
             gameObject.SetActive(false);
+        }
+
+        private void TryDrop()
+        {
+            if (coinPrefab != null && (coinMin > 0 || coinMax > 0))
+            {
+                int amt = Random.Range(coinMin, coinMax + 1);
+                for (int i = 0; i < amt; i++)
+                {
+                    Instantiate(coinPrefab, transform.position + (Vector3)Random.insideUnitCircle * 0.2f, Quaternion.identity);
+                }
+            }
+            if (itemDropPrefab != null && Random.value < dropChance)
+            {
+                Instantiate(itemDropPrefab, transform.position, Quaternion.identity);
+            }
         }
 
         private void OnCollisionEnter2D(Collision2D collision)

@@ -37,6 +37,12 @@ namespace ZGame.UnityDraft.Systems
         public float minObstacleSpacing = 1.2f;
         [Tooltip("Ensure corridors from center to edges by carving if needed.")]
         public bool ensurePassage = true;
+        [Tooltip("Carve an orthogonal cross from center to edges.")]
+        public bool carveCross = true;
+        [Tooltip("Extra random corridors carved if cross isn't enough.")]
+        public int extraCorridors = 2;
+        [Tooltip("Corridor half-width in grid cells.")]
+        public int corridorWidthCells = 1;
 
         private readonly List<Vector2> _placed = new();
         private readonly Dictionary<Vector2Int, GameObject> _obstacleLookup = new();
@@ -156,7 +162,8 @@ namespace ZGame.UnityDraft.Systems
         {
             foreach (var p in _placed)
             {
-                if ((p - (Vector2)pos).sqrMagnitude < minObstacleSpacing * minObstacleSpacing) return false;
+                float minDist = Mathf.Max(minObstacleSpacing, radius / Mathf.Max(0.001f, balance != null ? balance.cellSize : 1f));
+                if ((p - (Vector2)pos).sqrMagnitude < minDist * minDist) return false;
             }
             if (gridManager != null)
             {
@@ -178,6 +185,17 @@ namespace ZGame.UnityDraft.Systems
                 new Vector2Int(0, start.y),
                 new Vector2Int(n-1, start.y),
             };
+            if (carveCross)
+            {
+                CarveLine(new Vector2Int(0, start.y), new Vector2Int(n - 1, start.y));
+                CarveLine(new Vector2Int(start.x, 0), new Vector2Int(start.x, n - 1));
+            }
+            for (int i = 0; i < extraCorridors; i++)
+            {
+                var a = new Vector2Int(Random.Range(0, n), Random.Range(0, n));
+                var b = new Vector2Int(Random.Range(0, n), Random.Range(0, n));
+                CarveLine(a, b);
+            }
             var blocked = gridManager.BuildBlockedGrid();
             foreach (var g in goals)
             {
@@ -200,8 +218,32 @@ namespace ZGame.UnityDraft.Systems
                     if (go != null) Destroy(go);
                     _obstacleLookup.Remove(cell);
                 }
-                gridManager.RemoveObstacle(cell);
-                blocked[cell.x, cell.y] = false;
+                CarveCell(cell, blocked);
+            }
+        }
+
+        private void CarveLine(Vector2Int a, Vector2Int b)
+        {
+            int n = balance != null ? balance.gridSize : 32;
+            bool[,] dummy = new bool[n, n];
+            CarveCorridor(dummy, a, b);
+        }
+
+        private void CarveCell(Vector2Int cell, bool[,] blocked)
+        {
+            for (int dx = -corridorWidthCells; dx <= corridorWidthCells; dx++)
+            {
+                for (int dy = -corridorWidthCells; dy <= corridorWidthCells; dy++)
+                {
+                    var c = new Vector2Int(cell.x + dx, cell.y + dy);
+                    if (blocked != null)
+                    {
+                        if (c.x >= 0 && c.x < blocked.GetLength(0) && c.y >= 0 && c.y < blocked.GetLength(1))
+                            blocked[c.x, c.y] = false;
+                    }
+                    gridManager.RemoveObstacle(c);
+                    _obstacleLookup.Remove(c);
+                }
             }
         }
 
