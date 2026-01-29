@@ -23,6 +23,14 @@ namespace ZGame.UnityDraft
         public LayerMask obstacleMask;
         public float obstacleCheckDistance = 0.6f;
         public float obstacleAvoidForce = 1.5f;
+        [Header("Advanced Avoidance")]
+        public float paintAvoidWeight = 1.4f;
+        public float mineAvoidWeight = 2.2f;
+        public float corridorBiasWeight = 0.8f;
+        public float lateralStep = 0.6f;
+        public float randomWalkCooldown = 1.2f;
+        private float _randomWalkTimer = 0f;
+        private Vector2 _randomDir = Vector2.zero;
         [Header("Pathfinding")]
         public bool usePathfinding = false;
         public Transform[] waypoints; // simple waypoint fallback if pathfinding is on
@@ -88,6 +96,7 @@ namespace ZGame.UnityDraft
             {
                 Vector2 dir = ((Vector2)target.position - (Vector2)transform.position).normalized;
                 vel += dir;
+                _randomDir = dir;
             }
             else if (usePathfinding)
             {
@@ -172,17 +181,33 @@ namespace ZGame.UnityDraft
                     else vel += (Random.value > 0.5f ? perp : -perp) * obstacleAvoidForce;
                 }
             }
-            // Slight bias away from paint pools (tagged "Paint") if present
-            var paints = Physics2D.OverlapCircleAll(transform.position, avoidRadius, LayerMask.GetMask("Default"));
-            foreach (var p in paints)
+            // Avoid paint pools / mines more strongly, prefer corridors
+            var nearby = Physics2D.OverlapCircleAll(transform.position, avoidRadius * 1.5f);
+            foreach (var p in nearby)
             {
+                if (p == null || p.attachedRigidbody == _rb) continue;
                 if (p.CompareTag("Paint"))
                 {
                     Vector2 away = (Vector2)(transform.position - p.transform.position);
-                    if (away.sqrMagnitude > 0.0001f) vel += away.normalized * (avoidForce * 0.5f);
+                    if (away.sqrMagnitude > 0.0001f) vel += away.normalized * (avoidForce * paintAvoidWeight);
+                }
+                if (p.CompareTag("Mine"))
+                {
+                    Vector2 away = (Vector2)(transform.position - p.transform.position);
+                    if (away.sqrMagnitude > 0.0001f) vel += away.normalized * (avoidForce * mineAvoidWeight);
                 }
             }
-            if (vel == Vector2.zero) return;
+            // Corridor bias: if moving toward target, bias lateral shift to keep space
+            if (target)
+            {
+                Vector2 toT = ((Vector2)target.position - (Vector2)transform.position);
+                Vector2 perp = Vector2.Perpendicular(toT.normalized);
+                vel += perp * corridorBiasWeight * Mathf.Sin(Time.time * 0.7f);
+            }
+            if (vel == Vector2.zero)
+            {
+                vel += _randomDir;
+            }
             float spd = _enemy.speed;
             Vector2 desired = vel.normalized * spd;
             if (_rb)
@@ -207,8 +232,9 @@ namespace ZGame.UnityDraft
                 _stuckTimer += Time.fixedDeltaTime;
                 if (_stuckTimer >= stuckTime)
                 {
-                    // small nudge
-                    transform.position += (Vector3)(Random.insideUnitCircle * stuckNudge);
+                    // side-step relative to last desired target dir if available
+                    Vector2 lateral = _randomDir.sqrMagnitude > 0.01f ? Vector2.Perpendicular(_randomDir) : Random.insideUnitCircle.normalized;
+                    transform.position += (Vector3)(lateral.normalized * lateralStep);
                     _stuckTimer = 0f;
                 }
             }
@@ -220,6 +246,12 @@ namespace ZGame.UnityDraft
             if (_repathTimer >= rePathInterval)
             {
                 _repathTimer = 0f;
+            }
+            _randomWalkTimer -= Time.deltaTime;
+            if (_randomWalkTimer <= 0f)
+            {
+                _randomWalkTimer = randomWalkCooldown;
+                _randomDir = Random.insideUnitCircle.normalized;
             }
         }
 

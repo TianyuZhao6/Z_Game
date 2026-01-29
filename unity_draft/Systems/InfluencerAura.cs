@@ -13,8 +13,13 @@ namespace ZGame.UnityDraft.Systems
         public float cooldown = 0.25f;
         [Tooltip("Strength decays per second when outside radius.")]
         public float decayRate = 1.5f;
+        [Tooltip("Clamp max stacked strength to avoid over-debuffing.")]
+        public float maxStrength = 1.0f;
+        [Tooltip("Curve factor; 1=linear, >1 eases in like Python falloff.")]
+        public float falloffPow = 1.4f;
         private float _cd;
         private readonly System.Collections.Generic.Dictionary<Player, float> _strength = new();
+        private readonly System.Collections.Generic.Dictionary<Player, (float baseSpeed, int baseAttack)> _baselines = new();
 
         private void Update()
         {
@@ -31,10 +36,13 @@ namespace ZGame.UnityDraft.Systems
                 seen.Add(p);
                 float dist = Vector2.Distance(transform.position, p.transform.position);
                 float t = Mathf.Clamp01(1f - dist / Mathf.Max(0.001f, radius)); // closer => stronger
+                t = Mathf.Pow(t, falloffPow);
                 if (_strength.ContainsKey(p))
-                    _strength[p] = Mathf.Max(_strength[p], t);
+                    _strength[p] = Mathf.Clamp(Mathf.Max(_strength[p], t), 0f, maxStrength);
                 else
-                    _strength[p] = t;
+                    _strength[p] = Mathf.Clamp(t, 0f, maxStrength);
+                if (!_baselines.ContainsKey(p))
+                    _baselines[p] = (p.speed, p.attack);
             }
             // decay and apply
             var keys = new System.Collections.Generic.List<Player>(_strength.Keys);
@@ -48,13 +56,15 @@ namespace ZGame.UnityDraft.Systems
                 if (s <= 0f)
                 {
                     _strength.Remove(p);
+                    _baselines.Remove(p);
                     continue;
                 }
                 _strength[p] = s;
+                if (!_baselines.TryGetValue(p, out var baseVals)) baseVals = (p.speed, p.attack);
                 float spMult = Mathf.Lerp(1f, speedMult, s);
                 float atkMult = Mathf.Lerp(1f, attackMult, s);
-                p.speed *= spMult;
-                p.attack = Mathf.Max(1, Mathf.RoundToInt(p.attack * atkMult));
+                p.speed = baseVals.baseSpeed * spMult;
+                p.attack = Mathf.Max(1, Mathf.RoundToInt(baseVals.baseAttack * atkMult));
             }
         }
     }

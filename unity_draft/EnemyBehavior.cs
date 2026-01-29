@@ -63,6 +63,11 @@ namespace ZGame.UnityDraft
         public float dashDurationPhase1 = 0.65f;
         public float dashDurationPhase2 = 0.75f;
         public float dashTelegraph = 0.25f;
+        public float dashWinddownSlowMult = 0.6f;
+        public float dashWinddownTime = 0.35f;
+        public float dashStunTime = 0.25f;
+        public float dashCooldownPhase1Mult = 0.85f;
+        public float dashCooldownPhase2Mult = 0.7f;
         public ObstacleCrushOnContact crush;
 
         [Header("Suicide")]
@@ -113,6 +118,7 @@ namespace ZGame.UnityDraft
         private float _banditRadarBaseSpeed = 0f;
         public float dropChanceOnDeath = 0.5f;
         public GameObject coinPrefab;
+        public HUDController hud;
         private bool _fleeing;
         private float _fleeTimer;
         private Vector2 _fleeDir;
@@ -235,6 +241,7 @@ namespace ZGame.UnityDraft
             if (_enemy != null) _enemy.OnKilled += HandleKilled;
             _phaseTimer = phaseDuration;
             if (meta == null) meta = FindObjectOfType<MetaProgression>();
+            if (hud == null) hud = FindObjectOfType<HUDController>();
             if (behavior == EnemyBehaviorType.Bandit && meta != null)
             {
                 int lvl = Mathf.Clamp(meta.banditRadarLevel, 0, _banditRadarSlowMult.Length);
@@ -246,6 +253,7 @@ namespace ZGame.UnityDraft
                     banditRadarSlowLeft = _banditRadarSlowDur[lvl - 1];
                     _banditRadarBaseSpeed = _enemy.speed;
                     _enemy.speed = _banditRadarBaseSpeed * _banditRadarSlowMult[lvl - 1];
+                    if (hud != null) hud.ShowBanner("BANDIT TAGGED!", 1.2f);
                 }
             }
             if (useScriptedPattern && _patternRoutine == null)
@@ -341,15 +349,15 @@ namespace ZGame.UnityDraft
             float duration = dashDuration;
             if (_currentPhase == 1)
             {
-                intervalMin = dashIntervalPhase1;
-                intervalMax = dashIntervalPhase1 + 1.0f;
+                intervalMin = dashIntervalPhase1 * dashCooldownPhase1Mult;
+                intervalMax = (dashIntervalPhase1 + 1.0f) * dashCooldownPhase1Mult;
                 speedMult = dashSpeedPhase1;
                 duration = dashDurationPhase1;
             }
             else if (_currentPhase >= 2)
             {
-                intervalMin = dashIntervalPhase2;
-                intervalMax = dashIntervalPhase2 + 1.0f;
+                intervalMin = dashIntervalPhase2 * dashCooldownPhase2Mult;
+                intervalMax = (dashIntervalPhase2 + 1.0f) * dashCooldownPhase2Mult;
                 speedMult = dashSpeedPhase2;
                 duration = dashDurationPhase2;
             }
@@ -376,6 +384,13 @@ namespace ZGame.UnityDraft
                 if (_rb != null) _rb.velocity = dir * _enemy.speed;
                 yield return null;
             }
+            _enemy.speed = original;
+            // wind-down slow then brief stun
+            if (_rb != null) _rb.velocity = Vector2.zero;
+            _enemy.speed = original * dashWinddownSlowMult;
+            yield return new WaitForSeconds(dashWinddownTime);
+            _enemy.speed = 0f;
+            yield return new WaitForSeconds(dashStunTime);
             _enemy.speed = original;
             if (_rb != null) _rb.velocity = Vector2.zero;
             if (mover != null) mover.enabled = true;

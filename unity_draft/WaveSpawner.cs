@@ -31,8 +31,8 @@ namespace ZGame.UnityDraft
             new ThreatEntry{ typeId = "tank", cost = 4, weight = 6, unlockLevel = 0 },
             new ThreatEntry{ typeId = "ravager", cost = 5, weight = 8, unlockLevel = 0 },
             new ThreatEntry{ typeId = "splinter", cost = 4, weight = 10, unlockLevel = 2 },
-            new ThreatEntry{ typeId = "turret", cost = 4, weight = 6, unlockLevel = 2 },
-            new ThreatEntry{ typeId = "influencer", cost = 4, weight = 5, unlockLevel = 3 },
+            new ThreatEntry{ typeId = "turret", cost = 5, weight = 6, unlockLevel = 3 },
+            new ThreatEntry{ typeId = "influencer", cost = 4, weight = 6, unlockLevel = 3 },
         };
 
         public float spawnInterval = 8f;
