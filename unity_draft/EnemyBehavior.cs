@@ -96,11 +96,19 @@ namespace ZGame.UnityDraft
         public int stealMax = 12;
         public bool stealBanked = false; // steal from meta bank if allowed
         public MetaProgression meta;
+        [Header("Bandit Radar")]
+        public bool banditRadarTagged = false;
+        public int banditRadarLevel = 0;
+        public float banditRadarSlowLeft = 0f;
+        public float banditRadarRingPeriod = 2f;
+        private float _banditRadarBaseSpeed = 0f;
         public float dropChanceOnDeath = 0.5f;
         public GameObject coinPrefab;
         private bool _fleeing;
         private float _fleeTimer;
         private Vector2 _fleeDir;
+        private static readonly float[] _banditRadarSlowMult = { 0.92f, 0.88f, 0.84f, 0.80f };
+        private static readonly float[] _banditRadarSlowDur = { 2.0f, 3.0f, 4.0f, 5.0f };
 
         [Header("Boss Stub")]
         public float phaseDuration = 6f;
@@ -191,6 +199,8 @@ namespace ZGame.UnityDraft
         private Enemy _enemy;
         private Rigidbody2D _rb;
         private float _dashTimer;
+        private bool _dashActive;
+        public float dashTelegraph = 0.25f;
 
         private void Awake()
         {
@@ -215,6 +225,19 @@ namespace ZGame.UnityDraft
             if (_enemy != null) _enemy.OnKilled += HandleKilled;
             _phaseTimer = phaseDuration;
             if (meta == null) meta = FindObjectOfType<MetaProgression>();
+            if (behavior == EnemyBehaviorType.Bandit && meta != null)
+            {
+                int lvl = Mathf.Clamp(meta.banditRadarLevel, 0, _banditRadarSlowMult.Length);
+                if (lvl > 0)
+                {
+                    banditRadarTagged = true;
+                    banditRadarLevel = lvl;
+                    banditRadarRingPeriod = 2f;
+                    banditRadarSlowLeft = _banditRadarSlowDur[lvl - 1];
+                    _banditRadarBaseSpeed = _enemy.speed;
+                    _enemy.speed = _banditRadarBaseSpeed * _banditRadarSlowMult[lvl - 1];
+                }
+            }
             if (useScriptedPattern && _patternRoutine == null)
             {
                 if (useDefaultPattern) SeedDefaultPatterns();
@@ -289,16 +312,25 @@ namespace ZGame.UnityDraft
 
         private void UpdateDash()
         {
+            if (_dashActive) return;
             _dashTimer -= Time.deltaTime;
             if (_dashTimer <= 0f)
             {
-                _dashTimer = Random.Range(dashInterval, dashIntervalMax);
                 StartCoroutine(DashRoutine());
             }
         }
 
         private System.Collections.IEnumerator DashRoutine()
         {
+            _dashActive = true;
+            _dashTimer = Random.Range(dashInterval, dashIntervalMax);
+            Vector2 dir = target != null ? (target.position - transform.position) : Random.insideUnitCircle;
+            if (dir.sqrMagnitude < 0.01f) dir = Random.insideUnitCircle.normalized;
+            dir.Normalize();
+            if (mover != null) mover.enabled = false;
+            if (_rb != null) _rb.velocity = Vector2.zero;
+            // Telegraph pause
+            yield return new WaitForSeconds(dashTelegraph);
             float original = _enemy.speed;
             _enemy.speed = original * dashSpeedMult;
             if (crush != null) crush.isCrushing = true;
@@ -306,10 +338,14 @@ namespace ZGame.UnityDraft
             while (t > 0f)
             {
                 t -= Time.deltaTime;
+                if (_rb != null) _rb.velocity = dir * _enemy.speed;
                 yield return null;
             }
             _enemy.speed = original;
+            if (_rb != null) _rb.velocity = Vector2.zero;
+            if (mover != null) mover.enabled = true;
             if (crush != null) crush.isCrushing = false;
+            _dashActive = false;
         }
 
         private void UpdateFuse()
@@ -383,6 +419,19 @@ namespace ZGame.UnityDraft
 
         private void UpdateBandit()
         {
+            if (banditRadarTagged && banditRadarLevel > 0)
+            {
+                if (banditRadarSlowLeft > 0f)
+                {
+                    banditRadarSlowLeft -= Time.deltaTime;
+                }
+                else if (_banditRadarBaseSpeed > 0f)
+                {
+                    _enemy.speed = _banditRadarBaseSpeed;
+                    banditRadarTagged = false; // slow expired
+                }
+            }
+
             if (_fleeing)
             {
                 _fleeTimer -= Time.deltaTime;

@@ -31,6 +31,8 @@ namespace ZGame.UnityDraft
             new ThreatEntry{ typeId = "tank", cost = 4, weight = 6, unlockLevel = 0 },
             new ThreatEntry{ typeId = "ravager", cost = 5, weight = 8, unlockLevel = 0 },
             new ThreatEntry{ typeId = "splinter", cost = 4, weight = 10, unlockLevel = 2 },
+            new ThreatEntry{ typeId = "turret", cost = 4, weight = 6, unlockLevel = 2 },
+            new ThreatEntry{ typeId = "influencer", cost = 4, weight = 5, unlockLevel = 3 },
         };
 
         public float spawnInterval = 8f;
@@ -61,7 +63,9 @@ namespace ZGame.UnityDraft
         {
             new ThreatEntry{ typeId = "basic", cost = 1, weight = 30 },
             new ThreatEntry{ typeId = "ranged", cost = 2, weight = 20 },
-            new ThreatEntry{ typeId = "fast", cost = 2, weight = 20 }
+            new ThreatEntry{ typeId = "fast", cost = 2, weight = 20 },
+            new ThreatEntry{ typeId = "turret", cost = 3, weight = 8 },
+            new ThreatEntry{ typeId = "influencer", cost = 3, weight = 6 }
         };
         public float bossMinionInterval = 6f;
         private float _bossMinionTimer;
