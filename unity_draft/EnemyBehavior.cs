@@ -55,6 +55,14 @@ namespace ZGame.UnityDraft
         public float dashIntervalMax = 4.5f;
         public float dashDuration = 0.65f;
         public float dashSpeedMult = 2.0f;
+        [Header("Ravager Phase Tuning")]
+        public float dashIntervalPhase1 = 3.5f;
+        public float dashIntervalPhase2 = 2.8f;
+        public float dashSpeedPhase1 = 3.2f;
+        public float dashSpeedPhase2 = 3.8f;
+        public float dashDurationPhase1 = 0.65f;
+        public float dashDurationPhase2 = 0.75f;
+        public float dashTelegraph = 0.25f;
         public ObstacleCrushOnContact crush;
 
         [Header("Suicide")]
@@ -101,6 +109,7 @@ namespace ZGame.UnityDraft
         public int banditRadarLevel = 0;
         public float banditRadarSlowLeft = 0f;
         public float banditRadarRingPeriod = 2f;
+        public GameObject banditRadarRingVfx;
         private float _banditRadarBaseSpeed = 0f;
         public float dropChanceOnDeath = 0.5f;
         public GameObject coinPrefab;
@@ -109,6 +118,7 @@ namespace ZGame.UnityDraft
         private Vector2 _fleeDir;
         private static readonly float[] _banditRadarSlowMult = { 0.92f, 0.88f, 0.84f, 0.80f };
         private static readonly float[] _banditRadarSlowDur = { 2.0f, 3.0f, 4.0f, 5.0f };
+        private float _banditRingTimer = 0f;
 
         [Header("Boss Stub")]
         public float phaseDuration = 6f;
@@ -199,8 +209,8 @@ namespace ZGame.UnityDraft
         private Enemy _enemy;
         private Rigidbody2D _rb;
         private float _dashTimer;
+        private int _currentPhase = 0;
         private bool _dashActive;
-        public float dashTelegraph = 0.25f;
 
         private void Awake()
         {
@@ -248,6 +258,7 @@ namespace ZGame.UnityDraft
         private void Update()
         {
             if (useScriptedPattern) return; // pattern coroutine drives actions
+            UpdatePhase();
             switch (behavior)
             {
                 case EnemyBehaviorType.RavagerDash:
@@ -294,6 +305,7 @@ namespace ZGame.UnityDraft
             int phase = 0;
             if (hpFrac <= 0.66f) phase = 1;
             if (hpFrac <= 0.33f) phase = 2;
+            _currentPhase = phase;
             if (behavior == EnemyBehaviorType.BossMistweaver)
             {
                 _mistPhase = phase;
@@ -323,7 +335,25 @@ namespace ZGame.UnityDraft
         private System.Collections.IEnumerator DashRoutine()
         {
             _dashActive = true;
-            _dashTimer = Random.Range(dashInterval, dashIntervalMax);
+            float intervalMin = dashInterval;
+            float intervalMax = dashIntervalMax;
+            float speedMult = dashSpeedMult;
+            float duration = dashDuration;
+            if (_currentPhase == 1)
+            {
+                intervalMin = dashIntervalPhase1;
+                intervalMax = dashIntervalPhase1 + 1.0f;
+                speedMult = dashSpeedPhase1;
+                duration = dashDurationPhase1;
+            }
+            else if (_currentPhase >= 2)
+            {
+                intervalMin = dashIntervalPhase2;
+                intervalMax = dashIntervalPhase2 + 1.0f;
+                speedMult = dashSpeedPhase2;
+                duration = dashDurationPhase2;
+            }
+            _dashTimer = Random.Range(intervalMin, intervalMax);
             Vector2 dir = target != null ? (target.position - transform.position) : Random.insideUnitCircle;
             if (dir.sqrMagnitude < 0.01f) dir = Random.insideUnitCircle.normalized;
             dir.Normalize();
@@ -332,12 +362,17 @@ namespace ZGame.UnityDraft
             // Telegraph pause
             yield return new WaitForSeconds(dashTelegraph);
             float original = _enemy.speed;
-            _enemy.speed = original * dashSpeedMult;
+            _enemy.speed = original * speedMult;
             if (crush != null) crush.isCrushing = true;
-            float t = dashDuration;
+            float t = duration;
             while (t > 0f)
             {
                 t -= Time.deltaTime;
+                if (target != null)
+                {
+                    dir = ((Vector2)target.position - (Vector2)transform.position);
+                    if (dir.sqrMagnitude > 0.001f) dir.Normalize();
+                }
                 if (_rb != null) _rb.velocity = dir * _enemy.speed;
                 yield return null;
             }
@@ -421,6 +456,21 @@ namespace ZGame.UnityDraft
         {
             if (banditRadarTagged && banditRadarLevel > 0)
             {
+                _banditRingTimer -= Time.deltaTime;
+                if (_banditRingTimer <= 0f)
+                {
+                    _banditRingTimer = Mathf.Max(0.5f, banditRadarRingPeriod);
+                    int idx = Mathf.Clamp(banditRadarLevel - 1, 0, _banditRadarSlowDur.Length - 1);
+                    banditRadarSlowLeft = _banditRadarSlowDur[idx];
+                    if (_banditRadarBaseSpeed > 0f)
+                    {
+                        _enemy.speed = _banditRadarBaseSpeed * _banditRadarSlowMult[idx];
+                    }
+                    if (banditRadarRingVfx != null)
+                    {
+                        Instantiate(banditRadarRingVfx, transform.position, Quaternion.identity);
+                    }
+                }
                 if (banditRadarSlowLeft > 0f)
                 {
                     banditRadarSlowLeft -= Time.deltaTime;

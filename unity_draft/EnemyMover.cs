@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.AI;
+using System.Collections.Generic;
 
 namespace ZGame.UnityDraft
 {
@@ -163,7 +164,22 @@ namespace ZGame.UnityDraft
                 if (hit.collider != null)
                 {
                     Vector2 perp = Vector2.Perpendicular(fwd);
-                    vel += perp * obstacleAvoidForce;
+                    // choose clearer side
+                    bool leftClear = !Physics2D.Raycast(transform.position, perp, obstacleCheckDistance * 0.6f, obstacleMask);
+                    bool rightClear = !Physics2D.Raycast(transform.position, -perp, obstacleCheckDistance * 0.6f, obstacleMask);
+                    if (leftClear && !rightClear) vel += perp * obstacleAvoidForce;
+                    else if (rightClear && !leftClear) vel -= perp * obstacleAvoidForce;
+                    else vel += (Random.value > 0.5f ? perp : -perp) * obstacleAvoidForce;
+                }
+            }
+            // Slight bias away from paint pools (tagged "Paint") if present
+            var paints = Physics2D.OverlapCircleAll(transform.position, avoidRadius, LayerMask.GetMask("Default"));
+            foreach (var p in paints)
+            {
+                if (p.CompareTag("Paint"))
+                {
+                    Vector2 away = (Vector2)(transform.position - p.transform.position);
+                    if (away.sqrMagnitude > 0.0001f) vel += away.normalized * (avoidForce * 0.5f);
                 }
             }
             if (vel == Vector2.zero) return;
