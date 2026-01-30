@@ -25,6 +25,10 @@ namespace ZGame.UnityDraft
         public float enemySpeed = 2f;
         public float enemySpeedMax = 4.5f;
         public int enemyAttack = 10;
+        [Header("Enemy Level Scaling (data, not hardcoded)")]
+        public AnimationCurve enemyHpCurve = AnimationCurve.Linear(0, 1f, 20, 2.0f);   // eval by levelIdx (0-based)
+        public AnimationCurve enemyAtkCurve = AnimationCurve.Linear(0, 1f, 20, 1.8f);
+        public AnimationCurve enemySpeedCurve = AnimationCurve.Linear(0, 1f, 20, 1.3f);
 
         [Header("Enemy Footprint Multipliers")]
         public float tankSizeMult = 0.80f;
@@ -88,6 +92,21 @@ namespace ZGame.UnityDraft
                 playerRadius * cellSize,
                 0.6f * coinScaleTier3 * 0.5f * cellSize
             );
+        }
+
+        public float GetEnemyHpMult(int levelIdx)
+        {
+            return enemyHpCurve != null ? enemyHpCurve.Evaluate(Mathf.Max(0, levelIdx)) : 1f + 0.08f * levelIdx;
+        }
+
+        public float GetEnemyAtkMult(int levelIdx)
+        {
+            return enemyAtkCurve != null ? enemyAtkCurve.Evaluate(Mathf.Max(0, levelIdx)) : 1f + 0.06f * levelIdx;
+        }
+
+        public float GetEnemySpeedMult(int levelIdx)
+        {
+            return enemySpeedCurve != null ? enemySpeedCurve.Evaluate(Mathf.Max(0, levelIdx)) : 1f + 0.03f * levelIdx;
         }
     }
 

@@ -208,6 +208,7 @@ namespace ZGame.UnityDraft
             twinBoss = gm != null && gm.twinBoss;
             banditAllowed = gm != null && gm.banditAllowed;
             _levelIdx = gm != null ? gm.currentLevelIndex : 0;
+            if (enemyFactory != null) enemyFactory.currentLevelIndex = _levelIdx;
             _banditSpawnedThisLevel = false;
             if (flow != null)
             {
@@ -216,6 +217,8 @@ namespace ZGame.UnityDraft
                 banditTypeId = flow.banditTypeId;
                 banditFirstDelay = flow.banditFirstDelay;
                 banditRespawnDelay = flow.banditRespawnDelay;
+                banditChancePerWave = flow.banditChancePerWave;
+                banditMinLevel = flow.banditMinLevel;
             }
 
             _specialQueue.Clear();

@@ -19,6 +19,7 @@ namespace ZGame.UnityDraft.Systems
         public GameBalanceConfig balance;
         public float spawnRadius = 10f;
         public EnemyPrefabEntry[] entries;
+        public int currentLevelIndex = 0;
 
         private readonly Dictionary<string, EnemyPrefabEntry> _lookup = new();
 
@@ -39,7 +40,7 @@ namespace ZGame.UnityDraft.Systems
             var inst = Instantiate(entry.prefab, position, Quaternion.identity);
             var cfg = entry.configOverride != null ? entry.configOverride : inst.typeConfig;
             float cellSize = balance != null ? balance.cellSize : 52f;
-            inst.Init(balance, cfg, cellSize);
+            inst.Init(balance, cfg, cellSize, currentLevelIndex);
             return inst;
         }
 

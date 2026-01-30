@@ -39,17 +39,20 @@ namespace ZGame.UnityDraft
             _collider = GetComponent<Collider2D>();
         }
 
-        public void Init(GameBalanceConfig bal, EnemyTypeConfig cfg, float cellSize)
+        public void Init(GameBalanceConfig bal, EnemyTypeConfig cfg, float cellSize, int levelIdx = 0)
         {
             balance = bal;
             typeConfig = cfg;
 
             float baseFootprint = cellSize * 0.6f * cfg.sizeMultiplier;
             baseSizePx = baseFootprint;
-            maxHp = Mathf.Max(1, cfg.baseHp);
+            float hpMult = bal != null ? bal.GetEnemyHpMult(levelIdx) : 1f;
+            float atkMult = bal != null ? bal.GetEnemyAtkMult(levelIdx) : 1f;
+            float spdMult = bal != null ? bal.GetEnemySpeedMult(levelIdx) : 1f;
+            maxHp = Mathf.Max(1, Mathf.RoundToInt(cfg.baseHp * hpMult));
             hp = maxHp;
-            attack = Mathf.Max(1, cfg.attack);
-            speed = cfg.speed;
+            attack = Mathf.Max(1, Mathf.RoundToInt(cfg.attack * atkMult));
+            speed = cfg.speed * spdMult;
             critChance = cfg.critChance;
             critMult = cfg.critMult;
 
