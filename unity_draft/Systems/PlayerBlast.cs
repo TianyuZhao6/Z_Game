@@ -24,6 +24,10 @@ namespace ZGame.UnityDraft.Systems
         public bool applyVulnerabilityOnCrit = true;
         public float vulnMult = 1.2f;
         public float vulnDuration = 2f;
+        [Header("Scaling")]
+        public float damagePerPlayerAttack = 0.5f;
+        public float radiusPerLevel = 0.05f;
+        public float damagePerLevel = 1.0f;
         public HUDController hud;
         private PaintSystem _paint;
         private float _cd;
@@ -51,12 +55,19 @@ namespace ZGame.UnityDraft.Systems
         {
             _cd = cooldown;
             if (leavePaintAtOrigin && _paint != null) _paint.SpawnEnemyPaint(transform.position, radius * 0.8f, slowDuration, _paint.paintColor);
+            float scaledDamage = damage;
+            if (_player != null)
+            {
+                scaledDamage += _player.attack * damagePerPlayerAttack;
+                scaledDamage += (_player.level - 1) * damagePerLevel;
+                radius += (_player.level - 1) * radiusPerLevel;
+            }
             var hits = Physics2D.OverlapCircleAll(transform.position, radius, combat != null ? combat.enemyMask : LayerMask.GetMask("Enemy"));
             foreach (var h in hits)
             {
                 var e = h.GetComponentInParent<Enemy>();
                 if (e == null) continue;
-                int dealt = damage;
+                int dealt = Mathf.RoundToInt(scaledDamage);
                 if (inheritPlayerCrit && _player != null)
                 {
                     // basic crit roll

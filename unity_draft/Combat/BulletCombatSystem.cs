@@ -45,6 +45,7 @@ namespace ZGame.UnityDraft.Combat
         public Color paintHitColor = new Color(0.2f, 0.8f, 1f, 0.25f);
         public float paintHitRadius = 0.4f;
         public float paintHitLifetime = 4f;
+        public bool paintOnlyOnEnemies = true;
         [Header("VFX/SFX")]
         public ZGame.UnityDraft.VFX.VfxPlayer vfxPlayer;
         public ZGame.UnityDraft.VFX.SfxPlayer sfxPlayer;
@@ -245,6 +246,10 @@ namespace ZGame.UnityDraft.Combat
             if (dealt > 0)
             {
                 player.Damage(dealt);
+            }
+            if (paintSystem != null && (!paintOnlyOnEnemies || b.faction == Bullet.Faction.Enemy))
+            {
+                paintSystem.SpawnEnemyPaint(player.transform.position, paintHitRadius * 0.8f, paintHitLifetime, paintHitColor);
             }
             if (hitSfx != null)
             {

@@ -22,6 +22,10 @@ namespace ZGame.UnityDraft.Systems
         public bool leaveAcid = false;
         public float acidDps = 6f;
         public float acidDuration = 3f;
+        public bool obeyWindBiome = true;
+        public float windRangeBonus = 1.5f;
+        public float windCooldownMult = 0.8f;
+        public float wallBuffer = 0.2f;
         public GameObject failVfx;
         public AudioClip failSfx;
         public HUDController hud;
@@ -51,7 +55,9 @@ namespace ZGame.UnityDraft.Systems
             Vector3 mouse = Camera.main != null ? Camera.main.ScreenToWorldPoint(Input.mousePosition) : transform.position;
             mouse.z = 0f;
             Vector3 dir = mouse - transform.position;
-            if (dir.magnitude > maxRange) dir = dir.normalized * maxRange;
+            float maxR = maxRange;
+            if (obeyWindBiome && balance != null && balance.name == "Domain of Wind") maxR *= windRangeBonus;
+            if (dir.magnitude > maxR) dir = dir.normalized * maxR;
             Vector3 targetPos = transform.position + dir;
             if (IsValid(targetPos))
             {
@@ -59,7 +65,8 @@ namespace ZGame.UnityDraft.Systems
                 transform.position = targetPos;
                 if (_paint != null && leavePaint) _paint.SpawnEnemyPaint(transform.position, paintRadius, paintDuration, _paint.paintColor);
                 if (_paint != null && leaveAcid) _paint.SpawnEnemyPaint(transform.position, paintRadius * 0.8f, acidDuration, _paint.paintColor);
-                _cd = cooldown;
+                float cdMult = (obeyWindBiome && balance != null && balance.name == "Domain of Wind") ? windCooldownMult : 1f;
+                _cd = cooldown * cdMult;
             }
             else
             {
@@ -74,6 +81,8 @@ namespace ZGame.UnityDraft.Systems
             {
                 if (requireTargetUnblocked && grid.IsBlocked(pos)) return false;
                 if (requireClearLine && !LineIsClear(transform.position, pos)) return false;
+                // keep a buffer from walls
+                if (wallBuffer > 0f && grid.IsNearBlocked(pos, wallBuffer)) return false;
             }
             return true;
         }

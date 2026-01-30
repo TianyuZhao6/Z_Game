@@ -113,6 +113,12 @@ namespace ZGame.UnityDraft.Systems
             {
                 s.paintSystem.SpawnEnemyPaint(go.transform.position, s.paintRadius, s.paintLifetime, s.paintColor);
             }
+            // Wind biome synergy: if target is enemy and balance name matches, extend duration
+            var enemy = go.GetComponent<Enemy>();
+            if (enemy != null && enemy.balance != null && enemy.balance.name == "Domain of Wind")
+            {
+                s._effects[^1].duration *= 1.2f;
+            }
         }
 
         public static void ApplyAcid(GameObject go, float damagePerSecond, float duration)
