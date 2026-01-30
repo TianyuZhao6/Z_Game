@@ -15,6 +15,12 @@ namespace ZGame.UnityDraft.Systems
         public WaveSpawner waveSpawner;
         public ShopUI shopUI;
         public LevelUpPicker levelUpPicker;
+        public HUDController hud;
+        public MetaProgression meta;
+        public Player player;
+        public float levelTime = 120f;
+        private float _timeLeft;
+        private bool _running;
         [Tooltip("Open shop after success before next level.")]
         public bool openShopOnSuccess = true;
         [Tooltip("Auto-pause when shop is open.")]
@@ -33,6 +39,9 @@ namespace ZGame.UnityDraft.Systems
             if (menu == null) menu = FindObjectOfType<MenuController>();
             if (shopUI == null) shopUI = FindObjectOfType<ShopUI>();
             if (levelUpPicker == null) levelUpPicker = FindObjectOfType<LevelUpPicker>();
+            if (hud == null) hud = FindObjectOfType<HUDController>();
+            if (meta == null) meta = FindObjectOfType<MetaProgression>();
+            if (player == null) player = FindObjectOfType<Player>();
             if (waveSpawner != null && waveSpawner.enemyFactory == null)
             {
                 waveSpawner.enemyFactory = FindObjectOfType<EnemyFactory>();
@@ -68,6 +77,11 @@ namespace ZGame.UnityDraft.Systems
             {
                 waveSpawner.ConfigureForLevel(gameManager, gameManager.levelFlow);
             }
+            _timeLeft = levelTime;
+            _running = true;
+            if (hud != null && player != null) hud.SetHp(player.hp, player.maxHp);
+            if (hud != null) hud.SetCoins(meta != null ? meta.runCoins + meta.bankedCoins : 0);
+            menu?.BindMeta(meta, gameManager);
         }
 
         private void HandleLevelStarted()
@@ -127,6 +141,37 @@ namespace ZGame.UnityDraft.Systems
                 yield return null;
             }
             if (menu != null) menu.HideEndSequence();
+        }
+
+        private void Update()
+        {
+            if (!_running) return;
+            _timeLeft -= Time.deltaTime;
+            if (hud != null) hud.SetTimer(_timeLeft);
+            if (_timeLeft <= 0f)
+            {
+                _running = false;
+                gameManager?.CompleteLevel();
+            }
+        }
+
+        public void NotifyKill()
+        {
+            meta?.AddKill(1);
+            hud?.SetCoins(meta != null ? meta.runCoins + meta.bankedCoins : 0);
+            menu?.BindMeta(meta, gameManager);
+        }
+
+        public void NotifyCoin(int amount)
+        {
+            meta?.AddRunCoins(amount);
+            hud?.SetCoins(meta != null ? meta.runCoins + meta.bankedCoins : 0);
+            menu?.BindMeta(meta, gameManager);
+        }
+
+        public void NotifyPlayerHp()
+        {
+            if (hud != null && player != null) hud.SetHp(player.hp, player.maxHp);
         }
     }
 }

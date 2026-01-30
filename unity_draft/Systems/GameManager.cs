@@ -12,6 +12,9 @@ namespace ZGame.UnityDraft.Systems
         public GameBalanceConfig balance;
         public LevelFlow levelFlow;
         public MetaProgression meta;
+        public HUDController hud;
+        public UI.MenuController menu;
+        public LevelSession session;
 
         [Header("Runtime State")]
         public int currentLevelIndex = 0; // 0-based
@@ -28,6 +31,9 @@ namespace ZGame.UnityDraft.Systems
         {
             if (levelFlow == null) levelFlow = GetComponent<LevelFlow>();
             if (meta == null) meta = GetComponent<MetaProgression>();
+            if (hud == null) hud = FindObjectOfType<HUDController>();
+            if (menu == null) menu = FindObjectOfType<UI.MenuController>();
+            if (session == null) session = FindObjectOfType<LevelSession>();
         }
 
         public void StartLevel(int levelIdx)
@@ -39,6 +45,9 @@ namespace ZGame.UnityDraft.Systems
             biome = levelFlow != null ? levelFlow.NextBiome(levelIdx) : null;
             levelFlow?.ApplyBiomeBuffs(biome, balance);
             OnLevelStarted?.Invoke();
+            menu?.HideStartSequence();
+            hud?.SetTimer(session != null ? session.levelTime : 0f);
+            menu?.BindMeta(meta, this);
         }
 
         public void CompleteLevel()
@@ -46,12 +55,14 @@ namespace ZGame.UnityDraft.Systems
             Time.timeScale = 0f;
             meta?.OnLevelComplete(currentLevelIndex);
             OnLevelCompleted?.Invoke();
+            menu?.ShowSuccess();
         }
 
         public void FailLevel()
         {
             Time.timeScale = 0f;
             OnLevelFailed?.Invoke();
+            menu?.ShowFail();
         }
     }
 }
