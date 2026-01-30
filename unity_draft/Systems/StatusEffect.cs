@@ -94,9 +94,14 @@ namespace ZGame.UnityDraft.Systems
         public static void ApplySlow(GameObject go, float amount, float duration)
         {
             var s = go.GetComponent<StatusEffect>() ?? go.AddComponent<StatusEffect>();
-            s.slowMult = Mathf.Clamp01(1f - amount);
+            float resist = 0f;
+            var p = go.GetComponent<Player>();
+            if (p != null) resist = p.slowResist;
+            float effective = Mathf.Clamp01(amount * (1f - resist));
+            s.slowMult = Mathf.Clamp01(1f - effective);
             s._effects.Add(new EffectInstance { id = "slow", magnitude = amount, duration = duration });
             if (s._enemy != null) s._enemy.speed *= s.slowMult;
+            if (p != null) p.speed *= s.slowMult;
         }
 
         public static void ApplyPaint(GameObject go, float duration)

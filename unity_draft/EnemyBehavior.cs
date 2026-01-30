@@ -485,6 +485,7 @@ namespace ZGame.UnityDraft
                     {
                         Instantiate(banditRadarRingVfx, transform.position, Quaternion.identity);
                     }
+                    if (_sr != null) _sr.color = Color.Lerp(_baseColor, new Color(1f, 0.84f, 0.3f, 1f), 0.6f);
                 }
                 if (banditRadarSlowLeft > 0f)
                 {
@@ -494,6 +495,7 @@ namespace ZGame.UnityDraft
                 {
                     _enemy.speed = _banditRadarBaseSpeed;
                     banditRadarTagged = false; // slow expired
+                    if (_sr != null) _sr.color = _baseColor;
                 }
             }
 

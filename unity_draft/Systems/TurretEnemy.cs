@@ -8,6 +8,7 @@ namespace ZGame.UnityDraft.Systems
     [RequireComponent(typeof(Combat.EnemyShooter))]
     public class TurretEnemy : MonoBehaviour
     {
+        public EnemyTypeConfig typeConfig;
         public float aimInterval = 0.2f;
         public float burstInterval = 2.5f;
         public int burstCount = 3;
@@ -31,6 +32,40 @@ namespace ZGame.UnityDraft.Systems
         {
             _shooter = GetComponent<Combat.EnemyShooter>();
             if (_shooter != null) _target = _shooter.target;
+            ApplyTypeDefaults();
+        }
+
+        private void ApplyTypeDefaults()
+        {
+            if (typeConfig == null) return;
+            switch (typeConfig.typeId)
+            {
+                case "turret_spread":
+                    mode = TurretMode.Spread;
+                    spreadCount = 7;
+                    spreadArc = 60f;
+                    burstInterval = 2.2f;
+                    break;
+                case "turret_arc":
+                    mode = TurretMode.ArcFan;
+                    spreadCount = 5;
+                    arcFanStep = 15f;
+                    burstInterval = 1.9f;
+                    break;
+                case "turret_lob":
+                    mode = TurretMode.Lob;
+                    burstInterval = 2.4f;
+                    _shooter.pattern = Combat.EnemyShooter.FirePattern.LobArc;
+                    break;
+                case "turret_frost":
+                    mode = TurretMode.Spread;
+                    elementDamageMult = 0.9f;
+                    elementSpeedMult = 0.8f;
+                    spreadArc = 50f;
+                    break;
+                default:
+                    break;
+            }
         }
 
         private void Update()

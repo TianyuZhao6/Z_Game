@@ -17,10 +17,15 @@ namespace ZGame.UnityDraft.Systems
         public float slowDuration = 2f;
         public bool applyPaint = false;
         public bool applyAcid = false;
+        public bool knockback = false;
+        public float knockbackForce = 4f;
+        public bool leavePaintAtOrigin = false;
         public bool inheritPlayerCrit = true;
         public bool applyVulnerabilityOnCrit = true;
         public float vulnMult = 1.2f;
         public float vulnDuration = 2f;
+        public HUDController hud;
+        private PaintSystem _paint;
         private float _cd;
         private Player _player;
 
@@ -28,11 +33,14 @@ namespace ZGame.UnityDraft.Systems
         {
             if (combat == null) combat = FindObjectOfType<BulletCombatSystem>();
             _player = GetComponent<Player>();
+            _paint = FindObjectOfType<PaintSystem>();
+            if (hud == null) hud = FindObjectOfType<HUDController>();
         }
 
         private void Update()
         {
             _cd = Mathf.Max(0f, _cd - Time.deltaTime);
+            if (hud != null) hud.SetAbilityCooldown("blast", _cd, cooldown);
             if (Input.GetKeyDown(KeyCode.Q) && _cd <= 0f)
             {
                 Cast();
@@ -42,6 +50,7 @@ namespace ZGame.UnityDraft.Systems
         private void Cast()
         {
             _cd = cooldown;
+            if (leavePaintAtOrigin && _paint != null) _paint.SpawnEnemyPaint(transform.position, radius * 0.8f, slowDuration, _paint.paintColor);
             var hits = Physics2D.OverlapCircleAll(transform.position, radius, combat != null ? combat.enemyMask : LayerMask.GetMask("Enemy"));
             foreach (var h in hits)
             {
@@ -61,6 +70,15 @@ namespace ZGame.UnityDraft.Systems
                 if (slowAmount > 0f) StatusEffect.ApplySlow(e.gameObject, slowAmount, slowDuration);
                 if (applyPaint) StatusEffect.ApplyPaint(e.gameObject, slowDuration);
                 if (applyAcid) StatusEffect.ApplyAcid(e.gameObject, damagePerSecond:5, duration:2f);
+                if (knockback)
+                {
+                    var rb = e.GetComponent<Rigidbody2D>();
+                    if (rb != null)
+                    {
+                        Vector2 dir = (e.transform.position - transform.position).normalized;
+                        rb.AddForce(dir * knockbackForce, ForceMode2D.Impulse);
+                    }
+                }
             }
         }
     }

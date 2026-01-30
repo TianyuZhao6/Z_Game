@@ -23,6 +23,7 @@ namespace ZGame.UnityDraft
         public float carapaceHp = 0f;
         public float critChance = 0.05f;
         public float critMult = 1.8f;
+        public float slowResist = 0f; // 0..1 reduces incoming slows
 
         [Header("Runtime")]
         public float radiusPx;
@@ -45,6 +46,21 @@ namespace ZGame.UnityDraft
             var status = GetComponent<Systems.StatusEffect>();
             if (status != null) status.TryAbsorb(ref dmg);
             hp = Mathf.Max(0, hp - Mathf.Max(0, dmg));
+        }
+
+        public void ApplyBonePlating(float hpValue)
+        {
+            Systems.StatusEffect.ApplyBonePlating(gameObject, hpValue);
+        }
+
+        public void ApplyCarapace(float hpValue)
+        {
+            Systems.StatusEffect.ApplyCarapace(gameObject, hpValue);
+        }
+
+        public void ApplySlowResist(float amount)
+        {
+            slowResist = Mathf.Clamp01(amount);
         }
 
         public void TickFireCd(float dt)

@@ -15,18 +15,30 @@ namespace ZGame.UnityDraft.Systems
         public bool requireClearLine = true;
         public bool requireTargetUnblocked = true;
         public float cooldown = 2f;
+        [Header("Synergy")]
+        public bool leavePaint = false;
+        public float paintRadius = 1.2f;
+        public float paintDuration = 4f;
+        public bool leaveAcid = false;
+        public float acidDps = 6f;
+        public float acidDuration = 3f;
         public GameObject failVfx;
         public AudioClip failSfx;
+        public HUDController hud;
+        private PaintSystem _paint;
         private float _cd;
 
         private void Awake()
         {
             if (grid == null) grid = FindObjectOfType<GridManager>();
+            _paint = FindObjectOfType<PaintSystem>();
+            if (hud == null) hud = FindObjectOfType<HUDController>();
         }
 
         private void Update()
         {
             _cd = Mathf.Max(0f, _cd - Time.deltaTime);
+            if (hud != null) hud.SetAbilityCooldown("teleport", _cd, cooldown);
             if (Input.GetKeyDown(teleportKey))
             {
                 TryTeleport();
@@ -43,7 +55,10 @@ namespace ZGame.UnityDraft.Systems
             Vector3 targetPos = transform.position + dir;
             if (IsValid(targetPos))
             {
+                if (leavePaint && _paint != null) _paint.SpawnEnemyPaint(transform.position, paintRadius, paintDuration, _paint.paintColor);
                 transform.position = targetPos;
+                if (_paint != null && leavePaint) _paint.SpawnEnemyPaint(transform.position, paintRadius, paintDuration, _paint.paintColor);
+                if (_paint != null && leaveAcid) _paint.SpawnEnemyPaint(transform.position, paintRadius * 0.8f, acidDuration, _paint.paintColor);
                 _cd = cooldown;
             }
             else
