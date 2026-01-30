@@ -25,6 +25,7 @@ namespace ZGame.UnityDraft.Systems
             public bool twinBoss;
             public bool banditAllowed;
             public string biome;
+            public float levelTimer;
             public int bankedCoins;
             public int runCoins;
             public int killCount;
@@ -50,6 +51,7 @@ namespace ZGame.UnityDraft.Systems
             public string[] shopOwnedItems;
             public WaveState wave;
             public MetaState metaState;
+            public UIState uiState;
         }
 
         [System.Serializable]
@@ -58,6 +60,7 @@ namespace ZGame.UnityDraft.Systems
             public int levelIdx;
             public float budget;
             public float spawnTimer;
+            public string[] upcoming;
         }
 
         [System.Serializable]
@@ -73,6 +76,14 @@ namespace ZGame.UnityDraft.Systems
             public MetaProgression.ConsumableStack[] consumables;
         }
 
+        [System.Serializable]
+        public class UIState
+        {
+            public bool pauseOpen;
+            public bool shopOpen;
+            public bool levelUpOpen;
+        }
+
         public void SaveSnapshot()
         {
             var data = new SnapshotData();
@@ -84,6 +95,8 @@ namespace ZGame.UnityDraft.Systems
                 data.banditAllowed = gameManager.banditAllowed;
                 data.biome = gameManager.biome;
             }
+            var session = FindObjectOfType<LevelSession>();
+            if (session != null) data.levelTimer = session.levelTime;
             if (meta != null)
             {
                 data.bankedCoins = meta.bankedCoins;
@@ -143,6 +156,16 @@ namespace ZGame.UnityDraft.Systems
                     wantedBounty = meta.wantedBounty,
                     wantedKillTarget = meta.wantedKillTarget,
                     consumables = meta.consumables.ToArray()
+                };
+            }
+            var menu = FindObjectOfType<ZGame.UnityDraft.UI.MenuController>();
+            if (menu != null)
+            {
+                data.uiState = new UIState
+                {
+                    pauseOpen = menu.pausePanel != null && menu.pausePanel.activeSelf,
+                    shopOpen = menu.shopPanel != null && menu.shopPanel.activeSelf,
+                    levelUpOpen = menu.levelUpPanel != null && menu.levelUpPanel.activeSelf,
                 };
             }
             var json = JsonUtility.ToJson(data, true);
@@ -223,6 +246,13 @@ namespace ZGame.UnityDraft.Systems
                 meta.wantedKillTarget = data.metaState.wantedKillTarget;
                 meta.consumables.Clear();
                 if (data.metaState.consumables != null) meta.consumables.AddRange(data.metaState.consumables);
+            }
+            var menu = FindObjectOfType<ZGame.UnityDraft.UI.MenuController>();
+            if (menu != null && data.uiState != null)
+            {
+                if (data.uiState.pauseOpen && menu.pausePanel != null) menu.pausePanel.SetActive(true);
+                if (data.uiState.shopOpen && menu.shopPanel != null) menu.shopPanel.SetActive(true);
+                if (data.uiState.levelUpOpen && menu.levelUpPanel != null) menu.levelUpPanel.SetActive(true);
             }
             return true;
         }
