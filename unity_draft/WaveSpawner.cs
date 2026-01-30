@@ -82,6 +82,9 @@ namespace ZGame.UnityDraft
         public float CurrentSpawnTimer => _timer;
         public float BanditCountdown => Mathf.Max(0f, _nextBanditTime - Time.time);
         private int _currentBudget;
+        public int CurrentWaveIndex => _waveIndex;
+        public bool BanditSpawnedThisLevel => _banditSpawnedThisLevel;
+        public float NextBanditTime => _nextBanditTime;
 
         public System.Action<string> OnSpawnRequested; // hook to actual spawn logic with typeId
 
@@ -241,10 +244,13 @@ namespace ZGame.UnityDraft
             _currentBudget = CalcBudget(_levelIdx);
         }
 
-        public void RestoreState(float budget, float spawnTimer)
+        public void RestoreState(float budget, float spawnTimer, int waveIndex = 0, bool banditSpawned = false, float nextBanditTime = float.PositiveInfinity)
         {
             _currentBudget = Mathf.RoundToInt(budget);
             _timer = spawnTimer;
+            _waveIndex = waveIndex;
+            _banditSpawnedThisLevel = banditSpawned;
+            _nextBanditTime = nextBanditTime;
         }
 
         private Vector3 PickSpawnPos()

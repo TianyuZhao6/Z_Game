@@ -60,6 +60,9 @@ namespace ZGame.UnityDraft.Systems
             public int levelIdx;
             public float budget;
             public float spawnTimer;
+            public int waveIndex;
+            public bool banditSpawned;
+            public float nextBanditTime;
             public string[] upcoming;
         }
 
@@ -141,7 +144,10 @@ namespace ZGame.UnityDraft.Systems
                 {
                     levelIdx = data.levelIdx,
                     budget = waveSpawner.CurrentBudget,
-                    spawnTimer = waveSpawner.CurrentSpawnTimer
+                    spawnTimer = waveSpawner.CurrentSpawnTimer,
+                    waveIndex = waveSpawner.CurrentWaveIndex,
+                    banditSpawned = waveSpawner.BanditSpawnedThisLevel,
+                    nextBanditTime = waveSpawner.NextBanditTime
                 };
             }
             if (meta != null)
@@ -233,7 +239,7 @@ namespace ZGame.UnityDraft.Systems
             }
             if (waveSpawner != null && data.wave != null)
             {
-                waveSpawner.RestoreState(data.wave.budget, data.wave.spawnTimer);
+                waveSpawner.RestoreState(data.wave.budget, data.wave.spawnTimer, data.wave.waveIndex, data.wave.banditSpawned, data.wave.nextBanditTime);
             }
             if (meta != null && data.metaState != null)
             {
