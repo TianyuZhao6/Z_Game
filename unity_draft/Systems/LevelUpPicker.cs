@@ -35,6 +35,7 @@ namespace ZGame.UnityDraft.Systems
             menu.BindLevelUpOptions(pickerTitle, _currentChoices);
             menu.onLevelUpChoice.AddListener(OnChoice);
             menu.ShowLevelUp();
+            Time.timeScale = 0f;
         }
 
         private void OnChoice(int idx)
@@ -44,6 +45,8 @@ namespace ZGame.UnityDraft.Systems
             ownedUpgrades.Add(choice);
             ApplyUpgrade(choice);
             menu.onLevelUpChoice.RemoveListener(OnChoice);
+            menu.levelUpPanel?.SetActive(false);
+            Time.timeScale = 1f;
         }
 
         private string[] PickChoices()

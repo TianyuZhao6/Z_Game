@@ -47,6 +47,9 @@ namespace ZGame.UnityDraft.UI
         public TMPro.TextMeshProUGUI pauseInfoText;
         public TMPro.TextMeshProUGUI successInfoText;
         public TMPro.TextMeshProUGUI failInfoText;
+        [Header("Inventory / Reroll UI")]
+        public UnityEngine.UI.Button rerollButton;
+        public TMPro.TextMeshProUGUI rerollCostText;
 
         private void Start()
         {
@@ -142,6 +145,11 @@ namespace ZGame.UnityDraft.UI
         {
             onShopClosed?.Invoke();
             if (shopPanel != null) shopPanel.SetActive(false);
+        }
+
+        public void BindRerollCost(int cost)
+        {
+            if (rerollCostText != null) rerollCostText.text = $"Reroll: {cost}";
         }
 
         private void WireButtons()

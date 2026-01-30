@@ -12,6 +12,8 @@ namespace ZGame.UnityDraft.Systems
         public MetaProgression meta;
         public Player player;
         public List<ShopItem> inventory = new();
+        [Tooltip("Full pool of possible shop items to reroll from.")]
+        public List<ShopItem> shopPool = new();
         public List<string> ownedItems = new();
 
         [Header("Pricing")]
@@ -19,12 +21,17 @@ namespace ZGame.UnityDraft.Systems
         public float priceLinear = 0.02f; // SHOP_PRICE_LINEAR
         public float couponDiscountPer = 0.05f; // placeholder
         public int couponMaxUsePerPurchase = 1;
+        [Header("Reroll")]
+        public int rerollBaseCost = 20;
+        public float rerollCostMult = 1.2f;
+        private int _rerollCount = 0;
         [Header("Currency Routing")]
         public bool useRunCoinsFirst = false; // allow spending run coins before banked coins
         [Header("Consumable Effects (IDs -> Actions)")]
         public UnityEngine.Events.UnityEvent<string> onConsumableUsed;
         [Header("UI Bindings (optional)")]
         public UI.MenuController menu;
+        public ShopUI shopUi;
 
         public int GetPrice(ShopItem item, int levelIdx, int ownedCount = 0)
         {
@@ -53,6 +60,41 @@ namespace ZGame.UnityDraft.Systems
             meta.ConsumeCoupons(couponMaxUsePerPurchase);
             ApplyItem(item);
             if (!ownedItems.Contains(item.itemId)) ownedItems.Add(item.itemId);
+            menu?.BindMeta(meta, null);
+            shopUi?.Populate();
+            return true;
+        }
+
+        public int CurrentRerollCost()
+        {
+            return Mathf.Max(1, Mathf.RoundToInt(rerollBaseCost * Mathf.Pow(rerollCostMult, _rerollCount)));
+        }
+
+        public bool TryReroll(int levelIdx)
+        {
+            if (shopPool == null || shopPool.Count == 0 || meta == null) return false;
+            int cost = CurrentRerollCost();
+            if (meta.runCoins + meta.bankedCoins < cost) return false;
+            int remaining = cost;
+            if (useRunCoinsFirst && meta.runCoins > 0)
+            {
+                int useRun = Mathf.Min(meta.runCoins, remaining);
+                meta.SpendRunCoins(useRun);
+                remaining -= useRun;
+            }
+            if (remaining > 0) meta.SpendBankedCoins(remaining);
+            _rerollCount++;
+            // sample 3 items
+            inventory.Clear();
+            int count = Mathf.Min(3, shopPool.Count);
+            var poolCopy = new List<ShopItem>(shopPool);
+            for (int i = 0; i < count; i++)
+            {
+                int idx = Random.Range(0, poolCopy.Count);
+                inventory.Add(poolCopy[idx]);
+                poolCopy.RemoveAt(idx);
+            }
+            shopUi?.Populate();
             menu?.BindMeta(meta, null);
             return true;
         }

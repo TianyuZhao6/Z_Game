@@ -17,6 +17,10 @@ namespace ZGame.UnityDraft.Systems
         public TextMeshProUGUI coinsText;
         public TextMeshProUGUI couponsText;
         public TextMeshProUGUI couponLevelText;
+        public TextMeshProUGUI rerollCostText;
+        public Button rerollButton;
+        public Transform ownedListRoot;
+        public GameObject ownedEntryPrefab;
 
         private void Start()
         {
@@ -34,6 +38,8 @@ namespace ZGame.UnityDraft.Systems
                 var ui = go.GetComponent<ShopUIEntry>();
                 if (ui != null) ui.Bind(item, shop, levelIdx);
             }
+            PopulateOwned();
+            BindReroll();
         }
 
         public void BindMeta()
@@ -42,6 +48,34 @@ namespace ZGame.UnityDraft.Systems
             if (coinsText) coinsText.text = (shop.meta.runCoins + shop.meta.bankedCoins).ToString();
             if (couponsText) couponsText.text = shop.meta.coupons.ToString();
             if (couponLevelText) couponLevelText.text = $"Lv {shop.meta.couponLevel}";
+        }
+
+        private void BindReroll()
+        {
+            if (rerollCostText != null && shop != null)
+            {
+                rerollCostText.text = $"Reroll: {shop.CurrentRerollCost()}";
+            }
+            if (rerollButton != null)
+            {
+                rerollButton.onClick.RemoveAllListeners();
+                rerollButton.onClick.AddListener(() => {
+                    shop.TryReroll(levelIdx);
+                    Populate();
+                });
+            }
+        }
+
+        private void PopulateOwned()
+        {
+            if (ownedListRoot == null || ownedEntryPrefab == null || shop == null) return;
+            foreach (Transform child in ownedListRoot) Destroy(child.gameObject);
+            foreach (var id in shop.ownedItems)
+            {
+                var go = Instantiate(ownedEntryPrefab, ownedListRoot);
+                var text = go.GetComponentInChildren<TextMeshProUGUI>();
+                if (text != null) text.text = id;
+            }
         }
     }
 
