@@ -100,5 +100,37 @@ namespace ZGame.UnityDraft
             navDirty = true;
             OnNavDirty?.Invoke();
         }
+
+        public bool IsClearWithRadius(Vector3 worldPos, float radiusPx)
+        {
+            float cs = balance != null ? balance.cellSize : 1f;
+            int cells = Mathf.CeilToInt(radiusPx / cs);
+            var center = WorldToGrid(worldPos);
+            for (int dx = -cells; dx <= cells; dx++)
+            {
+                for (int dy = -cells; dy <= cells; dy++)
+                {
+                    var c = new Vector2Int(center.x + dx, center.y + dy);
+                    if (obstacles.ContainsKey(c)) return false;
+                }
+            }
+            return true;
+        }
+
+        public bool IsNearBlocked(Vector3 worldPos, float buffer)
+        {
+            float cs = balance != null ? balance.cellSize : 1f;
+            int cells = Mathf.CeilToInt(buffer / cs);
+            var center = WorldToGrid(worldPos);
+            for (int dx = -cells; dx <= cells; dx++)
+            {
+                for (int dy = -cells; dy <= cells; dy++)
+                {
+                    var c = new Vector2Int(center.x + dx, center.y + dy);
+                    if (obstacles.ContainsKey(c)) return true;
+                }
+            }
+            return false;
+        }
     }
 }

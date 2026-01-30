@@ -30,6 +30,7 @@ namespace ZGame.UnityDraft.Systems
         public int destructibleCount = 10;
         public int decorCount = 20;
         public int itemPickupCount = 8;
+        public DestructibleLootTable destructibleLoot;
 
         [Header("Placement")]
         public float innerRadius = 4f; // keep spawn clear near player center
@@ -46,6 +47,11 @@ namespace ZGame.UnityDraft.Systems
 
         private readonly List<Vector2> _placed = new();
         private readonly Dictionary<Vector2Int, GameObject> _obstacleLookup = new();
+
+        private void OnEnable()
+        {
+            if (gridManager == null) gridManager = FindObjectOfType<GridManager>();
+        }
 
         public void Generate(Vector3 center)
         {
@@ -100,6 +106,7 @@ namespace ZGame.UnityDraft.Systems
                     var d = go.GetComponent<DestructibleObstacle>();
                     if (d == null) d = go.AddComponent<DestructibleObstacle>();
                     d.gridManager = gridManager;
+                    d.lootTable = destructibleLoot;
                 }
             }
         }
@@ -169,6 +176,8 @@ namespace ZGame.UnityDraft.Systems
             {
                 // ensure passage clearance
                 if (gridManager.IsBlocked(pos)) return false;
+                if (balance != null && !gridManager.IsClearWithRadius(pos, balance.navClearRadiusPx))
+                    return false;
             }
             return true;
         }

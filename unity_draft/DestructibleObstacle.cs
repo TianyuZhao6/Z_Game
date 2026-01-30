@@ -22,6 +22,7 @@ namespace ZGame.UnityDraft
         public int coinMax = 0;
         public GameObject itemDropPrefab;
         public float dropChance = 0.2f;
+        public DestructibleLootTable lootTable;
 
         public void Damage(int amount)
         {
@@ -64,6 +65,11 @@ namespace ZGame.UnityDraft
 
         private void TryDrop()
         {
+            if (lootTable != null)
+            {
+                lootTable.Roll(transform.position);
+                return;
+            }
             if (coinPrefab != null && (coinMin > 0 || coinMax > 0))
             {
                 int amt = Random.Range(coinMin, coinMax + 1);
