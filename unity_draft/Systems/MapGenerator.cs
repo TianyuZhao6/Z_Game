@@ -44,6 +44,10 @@ namespace ZGame.UnityDraft.Systems
         public int extraCorridors = 2;
         [Tooltip("Corridor half-width in grid cells.")]
         public int corridorWidthCells = 1;
+        [Header("Passage Budget")]
+        [Tooltip("Ensure at least this many grid cells are reachable from center; removes blocking obstacles if needed.")]
+        public bool enforcePassageBudget = true;
+        public int passageBudgetCells = 120;
 
         private readonly List<Vector2> _placed = new();
         private readonly Dictionary<Vector2Int, GameObject> _obstacleLookup = new();
@@ -65,6 +69,7 @@ namespace ZGame.UnityDraft.Systems
             PlaceCoins(coinPrefab, Mathf.CeilToInt(itemPickupCount * 0.5f), center, itemsRoot);
             gridManager?.BuildBlockedGrid();
             if (ensurePassage && gridManager != null) EnsurePassages(center);
+            if (enforcePassageBudget && gridManager != null) EnsurePassageBudget(center);
         }
 
         private GameObject PickFromSet(GameObject fallback, GameObject[] set)
@@ -217,6 +222,43 @@ namespace ZGame.UnityDraft.Systems
             gridManager.BuildBlockedGrid();
         }
 
+        private void EnsurePassageBudget(Vector3 center)
+        {
+            int n = balance != null ? balance.gridSize : 32;
+            var start = gridManager.WorldToGrid(center);
+            bool[,] blocked = gridManager.BuildBlockedGrid();
+            int reachable = CountReachable(blocked, start);
+            if (reachable >= passageBudgetCells) return;
+
+            // remove obstacles farthest from center until budget met
+            var cells = new List<Vector2Int>(_obstacleLookup.Keys);
+            cells.Sort((a, b) =>
+            {
+                float da = (GridCenter(a) - (Vector2)center).sqrMagnitude;
+                float db = (GridCenter(b) - (Vector2)center).sqrMagnitude;
+                return db.CompareTo(da); // remove farthest first
+            });
+
+            foreach (var cell in cells)
+            {
+                if (_obstacleLookup.TryGetValue(cell, out var go))
+                {
+                    _obstacleLookup.Remove(cell);
+                    if (gridManager != null) gridManager.RemoveObstacle(cell);
+                    if (go != null) Destroy(go);
+                    blocked = gridManager.BuildBlockedGrid();
+                    reachable = CountReachable(blocked, start);
+                    if (reachable >= passageBudgetCells) break;
+                }
+            }
+        }
+
+        private Vector2 GridCenter(Vector2Int cell)
+        {
+            float cs = balance != null ? balance.cellSize : 1f;
+            return new Vector2(cell.x * cs + cs * 0.5f, cell.y * cs + 0.5f * cs);
+        }
+
         private void CarveCorridor(bool[,] blocked, Vector2Int start, Vector2Int goal)
         {
             var line = Bresenham(start, goal);
@@ -283,6 +325,34 @@ namespace ZGame.UnityDraft.Systems
                 }
             }
             return pts;
+        }
+
+        private int CountReachable(bool[,] blocked, Vector2Int start)
+        {
+            int n = blocked.GetLength(0);
+            if (start.x < 0 || start.x >= n || start.y < 0 || start.y >= n || blocked[start.x, start.y]) return 0;
+            var q = new Queue<Vector2Int>();
+            var seen = new bool[n, n];
+            q.Enqueue(start);
+            seen[start.x, start.y] = true;
+            int count = 0;
+            int[] dx = { 1, -1, 0, 0 };
+            int[] dy = { 0, 0, 1, -1 };
+            while (q.Count > 0)
+            {
+                var c = q.Dequeue();
+                count++;
+                for (int i = 0; i < 4; i++)
+                {
+                    int nx = c.x + dx[i];
+                    int ny = c.y + dy[i];
+                    if (nx < 0 || nx >= n || ny < 0 || ny >= n) continue;
+                    if (seen[nx, ny] || blocked[nx, ny]) continue;
+                    seen[nx, ny] = true;
+                    q.Enqueue(new Vector2Int(nx, ny));
+                }
+            }
+            return count;
         }
 
         private ItemPickupDef PickItemDef()
