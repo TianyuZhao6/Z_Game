@@ -54,6 +54,7 @@ namespace ZGame.UnityDraft
         public bool banditAllowed = false;
         public float banditFirstDelay = 60f;
         public float banditRespawnDelay = 45f;
+        public System.Action OnBanditSpawned;
         [Header("Spawn Targets")]
         public Systems.EnemyFactory enemyFactory;
         public Transform spawnCenter;
@@ -75,6 +76,7 @@ namespace ZGame.UnityDraft
         private float _nextBanditTime = float.PositiveInfinity;
         public float CurrentBudget => _currentBudget;
         public float CurrentSpawnTimer => _timer;
+        public float BanditCountdown => Mathf.Max(0f, _nextBanditTime - Time.time);
         private int _currentBudget;
 
         public System.Action<string> OnSpawnRequested; // hook to actual spawn logic with typeId
@@ -92,6 +94,7 @@ namespace ZGame.UnityDraft
             {
                 SpawnImmediate(banditTypeId);
                 _nextBanditTime = Time.time + banditRespawnDelay;
+                OnBanditSpawned?.Invoke();
             }
 
             _timer += Time.deltaTime;

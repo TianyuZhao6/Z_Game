@@ -51,6 +51,7 @@ namespace ZGame.UnityDraft.UI
         [Header("Inventory / Reroll UI")]
         public UnityEngine.UI.Button rerollButton;
         public TMPro.TextMeshProUGUI rerollCostText;
+        public TMPro.TextMeshProUGUI bannerText;
 
         private void Start()
         {
@@ -155,6 +156,20 @@ namespace ZGame.UnityDraft.UI
         public void BindRerollCost(int cost)
         {
             if (rerollCostText != null) rerollCostText.text = $"Reroll: {cost}";
+        }
+
+        public void ShowBanner(string msg, float sec = 1.5f)
+        {
+            if (bannerText == null) return;
+            bannerText.gameObject.SetActive(true);
+            bannerText.text = msg;
+            StartCoroutine(HideBannerAfter(sec));
+        }
+
+        private System.Collections.IEnumerator HideBannerAfter(float sec)
+        {
+            yield return new WaitForSecondsRealtime(sec);
+            if (bannerText != null) bannerText.gameObject.SetActive(false);
         }
 
         private void WireButtons()

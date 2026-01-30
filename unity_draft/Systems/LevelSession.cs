@@ -90,6 +90,8 @@ namespace ZGame.UnityDraft.Systems
             if (waveSpawner != null)
             {
                 waveSpawner.enabled = true;
+                waveSpawner.OnBanditSpawned -= HandleBanditSpawned;
+                waveSpawner.OnBanditSpawned += HandleBanditSpawned;
             }
         }
 
@@ -148,6 +150,10 @@ namespace ZGame.UnityDraft.Systems
             if (!_running) return;
             _timeLeft -= Time.deltaTime;
             if (hud != null) hud.SetTimer(_timeLeft);
+            if (hud != null && waveSpawner != null && waveSpawner.banditAllowed)
+            {
+                // reuse timerText? keep minimal; optional: show countdown elsewhere
+            }
             if (_timeLeft <= 0f)
             {
                 _running = false;
@@ -172,6 +178,11 @@ namespace ZGame.UnityDraft.Systems
         public void NotifyPlayerHp()
         {
             if (hud != null && player != null) hud.SetHp(player.hp, player.maxHp);
+        }
+
+        private void HandleBanditSpawned()
+        {
+            if (menu != null) menu.ShowBanner("Bandit appeared!", 1.2f);
         }
     }
 }
