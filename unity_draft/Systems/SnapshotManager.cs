@@ -37,6 +37,8 @@ namespace ZGame.UnityDraft.Systems
             public int wantedPosterWaves;
             public int goldenInterestLevel;
             public int banditRadarLevel;
+            public int rerollCount;
+            public string[] shopInventory;
             public MetaProgression.ConsumableStack[] consumables;
             public int playerHp;
             public int playerMaxHp;
@@ -87,16 +89,21 @@ namespace ZGame.UnityDraft.Systems
                 data.bankedCoins = meta.bankedCoins;
                 data.runCoins = meta.runCoins;
                 data.killCount = meta.killCount;
-                data.coupons = meta.coupons;
-                data.couponLevel = meta.couponLevel;
-                data.couponCap = meta.couponCap;
-                data.wantedActive = meta.wantedActive;
-                data.wantedBounty = meta.wantedBounty;
-                data.wantedKillTarget = meta.wantedKillTarget;
-                data.wantedPosterWaves = meta.wantedPosterWaves;
-                data.goldenInterestLevel = meta.goldenInterestLevel;
-                data.banditRadarLevel = meta.banditRadarLevel;
-                data.consumables = meta.consumables.ToArray();
+            data.coupons = meta.coupons;
+            data.couponLevel = meta.couponLevel;
+            data.couponCap = meta.couponCap;
+            data.wantedActive = meta.wantedActive;
+            data.wantedBounty = meta.wantedBounty;
+            data.wantedKillTarget = meta.wantedKillTarget;
+            data.wantedPosterWaves = meta.wantedPosterWaves;
+            data.goldenInterestLevel = meta.goldenInterestLevel;
+            data.banditRadarLevel = meta.banditRadarLevel;
+            if (shop != null)
+            {
+                data.rerollCount = shop.RerollCount;
+                data.shopInventory = shop.InventoryIds();
+            }
+            data.consumables = meta.consumables.ToArray();
             }
             if (player != null)
             {
@@ -138,7 +145,7 @@ namespace ZGame.UnityDraft.Systems
                     consumables = meta.consumables.ToArray()
                 };
             }
-            var json = JsonUtility.ToJson(data);
+            var json = JsonUtility.ToJson(data, true);
             File.WriteAllText(SnapshotPath, json);
         }
 
@@ -173,6 +180,14 @@ namespace ZGame.UnityDraft.Systems
                 meta.banditRadarLevel = data.banditRadarLevel;
                 meta.consumables.Clear();
                 if (data.consumables != null) meta.consumables.AddRange(data.consumables);
+            }
+            if (shop != null)
+            {
+                shop.SetRerollCount(data.rerollCount);
+                shop.RestoreInventory(data.shopInventory);
+                shop.ownedItems.Clear();
+                if (data.shopOwnedItems != null) shop.ownedItems.AddRange(data.shopOwnedItems);
+                shop.shopUi?.Populate();
             }
             if (player != null)
             {

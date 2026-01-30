@@ -32,6 +32,7 @@ namespace ZGame.UnityDraft.Systems
         [Header("UI Bindings (optional)")]
         public UI.MenuController menu;
         public ShopUI shopUi;
+        public int RerollCount => _rerollCount;
 
         public int GetPrice(ShopItem item, int levelIdx, int ownedCount = 0)
         {
@@ -63,6 +64,35 @@ namespace ZGame.UnityDraft.Systems
             menu?.BindMeta(meta, null);
             shopUi?.Populate();
             return true;
+        }
+
+        public string[] InventoryIds()
+        {
+            var ids = new string[inventory.Count];
+            for (int i = 0; i < inventory.Count; i++) ids[i] = inventory[i] != null ? inventory[i].itemId : string.Empty;
+            return ids;
+        }
+
+        public void RestoreInventory(string[] ids)
+        {
+            if (ids == null || shopPool == null || shopPool.Count == 0) return;
+            inventory.Clear();
+            foreach (var id in ids)
+            {
+                var itm = shopPool.Find(s => s != null && s.itemId == id);
+                if (itm != null) inventory.Add(itm);
+            }
+            if (inventory.Count == 0)
+            {
+                // fallback: repopulate
+                TryReroll(0);
+            }
+            shopUi?.Populate();
+        }
+
+        public void SetRerollCount(int count)
+        {
+            _rerollCount = Mathf.Max(0, count);
         }
 
         public int CurrentRerollCost()
@@ -166,6 +196,20 @@ namespace ZGame.UnityDraft.Systems
                     onConsumableUsed?.Invoke(item.consumableEffect);
                     ApplyConsumableEffect(item.consumableEffect);
                 }
+                // Special items
+                if (item.itemId == "lockbox")
+                {
+                    meta.bankedCoins = Mathf.Max(meta.bankedCoins, meta.runCoins);
+                }
+                if (item.itemId == "bandit_radar")
+                {
+                    meta.banditRadarLevel = Mathf.Min(4, meta.banditRadarLevel + 1);
+                }
+                if (item.itemId == "wanted_coupon")
+                {
+                    meta.wantedPosterWaves = Mathf.Max(meta.wantedPosterWaves, 3);
+                    meta.AddCoupon(1);
+                }
             }
         }
 
@@ -189,6 +233,16 @@ namespace ZGame.UnityDraft.Systems
                     break;
                 case "coupon_gain":
                     meta.AddCoupon(2);
+                    break;
+                case "bank_interest":
+                    meta.AddBankedCoins(Mathf.FloorToInt(meta.bankedCoins * meta.bankInterestRate));
+                    break;
+                case "wanted_reward":
+                    meta.ActivateWanted(Mathf.Max(meta.wantedBounty, 10));
+                    break;
+                case "coupon_plus":
+                    meta.couponLevel += 1;
+                    meta.AddCoupon(1);
                     break;
             }
         }

@@ -18,8 +18,9 @@ namespace ZGame.UnityDraft.Systems
         public string pickerTitle = "Choose an upgrade";
         public Player player;
         public MetaProgression meta;
+        public bool allowDuplicates = false;
 
-        private string[] _currentChoices;
+        private UpgradeDef[] _currentChoices;
 
         private void Awake()
         {
@@ -32,7 +33,7 @@ namespace ZGame.UnityDraft.Systems
         {
             if (menu == null) return;
             _currentChoices = PickChoices();
-            menu.BindLevelUpOptions(pickerTitle, _currentChoices);
+            menu.BindLevelUpOptions(pickerTitle, UpgradeNames(_currentChoices), UpgradeDescs(_currentChoices));
             menu.onLevelUpChoice.AddListener(OnChoice);
             menu.ShowLevelUp();
             Time.timeScale = 0f;
@@ -41,36 +42,42 @@ namespace ZGame.UnityDraft.Systems
         private void OnChoice(int idx)
         {
             if (_currentChoices == null || idx < 0 || idx >= _currentChoices.Length) return;
-            string choice = _currentChoices[idx];
-            ownedUpgrades.Add(choice);
+            var choice = _currentChoices[idx];
+            if (choice == null) return;
+            if (!ownedUpgrades.Contains(choice.id)) ownedUpgrades.Add(choice.id);
             ApplyUpgrade(choice);
             menu.onLevelUpChoice.RemoveListener(OnChoice);
             menu.levelUpPanel?.SetActive(false);
             Time.timeScale = 1f;
         }
 
-        private string[] PickChoices()
+        private UpgradeDef[] PickChoices()
         {
             if (upgradePool == null || upgradePool.Count == 0)
             {
-                return new[] { "No upgrades available" };
+                return new[] { (UpgradeDef)null };
             }
             int count = Mathf.Clamp(choicesCount, 1, upgradePool.Count);
             var list = new List<UpgradeDef>(upgradePool);
-            var result = new List<string>();
+            // remove already owned unless duplicates allowed
+            if (!allowDuplicates)
+            {
+                list.RemoveAll(u => u != null && ownedUpgrades.Contains(u.id));
+                if (list.Count == 0) list = new List<UpgradeDef>(upgradePool); // fallback if exhausted
+            }
+            var result = new List<UpgradeDef>();
             for (int i = 0; i < count; i++)
             {
                 int idx = Random.Range(0, list.Count);
                 var up = list[idx];
-                result.Add(up.displayName);
+                result.Add(up);
                 list.RemoveAt(idx);
             }
             return result.ToArray();
         }
 
-        private void ApplyUpgrade(string displayName)
+        private void ApplyUpgrade(UpgradeDef up)
         {
-            var up = upgradePool.Find(u => u.displayName == displayName);
             if (up == null) return;
             switch (up.effect)
             {
@@ -111,6 +118,30 @@ namespace ZGame.UnityDraft.Systems
                     if (meta != null) meta.AddBankedCoins(Mathf.RoundToInt(up.value));
                     break;
             }
+        }
+
+        private string[] UpgradeNames(UpgradeDef[] defs)
+        {
+            if (defs == null) return new string[0];
+            var arr = new string[defs.Length];
+            for (int i = 0; i < defs.Length; i++)
+            {
+                var d = defs[i];
+                arr[i] = d != null ? d.displayName : "None";
+            }
+            return arr;
+        }
+
+        private string[] UpgradeDescs(UpgradeDef[] defs)
+        {
+            if (defs == null) return new string[0];
+            var arr = new string[defs.Length];
+            for (int i = 0; i < defs.Length; i++)
+            {
+                var d = defs[i];
+                arr[i] = d != null ? d.description : string.Empty;
+            }
+            return arr;
         }
     }
 }

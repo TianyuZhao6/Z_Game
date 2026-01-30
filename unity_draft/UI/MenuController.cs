@@ -29,6 +29,7 @@ namespace ZGame.UnityDraft.UI
         public UnityEvent<int> onLevelUpChoice;
         public TMPro.TextMeshProUGUI levelUpTitle;
         public TMPro.TextMeshProUGUI[] levelUpOptionTexts;
+        public TMPro.TextMeshProUGUI[] levelUpOptionDescTexts;
         [Header("Buttons (optional wiring)")]
         public UnityEngine.UI.Button pauseButton;
         public UnityEngine.UI.Button resumeButton;
@@ -109,7 +110,7 @@ namespace ZGame.UnityDraft.UI
             if (endPanel != null) endPanel.SetActive(false);
         }
 
-        public void BindLevelUpOptions(string title, string[] options)
+        public void BindLevelUpOptions(string title, string[] options, string[] descs = null)
         {
             if (levelUpTitle != null) levelUpTitle.text = title;
             if (levelUpOptionTexts != null && options != null)
@@ -117,6 +118,10 @@ namespace ZGame.UnityDraft.UI
                 for (int i = 0; i < levelUpOptionTexts.Length; i++)
                 {
                     levelUpOptionTexts[i].text = i < options.Length ? options[i] : string.Empty;
+                    if (levelUpOptionDescTexts != null && i < levelUpOptionDescTexts.Length && descs != null)
+                    {
+                        levelUpOptionDescTexts[i].text = i < descs.Length ? descs[i] : string.Empty;
+                    }
                 }
             }
         }
