@@ -257,6 +257,10 @@ namespace ZGame.UnityDraft
 
         private int CalcBudget(int levelIdx)
         {
+            if (balance != null)
+            {
+                return balance.GetThreatBudget(levelIdx, threatBudgetMin, threatBudgetBase, threatBudgetExp);
+            }
             return Mathf.Max(threatBudgetMin,
                 Mathf.RoundToInt(threatBudgetBase * Mathf.Pow(threatBudgetExp, levelIdx)));
         }

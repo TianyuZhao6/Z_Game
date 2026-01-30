@@ -29,6 +29,11 @@ namespace ZGame.UnityDraft
         public AnimationCurve enemyHpCurve = AnimationCurve.Linear(0, 1f, 20, 2.0f);   // eval by levelIdx (0-based)
         public AnimationCurve enemyAtkCurve = AnimationCurve.Linear(0, 1f, 20, 1.8f);
         public AnimationCurve enemySpeedCurve = AnimationCurve.Linear(0, 1f, 20, 1.3f);
+        [Header("Threat Budget Table (optional override per level)")]
+        public int[] threatBudgetTable = new int[]
+        {
+            6,7,8,10,12,14,16,19,23,27,31,37,44,52,62,73,87,102,121,143
+        };
 
         [Header("Enemy Footprint Multipliers")]
         public float tankSizeMult = 0.80f;
@@ -107,6 +112,15 @@ namespace ZGame.UnityDraft
         public float GetEnemySpeedMult(int levelIdx)
         {
             return enemySpeedCurve != null ? enemySpeedCurve.Evaluate(Mathf.Max(0, levelIdx)) : 1f + 0.03f * levelIdx;
+        }
+
+        public int GetThreatBudget(int levelIdx, int min, int baseVal, float exp)
+        {
+            if (threatBudgetTable != null && levelIdx >= 0 && levelIdx < threatBudgetTable.Length && threatBudgetTable[levelIdx] > 0)
+            {
+                return threatBudgetTable[levelIdx];
+            }
+            return Mathf.Max(min, Mathf.RoundToInt(baseVal * Mathf.Pow(exp, levelIdx)));
         }
     }
 
