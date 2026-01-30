@@ -52,8 +52,11 @@ namespace ZGame.UnityDraft
         public string twinBossTypeId = "boss_twin";
         public string banditTypeId = "bandit";
         public bool banditAllowed = false;
-        public float banditFirstDelay = 60f;
+        public float banditFirstDelay = 60f; // legacy timer
         public float banditRespawnDelay = 45f;
+        public float banditChancePerWave = 0.28f;
+        public int banditMinLevel = 2;
+        public bool banditOncePerLevel = true;
         public System.Action OnBanditSpawned;
         [Header("Spawn Targets")]
         public Systems.EnemyFactory enemyFactory;
@@ -74,6 +77,7 @@ namespace ZGame.UnityDraft
         private readonly Queue<string> _specialQueue = new();
         private bool _bossSpawned = false;
         private float _nextBanditTime = float.PositiveInfinity;
+        private bool _banditSpawnedThisLevel = false;
         public float CurrentBudget => _currentBudget;
         public float CurrentSpawnTimer => _timer;
         public float BanditCountdown => Mathf.Max(0f, _nextBanditTime - Time.time);
@@ -103,6 +107,20 @@ namespace ZGame.UnityDraft
                 _timer = 0f;
                 SpawnWave();
                 _waveIndex++;
+                TrySpawnBanditChance();
+            }
+        }
+
+        private void TrySpawnBanditChance()
+        {
+            if (!banditAllowed || _banditSpawnedThisLevel) return;
+            if (_levelIdx < banditMinLevel) return;
+            if (_bossSpawned || bossMode) return;
+            if (Random.value <= banditChancePerWave)
+            {
+                SpawnImmediate(banditTypeId);
+                _banditSpawnedThisLevel = true;
+                OnBanditSpawned?.Invoke();
             }
         }
 
@@ -190,6 +208,7 @@ namespace ZGame.UnityDraft
             twinBoss = gm != null && gm.twinBoss;
             banditAllowed = gm != null && gm.banditAllowed;
             _levelIdx = gm != null ? gm.currentLevelIndex : 0;
+            _banditSpawnedThisLevel = false;
             if (flow != null)
             {
                 bossTypeId = flow.bossTypeId;

@@ -18,6 +18,8 @@ namespace ZGame.UnityDraft.Systems
         public string banditTypeId = "bandit";
         public float banditFirstDelay = 60f;
         public float banditRespawnDelay = 45f;
+        public float banditChancePerWave = 0.28f;
+        public int banditMinLevel = 2;
         [Header("Biome Buffs")]
         public List<BiomeBuff> biomeBuffs = new()
         {
@@ -82,6 +84,13 @@ namespace ZGame.UnityDraft.Systems
             balance.enemySpeed = _baseEnemySpeed * buff.enemySpeedMult;
             balance.enemyAttack = Mathf.RoundToInt(_baseEnemyHp * buff.enemyHpMult);
             balance.playerSpeed = _basePlayerSpeed * buff.playerSpeedMult;
+        }
+
+        public void ApplyBanditConfig(WaveSpawner spawner)
+        {
+            if (spawner == null) return;
+            spawner.banditChancePerWave = banditChancePerWave;
+            spawner.banditMinLevel = banditMinLevel;
         }
     }
 
