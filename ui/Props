@@ -1,3 +1,5 @@
+No further structural code changes are required beyond those data entries and NavMesh package setup.
+=====================================================================
 Working on the game scene design
 Working on moving the rendering system to GPU Unity system
 ===================PATH==============================================
