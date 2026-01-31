@@ -1,4 +1,10 @@
-No further structural code changes are required beyond those data entries and NavMesh package setup.
+Data entry not synced: Boss pattern timings/angles/projectile types, ravager dash constants, turret/influencer weights/unlocks, bandit timing, and ability scalars still rely on Inspector fields—these need the exact Python numbers.
+NavMesh: NavMesh2D is still a stub until you add Unity.AI.Navigation; avoidance is lighter than Python’s full funnel logic.
+Shop/meta data: Shop item pool (IDs/costs/rarities), reroll base cost, and any Python-only items (e.g., golden interest tiers) aren’t populated; special effects exist but need the right item IDs and costs.
+Assets: VFX/SFX/materials/sprites are placeholders; Python effects aren’t replicated visually/audibly.
+Save/load scope: Wave composition queues or other transient spawn lists aren’t saved; only budget/timer/bandit flags are.
+Map catalogs: Obstacle/decor/destructible sets and loot tables aren’t filled with the Python catalogs; passage budget value may differ.
+Balance details: Player crit/paint/acid/wind tuning and blast/teleport scalars need P
 =====================================================================
 Working on the game scene design
 Working on moving the rendering system to GPU Unity system
