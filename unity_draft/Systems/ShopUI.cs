@@ -54,7 +54,7 @@ namespace ZGame.UnityDraft.Systems
         {
             if (rerollCostText != null && shop != null)
             {
-                rerollCostText.text = $"Reroll: {shop.CurrentRerollCost()}";
+                rerollCostText.text = $"Reroll: {shop.CurrentRerollCost(levelIdx)}";
             }
             if (rerollButton != null)
             {

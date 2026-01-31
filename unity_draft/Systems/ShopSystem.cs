@@ -23,7 +23,9 @@ namespace ZGame.UnityDraft.Systems
         public int couponMaxUsePerPurchase = 1;
         [Header("Reroll")]
         public int rerollBaseCost = 20;
-        public float rerollCostMult = 1.2f;
+        public float rerollCostMult = 1f;      // keep reroll cost flat
+        public float rerollLevelExp = 1f;      // no level scaling
+        public float rerollStackMult = 1f;     // no per-reroll stacking
         private int _rerollCount = 0;
         [Header("Currency Routing")]
         public bool useRunCoinsFirst = false; // allow spending run coins before banked coins
@@ -95,15 +97,17 @@ namespace ZGame.UnityDraft.Systems
             _rerollCount = Mathf.Max(0, count);
         }
 
-        public int CurrentRerollCost()
+        public int CurrentRerollCost(int levelIdx = 0)
         {
-            return Mathf.Max(1, Mathf.RoundToInt(rerollBaseCost * Mathf.Pow(rerollCostMult, _rerollCount)));
+            float levelMult = Mathf.Pow(rerollLevelExp, Mathf.Max(0, levelIdx));
+            float stackMult = Mathf.Pow(rerollStackMult, Mathf.Max(0, _rerollCount));
+            return Mathf.Max(1, Mathf.RoundToInt(rerollBaseCost * levelMult * stackMult));
         }
 
         public bool TryReroll(int levelIdx)
         {
             if (shopPool == null || shopPool.Count == 0 || meta == null) return false;
-            int cost = CurrentRerollCost();
+            int cost = CurrentRerollCost(levelIdx);
             if (meta.runCoins + meta.bankedCoins < cost) return false;
             int remaining = cost;
             if (useRunCoinsFirst && meta.runCoins > 0)
