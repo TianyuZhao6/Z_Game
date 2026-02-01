@@ -24,6 +24,7 @@ namespace ZGame.UnityDraft
         public float critChance = 0.05f;
         public float critMult = 1.8f;
         public float slowResist = 0f; // 0..1 reduces incoming slows
+        public float xpGainMult = 1f;
 
         [Header("Runtime")]
         public float radiusPx;

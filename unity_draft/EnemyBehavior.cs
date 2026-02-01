@@ -440,7 +440,16 @@ namespace ZGame.UnityDraft
                 if (dist <= fuseRange)
                 {
                     var p = target.GetComponent<Player>();
-                    if (p != null) p.Damage(Mathf.RoundToInt(suicideDamage));
+                    if (p != null)
+                    {
+                        float dmg = suicideDamage;
+                        var gm = GameManager.Instance;
+                        if (gm != null)
+                        {
+                            dmg *= gm.contactDamageMult;
+                        }
+                        p.Damage(Mathf.RoundToInt(dmg));
+                    }
                 }
             }
             _enemy.Kill();

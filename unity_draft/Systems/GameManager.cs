@@ -17,6 +17,9 @@ namespace ZGame.UnityDraft.Systems
         public LevelSession session;
         [Header("Biome Runtime")]
         public LevelFlow.BiomeBuff currentBiome;
+        public static GameManager Instance;
+        public float contactDamageMult = 1f;
+        public float bossContactDamageMult = 1f;
 
         [Header("Runtime State")]
         public int currentLevelIndex = 0; // 0-based
@@ -31,6 +34,7 @@ namespace ZGame.UnityDraft.Systems
 
         private void Awake()
         {
+            Instance = this;
             if (levelFlow == null) levelFlow = GetComponent<LevelFlow>();
             if (meta == null) meta = GetComponent<MetaProgression>();
             if (hud == null) hud = FindObjectOfType<HUDController>();
@@ -95,25 +99,52 @@ namespace ZGame.UnityDraft.Systems
                 // Domain of Wind hazard placeholder: spawn a breeze patch once
                 if (currentBiome.wind)
                 {
-                    paint.SpawnEnemyPaint(transform.position, 3f, 6f, currentBiome.paintColor);
+                    paint.SpawnEnemyPaint(transform.position, paint.hurricaneRadius, paint.hurricaneLifetime, currentBiome.paintColor);
                 }
             }
             // Player buffs per biome
             var player = FindObjectOfType<Player>();
             if (player != null && currentBiome != null)
             {
+                player.xpGainMult = 1f;
                 if (currentBiome.name == "Domain of Wind")
                 {
                     player.speed = Mathf.Min(player.speed * 1.12f, player.balance != null ? player.balance.playerSpeedCap : player.speed);
+                    player.xpGainMult = 1f;
                 }
                 else if (currentBiome.name == "Scorched Hell")
                 {
                     player.attack = Mathf.RoundToInt(player.attack * 2f);
+                    player.xpGainMult = 1f;
                 }
                 else if (currentBiome.name == "Bastion of Stone")
                 {
                     player.shieldHp = Mathf.RoundToInt(player.maxHp * 0.5f);
+                    player.xpGainMult = 1f;
                 }
+                else if (currentBiome.name == "Misty Forest")
+                {
+                    player.xpGainMult = 1.3f;
+                }
+            }
+            // Contact damage multipliers
+            contactDamageMult = 1f;
+            bossContactDamageMult = 1f;
+            if (currentBiome != null && currentBiome.name == "Scorched Hell")
+            {
+                contactDamageMult = 2.0f;
+                bossContactDamageMult = 1.5f;
+            }
+            // Fog for Misty Forest
+            if (currentBiome != null && currentBiome.name == "Misty Forest")
+            {
+                RenderSettings.fog = true;
+                RenderSettings.fogColor = new Color(0.55f, 0.65f, 0.70f, 1f);
+                RenderSettings.fogDensity = 0.015f;
+            }
+            else
+            {
+                RenderSettings.fog = false;
             }
             // Banner
             if (menu != null && !string.IsNullOrEmpty(biome))

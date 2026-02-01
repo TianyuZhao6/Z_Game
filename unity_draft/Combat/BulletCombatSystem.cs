@@ -238,6 +238,12 @@ namespace ZGame.UnityDraft.Combat
         private void ApplyDamageToPlayer(Player player, Bullet b)
         {
             int dealt = Mathf.Max(1, Mathf.RoundToInt(b.damage));
+            var gm = Systems.GameManager.Instance;
+            if (gm != null)
+            {
+                bool isBoss = b.attacker is Enemy en && en.typeConfig != null && en.typeConfig.isBoss;
+                dealt = Mathf.RoundToInt(dealt * (isBoss ? gm.bossContactDamageMult : gm.contactDamageMult));
+            }
             // Shield routing: subtract from shield if present.
             if (player.shieldHp > 0)
             {
