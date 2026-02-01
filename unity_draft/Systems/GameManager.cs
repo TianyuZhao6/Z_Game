@@ -78,12 +78,42 @@ namespace ZGame.UnityDraft.Systems
             }
             // Coin multiplier for spoils
             var bcs = FindObjectOfType<Combat.BulletCombatSystem>();
-            if (bcs != null && currentBiome != null) bcs.coinMult = currentBiome.coinMult;
+            if (bcs != null && currentBiome != null)
+            {
+                bcs.coinMult = currentBiome.coinMult;
+                // Scorched Hell: boost paint curing (use paint bonus)
+                if (currentBiome.name == "Scorched Hell")
+                {
+                    bcs.paintBonusMult = 1.30f;
+                }
+            }
             // Paint color override
             var paint = FindObjectOfType<PaintSystem>();
             if (paint != null && currentBiome != null)
             {
                 paint.defaultPaintColor = currentBiome.paintColor;
+                // Domain of Wind hazard placeholder: spawn a breeze patch once
+                if (currentBiome.wind)
+                {
+                    paint.SpawnEnemyPaint(transform.position, 3f, 6f, currentBiome.paintColor);
+                }
+            }
+            // Player buffs per biome
+            var player = FindObjectOfType<Player>();
+            if (player != null && currentBiome != null)
+            {
+                if (currentBiome.name == "Domain of Wind")
+                {
+                    player.speed = Mathf.Min(player.speed * 1.12f, player.balance != null ? player.balance.playerSpeedCap : player.speed);
+                }
+                else if (currentBiome.name == "Scorched Hell")
+                {
+                    player.attack = Mathf.RoundToInt(player.attack * 2f);
+                }
+                else if (currentBiome.name == "Bastion of Stone")
+                {
+                    player.shieldHp = Mathf.RoundToInt(player.maxHp * 0.5f);
+                }
             }
             // Banner
             if (menu != null && !string.IsNullOrEmpty(biome))
