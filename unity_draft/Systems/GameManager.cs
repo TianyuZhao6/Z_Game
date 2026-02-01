@@ -20,6 +20,9 @@ namespace ZGame.UnityDraft.Systems
         public static GameManager Instance;
         public float contactDamageMult = 1f;
         public float bossContactDamageMult = 1f;
+        [Header("Hurricane Prefab (Wind biome)")]
+        public GameObject hurricanePrefab;
+        public int hurricaneCount = 1;
 
         [Header("Runtime State")]
         public int currentLevelIndex = 0; // 0-based
@@ -102,6 +105,11 @@ namespace ZGame.UnityDraft.Systems
                     paint.SpawnEnemyPaint(transform.position, paint.hurricaneRadius, paint.hurricaneLifetime, currentBiome.paintColor);
                 }
             }
+            // Spawn hurricanes for wind biome
+            if (currentBiome != null && currentBiome.wind && hurricanePrefab != null)
+            {
+                SpawnHurricanes();
+            }
             // Player buffs per biome
             var player = FindObjectOfType<Player>();
             if (player != null && currentBiome != null)
@@ -150,6 +158,37 @@ namespace ZGame.UnityDraft.Systems
             if (menu != null && !string.IsNullOrEmpty(biome))
             {
                 menu.ShowBanner($"Entering {biome}", 1.5f);
+            }
+        }
+
+        private void SpawnHurricanes()
+        {
+            var grid = FindObjectOfType<GridManager>();
+            float cs = balance != null ? balance.cellSize : 52f;
+            float mapW = (balance != null ? balance.gridSize : 32) * cs;
+            float mapH = (balance != null ? balance.gridSize : 32) * cs;
+            float infoH = balance != null ? balance.infoBarHeight : 40f;
+            var player = FindObjectOfType<Player>();
+            Vector2 pPos = player != null ? (Vector2)player.transform.position : Vector2.zero;
+            float minDist = cs * 6f;
+            float margin = (balance != null ? balance.cellSize * 6f : 300f) * 1.2f;
+            for (int i = 0; i < hurricaneCount; i++)
+            {
+                Vector3 pos = new Vector3(mapW * 0.5f, infoH + mapH * 0.5f, 0f);
+                for (int tries = 0; tries < 40; tries++)
+                {
+                    float x = Random.Range(margin, mapW - margin);
+                    float y = infoH + Random.Range(margin, mapH - margin);
+                    Vector2 cand = new Vector2(x, y);
+                    if ((cand - pPos).sqrMagnitude >= minDist * minDist)
+                    {
+                        pos = new Vector3(x, y, 0f);
+                        break;
+                    }
+                }
+                var h = Instantiate(hurricanePrefab, pos, Quaternion.identity);
+                var hc = h.GetComponent<Hurricane>();
+                if (hc != null) hc.Init(balance, grid, pos);
             }
         }
     }
