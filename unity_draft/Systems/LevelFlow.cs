@@ -23,10 +23,10 @@ namespace ZGame.UnityDraft.Systems
         [Header("Biome Buffs")]
         public List<BiomeBuff> biomeBuffs = new()
         {
-            new BiomeBuff("Domain of Wind", playerSpeedMult:1.05f, enemySpeedMult:1.05f, enemyHpMult:1.0f, spoilBonus:0),
-            new BiomeBuff("Misty Forest",   playerSpeedMult:1.0f,  enemySpeedMult:0.95f, enemyHpMult:1.0f, spoilBonus:0),
-            new BiomeBuff("Scorched Hell",  playerSpeedMult:1.0f,  enemySpeedMult:1.0f,  enemyHpMult:1.1f, spoilBonus:1),
-            new BiomeBuff("Bastion of Stone", playerSpeedMult:0.95f, enemySpeedMult:1.0f, enemyHpMult:1.15f, spoilBonus:0),
+            new BiomeBuff("Domain of Wind", playerSpeedMult:1.05f, enemySpeedMult:1.05f, enemyHpMult:1.0f, spoilBonus:0, coinMult:1.0f, wind:true, paintColor: new Color(0.6f,0.8f,1f,0.35f)),
+            new BiomeBuff("Misty Forest",   playerSpeedMult:1.0f,  enemySpeedMult:0.95f, enemyHpMult:1.0f, spoilBonus:0, coinMult:1.0f, wind:false, paintColor: new Color(0.5f,0.7f,0.6f,0.35f)),
+            new BiomeBuff("Scorched Hell",  playerSpeedMult:1.0f,  enemySpeedMult:1.0f,  enemyHpMult:1.1f, spoilBonus:1, coinMult:1.1f, wind:false, paintColor: new Color(0.85f,0.45f,0.2f,0.35f)),
+            new BiomeBuff("Bastion of Stone", playerSpeedMult:0.95f, enemySpeedMult:1.0f, enemyHpMult:1.15f, spoilBonus:0, coinMult:1.0f, wind:false, paintColor: new Color(0.7f,0.7f,0.75f,0.35f)),
         };
 
         private bool _capturedBase;
@@ -74,16 +74,17 @@ namespace ZGame.UnityDraft.Systems
             balance.playerSpeed = _basePlayerSpeed;
         }
 
-        public void ApplyBiomeBuffs(string biomeName, GameBalanceConfig balance)
+        public BiomeBuff ApplyBiomeBuffs(string biomeName, GameBalanceConfig balance)
         {
             CaptureBase(balance);
             ClearBiomeBuffs(balance);
-            if (balance == null || string.IsNullOrEmpty(biomeName)) return;
+            if (balance == null || string.IsNullOrEmpty(biomeName)) return null;
             var buff = biomeBuffs.Find(b => b.name == biomeName);
-            if (buff == null) return;
+            if (buff == null) return null;
             balance.enemySpeed = _baseEnemySpeed * buff.enemySpeedMult;
             balance.enemyAttack = Mathf.RoundToInt(_baseEnemyHp * buff.enemyHpMult);
             balance.playerSpeed = _basePlayerSpeed * buff.playerSpeedMult;
+            return buff;
         }
 
         public void ApplyBanditConfig(WaveSpawner spawner)
@@ -102,14 +103,20 @@ namespace ZGame.UnityDraft.Systems
         public float enemySpeedMult = 1f;
         public float enemyHpMult = 1f;
         public int spoilBonus = 0;
+        public float coinMult = 1f;
+        public bool wind = false;
+        public Color paintColor = new Color(0.2f,0.8f,1f,0.35f);
 
-        public BiomeBuff(string name, float playerSpeedMult, float enemySpeedMult, float enemyHpMult, int spoilBonus)
+        public BiomeBuff(string name, float playerSpeedMult, float enemySpeedMult, float enemyHpMult, int spoilBonus, float coinMult = 1f, bool wind=false, Color? paintColor=null)
         {
             this.name = name;
             this.playerSpeedMult = playerSpeedMult;
             this.enemySpeedMult = enemySpeedMult;
             this.enemyHpMult = enemyHpMult;
             this.spoilBonus = spoilBonus;
+            this.coinMult = coinMult;
+            this.wind = wind;
+            if (paintColor.HasValue) this.paintColor = paintColor.Value;
         }
     }
 }

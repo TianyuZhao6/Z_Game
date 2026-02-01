@@ -15,6 +15,8 @@ namespace ZGame.UnityDraft.Systems
         public HUDController hud;
         public UI.MenuController menu;
         public LevelSession session;
+        [Header("Biome Runtime")]
+        public LevelFlow.BiomeBuff currentBiome;
 
         [Header("Runtime State")]
         public int currentLevelIndex = 0; // 0-based
@@ -43,7 +45,8 @@ namespace ZGame.UnityDraft.Systems
             twinBoss = levelFlow != null && levelFlow.UseTwinBoss(levelIdx);
             banditAllowed = levelFlow != null && levelFlow.ShouldSpawnBandit(levelIdx);
             biome = levelFlow != null ? levelFlow.NextBiome(levelIdx) : null;
-            levelFlow?.ApplyBiomeBuffs(biome, balance);
+            currentBiome = levelFlow?.ApplyBiomeBuffs(biome, balance);
+            ApplyBiomeSideEffects();
             OnLevelStarted?.Invoke();
             menu?.HideStartSequence();
             hud?.SetTimer(session != null ? session.levelTime : 0f);
@@ -63,6 +66,30 @@ namespace ZGame.UnityDraft.Systems
             Time.timeScale = 0f;
             OnLevelFailed?.Invoke();
             menu?.ShowFail();
+        }
+
+        private void ApplyBiomeSideEffects()
+        {
+            // Wind biome: enable WindBiomeModifier components
+            var windMods = FindObjectsOfType<WindBiomeModifier>(true);
+            foreach (var w in windMods)
+            {
+                w.enabled = currentBiome != null && currentBiome.wind && currentBiome.name == w.biomeName;
+            }
+            // Coin multiplier for spoils
+            var bcs = FindObjectOfType<Combat.BulletCombatSystem>();
+            if (bcs != null && currentBiome != null) bcs.coinMult = currentBiome.coinMult;
+            // Paint color override
+            var paint = FindObjectOfType<PaintSystem>();
+            if (paint != null && currentBiome != null)
+            {
+                paint.defaultPaintColor = currentBiome.paintColor;
+            }
+            // Banner
+            if (menu != null && !string.IsNullOrEmpty(biome))
+            {
+                menu.ShowBanner($"Entering {biome}", 1.5f);
+            }
         }
     }
 }

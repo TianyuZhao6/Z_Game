@@ -25,6 +25,8 @@ namespace ZGame.UnityDraft
         public Material paintMaterial;
         public float quadSize = 1f;
         public int maxBatch = 512;
+        [Header("Defaults")]
+        public Color defaultPaintColor = new Color(0.2f, 0.8f, 1f, 0.35f);
 
         public void SpawnEnemyPaint(Vector2 pos, float radius, float lifetime, Color color)
         {
@@ -34,7 +36,7 @@ namespace ZGame.UnityDraft
                 radius = radius,
                 lifetime = lifetime,
                 age = 0f,
-                color = color
+                color = color.a > 0f ? color : defaultPaintColor
             });
         }
 

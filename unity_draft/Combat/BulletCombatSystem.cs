@@ -46,6 +46,8 @@ namespace ZGame.UnityDraft.Combat
         public float paintHitRadius = 0.4f;
         public float paintHitLifetime = 4f;
         public bool paintOnlyOnEnemies = true;
+        [Header("Biome / Economy")]
+        public float coinMult = 1f;
         [Header("VFX/SFX")]
         public ZGame.UnityDraft.VFX.VfxPlayer vfxPlayer;
         public ZGame.UnityDraft.VFX.SfxPlayer sfxPlayer;
@@ -165,7 +167,7 @@ namespace ZGame.UnityDraft.Combat
                     if (awardKills) meta.AddKill(1);
                     if (awardSpoils && enemy.spoils > 0)
                     {
-                        meta.AddRunCoins(enemy.spoils);
+                        meta.AddRunCoins(Mathf.RoundToInt(enemy.spoils * coinMult));
                         if (hud != null) hud.SetCoins(meta.runCoins + meta.bankedCoins);
                         enemy.spoils = 0;
                     }
