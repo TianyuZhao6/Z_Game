@@ -4963,6 +4963,13 @@ def _apply_comet_blast_damage(player, game_state, enemies, target_pos) -> dict:
     """Apply AoE damage at the locked blast point; returns stats for VFX intensity."""
     tx, ty = target_pos
     r2 = float(BLAST_RADIUS) * float(BLAST_RADIUS)
+    def _blast_falloff(dx: float, dy: float) -> float:
+        """
+        Damage scales from 200% at center → 75% at edge (linear with radius).
+        """
+        dist = math.hypot(dx, dy)
+        t = max(0.0, min(1.0, dist / float(BLAST_RADIUS)))
+        return 2.0 + (0.75 - 2.0) * t  # lerp(center=2.0, edge=0.75)
     hits = 0
     kills = 0
     for z in list(enemies):
@@ -4971,7 +4978,8 @@ def _apply_comet_blast_damage(player, game_state, enemies, target_pos) -> dict:
         if dx * dx + dy * dy <= r2:
             hits += 1
             hit_n = random.randint(BLAST_HITS_MIN, BLAST_HITS_MAX)
-            dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ENEMY) * BLAST_DMG_MULT))
+            falloff = _blast_falloff(dx, dy)
+            dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ENEMY) * BLAST_DMG_MULT * falloff))
             total = hit_n * dmg_per
             before = int(getattr(z, "hp", 0))
             z.hp = max(0, before - total)
@@ -4995,7 +5003,8 @@ def _apply_comet_blast_damage(player, game_state, enemies, target_pos) -> dict:
         if dx * dx + dy * dy > r2:
             continue
         hit_n = random.randint(BLAST_HITS_MIN, BLAST_HITS_MAX)
-        dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ENEMY) * BLAST_DMG_MULT))
+        falloff = _blast_falloff(dx, dy)
+        dmg_per = max(1, int(getattr(player, "bullet_damage", BULLET_DAMAGE_ENEMY) * BLAST_DMG_MULT * falloff))
         total = hit_n * dmg_per
         ob.health = (ob.health or 0) - total
         if ob.health <= 0:
