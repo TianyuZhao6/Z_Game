@@ -1012,7 +1012,7 @@ DESTRUCTIBLE_RATIO = 0.3
 PLAYER_SPEED = 4.5
 PLAYER_SPEED_CAP = 6.5
 ENEMY_SPEED = 2
-ENEMY_SPEED_MAX = 4.5
+ENEMY_SPEED_MAX = 4.0
 ENEMY_ATTACK = 10
 # --- next-level scene buff cards ---
 SCENE_BIOMES = ["Domain of Wind", "Misty Forest", "Scorched Hell", "Bastion of Stone"]
