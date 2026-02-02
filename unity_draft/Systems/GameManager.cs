@@ -23,6 +23,9 @@ namespace ZGame.UnityDraft.Systems
         [Header("Hurricane Prefab (Wind biome)")]
         public GameObject hurricanePrefab;
         public int hurricaneCount = 1;
+        [Header("Fog Prefab (Misty biome)")]
+        public GameObject fogPrefab;
+        private GameObject _fogInstance;
 
         [Header("Runtime State")]
         public int currentLevelIndex = 0; // 0-based
@@ -149,10 +152,21 @@ namespace ZGame.UnityDraft.Systems
                 RenderSettings.fog = true;
                 RenderSettings.fogColor = new Color(0.55f, 0.65f, 0.70f, 1f);
                 RenderSettings.fogDensity = 0.015f;
+                if (_fogInstance == null && fogPrefab != null)
+                {
+                    _fogInstance = Instantiate(fogPrefab);
+                    var fc = _fogInstance.GetComponent<Systems.FogController>();
+                    if (fc != null)
+                    {
+                        fc.target = FindObjectOfType<Player>()?.transform;
+                        fc.cam = Camera.main;
+                    }
+                }
             }
             else
             {
                 RenderSettings.fog = false;
+                if (_fogInstance != null) Destroy(_fogInstance);
             }
             // Banner
             if (menu != null && !string.IsNullOrEmpty(biome))
