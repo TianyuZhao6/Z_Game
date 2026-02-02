@@ -25,6 +25,10 @@ namespace ZGame.UnityDraft
         public int ricochetLeft = 0;
         public float hitRadius = 0f; // 0 => use system default
         public ICritSource attacker; // optional, for crit stats
+        [Header("Visuals")]
+        public SpriteRenderer sr;
+        public Color baseColor = Color.white;
+        public Vector3 baseScale = Vector3.one;
         [Header("Ballistic")]
         public bool useGravity = false;
         public float gravity = -980f; // pixels per second^2 if you use pixel world; adjust as needed
@@ -56,6 +60,12 @@ namespace ZGame.UnityDraft
             faction = Faction.Player;
             hitRadius = 0f;
             attacker = null;
+            if (sr == null) sr = GetComponent<SpriteRenderer>();
+            if (sr != null)
+            {
+                sr.color = baseColor;
+                transform.localScale = baseScale;
+            }
         }
 
         /// <summary>
@@ -77,6 +87,12 @@ namespace ZGame.UnityDraft
             faction = Faction.Player;
             hitRadius = 0f;
             attacker = null;
+            if (sr == null) sr = GetComponent<SpriteRenderer>();
+            if (sr != null)
+            {
+                sr.color = baseColor;
+                transform.localScale = baseScale;
+            }
         }
 
         public void Tick(float dt)

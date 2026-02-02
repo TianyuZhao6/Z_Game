@@ -48,6 +48,9 @@ namespace ZGame.UnityDraft.Combat
         public bool paintOnlyOnEnemies = true;
         [Header("Biome / Economy")]
         public float coinMult = 1f;
+        [Header("Hell Biome Visuals")]
+        public float hellBulletScale = 1.3f;
+        public Color hellBulletColor = new Color(1f, 0.55f, 0.25f, 1f);
         [Header("VFX/SFX")]
         public ZGame.UnityDraft.VFX.VfxPlayer vfxPlayer;
         public ZGame.UnityDraft.VFX.SfxPlayer sfxPlayer;
@@ -83,7 +86,27 @@ namespace ZGame.UnityDraft.Combat
 
         public void RegisterBullet(Bullet b)
         {
-            if (b != null) _bullets.Add(b);
+            if (b != null)
+            {
+                ApplyBiomeBulletVisual(b);
+                _bullets.Add(b);
+            }
+        }
+
+        private void ApplyBiomeBulletVisual(Bullet b)
+        {
+            var gm = Systems.GameManager.Instance;
+            if (gm != null && gm.currentBiome != null && gm.currentBiome.name == "Scorched Hell")
+            {
+                if (b.sr == null) b.sr = b.GetComponent<SpriteRenderer>();
+                if (b.sr != null)
+                {
+                    b.baseColor = b.sr.color;
+                    b.sr.color = hellBulletColor;
+                }
+                b.baseScale = b.transform.localScale;
+                b.transform.localScale = b.baseScale * hellBulletScale;
+            }
         }
 
         public void Tick(float dt)
