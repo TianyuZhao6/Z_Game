@@ -30,7 +30,6 @@ namespace ZGame.UnityDraft.Systems
         public int wantedKillTarget = 0;
         public int wantedPosterWaves = 0;
 
-        [Header("Consumables")]
         [System.Serializable]
         public class ConsumableStack
         {
@@ -44,6 +43,7 @@ namespace ZGame.UnityDraft.Systems
             }
         }
 
+        [Header("Consumables")]
         public List<ConsumableStack> consumables = new();
         [Header("Bandit Radar")]
         public int banditRadarLevel = 0;

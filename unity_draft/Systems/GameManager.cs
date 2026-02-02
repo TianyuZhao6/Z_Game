@@ -16,7 +16,7 @@ namespace ZGame.UnityDraft.Systems
         public UI.MenuController menu;
         public LevelSession session;
         [Header("Biome Runtime")]
-        public LevelFlow.BiomeBuff currentBiome;
+        public BiomeBuff currentBiome;
         public static GameManager Instance;
         public float contactDamageMult = 1f;
         public float bossContactDamageMult = 1f;

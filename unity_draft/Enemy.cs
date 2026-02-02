@@ -30,6 +30,9 @@ namespace ZGame.UnityDraft
         public float radarRingPhase = 0f;
         public System.Action OnKilled;
 
+        public float CritChance => critChance;
+        public float CritMult => critMult;
+
         private SpriteRenderer _sr;
         private Collider2D _collider;
 

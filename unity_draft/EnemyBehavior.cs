@@ -203,7 +203,6 @@ namespace ZGame.UnityDraft
         [Header("Dash / Cone / Ring Attacks")]
         public float dashWindup = 0.4f;      // BOSS_DASH_WINDUP
         public float dashTime = 0.6f;        // BOSS_DASH_GO_TIME
-        public float dashSpeedMult = 4.2f;   // BOSS_DASH_SPEED_MULT
         public float coneCount = 7;          // BOSS_VOMIT_COUNT
         public float coneArcDeg = 55f;       // BOSS_VOMIT_CONE_DEG
         public float coneSpeed = 380f;       // BOSS_VOMIT_SPEED
