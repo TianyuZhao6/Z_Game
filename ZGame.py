@@ -4965,11 +4965,11 @@ def _apply_comet_blast_damage(player, game_state, enemies, target_pos) -> dict:
     r2 = float(BLAST_RADIUS) * float(BLAST_RADIUS)
     def _blast_falloff(dx: float, dy: float) -> float:
         """
-        Damage scales from 200% at center → 75% at edge (linear with radius).
+        Damage scales from 200% at center → 80% at edge (linear with radius).
         """
         dist = math.hypot(dx, dy)
         t = max(0.0, min(1.0, dist / float(BLAST_RADIUS)))
-        return 2.0 + (0.75 - 2.0) * t  # lerp(center=2.0, edge=0.75)
+        return 2.0 + (0.80 - 2.0) * t  # lerp(center=2.0, edge=0.80)
     hits = 0
     kills = 0
     for z in list(enemies):
