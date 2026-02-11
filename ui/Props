@@ -1,3 +1,56 @@
+================================GAME TODO===================================
+'0. Full-Game Professional To-Do (Modify/Add)'
+
+[A] Vision & Scope
+0.1 Lock core game pillars (3 short bullets): combat feel, build variety, replayability.
+0.2 Define target run length (example: 18-25 min) and target difficulty curve.
+0.3 Freeze MVP feature scope, move all extra ideas to a post-MVP backlog.
+
+[B] Core Gameplay Quality
+0.4 Improve movement + shooting feel: acceleration, hit feedback, camera shake limits.
+0.5 Add clear enemy telegraphs (wind-up colors, attack direction, danger timing).
+0.6 Rebalance early game economy so first 2-3 shop choices always feel meaningful.
+0.7 Add elite enemy variants to bridge normal waves and boss difficulty.
+
+[C] Build System (Props) - Required Refactor
+0.8 Convert all props to one data-driven format (ScriptableObject/data table).
+0.9 Standardize prop fields: rarity, price, level cap, tags, scaling formula, VFX id.
+0.10 Add synergy tags (Pierce, DoT, Shield, Summon, Economy) for automatic combo rules.
+0.11 Add anti-snowball checks: diminishing returns and hard caps on extreme stacks.
+0.12 Add 8-12 "bridge props" that connect offense + defense + economy paths.
+
+[D] Meta Progression & Run Structure
+0.13 Add unlock roadmap: what is unlocked by level, boss clear, and achievements.
+0.14 Define biome order and identity (enemy set, hazard, reward style per biome).
+0.15 Add mid-run decision nodes (risk room, shop room, heal room, challenge room).
+
+[E] Boss & Encounter Design
+0.16 Give each boss 3 phases with a readable pattern change at each HP threshold.
+0.17 Add anti-stall mechanics so bosses pressure passive kiting builds.
+0.18 Add boss reward clarity: one safe pick, one high-risk pick, one build-defining pick.
+
+[F] UX, UI, and Readability
+0.19 Redesign HUD priority: HP/shield/status/coins first, low-value info second.
+0.20 Add combat log snippets for major events (crit spike, shield break, prop trigger).
+0.21 Add a pause-screen build summary so players understand why they are strong/weak.
+0.22 Improve color language consistency (damage type, status type, rarity tier).
+
+[G] Audio, Juice, and Game Feel
+0.23 Add layered hit audio (normal, crit, kill, shield break).
+0.24 Add distinct pickup sounds for coin, heal, rare prop, and key rewards.
+0.25 Add controlled screen FX policy to avoid visual overload in late waves.
+
+[H] Technical & Production
+0.26 Add save versioning + migration for future balance/data changes.
+0.27 Add debug tools: spawn waves, force props, DPS meter, economy simulator.
+0.28 Add telemetry events (death reason, pick rate, win rate by prop path).
+0.29 Set performance budget (target FPS, max enemies, max projectiles) and enforce it.
+
+[I] QA & Live Balance Loop
+0.30 Create a weekly balance cadence: collect metrics, patch numbers, re-test top builds.
+0.31 Add regression checklist before every build (shop, boss, save/load, UI, collisions).
+0.32 Run playtests for 3 player types: new, average, high-skill; tune separately.
+
 Continue learning building more features in unity.
 Add more features to the game.
 Working with the biome in unity 
