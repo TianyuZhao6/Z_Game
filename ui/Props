@@ -51,6 +51,36 @@
 0.31 Add regression checklist before every build (shop, boss, save/load, UI, collisions).
 0.32 Run playtests for 3 player types: new, average, high-skill; tune separately.
 
+[J] Onboarding & Player Learning
+0.33 Add a 60-90 second interactive tutorial focused only on movement, shooting, and pickup flow.
+0.34 Add first-run helper prompts that disappear permanently after the player demonstrates mastery.
+0.35 Add codex/encyclopedia pages for enemies, statuses, and prop synergies.
+0.36 Add death recap screen: top damage source, build snapshot, and suggested improvement.
+
+[K] Content Pipeline & Variety
+0.37 Build modular enemy ability components (dash, summon, shield, ranged burst) for faster new enemy creation.
+0.38 Define enemy role matrix per biome (chaser, zoner, sniper, tank, support) and enforce wave composition rules.
+0.39 Add mini-events during waves (meteor shower, cursed zone, treasure swarm) with clear risk/reward.
+0.40 Create a rarity-gated prop pool rotation so each run has a slightly different shop meta.
+
+[L] Accessibility & Controls
+0.41 Add full key remapping support for keyboard and controller.
+0.42 Add accessibility options: screen shake slider, flash reduction, colorblind-safe palette toggle.
+0.43 Add aim assist tuning presets (off/low/medium) and deadzone settings for controller.
+0.44 Add readable font scaling and UI safe-zone settings for small displays.
+
+[M] Economy, Difficulty, and Anti-Frustration
+0.45 Add pity rules for shops to reduce no-synergy streaks across multiple refreshes.
+0.46 Add dynamic catch-up rewards for weak runs (small bonus currency/utility choices).
+0.47 Add optional challenge modifiers that increase score/reward without blocking normal progression.
+0.48 Add hard fail-state audit: prevent unavoidable damage chains and off-screen unfair kills.
+
+[N] Release & Post-Launch Readiness
+0.49 Define release quality gates: crash-free threshold, average FPS floor, minimum content count.
+0.50 Prepare live-ops content packs (new props/enemies/events) with a versioned deployment checklist.
+0.51 Add structured bug triage labels: blocker, gameplay, balance, UX, cosmetic.
+0.52 Create a patch-note template that always includes balance intent, not just number changes.
+
 Continue learning building more features in unity.
 Add more features to the game.
 Working with the biome in unity 
