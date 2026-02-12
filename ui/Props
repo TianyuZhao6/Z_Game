@@ -81,6 +81,36 @@
 0.51 Add structured bug triage labels: blocker, gameplay, balance, UX, cosmetic.
 0.52 Create a patch-note template that always includes balance intent, not just number changes.
 
+[O] Progression Math & Balance Infrastructure
+0.53 Build a single source-of-truth spreadsheet/model for damage, HP, armor, and economy scaling.
+0.54 Define target time-to-kill benchmarks by wave tier (trash, elite, miniboss, boss).
+0.55 Add scripted balance tests that simulate 1000+ runs with randomized prop picks.
+0.56 Define hard caps per stat bucket (attack speed, crit chance, projectile count, shield gain).
+
+[P] Enemy AI & Combat Behaviors
+0.57 Add behavior state machine standards: idle, chase, attack, retreat, enraged, dead.
+0.58 Add anti-clump movement logic so enemies do not overlap into unreadable blobs.
+0.59 Add ranged enemy line-of-sight rules and reposition cooldowns to prevent spam loops.
+0.60 Add special "counter units" per build archetype so every run has adaptation pressure.
+
+[Q] Level Design & Biome Hazards
+0.61 Create biome hazard catalog with clear readability: fire pools, slow fields, lightning lanes.
+0.62 Ensure each biome has one unique traversal challenge and one unique combat challenge.
+0.63 Add procedural room templates with guaranteed safe spawn radius around player entry.
+0.64 Add encounter pacing rules: relief wave after peak stress wave to reduce fatigue.
+
+[R] Tools for Designers
+0.65 Build in-editor prop sandbox that can preview DPS and status interactions in real time.
+0.66 Add encounter editor with seed replay so designers can reproduce exact wave patterns.
+0.67 Add one-click capture tool for balance snapshots (build stats + wave + survival time).
+0.68 Add validation checks for content data (missing VFX, bad rarity, invalid scaling values).
+
+[S] Stability, Security, and Platform
+0.69 Add crash-report pipeline with automatic symbol upload and reproducible seed logging.
+0.70 Add deterministic random seed mode for debugging and competitive challenge runs.
+0.71 Add input latency tests and frame pacing checks on low-end target hardware.
+0.72 Add anti-corruption protection for save files (backup slot + checksum verification).
+
 Continue learning building more features in unity.
 Add more features to the game.
 Working with the biome in unity 
