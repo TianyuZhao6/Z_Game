@@ -135,24 +135,73 @@ Working on moving the rendering system to GPU Unity system
 Multi-element attribute synergy:
  e.g., Water + Lightning = AOE, linking enemies within the electric shock range.
 
-弹道流 已经有雏形(Pierce / Ricochet / Shrapnel).
-炮台流 有 Auto / Stationary.
-护盾流 刚做了 Carapace + Bone Plating + Shield AOE.
-经济流 有 Coin / Coupon / Reroll 基础
+Ballistic Path has an initial prototype (Pierce / Ricochet / Shrapnel).
+Turret Path has the baseline variants (Auto / Stationary).
+Shield Path has a working baseline (Carapace + Bone Plating + Shield AOE).
+Economy Path has baseline systems (Coin / Coupon / Reroll).
 
-状态流 有 Buff / Debuff / Status 基础 
+Status Path has baseline systems (Buff / Debuff / Status).
    Leave a trace wherever you go on map, then apply a status effect to enemies in the area.
    Status effect will be removed when you leave the area for a while.
    Status effect will be removed when you die/restart/clear the level.
 
 
-仆从流 有 Pet / Minion / Summoner 基础 
+Summoner Path has baseline systems (Pet / Minion / Summoner).
    Summon a Summoner that follows you and attacks enemies. When the Summoner dies, 
    it will be replaced by a new one. Summoner will level up with you.
    Summoner will have a unique ability that is different from your own.
    Summoner will have a unique passive ability that is different from your own.
 
-赌狗流 有 Lucky / Risk / Chance 基础
+Lucky Path has baseline systems (Lucky / Risk / Chance).
+
+Path Detail (Expanded English Design Spec)
+1) Ballistic Path
+   Fantasy: high projectile mastery and wave-clearing combos.
+   Key scaling stats: projectile count, pierce count, ricochet count, projectile speed.
+   Signature mechanics: hit chaining, wall-assisted bounces, kill-triggered shrapnel bursts.
+   Weakness: can underperform if maps have low enemy density or poor bounce angles.
+
+2) Turret Path
+   Fantasy: controlled zone defense with independent damage sources.
+   Key scaling stats: turret count, duration, fire rate, lock-on range.
+   Signature mechanics: auto turret for tracking, stationary turret for burst zones.
+   Weakness: vulnerable to fast reposition encounters and forced movement bosses.
+
+3) Shield Path
+   Fantasy: survive pressure and convert defense into controlled retaliation.
+   Key scaling stats: shield capacity, recharge, shield-on-hit effects, break effects.
+   Signature mechanics: Carapace one-time protection, plating stacks, shield pulse damage.
+   Weakness: lower ceiling if player avoids all damage and never triggers shield reactions.
+
+4) Economy Path
+   Fantasy: leverage resources to snowball smartly instead of pure combat stats.
+   Key scaling stats: coin gain multiplier, shop discount, reroll efficiency, protected coins.
+   Signature mechanics: better shop control, safer greed choices, compound value over time.
+   Weakness: weak immediate combat power if economy is over-invested too early.
+
+5) Status Path
+   Fantasy: control tempo through damage-over-time and debuff layers.
+   Key scaling stats: status duration, tick damage, stack cap, application chance.
+   Signature mechanics: trail zones, persistent debuffs, area denial through status fields.
+   Weakness: slower burst against urgent threats without setup time.
+
+6) Summoner Path
+   Fantasy: indirect power through companions and team-style combat flow.
+   Key scaling stats: summon count, summon damage ratio, summon uptime, respawn speed.
+   Signature mechanics: autonomous minions, command-based focus fire, summon-specific synergies.
+   Weakness: AI/pathing downtime can reduce real DPS in cluttered arenas.
+
+7) Lucky Path
+   Fantasy: high-variance run shaping with risk-reward decisions.
+   Key scaling stats: trigger chance, jackpot multiplier, fail penalty, reroll interaction.
+   Signature mechanics: chance-based spikes, gamble props, high ceiling but unstable floor.
+   Weakness: can create inconsistent runs without protection mechanics.
+
+Cross-path design rules:
+   Every major path should have at least 2 bridge props with two other paths.
+   No single path should solve both elite waves and bosses without trade-offs.
+   Utility paths (Economy/Status) should become stronger over time, not instantly.
+   High-variance paths must include one stabilizer option for consistency.
 
 Summoner Path Build (Design Draft)
 Core identity:
@@ -195,9 +244,9 @@ Milestone unlock plan:
    Milestone 4: legendary summon prop that changes your run win condition.
 
 
-经济流 & 控场流做成通用支线，可以跟任何主流派混搭.
+Economy Path and Control Path should be universal side branches that can hybridize with any main archetype.
 
-状态流 / 仆从流 / 赌狗流 等核心够稳的时候，再慢慢加进.
+Status Path / Summoner Path / Lucky Path should be expanded gradually after their core loops are stable.
 
 Boss: Anti-U
 ================================RARITY=====================================
