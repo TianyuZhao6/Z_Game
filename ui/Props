@@ -120,6 +120,14 @@
 0.78 Add summon deaths and respawn pacing rules so the path feels reliable but not immortal.
 0.79 Add dedicated Summoner UI panel (active summons, HP bars, command state, respawn timers).
 0.80 Add 10+ Summoner-specific props with internal synergies and anti-snowball guardrails.
+0.81 Add summon pathing fail-safe (stuck detector + forced reposition) to avoid DPS collapse.
+0.82 Add command latency budget: summons should react within 0.20s after player input.
+0.83 Add boss-specific summon AI profile (avoid lethal zones, keep uptime above 75%).
+0.84 Add summon damage telemetry split by source (basic attack / skill / on-hit effect).
+0.85 Add summon threat meter so tank summons can intentionally peel enemies off player.
+0.86 Add summon collision policy (ghost-through allies, soft-separate from enemies).
+0.87 Add summon level breakpoints with clear power spikes at levels 3/6/9.
+0.88 Add summoner fallback reward if AI uptime is low (small passive stat compensation).
 
 Continue learning building more features in unity.
 Add more features to the game.
@@ -202,6 +210,90 @@ Cross-path design rules:
    No single path should solve both elite waves and bosses without trade-offs.
    Utility paths (Economy/Status) should become stronger over time, not instantly.
    High-variance paths must include one stabilizer option for consistency.
+
+Path Tuning (Specific Numbers and Formulas)
+Global run brackets:
+   Early: waves 1-5
+   Mid: waves 6-12
+   Late: waves 13+
+
+Enemy scaling targets:
+   enemy_hp_multiplier = 1.00 / 1.85 / 3.10 (early/mid/late)
+   enemy_damage_multiplier = 1.00 / 1.35 / 1.80
+   elite_spawn_ratio = 8% / 16% / 24%
+
+Path activation threshold:
+   A path is considered "online" when player owns >= 2 tagged props from that path.
+   A path is considered "fully online" when player owns >= 4 tagged props from that path.
+
+Ballistic Path numeric targets:
+   effective_hit_count = 1 + pierce_count + (ricochet_count * 0.60)
+   shrapnel_proc_chance_cap = 55%
+   projectile_count_soft_cap = +4 (extra projectiles after cap get 50% damage)
+   target DPS gain from online to fully online: +35% to +55%
+
+Turret Path numeric targets:
+   max_active_turrets = 1 / 2 / 3 (by progression tier)
+   turret_damage_ratio_vs_player = 0.45 / 0.55 / 0.65
+   turret_duration = 8s base, +1.5s per level, cap 16s
+   retarget_interval = 0.25s (do not set lower to avoid visual jitter)
+
+Shield Path numeric targets:
+   shield_hp_gain_per_pick = +12 / +18 / +25
+   shield_recharge_delay = 5.0s base, minimum 2.5s
+   shield_break_explosion_ratio = 0.35 * player_bullet_base
+   max_total_shield_from_props = 220 (before temporary buffs)
+
+Economy Path numeric targets:
+   coin_gain_bonus_per_level = +8% (cap +56%)
+   shop_discount_per_level = 4% (cap 20%)
+   reroll_cost_growth = +1 coin per reroll, cap 12
+   no-combat-investment safety rule: if DPS is below threshold, offer one combat-biased shop slot
+
+Status Path numeric targets:
+   base_status_apply_chance = 18% / 24% / 30%
+   status_duration_bonus_per_level = +0.4s (cap +2.4s)
+   dot_tick_interval = 0.5s fixed for readability
+   max_parallel_damage_statuses_on_single_target = 3
+
+Summoner Path numeric targets:
+   summon_count_base = 1, hard_cap = 3
+   summon_damage_ratio = 0.35 / 0.45 / 0.55 (early/mid/late)
+   summon_hp_ratio_vs_player = 0.60 / 0.80 / 1.00
+   summon_crit_inherit = min(player_crit * 0.40, 35%)
+   summon_fire_rate_inherit = min(player_fire_rate_bonus * 0.50, +80%)
+   summon_respawn_time = 6.0s base, floor 2.5s
+   boss_damage_penalty_default = -25% unless overridden by summon-specialized props
+
+Lucky Path numeric targets:
+   high-roll_trigger_chance = 12% base, cap 35%
+   fail_penalty_limit = not more than -20% effective run DPS at full stack
+   expected_value_rule: over 10 encounters, Lucky path should be +5% to +12% average value
+   variance rule: standard deviation should stay below "one shop purchase equivalent" per wave
+
+Summoner AI and Command Specifics
+Command inputs:
+   Focus command cooldown = 8s, duration = 4s, bonus damage during focus = +20%
+   Regroup command cooldown = 6s, forces summons to orbit player for 2.5s
+   Hold Position command cooldown = 10s, hold radius = 1.5 tiles, duration = 5s
+
+AI movement tuning:
+   follow_distance = 1.2 tiles
+   leash_break_distance = 5.0 tiles
+   teleport_back_delay_when_leash_broken = 1.0s
+   avoid_overlap_separation_radius = 0.55 tiles
+
+AI target scoring:
+   score = (threat_weight * enemy_threat) + (distance_weight / distance) + mark_bonus
+   recommended weights: threat_weight = 0.6, distance_weight = 0.3, mark_bonus = 0.4
+   forced retarget if current target is unreachable for > 0.75s
+
+Summoner branch progression breakpoints:
+   Level 1-2: baseline summon only, no branch passive
+   Level 3: choose branch (Swarm Commander / Arcane Familiar / Warden Totem)
+   Level 6: unlock branch active skill modifier
+   Level 9: unlock branch capstone passive
+   Level 10+: only horizontal growth (utility/consistency), no major raw DPS spike
 
 Summoner Path Build (Design Draft)
 Core identity:
