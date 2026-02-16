@@ -1931,6 +1931,171 @@ def curing_paint_base_color(player) -> tuple[int, int, int]:
     return (0, 255, 0)
 
 
+PATH_DISPLAY_ORDER = ("ballistic", "turret", "shield", "status", "economy", "summoner", "lucky")
+PATH_DISPLAY_NAME = {
+    "ballistic": "Ballistic",
+    "turret": "Turret",
+    "shield": "Shield",
+    "status": "Status",
+    "economy": "Economy",
+    "summoner": "Summoner",
+    "lucky": "Lucky",
+}
+PATH_ONLINE_THRESHOLD = 2
+PATH_FULL_THRESHOLD = 4
+
+# Path tags for build summaries/tooltips. Multi-tag items intentionally bridge paths.
+PROP_PATH_TAGS = {
+    "piercing_rounds": ("ballistic",),
+    "ricochet_scope": ("ballistic",),
+    "shrapnel_shells": ("ballistic",),
+    "explosive_rounds": ("ballistic",),
+    "auto_turret": ("turret",),
+    "stationary_turret": ("turret",),
+    "carapace": ("shield",),
+    "bone_plating": ("shield",),
+    "aegis_pulse": ("shield",),
+    "dot_rounds": ("status",),
+    "curing_paint": ("status",),
+    "ground_spikes": ("status",),
+    "mark_vulnerability": ("status", "ballistic"),
+    "coin_magnet": ("economy",),
+    "golden_interest": ("economy",),
+    "coupon": ("economy",),
+    "lockbox": ("economy",),
+    "bandit_radar": ("economy", "status"),
+    "wanted_poster": ("economy", "lucky"),
+    "shady_loan": ("economy", "lucky"),
+    # Reserved ids for future summoner props
+    "summon_core": ("summoner",),
+    "summon_link": ("summoner",),
+}
+
+
+def prop_level_from_meta(prop_id: str, meta: dict | None = None) -> int | None:
+    """Canonical per-prop level read from META; keeps shop/pause/tooltips aligned."""
+    m = META if meta is None else meta
+    if not isinstance(m, dict):
+        return None
+    iid = str(prop_id or "")
+    if iid == "coin_magnet":
+        return int(m.get("coin_magnet_radius", 0) // 60)
+    if iid == "auto_turret":
+        return int(m.get("auto_turret_level", 0))
+    if iid == "stationary_turret":
+        return int(m.get("stationary_turret_count", 0))
+    if iid == "ricochet_scope":
+        return int(m.get("ricochet_level", 0))
+    if iid == "piercing_rounds":
+        return int(m.get("pierce_level", 0))
+    if iid == "shrapnel_shells":
+        return int(m.get("shrapnel_level", 0))
+    if iid == "explosive_rounds":
+        return int(m.get("explosive_rounds_level", 0))
+    if iid == "dot_rounds":
+        return int(m.get("dot_rounds_level", 0))
+    if iid == "curing_paint":
+        return int(m.get("curing_paint_level", 0))
+    if iid == "ground_spikes":
+        return int(m.get("ground_spikes_level", 0))
+    if iid == "mark_vulnerability":
+        return int(m.get("vuln_mark_level", 0))
+    if iid == "bandit_radar":
+        return int(m.get("bandit_radar_level", 0))
+    if iid == "lockbox":
+        return int(m.get("lockbox_level", 0))
+    if iid == "golden_interest":
+        return int(m.get("golden_interest_level", 0))
+    if iid == "wanted_poster":
+        return int(m.get("wanted_poster_waves", 0))
+    if iid == "shady_loan":
+        return int(m.get("shady_loan_level", 0))
+    if iid == "coupon":
+        return int(m.get("coupon_level", 0))
+    if iid == "bone_plating":
+        return int(m.get("bone_plating_level", 0))
+    if iid == "carapace":
+        hp = int(m.get("carapace_shield_hp", 0))
+        return (hp + 19) // 20
+    if iid == "aegis_pulse":
+        return int(m.get("aegis_pulse_level", 0))
+    return None
+
+
+def _truncate_inline(text: str, max_chars: int = 170) -> str:
+    s = str(text or "").strip()
+    if len(s) <= max_chars:
+        return s
+    return s[: max(0, max_chars - 3)].rstrip() + "..."
+
+
+def prop_path_label(prop_id: str) -> str:
+    tags = PROP_PATH_TAGS.get(str(prop_id or ""), ())
+    if not tags:
+        return "General"
+    names = [PATH_DISPLAY_NAME.get(t, t.title()) for t in tags]
+    return "/".join(names)
+
+
+def path_scores_from_meta(meta: dict | None = None) -> dict[str, int]:
+    """Weighted path score by current prop levels; used for build clarity in pause/shop."""
+    scores = {tag: 0 for tag in PATH_DISPLAY_ORDER}
+    m = META if meta is None else meta
+    for prop_id, tags in PROP_PATH_TAGS.items():
+        lvl = prop_level_from_meta(prop_id, m)
+        if lvl is None or lvl <= 0:
+            continue
+        for tag in tags:
+            scores[tag] = int(scores.get(tag, 0)) + int(lvl)
+    return scores
+
+
+def path_focus_summary_lines(meta: dict | None = None, max_lines: int = 3) -> list[str]:
+    scores = path_scores_from_meta(meta)
+    order_index = {tag: idx for idx, tag in enumerate(PATH_DISPLAY_ORDER)}
+    ranked = [(tag, sc) for tag, sc in scores.items() if sc > 0]
+    ranked.sort(key=lambda x: (-x[1], order_index.get(x[0], 999)))
+    out = []
+    for tag, score in ranked[: max(1, int(max_lines))]:
+        if score >= PATH_FULL_THRESHOLD:
+            state = "full"
+        elif score >= PATH_ONLINE_THRESHOLD:
+            state = "online"
+        else:
+            state = "seed"
+        out.append(f"{PATH_DISPLAY_NAME.get(tag, tag.title())}: {score} ({state})")
+    if not out:
+        out.append("No path online yet (2+ tagged levels to activate).")
+    return out
+
+
+def detailed_prop_tooltip_text(it, lvl: int | None):
+    """More specific tooltip with path context and current->next preview."""
+    if not isinstance(it, dict):
+        return None
+    iid = it.get("id")
+    path_txt = prop_path_label(iid)
+    cur_lvl = 0 if lvl is None else int(lvl)
+    max_lvl = it.get("max_level")
+    if iid == "shady_loan":
+        cur_lvl = max(cur_lvl, int(META.get("shady_loan_last_level", cur_lvl)))
+    if cur_lvl <= 0:
+        lv1 = owned_prop_tooltip_text(it, 1)
+        if lv1:
+            return _truncate_inline(f"[{path_txt}] Lv1: {lv1}")
+        return f"[{path_txt}]"
+    now_txt = owned_prop_tooltip_text(it, cur_lvl)
+    if not now_txt:
+        return f"[{path_txt}]"
+    next_txt = None
+    can_level = max_lvl is None or cur_lvl < int(max_lvl)
+    if can_level:
+        next_txt = owned_prop_tooltip_text(it, cur_lvl + 1)
+    if next_txt and next_txt != now_txt:
+        return _truncate_inline(f"[{path_txt}] Now: {now_txt} | Next: {next_txt}")
+    return _truncate_inline(f"[{path_txt}] {now_txt}")
+
+
 def owned_prop_tooltip_text(it, lvl: int | None):
     iid = it.get("id") if isinstance(it, dict) else None
     lvl = 0 if lvl is None else int(lvl)
@@ -5567,6 +5732,14 @@ def show_pause_menu(screen, background_surf):
     dps_text = font_tiny.render(f"DPS: {dps_val:.2f}", True, (230, 230, 230))
     screen.blit(dps_text, (left_margin, y_offset));
     y_offset += 30
+    # --- path focus summary (top 3) ---
+    path_title = font_tiny.render("Path Focus:", True, (180, 220, 255))
+    screen.blit(path_title, (left_margin, y_offset))
+    y_offset += 24
+    for line in path_focus_summary_lines(META, max_lines=3):
+        line_surf = font_tiny.render(f"- {line}", True, (170, 205, 230))
+        screen.blit(line_surf, (left_margin, y_offset))
+        y_offset += 22
     # --- right column: possessions / inventory summary ---
     right_margin = VIEW_W - 30
     y_offset = top_margin
@@ -5697,49 +5870,7 @@ def show_pause_menu(screen, background_surf):
         globals()["_shop_catalog_version"] = SHOP_CATALOG_VERSION
 
     def _pause_prop_level(item):
-        iid = item.get("id")
-        if iid == "coin_magnet":
-            return int(META.get("coin_magnet_radius", 0) // 60)
-        if iid == "auto_turret":
-            return int(META.get("auto_turret_level", 0))
-        if iid == "stationary_turret":
-            return int(META.get("stationary_turret_count", 0))
-        if iid == "ricochet_scope":
-            return int(META.get("ricochet_level", 0))
-        if iid == "piercing_rounds":
-            return int(META.get("pierce_level", 0))
-        if iid == "shrapnel_shells":
-            return int(META.get("shrapnel_level", 0))
-        if iid == "explosive_rounds":
-            return int(META.get("explosive_rounds_level", 0))
-        if iid == "dot_rounds":
-            return int(META.get("dot_rounds_level", 0))
-        if iid == "curing_paint":
-            return int(META.get("curing_paint_level", 0))
-        if iid == "ground_spikes":
-            return int(META.get("ground_spikes_level", 0))
-        if iid == "mark_vulnerability":
-            return int(META.get("vuln_mark_level", 0))
-        if iid == "bandit_radar":
-            return int(META.get("bandit_radar_level", 0))
-        if iid == "lockbox":
-            return int(META.get("lockbox_level", 0))
-        if iid == "golden_interest":
-            return int(META.get("golden_interest_level", 0))
-        if iid == "wanted_poster":
-            return int(META.get("wanted_poster_waves", 0))
-        if iid == "shady_loan":
-            return int(META.get("shady_loan_level", 0))
-        if iid == "coupon":
-            return int(META.get("coupon_level", 0))
-        if iid == "bone_plating":
-            return int(META.get("bone_plating_level", 0))
-        if iid == "carapace":
-            carapace_hp = int(META.get("carapace_shield_hp", 0))
-            return (carapace_hp + 19) // 20
-        if iid == "aegis_pulse":
-            return int(META.get("aegis_pulse_level", 0))
-        return None
+        return prop_level_from_meta(item.get("id"), META)
 
     owned = []
     for item in catalog:
@@ -5809,7 +5940,7 @@ def show_pause_menu(screen, background_surf):
         if owned_rows:
             for row_rect, ent in owned_rows:
                 if row_rect.collidepoint((mx, my)):
-                    tooltip_txt = owned_prop_tooltip_text(ent["itm"], ent["lvl"])
+                    tooltip_txt = detailed_prop_tooltip_text(ent["itm"], ent["lvl"])
                     tooltip_pos = (row_rect.right + 10, row_rect.centery)
                     break
         if tooltip_txt:
@@ -6531,54 +6662,10 @@ def show_shop_screen(screen) -> Optional[str]:
 
     def _prop_level(it):
         """Read current level for capped props from META."""
-        iid = it.get("id")
-        if iid == "piercing_rounds":
-            return int(META.get("pierce_level", 0))
-        if iid == "ricochet_scope":
-            return int(META.get("ricochet_level", 0))
-        if iid == "shrapnel_shells":
-            return int(META.get("shrapnel_level", 0))
-        if iid == "explosive_rounds":
-            return int(META.get("explosive_rounds_level", 0))
-        if iid == "dot_rounds":
-            return int(META.get("dot_rounds_level", 0))
-        if iid == "curing_paint":
-            return int(META.get("curing_paint_level", 0))
-        if iid == "ground_spikes":
-            return int(META.get("ground_spikes_level", 0))
-        if iid == "mark_vulnerability":
-            return int(META.get("vuln_mark_level", 0))
-        if iid == "stationary_turret":
-            return int(META.get("stationary_turret_count", 0))
-        if iid == "bandit_radar":
-            return int(META.get("bandit_radar_level", 0))
-        if iid == "lockbox":
-            return int(META.get("lockbox_level", 0))
-        if iid == "coin_magnet":
-            # radius 0,60,120,... => treat as 0,1,2,...
-            return int(META.get("coin_magnet_radius", 0) // 60)
-        if iid == "auto_turret":
-            return int(META.get("auto_turret_level", 0))
-        if iid == "carapace":
-            hp = int(META.get("carapace_shield_hp", 0))
-            return (hp + 19) // 20
-        if iid == "golden_interest":
-            return int(META.get("golden_interest_level", 0))
-        if iid == "shady_loan":
-            return int(META.get("shady_loan_level", 0))
-        if iid == "wanted_poster":
-            return int(META.get("wanted_poster_waves", 0))
-        if iid == "coupon":
-            return int(META.get("coupon_level", 0))
-        if iid == "bone_plating":
-            return int(META.get("bone_plating_level", 0))
-        if iid == "aegis_pulse":
-            return int(META.get("aegis_pulse_level", 0))
-        # reroll or anything else: no level display
-        return None
+        return prop_level_from_meta(it.get("id"), META)
 
     def _owned_live_text(it, lvl: int | None):
-        return owned_prop_tooltip_text(it, lvl)
+        return detailed_prop_tooltip_text(it, lvl)
 
     def _prop_max_level(it):
         return it.get("max_level", None)
@@ -6797,7 +6884,11 @@ def show_shop_screen(screen) -> Optional[str]:
             pygame.draw.rect(screen, border_col, r, 2, border_radius=14)
             if is_hover:
                 title_s = font.render(it["name"], True, (235, 235, 235))
-                words = it.get("desc", "").split()
+                detail_line = detailed_prop_tooltip_text(it, cur_lvl)
+                desc_parts = [str(it.get("desc", "")).strip()]
+                if detail_line:
+                    desc_parts.append(str(detail_line))
+                words = " ".join([p for p in desc_parts if p]).split()
                 lines_wrap = []
                 if words:
                     max_w = r.width - 28
@@ -6812,6 +6903,9 @@ def show_shop_screen(screen) -> Optional[str]:
                             line = test
                     if line:
                         lines_wrap.append(line)
+                if len(lines_wrap) > 6:
+                    lines_wrap = lines_wrap[:6]
+                    lines_wrap[-1] = _truncate_inline(lines_wrap[-1], 44)
                 line_h = desc_font.get_linesize()
                 block_h = title_s.get_height() + 4 + len(lines_wrap) * line_h
                 top_y = r.centery - block_h // 2
