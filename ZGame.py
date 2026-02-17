@@ -1943,6 +1943,16 @@ PATH_DISPLAY_NAME = {
 }
 PATH_ONLINE_THRESHOLD = 2
 PATH_FULL_THRESHOLD = 4
+PATH_BORDER_COLORS = {
+    "ballistic": (255, 145, 95),   # orange
+    "turret": (95, 220, 255),      # cyan
+    "shield": (110, 170, 255),     # blue
+    "status": (120, 225, 145),     # green
+    "economy": (255, 215, 110),    # gold
+    "summoner": (205, 150, 255),   # violet
+    "lucky": (255, 120, 185),      # pink
+    "general": (150, 175, 210),    # fallback
+}
 
 # Path tags for build summaries/tooltips. Multi-tag items intentionally bridge paths.
 PROP_PATH_TAGS = {
@@ -2020,6 +2030,35 @@ def prop_level_from_meta(prop_id: str, meta: dict | None = None) -> int | None:
     if iid == "aegis_pulse":
         return int(m.get("aegis_pulse_level", 0))
     return None
+
+
+def _mix_rgb(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
+    tt = max(0.0, min(1.0, float(t)))
+    return (
+        int(a[0] + (b[0] - a[0]) * tt),
+        int(a[1] + (b[1] - a[1]) * tt),
+        int(a[2] + (b[2] - a[2]) * tt),
+    )
+
+
+def _scale_rgb(color: tuple[int, int, int], scale: float) -> tuple[int, int, int]:
+    s = max(0.0, float(scale))
+    return (
+        max(0, min(255, int(color[0] * s))),
+        max(0, min(255, int(color[1] * s))),
+        max(0, min(255, int(color[2] * s))),
+    )
+
+
+def prop_path_border_color(prop_id: str) -> tuple[int, int, int]:
+    tags = PROP_PATH_TAGS.get(str(prop_id or ""), ())
+    if not tags:
+        return PATH_BORDER_COLORS["general"]
+    c0 = PATH_BORDER_COLORS.get(tags[0], PATH_BORDER_COLORS["general"])
+    if len(tags) == 1:
+        return c0
+    c1 = PATH_BORDER_COLORS.get(tags[1], c0)
+    return _mix_rgb(c0, c1, 0.5)
 
 
 def _truncate_inline(text: str, max_chars: int = 170) -> str:
@@ -6869,19 +6908,23 @@ def show_shop_screen(screen) -> Optional[str]:
             is_capped = (max_lvl is not None and cur_lvl is not None and cur_lvl >= max_lvl)
             uid = it.get("id") or it.get("name")
             is_hover = (uid == hovered_uid)
+            path_border = prop_path_border_color(it.get("id"))
             lock_rect = pygame.Rect(0, 0, 22, 22)
             lock_rect.topright = (r.right - 8, r.top + 8)
             if is_capped:
                 bg_col = SHOP_BOX_BG_DISABLED
-                border_col = SHOP_BOX_BORDER_DISABLED
+                border_col = _mix_rgb(path_border, SHOP_BOX_BORDER_DISABLED, 0.65)
             elif is_hover:
                 bg_col = SHOP_BOX_BG_HOVER
-                border_col = SHOP_BOX_BORDER_HOVER
+                border_col = _scale_rgb(path_border, 1.25)
             else:
                 bg_col = SHOP_BOX_BG
-                border_col = SHOP_BOX_BORDER
+                border_col = path_border
             pygame.draw.rect(screen, bg_col, r, border_radius=14)
             pygame.draw.rect(screen, border_col, r, 2, border_radius=14)
+            # A thin accent line reinforces path identity even when not hovered.
+            accent = pygame.Rect(r.x + 10, r.y + 32, r.w - 20, 3)
+            pygame.draw.rect(screen, border_col, accent, border_radius=2)
             if is_hover:
                 title_s = font.render(it["name"], True, (235, 235, 235))
                 detail_line = detailed_prop_tooltip_text(it, cur_lvl)
