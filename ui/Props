@@ -460,17 +460,44 @@ Synergy:
 Helps “glass cannon” builds survive mistakes.
 Synergizes with speed / positioning to escape on low HP.
 
+Rarity: 2
+Base Price: $16
+Max Level: 3
+Trigger: hp_ratio <= 0.30 and charm_cd <= 0
+Level 1: shield = 15, speed_bonus = +15%, duration = 3.0s, cooldown = 30s
+Level 2: shield = 24, speed_bonus = +22%, duration = 3.5s, cooldown = 26s
+Level 3: shield = 36, speed_bonus = +30%, duration = 4.0s, cooldown = 22s
+Rule: Trigger can only occur once every 1.0s even if HP fluctuates around threshold.
+
 2.3. Blood Pact
 Effect: +X% damage, but max HP reduced by Y%.
 Synergy:
 Obvious synergy with max HP props and heal mechanics.
 Encourages high skill players to take risks.
 
+Rarity: 3
+Base Price: $20
+Max Level: 3
+Level 1: damage_mult +18%, max_hp_mult -12%
+Level 2: damage_mult +30%, max_hp_mult -20%
+Level 3: damage_mult +45%, max_hp_mult -28%
+Safety floor: final max HP cannot drop below 35% of base max HP.
+UI note: show both values in red/green on purchase confirmation.
+
 2.4. Retaliation Thorns
 Effect: Enemies that hit you by contact damage take a flat damage or % of their max HP.
 Synergy:
 Works well with Bone Plating (you can “intentionally”  take occasional hits).
 Encourages tanky, lower-mobility builds.
+
+Rarity: 2
+Base Price: $14
+Max Level: 3
+Level 1: reflect = max(8, 4% enemy_max_hp), internal_cd_per_enemy = 0.50s
+Level 2: reflect = max(14, 6% enemy_max_hp), internal_cd_per_enemy = 0.40s
+Level 3: reflect = max(22, 8% enemy_max_hp), internal_cd_per_enemy = 0.30s
+Boss rule: % max HP component is halved against bosses.
+Anti-loop: reflected damage cannot trigger other reflection effects.
 
 ;2.5. Aegis Pulse  ==========================================================================
     Trigger condition
@@ -497,6 +524,13 @@ When you pick up a heal while at full HP,
 transfer certain ratio of the heal instead grants temporary shield HP.
 At higher levels, overheal conversion (10/15/20)% goes up.
 
+Base Price: $15
+Max Level: 3
+Level 1: convert 25% heal at full HP, bonus_overheal_conversion +10%, temp_shield_duration 10s
+Level 2: convert 40% heal at full HP, bonus_overheal_conversion +15%, temp_shield_duration 12s
+Level 3: convert 60% heal at full HP, bonus_overheal_conversion +20%, temp_shield_duration 14s
+Cap: temporary shield from this prop cannot exceed 40% of player max HP.
+
 2.8. Mirror Shell
 
 Rarity: 3
@@ -508,6 +542,15 @@ Mirror Shell + Aegis Pulse
 You already want to stay close-ish to enemies for the pulse; reflected shots punish ranged hordes simultaneously.
 Mirror Shell + Bone Plating
 The more hits you can “eat” with temporary armor, the more reflected damage you dish out.
+
+Base Price: $23
+Max Level: 3
+Reflect only applies to ranged/projectile damage.
+Level 1: reflect_ratio = 20%, reflect_range = 4.0 tiles
+Level 2: reflect_ratio = 32%, reflect_range = 5.0 tiles
+Level 3: reflect_ratio = 45%, reflect_range = 6.0 tiles
+Boss rule: reflected damage dealt to bosses uses 70% of reflected value.
+Rate limit: max 6 reflections per second (global).
 
 2.9. Shardstorm
 
@@ -521,6 +564,15 @@ Your layers of shield now become ammo when they finally break, turning mistakes 
 Shardstorm + Piercing Rounds / Ricochet Scope / Shrapnel Shells
 Shards inherit bullet modifiers: piercing, bouncing, or spawning shrapnel on kill. Shield path suddenly becomes part of the bullet engine.
 
+Base Price: $24
+Max Level: 3
+Trigger: when any shield layer breaks to zero (base shield or temporary shield).
+Level 1: shard_count = 6, shard_damage = 0.25 * bullet_base, spread = 360 deg
+Level 2: shard_count = 9, shard_damage = 0.35 * bullet_base, spread = 360 deg
+Level 3: shard_count = 12, shard_damage = 0.45 * bullet_base, spread = 360 deg
+Shard speed: 1.15 * player bullet speed, shard lifetime: 0.9s.
+Boss rule: shard damage to bosses = 65% of listed value.
+
 2.10. Retaliation Core
 
 Rarity: 2-3
@@ -528,6 +580,15 @@ Rarity: 2-3
 Effect:
 When your shield takes damage, you gain some short buffs:
  +X% bullet damage or +crit chance for a few seconds.
+
+Base Price: $18
+Max Level: 3
+Trigger: on shield damage event (not HP damage).
+Level 1: +10% bullet damage, +6% crit chance, duration 2.5s
+Level 2: +16% bullet damage, +9% crit chance, duration 3.0s
+Level 3: +24% bullet damage, +12% crit chance, duration 3.5s
+Refresh rule: retriggers refresh duration but cannot stack magnitude.
+Internal cooldown: 1.0s between retriggers.
 
 '3. Economy & Bandit Interaction Props'
 
@@ -539,11 +600,25 @@ Synergy:
 Great early if bandits are frequent.
 Can open up “greedy” builds where you hoard coins instead of spending immediately.
 
+Rarity: 2
+Base Price: $14
+Max Level: 4
+Protected coin ratio by level: 25% / 40% / 55% / 70%.
+Protection applies before bandit steal and before debt-style coin penalties.
+Suggested implementation: protected = floor(current_coins * ratio), unprotected = current_coins - protected.
+
 ;3.2. Wanted Poster
 Effect: Consumable: next 2 levels, the first Bandit kill pays a bounty.
 Synergy:
 Converts the “punishment” enemy into a high-reward target.
 Combos with high speed (easier to chase them down) and burst damage.
+
+Rarity: 2
+Base Price: $15
+Max Stack: 3 charges
+Bounty payout per charge: +18 / +26 / +36 coins (scales by level bracket early/mid/late).
+Consumption rule: only consumed when player secures the first Bandit kill of that level.
+Fail-safe: if no bandit spawned, charge is retained.
 
 ;3.3. Coin Magnet !!!!! ==========================================================================
 Effect: Increases coin pickup radius. Each level increase 60 px.
@@ -551,30 +626,65 @@ Synergy:
 Super good with high movement speed, kiting builds.
 Makes dangerous coin chasing much safer, good for wave-end cleanup.
 
+Rarity: 1
+Base Price: $10
+Max Level: 5
+Radius bonus: +60 / +120 / +180 / +240 / +300 px.
+QoL rule: coin pickup ignores micro-obstacle edges within 0.2 tiles when magnetized.
+
 ;3.4. Golden Interest
 Effect: At the start of each level, gain +X% of your unspent coins as bonus.
 Synergy:
 Encourages the player to save coins and forgo instant power.
 Works nicely with Lockbox (protect your savings from bandits).
 
+Rarity: 2
+Base Price: $12
+Max Level: 4
+Interest rate by level: 5% / 10% / 15% / 20%
+Per-level payout cap: 30 / 50 / 70 / 90 coins
+Order rule: apply interest before debt repayment checks.
+
 ;3.5. Bandit Radar
 Effect: When a bandit spawns, highlight them and slow them slightly for a short duration.
 Synergy:
 Combined with Wanted Poster → “Bandit hunter” build.
 Fits your current collision volume and aura design (you can show a glowing outline).
+
+Rarity: 2
+Base Price: $18
+Max Level: 4
+Slow strength by level: 8% / 12% / 16% / 20%
+Duration by level: 2s / 3s / 4s / 5s
+Visual: high-contrast outline + minimap ping pulse every 0.6s while effect is active.
   
 ;3.6. Coupon  鈭? ==========================================================================
-Effect锛?Permanent decrease the price in shop by 5%
+Effect: Permanently decrease shop prices by 5% per level.
+
+Rarity: 1
+Base Price: $10
+Max Level: 4
+Discount by level: 5% / 10% / 15% / 20%
+Rule: applies to normal offers and reroll cost; price floor is 1 coin.
 
 ;3.7. Shady Loan
 rarity: 3, cost: 5, max level: 3
 Effect: Take a risky loan: get +80/+120/+160 coins instantly, owe at least that much, and repay over 3/4/5 waves (25/30/35% of current coins, cap 50/80/110) after Golden Interest. Multiple loans stack debt and use the highest timer; the final wave attempts to clear all remaining debt at once, otherwise you lose 30/35/40% max HP.
 
+Repayment order: Golden Interest -> lockbox protection snapshot -> loan repayment pull.
+Anti-feels-bad rule: if player has <= 15 coins, skip scheduled repayment for that wave once.
+UI requirement: always show debt left + waves left in both shop and pause possession tooltip.
+
 3.8. Black Market pass
 Consumable, Rarity: 3, Base Price: $30
-Effect： You’ve got connections in the underworld.
+Effect: You’ve got connections in the underworld.
   the next shop becomes a bit of a black market with better econ deals.
   Shop prices +20%, with more rare items available.(all item >= rarity 3)
+
+Detail:
+Only affects the next single shop, then expires.
+Roll rule override: minimum rarity 3 in all non-reroll slots.
+Compensation: one extra offer slot in that shop (5 cards + reroll) to support decision quality.
 
 3.9. VIP Punchcard
 
@@ -585,6 +695,12 @@ You get cashback on shop spending each time you visit:
 Example: “Gain back 10/15/20/25% of coins spent in this shop as spoils at the end of the next level.”
 Cashback applies to all purchases including Reroll, which encourages heavy rolling and shopping.
 
+Base Price: $24
+Max Level: 4
+Cashback by level: 10% / 15% / 20% / 25%
+Cashback cap per level: 30 / 45 / 60 / 80 coins
+Rule: cashback is granted after clearing the level (not immediately in shop).
+
 3.10. Spoil Splitter
 
 Rarity: 2 (uncommon)
@@ -593,6 +709,12 @@ Effect (concept):
 Every time you pick up a coin, you have an X% chance to spawn +1 extra coin 
 (chance scales with level, e.g., 10/20/30/40/50%).
 Doesn’t trigger on “fake” coins (e.g., bank interest ticks, if you want to avoid loops) – only on actual pickups from the ground.
+
+Base Price: $16
+Max Level: 5
+Proc chance by level: 10% / 20% / 30% / 40% / 50%
+Anti-loop rule: spawned bonus coin cannot recursively trigger Spoil Splitter.
+Performance rule: max 8 spawned bonus coins per second globally.
 
 '4. Utility / Control Props'
 These change the way the player moves or controls space.
@@ -604,17 +726,42 @@ Encourages a  “turret” playstyle: stand and shoot.
 Good with high firerate and range.
 Interesting opposite to normal  “run and gun” speed builds.
 
+Rarity: 2
+Base Price: $16
+Max Level: 3
+Level 1: radius = 1.8 tiles, slow = 12%, pulse every 1.0s while standing
+Level 2: radius = 2.2 tiles, slow = 16%, pulse every 0.9s while standing
+Level 3: radius = 2.6 tiles, slow = 20%, pulse every 0.8s while standing
+Ramp rule: effect fades out 0.35s after movement resumes.
+
 4.2. Phantom Dash (if you ever add dash / evade)
 Effect: Dashing through enemies deals damage and briefly slows them.
 Synergy:
 Obvious with speed and any dash cooldown reduction.
 Very fun for aggressive play around obstacles.
 
+Rarity: 3
+Base Price: $22
+Max Level: 3
+Design-ready values:
+Level 1: dash_contact_damage = 0.55 * bullet_base, slow = 20% for 1.2s
+Level 2: dash_contact_damage = 0.75 * bullet_base, slow = 25% for 1.5s
+Level 3: dash_contact_damage = 1.00 * bullet_base, slow = 30% for 1.8s
+Internal hit cooldown per enemy during dash: 0.25s.
+
 4.3. Sticky Tar Flask
 Effect: Occasionally drops a slowing puddle where you stand for a second, enemies in it are slowed and take minor DoT.
 Synergy:
 Strong near obstacles, choke points.
 Works with knockback / push effects if you add them later.
+
+Rarity: 2
+Base Price: $14
+Max Level: 3
+Level 1: puddle_radius = 0.9 tiles, slow = 15%, dot = 0.04 * bullet_base per 0.5s, life = 2.5s
+Level 2: puddle_radius = 1.1 tiles, slow = 20%, dot = 0.06 * bullet_base per 0.5s, life = 3.5s
+Level 3: puddle_radius = 1.3 tiles, slow = 25%, dot = 0.08 * bullet_base per 0.5s, life = 4.5s
+Spawn cadence: drop one puddle every 2.2 / 1.9 / 1.6 seconds while moving.
  
 ;4.4. Auto-Turret !!!!   ==========================================================================
 Effect: Deploys a small turret that follows you and fires weak bullets at nearest enemy.
@@ -622,8 +769,21 @@ Synergy:
 Scales with damage buffs if turret uses your damage.
 Good with any prop that boosts  “all sources” damage (e.g., Mark of Vulnerability).
 
+Rarity: 2
+Base Price: $14
+Max Level: 5
+Level effect: +1 auto turret per level.
+Base tuning target: turret_damage ~ 33% of player base bullet damage, fire_interval ~0.9s, range ~80% of player range.
+Cap rule: at 5 turrets, further turret props should convert to quality upgrades (damage/range) instead of count.
+
 ;4.5 Stationary Turret     ==========================================================================
-Similiar to Auto Turret, just can not move
+Similar to Auto Turret, just cannot move.
+
+Rarity: 1
+Base Price: $14
+Max Level: 99 (copy-style stacking)
+Per purchase: +1 stationary turret spawn each level at valid clear tile.
+Suggested tuning: same bullet damage as auto turret, +15% range, -10% fire interval to reward setup play.
 
 '5. Crit, Element, and Synergy Props'
 
@@ -635,11 +795,26 @@ Synergy:
 Works on builds that already stacked firerate from level-ups.
 High synergy with crit damage multiplier if you add that stat later.
 
+Rarity: 2
+Base Price: $18
+Max Level: 3
+Level 1: +8% crit chance, -6% fire rate
+Level 2: +13% crit chance, -10% fire rate
+Level 3: +20% crit chance, -15% fire rate
+
 5.2. Explosive Crits
 Effect: Critical hits cause a small explosion around the target, dealing splash damage.
 Synergy:
 Ties together crit + crowd control.
 Combos insanely with ricochet / pierce / shrapnel.
+
+Rarity: 3
+Base Price: $24
+Max Level: 3
+Level 1: crit_explosion_damage = 30% bullet_base, radius = 0.60 tiles
+Level 2: crit_explosion_damage = 42% bullet_base, radius = 0.75 tiles
+Level 3: crit_explosion_damage = 55% bullet_base, radius = 0.90 tiles
+Boss rule: crit explosion damage is reduced by 35% against bosses.
 
 5.3. Frost Brand
 Effect: Hits have a small chance to chill enemies, slowing them briefly. If you hit a chilled enemy again, extra damage.
@@ -647,11 +822,27 @@ Synergy:
 Strong with high firerate (you can proc chill frequently).
 Gives non-speed builds some safety through slows.
 
+Rarity: 2
+Base Price: $16
+Max Level: 3
+Level 1: chill_chance = 14%, chill_slow = 20%, chill_duration = 1.2s, re-hit_bonus = +12%
+Level 2: chill_chance = 20%, chill_slow = 24%, chill_duration = 1.5s, re-hit_bonus = +18%
+Level 3: chill_chance = 28%, chill_slow = 30%, chill_duration = 1.8s, re-hit_bonus = +26%
+Boss rule: slow effect is 50% effective on bosses.
+
 5.4. Shock Relay
 Effect: Every N-th hit chains lightning to nearby enemy for bonus damage.
 Synergy:
 Rewards sustained fire (auto-fire weapons).
 Great vs clustered waves, weaker vs single boss, so still somewhat balanced.
+
+Rarity: 2
+Base Price: $19
+Max Level: 3
+Level 1: every 8th hit chains to up to 2 enemies, chain_damage = 30% bullet_base
+Level 2: every 6th hit chains to up to 3 enemies, chain_damage = 40% bullet_base
+Level 3: every 5th hit chains to up to 4 enemies, chain_damage = 50% bullet_base
+Chain range: 1.8 / 2.2 / 2.6 tiles by level.
 
 '6.Core Paint System '
 Tiles can hold temporary “paint” that affects movement and combat. A tile’s paint has:
@@ -680,4 +871,46 @@ Max Level: 3
 Core Effect
 Your movement leaves a short trail of Player Paint (“curing ink”) on the ground.
 
+Detailed tuning:
+Tick interval: 0.5s
+Level 1: damage_per_tick = 0.04 * bullet_base, lifetime = 2.0s, radius = 0.69 tiles
+Level 2: damage_per_tick = 0.06 * bullet_base, lifetime = 3.0s, radius = 0.78 tiles
+Level 3: damage_per_tick = 0.08 * bullet_base, lifetime = 4.0s, radius = 0.90 tiles
+Boss rule: paint DoT deals 70% damage to bosses.
+Spawn cadence: leave footprint every 0.25s while moving.
+Ownership rule: only latest paint owner controls tile effects.
+
 '7. “Set / Combo” Ideas'
+
+7.1. Ballistic Engine (2/3 piece set)
+Pieces:
+Piercing Rounds + Ricochet Scope (+ Shrapnel Shells as 3rd piece)
+Set Bonus:
+2-piece: +15% projectile speed, +10% shrapnel proc chance.
+3-piece: first ricochet each shot has +20% crit chance.
+
+7.2. Fortress Loop (2/3 piece set)
+Pieces:
+Carapace + Bone Plating (+ Aegis Pulse as 3rd piece)
+Set Bonus:
+2-piece: after losing shield, gain 10% move speed for 1.5s.
+3-piece: Aegis Pulse emits one extra mini-wave at 40% damage.
+
+7.3. Predator Economy (2/3 piece set)
+Pieces:
+Wanted Poster + Bandit Radar (+ Lockbox as 3rd piece)
+Set Bonus:
+2-piece: first bandit kill bounty +30%.
+3-piece: bandits drop 1 extra guaranteed coin bundle.
+
+7.4. Cold Circuit (2/3 piece set)
+Pieces:
+Frost Brand + Shock Relay (+ D.O.T. Rounds as 3rd piece)
+Set Bonus:
+2-piece: chilled targets take +12% chain lightning damage.
+3-piece: shock chains apply mini-chill (10% slow for 0.8s).
+
+Set system rules:
+Set bonuses should be additive utility spikes, not run-defining raw multipliers.
+A full 3-piece set should add about +12% to +20% effective run power, not more.
+Always show active set count in pause/build summary (example: Fortress Loop 2/3).
