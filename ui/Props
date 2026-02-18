@@ -367,6 +367,13 @@ Strong with range (bullets travel farther, hit more).
 Strong with firerate (more bullets → more multi-hits).
 Good vs swarms, slightly weaker vs single bosses.
 
+Rarity: 1
+Base Price: $12
+Max Level: 5
+Level 1/2/3/4/5: pierce_count = +1/+2/+3/+4/+5
+Damage falloff per extra pierced target: 0% / 4% / 8% / 12% / 16% (cap 30%).
+Rule: piercing checks enemy hit cooldown to avoid multi-hit in the same frame.
+
 ;1.2. Ricochet Scope   =========================================================================='
 Effect: When a bullet hits an enemy or wall, it can bounce once toward the nearest enemy if exists.
 Synergy:
@@ -374,12 +381,28 @@ Works nicely with your obstacles (walls turn into combo tools).
 Great with crit (ricochets can crit too).
 Encourages fighting near obstacles instead of open fields.
 
+Rarity: 2
+Base Price: $14
+Max Level: 3
+Level 1/2/3: ricochet_count = 1/2/3
+Retarget cone: 160 deg around impact normal; max retarget range = 4.0 / 4.8 / 5.6 tiles.
+Damage per bounce multiplier: 90% / 82% / 75%.
+
 1.3. Bleeding Edge
-Effect: Your hits apply a “Bleed” that deals X% of damage over 3s, stacking up to Y times.
+Effect: Your hits apply a stacking Bleed DoT over 3s (damage and stack cap scale by level).
 Synergy:
 High firerate builds become DoT machines.
 Good vs high-HP bosses (persistent damage even while kiting).
 Can interact with other props: e.g.,“Hemorrhage” that increases damage to bleeding targets.
+
+Rarity: 2
+Base Price: $17
+Max Level: 3
+Level 1: bleed_total = 24% bullet_base over 3.0s, max_stacks = 2
+Level 2: bleed_total = 36% bullet_base over 3.0s, max_stacks = 3
+Level 3: bleed_total = 52% bullet_base over 3.0s, max_stacks = 4
+Tick interval: 0.5s.
+Boss rule: bleed damage multiplier vs bosses = 0.75.
 
 ;1.4. Shrapnel Shells  =========================================================================='
 Effect: On enemy death, 25/35/45% to spawn 3-4 small projectiles in random directions.
@@ -397,6 +420,13 @@ Max Level: 3
 Core Fantasy
 You periodically “expose” a high-priority enemy,
  making them take extra damage from all sources.
+
+Level details:
+Level 1: mark_interval = 5.0s, damage_taken_bonus = +15%, mark_duration = 5.0s
+Level 2: mark_interval = 4.0s, damage_taken_bonus = +22%, mark_duration = 6.0s
+Level 3: mark_interval = 3.0s, damage_taken_bonus = +30%, mark_duration = 7.0s
+Targeting priority: boss/elite > ranged > nearest.
+UI rule: mark icon pulses every 1.0s while active.
 
 
 ;1.6. Explosive Rounds
@@ -454,8 +484,14 @@ Synergy:
 Strong for beginners / melee risk-takers.
 Combos with high speed playstyles (you can dash in to grab coins safely).
 
+Base Price: $12
+Max Level: 5
+Per level: gain +2 plating HP every 6.0s (so +2/+4/+6/+8/+10 per tick at levels 1..5).
+At level 5: each hit consumes one plating stack and fully negates that hit.
+Speed trade-off in current implementation: each purchase multiplies move speed by 0.98.
+
 2.2. Guardian Charm
-Effect: When your HP drops below 30%, gain a temporary shield and +X% speed for 3 seconds. Long cooldown.
+Effect: When your HP drops below 30%, gain a temporary shield and speed burst (values scale by level). Long cooldown.
 Synergy:
 Helps “glass cannon” builds survive mistakes.
 Synergizes with speed / positioning to escape on low HP.
@@ -470,7 +506,7 @@ Level 3: shield = 36, speed_bonus = +30%, duration = 4.0s, cooldown = 22s
 Rule: Trigger can only occur once every 1.0s even if HP fluctuates around threshold.
 
 2.3. Blood Pact
-Effect: +X% damage, but max HP reduced by Y%.
+Effect: Gain large damage multiplier, but reduce max HP (both scale by level).
 Synergy:
 Obvious synergy with max HP props and heal mechanics.
 Encourages high skill players to take risks.
@@ -506,13 +542,30 @@ player.shield_hp > 0 (biome/domain shields, future shield props)
 OR carapace_shield_hp > 0 (your Carapace one-time shield)
 
 Effect:
-Every X seconds, while shield is present, emit a hexagonal force field centered on the player:
+Every cooldown cycle while shield is present, emit a hexagonal force field centered on the player:
 Shape: visually rendered as a hexagon; collision can be:
 either a circle in code, and you just draw a hex outline, or
 All enemies whose hitbox intersects the field take damage.
 
+Rarity: 3
+Base Price: $28
+Max Level: 5
+Level 1/2/3/4/5:
+radius = 100 / 120 / 140 / 160 / 180 px
+cooldown = 4.0 / 3.375 / 2.75 / 2.125 / 1.5 s
+damage = 30% / 45% / 60% / 80% / 100% of enemy max HP
+Wave behavior: one expanding pulse; high levels may add visual ripple layers only (no extra hidden damage ticks).
+Safety cap: pulse damage to bosses can be clamped to avoid one-cycle kills.
+
 ;2.6. Carapace   ==========================================================================
 Effect: Add a one time shield for player
+
+Rarity: 1
+Base Price: $6
+Max Level: None (stackable by purchases)
+Per purchase: +20 persistent carapace shield HP.
+Damage order rule: base shield -> carapace shield -> HP.
+UI rule: display current carapace shield reserve in pause possession tooltip.
 
 2.7. Shield Capacitor
 
@@ -579,7 +632,7 @@ Rarity: 2-3
 
 Effect:
 When your shield takes damage, you gain some short buffs:
- +X% bullet damage or +crit chance for a few seconds.
+ +bullet damage and +crit chance for a few seconds (values scale by level).
 
 Base Price: $18
 Max Level: 3
@@ -633,7 +686,7 @@ Radius bonus: +60 / +120 / +180 / +240 / +300 px.
 QoL rule: coin pickup ignores micro-obstacle edges within 0.2 tiles when magnetized.
 
 ;3.4. Golden Interest
-Effect: At the start of each level, gain +X% of your unspent coins as bonus.
+Effect: At the start of each level, gain interest on unspent coins (5/10/15/20% by level).
 Synergy:
 Encourages the player to save coins and forgo instant power.
 Works nicely with Lockbox (protect your savings from bandits).
@@ -706,7 +759,7 @@ Rule: cashback is granted after clearing the level (not immediately in shop).
 Rarity: 2 (uncommon)
 
 Effect (concept):
-Every time you pick up a coin, you have an X% chance to spawn +1 extra coin 
+Every time you pick up a coin, you have a level-scaled chance to spawn +1 extra coin 
 (chance scales with level, e.g., 10/20/30/40/50%).
 Doesn’t trigger on “fake” coins (e.g., bank interest ticks, if you want to avoid loops) – only on actual pickups from the ground.
 
@@ -831,7 +884,7 @@ Level 3: chill_chance = 28%, chill_slow = 30%, chill_duration = 1.8s, re-hit_bon
 Boss rule: slow effect is 50% effective on bosses.
 
 5.4. Shock Relay
-Effect: Every N-th hit chains lightning to nearby enemy for bonus damage.
+Effect: Every few hits, chain lightning to nearby enemies for bonus damage (interval scales by level).
 Synergy:
 Rewards sustained fire (auto-fire weapons).
 Great vs clustered waves, weaker vs single boss, so still somewhat balanced.
