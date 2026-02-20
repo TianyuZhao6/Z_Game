@@ -411,6 +411,16 @@ Insane in big waves (chain-kill feeling).
 More effective with crit (shrapnel can crit).
 You can add a prop later that upgrades shrapnel size or count.
 
+Rarity: 3
+Base Price: $16
+Max Level: 3
+Level 1: proc_chance = 25%, shard_count = 3, shard_damage = 28% bullet_base
+Level 2: proc_chance = 35%, shard_count = 3, shard_damage = 36% bullet_base
+Level 3: proc_chance = 45%, shard_count = 4, shard_damage = 44% bullet_base
+Shard travel range: 2.2 / 2.6 / 3.0 tiles
+Chain guard: shrapnel kills cannot trigger another shrapnel proc more than 2 generations deep.
+Performance cap: max 36 live shrapnel bullets at once; excess shards are dropped.
+
 ;1.5. Mark of Vulnerability
 
 Type: Offensive debuff / mark (shop prop)
@@ -447,6 +457,10 @@ Damage vs normal enemies: 25%/35%/45% of bullet_base
 Damage vs bosses: 12.5%/17.5%/22.5% of bullet_base (rounded down in code)
 Radius: small/small+/almost 1 tile - about 0.65/0.80/0.95 tiles
 Suggest: radius_px = CELL_SIZE * 0.65/0.80/0.95
+Chain behavior rule:
+chain_depth_cap = 3 (original kill + 2 chained explosions)
+same_target_rehit_lockout = 0.20s
+Visual budget: max 12 concurrent explosive flash VFX instances.
 
 ;1.7. DOT Rounds
 Rarity: 2
@@ -460,6 +474,10 @@ Level 2: damage_per_tick = 0.16 * bullet_base, duration = 3.0s (6 ticks), max_st
 Level 3: damage_per_tick = 0.22 * bullet_base, duration = 3.5s (7 ticks), max_stacks = 2
 
 VFX: cyan + white spark burst on hit; glow/orbiting particles while active.
+Stacking behavior:
+Applying a new stack refreshes only that stack duration, not all stacks.
+Per-target DoT cap:
+max_total_dot_damage_per_second = 120% bullet_base (before boss multiplier).
 
 ;1.8. Ground Spikes
 Rarity: 2
@@ -1022,3 +1040,44 @@ Always show active set count in pause/build summary (example: Fortress Loop 2/3)
 Activation check cadence: recompute active sets on prop acquire/sell and once on level start.
 Conflict rule: if two sets modify the same stat bucket, apply additive bonuses then clamp by stat caps.
 Telemetry recommendation: track set_pick_rate, set_completion_rate, and win_rate_with_set.
+
+'8. Prop Runtime Contract (Implementation Detail)'
+8.1. Event order on bullet hit:
+Apply crit -> apply mark/vulnerability multiplier -> apply direct hit damage -> process on-hit status (bleed/dot/chill) -> process on-kill effects (explosion/shrapnel) if target died.
+
+8.2. Event order on player damaged:
+Base shield -> temporary shield -> carapace reserve -> HP.
+Then trigger on-shield-damaged effects (Retaliation Core / Mirror Shell).
+Then trigger on-HP-threshold effects (Guardian Charm).
+
+8.3. Suggested data schema per prop entry:
+id, display_name, rarity, base_price, max_level, tags[]
+level_data[]: numeric values per level
+runtime_flags: can_stack, refresh_mode, cooldown_s, trigger_limit_per_second
+vfx_key, sfx_key, ui_summary_key
+
+8.4. Save/load expectations:
+Persistent props store current level in save.
+Consumables store both level and remaining charges.
+Temporary combat states (active buffs, mark targets, current paint intensity) should not persist between levels unless explicitly marked.
+
+'9. Balance Verification Checklist'
+9.1. Single-path stress tests:
+Run 20 waves with pure Ballistic, pure Shield, pure Economy, pure Status.
+Target: no path should exceed 1.35x average win rate versus others.
+
+9.2. Hybrid-path test:
+Test 2+2 split builds (e.g., Ballistic+Shield, Economy+Status).
+Target: hybrids should have smoother power curve but lower peak than best specialized build.
+
+9.3. Boss test:
+Ensure no one prop can delete boss in <8s in mid game without strong synergy.
+Ensure defensive paths can survive boss pressure without infinite stall loops.
+
+9.4. Economy abuse test:
+Combine Golden Interest + VIP Punchcard + Spoil Splitter + Black Market Pass.
+Target: expected coin income should stay below 2.2x baseline over 3 consecutive levels.
+
+9.5. Performance test:
+Worst-case waves with Shrapnel/Explosive/paint active simultaneously.
+Target: stable 60 FPS on target machine, no frame spike >25 ms for longer than 0.5s.
