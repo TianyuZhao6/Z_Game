@@ -738,12 +738,15 @@ Detail:
 Only affects the next single shop, then expires.
 Roll rule override: minimum rarity 3 in all non-reroll slots.
 Compensation: one extra offer slot in that shop (5 cards + reroll) to support decision quality.
+Rarity weights override suggestion:
+rarity_3 = 55%, rarity_4 = 35%, rarity_5 = 10% (when available by progression gate).
+Protection rule: keep at least one affordable offer (price <= current_coins + 15) to avoid dead shops.
 
 3.9. VIP Punchcard
 
 Rarity: 3 (rare)
 Theme: “You’re a valued customer – the shop starts paying you.”
-Effect (concept):
+Effect:
 You get cashback on shop spending each time you visit:
 Example: “Gain back 10/15/20/25% of coins spent in this shop as spoils at the end of the next level.”
 Cashback applies to all purchases including Reroll, which encourages heavy rolling and shopping.
@@ -753,12 +756,14 @@ Max Level: 4
 Cashback by level: 10% / 15% / 20% / 25%
 Cashback cap per level: 30 / 45 / 60 / 80 coins
 Rule: cashback is granted after clearing the level (not immediately in shop).
+Accounting rule: cashback pool resets when entering a new shop.
+UI rule: show "Current cashback pool: X (cap Y)" in shop lower panel.
 
 3.10. Spoil Splitter
 
 Rarity: 2 (uncommon)
 
-Effect (concept):
+Effect:
 Every time you pick up a coin, you have a level-scaled chance to spawn +1 extra coin 
 (chance scales with level, e.g., 10/20/30/40/50%).
 Doesn’t trigger on “fake” coins (e.g., bank interest ticks, if you want to avoid loops) – only on actual pickups from the ground.
@@ -768,6 +773,7 @@ Max Level: 5
 Proc chance by level: 10% / 20% / 30% / 40% / 50%
 Anti-loop rule: spawned bonus coin cannot recursively trigger Spoil Splitter.
 Performance rule: max 8 spawned bonus coins per second globally.
+Expected value guide: average coin gain should be +0.10 / +0.20 / +0.30 / +0.40 / +0.50 coins per pickup before caps.
 
 '4. Utility / Control Props'
 These change the way the player moves or controls space.
@@ -828,6 +834,12 @@ Max Level: 5
 Level effect: +1 auto turret per level.
 Base tuning target: turret_damage ~ 33% of player base bullet damage, fire_interval ~0.9s, range ~80% of player range.
 Cap rule: at 5 turrets, further turret props should convert to quality upgrades (damage/range) instead of count.
+Per-level quality scaling:
+L1: damage_ratio 0.33, interval 0.90s, range_mult 0.80
+L2: damage_ratio 0.35, interval 0.86s, range_mult 0.82
+L3: damage_ratio 0.37, interval 0.82s, range_mult 0.84
+L4: damage_ratio 0.39, interval 0.78s, range_mult 0.86
+L5: damage_ratio 0.42, interval 0.74s, range_mult 0.88
 
 ;4.5 Stationary Turret     ==========================================================================
 Similar to Auto Turret, just cannot move.
@@ -837,6 +849,7 @@ Base Price: $14
 Max Level: 99 (copy-style stacking)
 Per purchase: +1 stationary turret spawn each level at valid clear tile.
 Suggested tuning: same bullet damage as auto turret, +15% range, -10% fire interval to reward setup play.
+Hard safety cap suggestion: max 8 active stationary turrets on map; extra copies become +6% turret damage each.
 
 '5. Crit, Element, and Synergy Props'
 
@@ -916,6 +929,23 @@ Slows the player, may apply chip damage or debuffs (fog, blind, crit reduction),
 Paint always fades over time, keeping the battlefield dynamic instead of permanently covered.
 All paint can be covered by other paint, and the new paint will replace the old paint.
 
+Core runtime rules (implementation detail):
+Paint update tick: every 0.1s.
+Default intensity decay: intensity -= 0.22 per second (clamp 0..1).
+Tile ownership overwrite priority: latest timestamp wins.
+Tile cleanup threshold: remove paint entry when intensity < 0.05.
+Recommended hard cap: max 900 active paint tiles; if exceeded, evict oldest 10% by timestamp.
+
+Suggested player paint formula:
+move_speed_bonus = min(+12%, +12% * intensity)
+damage_bonus_on_painted_targets = min(+10%, +10% * intensity)
+optional_shield_regen = 0.0 / 0.2 / 0.4 shield per second (enabled by props only)
+
+Suggested enemy paint formula:
+player_slow = min(25%, 25% * intensity)
+chip_damage = max_hp * 0.6% per second at full intensity
+status_debuff_window = apply only if standing >= 0.8s continuously on enemy paint
+
 6.1. Curing Paint
 Path: Core Paint System (OFF - offensive utility)
 Rarity: 2 (Common / Uncommon)
@@ -932,6 +962,28 @@ Level 3: damage_per_tick = 0.08 * bullet_base, lifetime = 4.0s, radius = 0.90 ti
 Boss rule: paint DoT deals 70% damage to bosses.
 Spawn cadence: leave footprint every 0.25s while moving.
 Ownership rule: only latest paint owner controls tile effects.
+
+6.2. Paint Converter
+Path: Core Paint System (Hybrid utility/economy)
+Rarity: 3
+Base Price: $20
+Max Level: 3
+Effect: when enemy dies on your paint, convert paint intensity into bonus rewards.
+L1: +8% chance to drop 1 bonus coin, consume 0.15 intensity.
+L2: +12% chance to drop 1 bonus coin, consume 0.12 intensity.
+L3: +16% chance to drop 1 bonus coin, consume 0.10 intensity.
+Rule: cannot trigger from summoned fake-coin entities.
+
+6.3. Cleanse Step
+Path: Core Paint System (Defensive utility)
+Rarity: 2
+Base Price: $16
+Max Level: 3
+Effect: moving over enemy paint gradually converts it to neutral or player paint.
+L1: conversion_rate = 0.20 intensity/s
+L2: conversion_rate = 0.30 intensity/s
+L3: conversion_rate = 0.45 intensity/s
+Bonus: while converting, gain 6%/9%/12% slow resistance.
 
 '7. “Set / Combo” Ideas'
 
@@ -967,3 +1019,6 @@ Set system rules:
 Set bonuses should be additive utility spikes, not run-defining raw multipliers.
 A full 3-piece set should add about +12% to +20% effective run power, not more.
 Always show active set count in pause/build summary (example: Fortress Loop 2/3).
+Activation check cadence: recompute active sets on prop acquire/sell and once on level start.
+Conflict rule: if two sets modify the same stat bucket, apply additive bonuses then clamp by stat caps.
+Telemetry recommendation: track set_pick_rate, set_completion_rate, and win_rate_with_set.
