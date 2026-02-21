@@ -1140,3 +1140,101 @@ Goal: verify map-control playstyle is viable but not mandatory for wins.
 
 12.5. Logging template per test:
 run_id, level_reached, build_paths, avg_dps, damage_taken, coins_earned, boss_ttk, fps_min
+
+'13. Runtime State Machine (Per Prop Trigger Type)'
+13.1. On-hit props (Bleed, DoT, Chill, Mark prep)
+State flow:
+IDLE -> HIT_DETECTED -> PROC_CHECK -> APPLY_EFFECT -> COOLDOWN/GCD -> IDLE
+Rules:
+Use deterministic proc seed per hit event id to keep replay consistency.
+If multiple on-hit props trigger, process in fixed order by prop id to avoid nondeterminism.
+
+13.2. On-kill props (Shrapnel, Explosive chain, coin split)
+State flow:
+KILL_DETECTED -> SPAWN_PAYLOAD -> VALIDATE_CHAIN_DEPTH -> APPLY_CAPS -> COMPLETE
+Rules:
+Never re-enter same kill event more than once.
+Track chain_origin_id to avoid infinite recursive effect loops.
+
+13.3. On-damage-taken props (Mirror Shell, Retaliation Core, Guardian Charm)
+State flow:
+DAMAGE_PACKET -> SHIELD_STAGE -> HP_STAGE -> THRESHOLD_TRIGGERS -> BUFF_APPLY
+Rules:
+All reaction props read post-mitigation damage values.
+Per-source throttles required for rapid projectile spam scenarios.
+
+'14. Numeric Caps and Safety Floors'
+14.1. Damage-side caps
+max_total_damage_mult_from_props = +220%
+max_total_crit_chance_from_props = +65% (before base crit)
+max_projectile_count_bonus = +4
+max_ricochet_count = 3
+max_pierce_count = 5
+
+14.2. Defense-side caps
+max_total_shield_from_props = 220
+max_temporary_shield_ratio = 40% max_hp (Shield Capacitor pool)
+max_reflect_events_per_second = 6 (global)
+max_contact_reflect_per_enemy = 1 every 0.30s
+
+14.3. Economy-side caps
+max_effective_shop_discount = 45% total after all modifiers
+max_interest_payout_per_level = 90 (unless special event modifier)
+max_cashback_payout_per_level = 80
+max_splitter_bonus_coins_per_second = 8
+
+14.4. Movement/control floors
+player_speed_floor = 30% of base speed (after all penalties)
+enemy_slow_floor = enemy retains at least 20% of base speed
+boss_slow_effectiveness_cap = 50% of listed slow values
+
+'15. Prop Authoring Template (Use For New Cards)'
+15.1. Required fields
+id:
+display_name:
+path_primary:
+path_secondary:
+rarity:
+base_price:
+max_level:
+trigger_type: on_hit/on_kill/on_damage/on_move/passive/consumable
+
+15.2. Level table block
+L1:
+L2:
+L3:
+Boss modifier:
+Internal cooldown:
+Performance cap:
+
+15.3. UX block
+Short tooltip:
+Long tooltip:
+Card outline color tag:
+VFX key:
+SFX key:
+
+15.4. QA block
+Edge case:
+Failure mode:
+Expected telemetry signature:
+
+'16. Release Acceptance Criteria (Props System)'
+16.1. Functional
+All prop ids load from save without migration errors.
+No prop purchase can crash shop UI even with malformed levels.
+All capped props correctly stop purchasing at max level.
+
+16.2. Balance
+Top 10 most picked props do not exceed 60% combined pick rate across 200+ runs.
+At least 4 distinct build archetypes have >10% win rate in test dataset.
+No single economy combo exceeds 2.2x baseline coin generation.
+
+16.3. Performance
+Worst-case combat (projectile + paint + explosion heavy) holds 60 FPS target.
+No memory leak from persistent status stacks or paint tile maps over 30-minute session.
+
+16.4. Readability
+Player can identify prop path from card outline color within 1 second.
+Tooltip "Now/Next" text fits in available panel space without clipping.
+Damage/event feedback remains readable during boss phase transitions.
