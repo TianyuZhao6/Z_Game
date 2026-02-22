@@ -360,7 +360,7 @@ Give higher growth per level to higher rarity.
 ================================PROPS======================================
 '1. Core Offense Props'
 
-;1.1. Piercing Rounds  ======================================================================='
+;1.1. Piercing Rounds  =======================================================================
 Effect: Bullets can pass through N enemies, each hit deals full or slightly reduced damage.
 Synergy:
 Strong with range (bullets travel farther, hit more).
@@ -374,7 +374,7 @@ Level 1/2/3/4/5: pierce_count = +1/+2/+3/+4/+5
 Damage falloff per extra pierced target: 0% / 4% / 8% / 12% / 16% (cap 30%).
 Rule: piercing checks enemy hit cooldown to avoid multi-hit in the same frame.
 
-;1.2. Ricochet Scope   =========================================================================='
+;1.2. Ricochet Scope   ==========================================================================
 Effect: When a bullet hits an enemy or wall, it can bounce once toward the nearest enemy if exists.
 Synergy:
 Works nicely with your obstacles (walls turn into combo tools).
@@ -404,7 +404,7 @@ Level 3: bleed_total = 52% bullet_base over 3.0s, max_stacks = 4
 Tick interval: 0.5s.
 Boss rule: bleed damage multiplier vs bosses = 0.75.
 
-;1.4. Shrapnel Shells  =========================================================================='
+;1.4. Shrapnel Shells  ==========================================================================
 Effect: On enemy death, 25/35/45% to spawn 3-4 small projectiles in random directions.
 Synergy:
 Insane in big waves (chain-kill feeling).
@@ -439,7 +439,7 @@ Targeting priority: boss/elite > ranged > nearest.
 UI rule: mark icon pulses every 1.0s while active.
 
 
-;1.6. Explosive Rounds
+;1.6. Explosive Rounds ================================================
 Rarity: 2
 Base Price: $18
 Max Level: 3
@@ -462,7 +462,7 @@ chain_depth_cap = 3 (original kill + 2 chained explosions)
 same_target_rehit_lockout = 0.20s
 Visual budget: max 12 concurrent explosive flash VFX instances.
 
-;1.7. DOT Rounds
+;1.7. DOT Rounds ===================================================
 Rarity: 2
 Base Price: $20
 Max Level: 3
@@ -479,7 +479,7 @@ Applying a new stack refreshes only that stack duration, not all stacks.
 Per-target DoT cap:
 max_total_dot_damage_per_second = 120% bullet_base (before boss multiplier).
 
-;1.8. Ground Spikes
+;1.8. Ground Spikes ======================================
 Rarity: 2
 Base Price: $18
 Max Level: 3
@@ -665,7 +665,7 @@ Internal cooldown: 1.0s between retriggers.
 
 These are great for your Bandit mechanic and the shop fantasy.
 
-;3.1. Lockbox
+;3.1. Lockbox ==================================================
 Effect: A percentage of your coins becomes  “protected” and cannot be stolen by bandits.
 Synergy:
 Great early if bandits are frequent.
@@ -678,7 +678,7 @@ Protected coin ratio by level: 25% / 40% / 55% / 70%.
 Protection applies before bandit steal and before debt-style coin penalties.
 Suggested implementation: protected = floor(current_coins * ratio), unprotected = current_coins - protected.
 
-;3.2. Wanted Poster
+;3.2. Wanted Poster ======================================
 Effect: Consumable: next 2 levels, the first Bandit kill pays a bounty.
 Synergy:
 Converts the “punishment” enemy into a high-reward target.
@@ -703,7 +703,7 @@ Max Level: 5
 Radius bonus: +60 / +120 / +180 / +240 / +300 px.
 QoL rule: coin pickup ignores micro-obstacle edges within 0.2 tiles when magnetized.
 
-;3.4. Golden Interest
+;3.4. Golden Interest ==============================================
 Effect: At the start of each level, gain interest on unspent coins (5/10/15/20% by level).
 Synergy:
 Encourages the player to save coins and forgo instant power.
@@ -716,7 +716,7 @@ Interest rate by level: 5% / 10% / 15% / 20%
 Per-level payout cap: 30 / 50 / 70 / 90 coins
 Order rule: apply interest before debt repayment checks.
 
-;3.5. Bandit Radar
+;3.5. Bandit Radar ==================================
 Effect: When a bandit spawns, highlight them and slow them slightly for a short duration.
 Synergy:
 Combined with Wanted Poster → “Bandit hunter” build.
@@ -729,7 +729,7 @@ Slow strength by level: 8% / 12% / 16% / 20%
 Duration by level: 2s / 3s / 4s / 5s
 Visual: high-contrast outline + minimap ping pulse every 0.6s while effect is active.
   
-;3.6. Coupon  鈭? ==========================================================================
+;3.6. Coupon  ==========================================================================
 Effect: Permanently decrease shop prices by 5% per level.
 
 Rarity: 1
@@ -738,7 +738,7 @@ Max Level: 4
 Discount by level: 5% / 10% / 15% / 20%
 Rule: applies to normal offers and reroll cost; price floor is 1 coin.
 
-;3.7. Shady Loan
+;3.7. Shady Loan ============================================
 rarity: 3, cost: 5, max level: 3
 Effect: Take a risky loan: get +80/+120/+160 coins instantly, owe at least that much, and repay over 3/4/5 waves (25/30/35% of current coins, cap 50/80/110) after Golden Interest. Multiple loans stack debt and use the highest timer; the final wave attempts to clear all remaining debt at once, otherwise you lose 30/35/40% max HP.
 
