@@ -1238,3 +1238,123 @@ No memory leak from persistent status stacks or paint tile maps over 30-minute s
 Player can identify prop path from card outline color within 1 second.
 Tooltip "Now/Next" text fits in available panel space without clipping.
 Damage/event feedback remains readable during boss phase transitions.
+
+'17. Interaction Matrix (High Priority Pairs)'
+17.1. Offensive pairs
+Piercing + Ricochet:
+Expected effect: strong wave clear, moderate single-target.
+Balance note: apply bounce damage decay first, then pierce decay.
+
+Explosive + Shrapnel:
+Expected effect: high chain potential in dense waves.
+Balance note: cap total spawned secondary projectiles + explosions per second to protect FPS.
+
+DoT + Mark of Vulnerability:
+Expected effect: sustained damage spike against elites/bosses.
+Balance note: mark bonus should multiply DoT tick damage only once at application, not every tick recalculation.
+
+17.2. Defensive pairs
+Bone Plating + Retaliation Thorns:
+Expected effect: contact-heavy enemies become less threatening.
+Balance note: reflected damage should not trigger enemy on-hit effects back to player.
+
+Carapace + Aegis Pulse:
+Expected effect: stable periodic AoE pressure while shield exists.
+Balance note: if multiple shield sources exist, pulse frequency should still follow one global cooldown.
+
+Mirror Shell + Retaliation Core:
+Expected effect: defensive play converts incoming ranged pressure into offense.
+Balance note: reflected hits should not trigger additional Retaliation Core loops.
+
+17.3. Economy/control pairs
+Coupon + Golden Interest:
+Expected effect: smooth long-run value, weaker immediate power.
+Balance note: do not allow discount and interest to recursively amplify each other in the same calculation step.
+
+Bandit Radar + Wanted Poster:
+Expected effect: reliable bounty conversion path.
+Balance note: ensure a bandit spawn fallback on levels with otherwise zero bandit budget.
+
+17.4. Paint-system pairs
+Curing Paint + Paint Converter:
+Expected effect: control zones become reward zones.
+Balance note: bonus rewards only when enemy death location confirms paint ownership by player.
+
+Curing Paint + Cleanse Step:
+Expected effect: strong map control through reclaim and denial.
+Balance note: enemy paint should retain minimum persistence window (e.g., 0.6s) before instant overwrite.
+
+'18. Wave-by-Wave KPI Targets (Balance Dashboard)'
+18.1. Survival targets
+Wave 1-3 expected player HP at end: 70-100%
+Wave 4-6 expected player HP at end: 50-85%
+Wave 7-9 expected player HP at end: 35-75%
+Wave 10+ expected player HP at end: 25-65%
+
+18.2. Damage targets
+Average elite TTK target:
+Early: 3.5-5.0s
+Mid: 4.0-6.0s
+Late: 4.5-7.0s
+
+Average boss TTK target:
+Early boss: 35-55s
+Mid boss: 45-70s
+Late boss: 55-90s
+
+18.3. Economy targets
+Expected coin at shop entry (no dedicated econ build):
+After level 1: 22-35
+After level 3: 40-65
+After level 5: 65-100
+
+Expected coin at shop entry (econ-focused build):
+After level 3: 60-90
+After level 5: 95-150
+Hard ceiling over baseline should remain <= 2.2x.
+
+18.4. Prop progression targets
+Average prop levels owned by stage:
+Early (L1-3): 3-5 purchased levels total
+Mid (L4-6): 7-11 purchased levels total
+Late (L7+): 12-18 purchased levels total
+
+'19. Data Validation Rules (Pre-Commit)'
+19.1. Numeric validation
+No negative base_price, no negative cooldown, no negative duration.
+max_level must be integer >= 1 or explicit None for stackable/unbounded items.
+All percentage fields must be normalized in one convention per system (either 0-1 or 0-100, not mixed).
+
+19.2. Cross-field validation
+If trigger_type == consumable, required field: charges or single_use=true.
+If effect includes chain behavior, required field: chain_depth_cap.
+If effect has DoT, required fields: tick_interval, duration, max_stacks.
+If effect has slow, required field: boss_slow_modifier.
+
+19.3. UI validation
+All props require short tooltip text <= 80 chars and long tooltip <= 220 chars.
+All props require path color tag for card border mapping.
+All rarity values must map to a defined rarity visual marker count.
+
+19.4. Runtime validation
+Every spawned entity effect must define performance cap or pool limit.
+Every reactive trigger must define internal cooldown or per-source throttle.
+Every saveable prop state must include default value in run reset logic.
+
+'20. Patch Process (Weekly Loop)'
+20.1. Monday: collect telemetry snapshot
+pull pick rates, win rates, average DPS, boss TTK, FPS lows.
+
+20.2. Tuesday: propose changes
+prepare small patch set (8-15 numeric changes max), include intent for each.
+
+20.3. Wednesday: internal test
+run Script A-D + one random run smoke test.
+record regressions against KPI targets in section 18.
+
+20.4. Thursday: lock candidate patch
+freeze values, update changelog notes with rationale.
+
+20.5. Friday: release + monitor
+deploy patch, monitor first 24h telemetry for outlier spikes.
+if severe outlier (>20% delta in win rate or crash/FPS regression), hotfix within same day.
