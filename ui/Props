@@ -964,7 +964,7 @@ player_slow = min(25%, 25% * intensity)
 chip_damage = max_hp * 0.6% per second at full intensity
 status_debuff_window = apply only if standing >= 0.8s continuously on enemy paint
 
-6.1. Curing Paint
+6.1. Curing Paint =======================================
 Path: Core Paint System (OFF - offensive utility)
 Rarity: 2 (Common / Uncommon)
 Base Price: $12
