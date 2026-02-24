@@ -1358,3 +1358,139 @@ freeze values, update changelog notes with rationale.
 20.5. Friday: release + monitor
 deploy patch, monitor first 24h telemetry for outlier spikes.
 if severe outlier (>20% delta in win rate or crash/FPS regression), hotfix within same day.
+
+'21. Code Constant Mapping (ZGame.py Integration)'
+21.1. Existing constants already aligned
+Explosive Rounds:
+EXPLOSIVE_ROUNDS_RADIUS_MULTS
+EXPLOSIVE_ROUNDS_DAMAGE_MULTS
+EXPLOSIVE_ROUNDS_BOSS_MULT
+
+DoT Rounds:
+DOT_ROUNDS_TICK_INTERVAL
+DOT_ROUNDS_DAMAGE_PER_TICK
+DOT_ROUNDS_DURATIONS
+DOT_ROUNDS_MAX_STACKS
+DOT_ROUNDS_BOSS_MULT
+
+Ground Spikes:
+GROUND_SPIKES_DAMAGE_MULTS
+GROUND_SPIKES_LIFETIMES
+GROUND_SPIKES_MAX_ACTIVE
+GROUND_SPIKES_SLOW_MULT
+GROUND_SPIKES_SLOW_DURATION
+
+Curing Paint:
+CURING_PAINT_DAMAGE_PER_TICK
+CURING_PAINT_LIFETIMES
+CURING_PAINT_RADIUS_MULTS
+CURING_PAINT_TICK_INTERVAL
+CURING_PAINT_BOSS_MULT
+
+Aegis Pulse:
+AEGIS_PULSE_DAMAGE_RATIOS
+AEGIS_PULSE_BASE_RADIUS
+AEGIS_PULSE_RADIUS_PER_LEVEL
+AEGIS_PULSE_BASE_COOLDOWN
+AEGIS_PULSE_COOLDOWN_DELTA
+
+21.2. Suggested new constants to add
+BLEED_DAMAGE_TOTAL = (0.24, 0.36, 0.52)
+BLEED_DURATION = 3.0
+BLEED_MAX_STACKS = (2, 3, 4)
+BLEED_BOSS_MULT = 0.75
+
+MIRROR_SHELL_REFLECT_RATIO = (0.20, 0.32, 0.45)
+MIRROR_SHELL_REFLECT_RANGE_TILES = (4.0, 5.0, 6.0)
+MIRROR_SHELL_BOSS_MULT = 0.70
+
+RETALIATION_CORE_DMG_BONUS = (0.10, 0.16, 0.24)
+RETALIATION_CORE_CRIT_BONUS = (0.06, 0.09, 0.12)
+RETALIATION_CORE_DURATION = (2.5, 3.0, 3.5)
+
+21.3. META key naming policy
+All prop levels use *_level naming when level-based.
+All consumable counters use *_charges or *_waves.
+All temporary runtime values stay off META unless they must persist across level transitions.
+
+'22. Save Migration Plan (Props Data)'
+22.1. Version key
+Add props_schema_version in save payload.
+Current target version for this doc: 3.
+
+22.2. Migration rules
+v1 -> v2:
+normalize coupon discount field to coupon_level.
+normalize magnet radius to coin_magnet_radius in pixels.
+
+v2 -> v3:
+ensure missing keys are seeded with default 0/false values.
+clamp all levels to documented max levels.
+remove deprecated transient runtime keys if present.
+
+22.3. Corruption handling
+If level is invalid type or out of range, coerce to nearest valid value and log migration warning.
+If prop id unknown, keep raw data in orphan_props for debug, but skip runtime use.
+
+'23. Telemetry Event Contract (Props)'
+23.1. Event: prop_offer_shown
+Fields:
+run_id, level, shop_id, slot_index, prop_id, rarity, cost, player_coins, active_paths
+
+23.2. Event: prop_purchased
+Fields:
+run_id, level, prop_id, old_level, new_level, cost_paid, coins_after, path_primary
+
+23.3. Event: prop_triggered
+Fields:
+run_id, level, prop_id, trigger_type, target_type, damage_done, stacks, cooldown_remaining
+
+23.4. Event: set_bonus_active
+Fields:
+run_id, level, set_id, piece_count, bonus_tier, dps_delta_estimate
+
+23.5. Event: performance_guard_hit
+Fields:
+run_id, level, system_name, cap_name, dropped_events_count, fps_at_trigger
+
+'24. QA Acceptance Matrix (Per Prop Family)'
+24.1. Offense family
+Must pass:
+No chain effect can recurse infinitely.
+Per-hit and per-kill triggers respect throttles.
+Boss damage modifiers always applied.
+
+24.2. Defense family
+Must pass:
+Shield routing order matches section 8.2.
+Reaction buffs trigger once per valid event and honor internal cooldown.
+No reflection feedback loops.
+
+24.3. Economy family
+Must pass:
+Shop discounts and surcharges apply in fixed deterministic order.
+Interest/cashback/loan logic cannot generate negative coin states.
+Bandit interactions never consume charges without valid trigger.
+
+24.4. Paint family
+Must pass:
+Paint ownership and overwrite logic deterministic under simultaneous writes.
+Tile caps and cleanup execute without frame spikes.
+Paint effects clear correctly on level transition unless persisted by design.
+
+'25. Implementation Order (Recommended Sprint Breakdown)'
+Sprint 1 (core stabilization):
+Finalize offense + defense numeric constants.
+Implement runtime caps and deterministic event ordering.
+
+Sprint 2 (economy + shop):
+Implement dynamic pricing, offer guardrails, and economy telemetry.
+Ship Black Market/VIP/Splitter with full UI readouts.
+
+Sprint 3 (paint + sets):
+Implement paint runtime rules and set activation engine.
+Add set telemetry and balance pass against KPI targets.
+
+Sprint 4 (hardening):
+Complete save migration v3.
+Run full QA matrix and performance soak test.
