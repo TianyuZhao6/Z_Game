@@ -1494,3 +1494,171 @@ Add set telemetry and balance pass against KPI targets.
 Sprint 4 (hardening):
 Complete save migration v3.
 Run full QA matrix and performance soak test.
+
+'26. Steam Maturity Rubric (Current Version Readiness Score)'
+26.1. Rubric scoring model (100 points total)
+Gameplay clarity and responsiveness: 15
+Build depth and prop-path identity: 15
+Content volume and run-to-run variety: 15
+UI/UX readability and accessibility: 10
+Technical stability (crash/bug severity): 15
+Performance consistency (low-end + mid-tier): 10
+Retention systems (meta goals/challenges): 10
+Storefront and social conversion readiness: 10
+
+26.2. Score interpretation
+0-69:
+Not launch-ready. Keep in internal/closed testing only.
+70-84:
+Early Access candidate only if hard-gate requirements in 27 pass.
+85-100:
+Mature launch candidate with scale-ready marketing beats.
+
+26.3. Hard fail gates (must pass regardless of score)
+No reproducible progression blockers in first 60 minutes.
+No reproducible crash on default settings in 10 consecutive runs.
+No unreadable card/path identity conflicts in shop UI.
+No unresolved severe balance exploit that trivializes bosses.
+
+'27. Current Version Hard Requirements (Steam Candidate Baseline)'
+27.1. Gameplay loop requirements
+Time-to-fun <= 90 seconds from new run start.
+First meaningful build decision presented by minute 3.
+At least 4 distinct viable archetypes:
+Summoner path, crit burst path, economy control path, paint control path.
+No single archetype should exceed 55% win rate in internal sample of 200+ runs.
+
+27.2. Shop and card clarity requirements
+All shop cards must show primary path tag in text + outline color.
+Path outline color map must be fixed and globally consistent:
+Summoner: #4CAF50 (green)
+Crit/Burst: #E53935 (red)
+Defense/Survival: #1E88E5 (blue)
+Economy/Utility: #FDD835 (yellow)
+Paint/Control: #8E24AA (magenta)
+Legendary/Hybrid: #FB8C00 (orange)
+Colorblind-safe backup:
+Every path also gets an icon glyph and short label (e.g., SUM, CRT, DEF, ECO, PNT).
+
+27.3. Stability and performance requirements
+Crash-free session rate target: >= 99.5% over latest test build.
+Frame pacing target:
+60 FPS target on baseline device during wave combat with < 5% frames under 45 FPS.
+Load time target:
+Menu to first playable frame <= 8 seconds on baseline SSD.
+
+27.4. UX and onboarding requirements
+Tutorial completion rate target: >= 85% for first-time users.
+At least one concise tooltip per mechanic with consistent wording.
+Loss screen must show:
+Cause of death, top 3 damage sources, and one actionable build tip.
+
+27.5. Content requirements
+Minimum content baseline for perceived value:
+10+ enemy types
+4+ bosses
+5+ major biomes/themes or visual wave variants
+40+ meaningful props with at least 65% having synergy hooks
+5+ clear long-run goals (achievements/challenges/unlocks)
+
+'28. Viral Readiness Requirements (Steam Discoverability + Shareability)'
+28.1. Clip-worthy moment density
+Target at least one clip-worthy event every 3-5 minutes:
+Large summon swarm spikes, chain-reaction clears, last-second clutch survivals, or massive paint territory flips.
+
+28.2. Share surface requirements
+Run summary screen must support one-click screenshot export.
+Summary must include:
+Final build path mix, key props, DPS peak, wave reached, boss kills.
+Optional share code for seed/build replay target.
+
+28.3. Community loop requirements
+Weekly challenge seed with leaderboard.
+Daily mutator modifier for short replay incentive.
+Patch cadence target:
+Minor balance patch every 1-2 weeks during growth phase.
+
+28.4. Streamer and creator friendliness
+UI mode with larger combat text and reduced clutter toggle.
+No copyrighted placeholder assets/music in release candidate branch.
+Readable spectator moments:
+Boss telegraphs and prop trigger effects must be understandable without prior knowledge.
+
+'29. Solid Improvement Backlog (Prioritized)'
+29.1. P0 (ship blockers, highest impact)
+Implement strict path outline + icon system for every shop card.
+Add deterministic shop reroll protection against dead-offer streaks.
+Rebalance summoner path early game so it is strong but not autopilot.
+Add automated balance report after every tuning commit (win rate, TTK, FPS, crash).
+
+29.2. P1 (retention and quality lift)
+Add challenge unlock track linked to prop-path mastery.
+Add enemy intent telegraph polish pass (clarity before damage spikes).
+Improve run summary with build graph and decision timeline.
+Implement fail-state tip engine (context-based suggestions).
+
+29.3. P2 (content and variety expansion)
+Add 2 new summoner sub-path identities:
+Swarm attrition path and elite companion command path.
+Add 1-2 midgame bosses designed to counter static builds.
+Add path-specific event rooms with risk/reward choices.
+
+29.4. P3 (growth and conversion layer)
+Add demo-to-full retention hooks and wishlist CTA timing.
+Create Steam capsule art A/B variants and trailer cut variants.
+Add in-game event calendar stub for update anticipation.
+
+'30. Summoner Path Build Requirements (Detailed)'
+30.1. Role definition
+Summoner path should feel like force multiplication through unit composition, not passive background damage.
+Player should make frequent tactical choices:
+Positioning, summon timing, command focus target, and unit upgrade route.
+
+30.2. Minimum viable summon roster
+Frontline summon:
+High aggro draw, low DPS, moderate durability.
+Ranged summon:
+Low durability, scaling sustained DPS.
+Utility summon:
+Applies slow/mark/debuff with lower direct damage.
+Ultimate summon:
+Timed high-impact unit with long cooldown or special resource.
+
+30.3. Core stat framework
+Summon cap (base + scaling)
+Summon duration and respawn cadence
+Summon damage scaling from player stats
+AI response delay and retarget interval
+Survivability lane:
+HP/armor/resist parameters plus boss-damage modifier
+
+30.4. Counterplay and balance controls
+Global cap on total summon entities to protect FPS.
+Diminishing returns on overlapping aura buffs.
+Boss anti-summon mechanics on select encounters (zone clear, fear pulse, target swap) so play remains interactive.
+Summoner run should retain failure risk if player ignores movement and defensive timing.
+
+30.5. Shop-path readability for summoner cards
+All summoner cards use green outline + summon icon + SUM label.
+Tooltip first line format:
+[SUMMONER] + short role tag (Spawner, Commander, Sustain, Sacrifice).
+Card VFX should include subtle pulsing edge to distinguish from crit/economy cards.
+
+'31. Move-On Section (Execution Plan From Current Build)'
+31.1. Immediate next milestone (next 7 days)
+Lock path-color visual language and ship it in shop UI.
+Run 100 internal seeded runs and score section 26 rubric.
+Close all P0 issues and re-score.
+
+31.2. Short milestone (next 30 days)
+Reach rubric score >= 80 with all hard fail gates passed.
+Complete tutorial + run summary improvements.
+Ship weekly challenge framework and first content update beat.
+
+31.3. Launch decision gate
+If rubric >= 85 and crash/perf/onboarding targets are green:
+Proceed to broader Steam launch campaign.
+If rubric is 70-84:
+Release as clearly labeled Early Access with published roadmap.
+If rubric < 70:
+Do not launch publicly; stay in focused iteration cycle.
