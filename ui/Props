@@ -1662,3 +1662,167 @@ If rubric is 70-84:
 Release as clearly labeled Early Access with published roadmap.
 If rubric < 70:
 Do not launch publicly; stay in focused iteration cycle.
+
+'32. Visual Identity System (Detailed Production Spec)'
+32.1. Visual pillars (must stay consistent across all features)
+Readability first under combat stress.
+Strong path identity in shop and HUD.
+High contrast between gameplay threats and player-owned effects.
+Clean silhouettes before detail density.
+
+32.2. Core color token set (UI + card integration)
+Use one stable palette file and do not hand-pick ad-hoc colors per screen.
+Path tokens:
+PATH_SUMMONER = #4CAF50
+PATH_CRIT = #E53935
+PATH_DEFENSE = #1E88E5
+PATH_ECONOMY = #FDD835
+PATH_PAINT = #8E24AA
+PATH_HYBRID = #FB8C00
+Neutral UI tokens:
+UI_BG_DARK = #101418
+UI_BG_PANEL = #1B232C
+UI_TEXT_PRIMARY = #F2F5F7
+UI_TEXT_SECONDARY = #A8B3BD
+UI_WARNING = #FF7043
+UI_POSITIVE = #66BB6A
+Contrast requirement:
+All text and icon overlays must hit minimum 4.5:1 contrast for default UI scale.
+
+32.3. Shop card visual anatomy (single standard)
+Card layer order:
+Background panel -> rarity frame -> path outline -> icon -> title -> stat line -> cost block -> synergy hint.
+Path outline thickness:
+Base 2px, hover 3px, selected 4px.
+Path strip indicator:
+8px vertical strip on left edge uses path color for instant scanning.
+Rarity markers:
+Common: no corner gem.
+Rare: one corner gem.
+Epic: two corner gems.
+Legendary: animated top notch with restrained glow.
+
+32.4. Card state behavior
+Default:
+80% saturation, normal alpha.
+Hover:
+Scale 1.03, saturation +8%, glow alpha +15%.
+Affordable:
+Cost text = UI_POSITIVE and subtle pulse every 2.0s.
+Unaffordable:
+Cost text = UI_WARNING, card desaturates by 20%.
+Purchased:
+Quick confirm flash <= 120ms + soft sound cue; no long blocking animation.
+
+32.5. Iconography rules
+Every path has one primary icon + one backup icon.
+Icons must be recognizable at 20x20 and 32x32.
+No icon should rely on color alone; shape identity is mandatory.
+Line weight consistency target:
+2px at 1080p baseline scale.
+
+'33. Combat Readability and VFX Budget Rules'
+33.1. Threat hierarchy visual priority
+Priority 1 (enemy lethal telegraphs):
+Bright edge + directional cue + high-contrast ground marker.
+Priority 2 (player damage procs):
+Visible but shorter duration and lower brightness than enemy lethal telegraphs.
+Priority 3 (ambient effects):
+Low contrast, low motion; never compete with threats.
+
+33.2. VFX intensity budgets (performance + clarity)
+Max simultaneous major VFX bursts on screen: 8
+Max alpha-overdraw heavy effects per frame: 12
+Summoner path unit trails must be 50% opacity cap during swarm peak.
+Paint overlays must clamp saturation when tile density > 65% coverage.
+
+33.3. Telegraph timing standards
+Major enemy attack wind-up telegraph:
+Minimum 650ms before hit confirmation.
+Elite attack telegraph:
+Minimum 500ms.
+Boss one-shot pattern:
+Minimum 900ms + unique audio cue.
+
+33.4. Camera and screenshake policy
+Screenshake must be optional and default to medium.
+Boss slam max shake duration: 180ms.
+Rapid-hit effects should use micro-shake with cooldown (>= 300ms between shakes).
+No camera shake for passive DoT ticks.
+
+'34. UX, Accessibility, and Clarity Suggestions'
+34.1. Information hierarchy in battle HUD
+Top priority:
+HP/shield, active cooldowns, summon cap usage, objective/wave timer.
+Secondary:
+Coins, combo counters, optional metrics (DPS panel toggle).
+Tertiary:
+Flavor/status detail logs in collapsible area.
+
+34.2. Tooltip and language format standard
+Line 1:
+[PATH] [ROLE] one-sentence value statement.
+Line 2:
+Exact numeric effect at current level.
+Line 3:
+Upgrade preview delta for next level.
+Line 4:
+Synergy tags (2-4 max) with plain words.
+Avoid vague terms like "greatly increases" without numbers.
+
+34.3. Accessibility requirements
+Colorblind presets:
+Protanopia, deuteranopia, tritanopia profile toggles.
+UI scale slider:
+Minimum 85%, maximum 130%.
+Combat text readability mode:
+Bold font option + darker shadow stroke.
+Input accessibility:
+Allow remap for all core actions and hold/toggle alternatives where practical.
+
+34.4. Cognitive load management
+Limit simultaneous tutorial popups to one.
+Do not open blocking modal popups during active combat unless paused.
+On death screen, show one primary recommendation and max two secondary suggestions.
+
+'35. Additional Product Suggestions (Beyond Visual Layer)'
+35.1. Audio direction improvements
+Each path gets a distinct purchase SFX motif (short < 0.5s).
+Boss telegraph audio should be frequency-distinct from player proc sounds.
+Duck ambient music by 4-6 dB during critical telegraph windows.
+
+35.2. Retention and progression improvements
+Introduce path mastery badges (bronze/silver/gold) per archetype.
+Add weekly objective chains that encourage underused builds.
+Track and show "new personal best" for wave, DPS peak, and survival streak.
+
+35.3. Social and viral improvements
+Add quick "Build Card" export image from end-run summary.
+Include seed code + top 5 props + path ratio in export template.
+Create short "moment replay" save for last 12 seconds before death/victory.
+
+35.4. Steam conversion suggestions
+Align achievements with memorable verbs (survive, command, chain, clutch).
+Store page GIFs should show clear high-contrast action in first 2 seconds.
+Demo should include one full run loop + one unlock moment before exit prompt.
+
+'36. Visual QA and Approval Checklist'
+36.1. Shop card checklist
+Path outline color always matches path tag.
+Icon remains readable at minimum UI scale.
+Cost state (affordable/unaffordable) immediately understandable.
+No overlapping text at localized string expansion up to 30%.
+
+36.2. Combat readability checklist
+Enemy telegraphs always visible above paint and summon effects.
+Critical damage numbers do not hide danger zones.
+Boss ability color coding is internally consistent across all encounters.
+
+36.3. Accessibility checklist
+All critical information available without color-only cues.
+Tutorial and tooltip text pass readability at smallest supported scale.
+All core game actions verified with remapped controls.
+
+36.4. Sign-off gate
+Do not ship visual patch unless all 36.x checklist items pass in QA report.
+If one fails, mark patch as visual-risk and block release candidate promotion.
