@@ -1826,3 +1826,221 @@ All core game actions verified with remapped controls.
 36.4. Sign-off gate
 Do not ship visual patch unless all 36.x checklist items pass in QA report.
 If one fails, mark patch as visual-risk and block release candidate promotion.
+
+'37. Prop Presentation Standard (Per Card, Per Upgrade)'
+37.1. Required card data fields (display-facing)
+Every prop must expose:
+display_name
+path_tag
+role_tag
+rarity
+short_pitch
+current_value_text
+next_upgrade_text
+synergy_tags
+risk_note (if the prop has a drawback or tradeoff)
+
+37.2. Naming rules
+Names should be short, distinct, and scannable in under 1 second.
+Target length:
+1-3 words preferred, 18 characters soft cap before text scaling.
+Avoid generic names that overlap in function:
+Bad example:
+Power Boost, Damage Up, Strong Shot.
+Good example:
+Retaliation Core, Grave Beacon, Razor Loop.
+
+37.3. Short pitch format
+The short pitch is the "why buy this" sentence and must describe outcome, not only math.
+Examples:
+Spawn an extra frontliner that draws enemy aggro.
+Turn crit chains into room-clearing burst windows.
+Convert painted ground into safe damage zones.
+Pitch length target:
+45-70 characters.
+
+37.4. Upgrade preview standard
+All upgrade previews must show absolute change and new total.
+Preferred format:
+Damage: +8 (32 -> 40)
+Cooldown: -0.3s (2.1s -> 1.8s)
+Summon Cap: +1 (3 -> 4)
+Never show only a percentage if the player can understand the concrete number instead.
+
+37.5. Synergy tag rules
+Each prop should show 2-4 synergy tags max.
+Tag priority order:
+Primary path -> trigger type -> scaling stat -> notable combo.
+Example:
+SUMMONER | On Kill | Attack Speed | Swarm
+
+'38. Shop Anti-Frustration and Offer Quality Rules'
+38.1. Offer quality baseline
+Every shop refresh should contain:
+At least 1 generally safe pick.
+At least 1 synergy-forward pick tied to current build if available.
+At least 1 wildcard pick with high upside or pivot potential.
+
+38.2. Dead shop prevention
+Do not allow 3 consecutive shops with zero path matches if player has already committed to a path.
+If player owns 3+ props of a single path, increase that path's appearance weight by a controlled amount only:
+Recommended range:
++12% to +20%, not uncapped.
+
+38.3. Anti-duplicate frustration
+Do not offer duplicate maxed-out props.
+Do not offer the same rejected prop more than twice in three shops unless the item pool is near exhaustion.
+If a prop was rerolled away, reduce its immediate reappearance chance for one shop cycle.
+
+38.4. Pivot protection
+Even in a heavily committed build, keep 10-20% of offers open for pivot or rescue options.
+Purpose:
+Prevent runs from becoming solved too early.
+Allow comeback routes after bad boss matchups.
+
+38.5. Price feel targets
+Cheap buy should feel instantly attainable.
+Mid-cost buy should feel like a meaningful choice.
+High-cost buy should feel aspirational, not impossible.
+If a player cannot afford any item in 2 consecutive shops in an average run, economy pacing is failing.
+
+'39. Run Summary, Loss Screen, and Build Clarity'
+39.1. End-run summary minimum content
+Show:
+Primary path
+Secondary path
+Top 5 props by impact
+Peak DPS
+Total summons created
+Coins spent vs coins earned
+Bosses defeated
+Cause of death or victory condition
+
+39.2. Build identity callout
+Generate a readable build label from actual play behavior.
+Examples:
+Swarm Commander
+Crit Cascade
+Paint Lock Controller
+Greedy Merchant Tank
+This increases memorability and shareability.
+
+39.3. Loss analysis suggestions
+Loss tips must be evidence-based.
+Use actual run signals:
+Low mobility uptime
+Low single-target boss damage
+Too many economy props too early
+Insufficient survivability for elite spikes
+Avoid generic advice like:
+Try a better build.
+
+39.4. Personal best and progression messaging
+Always surface when the player sets a new record.
+Best practice:
+One prominent stat card + up to two secondary record callouts.
+Do not flood the summary screen with too many celebration banners.
+
+'40. Content Pacing and Run Variety Requirements'
+40.1. Early game (minutes 0-5)
+Player should learn:
+Core movement safety
+One strong prop identity
+One upgrade rhythm
+The early game must be forgiving but not boring.
+Target:
+One exciting power spike before minute 4.
+
+40.2. Mid game (minutes 5-15)
+The run should start asking for specialization.
+Enemies should force tradeoff recognition:
+Single-target vs crowd clear
+Greed vs survival
+Static control vs mobility
+At least one enemy type or event should pressure over-optimized glass-cannon builds.
+
+40.3. Late game (minutes 15+ or equivalent final stages)
+The build should feel fully online, but still threatened.
+Late-game threats should test:
+Position discipline
+Burst survival
+Boss mechanic understanding
+Not just raw stat checks.
+
+40.4. Variety injection system
+Run variety should come from:
+Enemy composition shifts
+Boss modifier variants
+Event room choices
+Path-specific prop forks
+Randomness alone is not enough; controlled variation is better than chaos.
+
+'41. Production Polish Requirements (Mature Release Standard)'
+41.1. Animation polish
+All major card interactions need one clear motion language:
+Appear, hover, buy, fail-to-buy, upgrade.
+Animation durations must be short and reliable:
+Recommended UI motion range:
+100-220ms.
+Longer than that makes repeated shopping feel slow.
+
+41.2. Audio polish
+There must be separate layers for:
+UI feedback
+Player proc confirmation
+Enemy telegraphs
+Boss phase transitions
+If two sounds compete for the same gameplay meaning, redesign one.
+
+41.3. Micro-feedback standards
+Every successful purchase should produce:
+Visual confirmation
+Audio confirmation
+State update confirmation (coin count and item state)
+Every failed purchase should produce:
+Short denied audio + red pulse + readable reason if relevant.
+
+41.4. Low-end device fallback
+Provide reduced VFX mode:
+Lower particle count
+Reduced bloom/glow
+Simplified paint overlay
+Lower summon trail density
+This mode should preserve gameplay clarity, not merely disable beauty.
+
+41.5. Final release polish gate
+Before public scale-up, verify:
+No placeholder text
+No inconsistent capitalization in tooltips
+No missing icon assets
+No props with undocumented hidden effects
+No path colors that differ between shop, tooltip, and summary UI
+
+'42. Concrete Next-Step Suggestions For This Project'
+42.1. Highest-value immediate documentation improvements
+Add a complete prop roster table with:
+Name, path, rarity, max level, cost, trigger, scaling, synergy tags.
+Add a one-page "design north star" summary at the top of `ui/Props`.
+Add a changelog section for balance revisions so future tuning stays traceable.
+
+42.2. Highest-value implementation improvements
+Wire the path color constants directly into shop card rendering in `ZGame.py`.
+Add tooltip formatting helpers so all props follow section 34.2 automatically.
+Add a card validation pass that rejects props missing required display fields from section 37.1.
+
+42.3. Highest-value playtest improvements
+Run short tests focused on:
+First 10 minutes fun factor
+Shop readability speed
+Summoner path clarity
+Loss-screen usefulness
+Collect concrete metrics, not only subjective notes.
+
+42.4. Move-forward rule
+Do not keep expanding content before the presentation layer is stable.
+First lock:
+Card readability
+Path identity
+Tooltip standardization
+Shop offer quality
+Then expand prop count and advanced systems.
