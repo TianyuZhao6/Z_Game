@@ -1,370 +1,360 @@
-﻿================================GAME TODO===================================
-'0. Full-Game Professional To-Do (Modify/Add)'
+Z Game Systems and Props Specification
+Status: Working Draft
+Purpose: Consolidated design, balance, UX, and production reference for the current version.
 
-[A] Vision & Scope
+0. Full-Game Professional To-Do (Modify/Add)
+
+0.A. Vision and Scope
 0.1 Lock core game pillars (3 short bullets): combat feel, build variety, replayability.
 0.2 Define target run length (example: 18-25 min) and target difficulty curve.
-0.3 Freeze MVP feature scope, move all extra ideas to a post-MVP backlog.
+0.3 Freeze MVP feature scope and move extra ideas to a post-MVP backlog.
 
-[B] Core Gameplay Quality
-0.4 Improve movement + shooting feel: acceleration, hit feedback, camera shake limits.
+0.B. Core Gameplay Quality
+0.4 Improve movement and shooting feel: acceleration, hit feedback, camera shake limits.
 0.5 Add clear enemy telegraphs (wind-up colors, attack direction, danger timing).
-0.6 Rebalance early game economy so first 2-3 shop choices always feel meaningful.
+0.6 Rebalance early game economy so the first 2-3 shop choices always feel meaningful.
 0.7 Add elite enemy variants to bridge normal waves and boss difficulty.
 
-[C] Build System (Props) - Required Refactor
-0.8 Convert all props to one data-driven format (ScriptableObject/data table).
-0.9 Standardize prop fields: rarity, price, level cap, tags, scaling formula, VFX id.
+0.C. Build System (Props) - Required Refactor
+0.8 Convert all props to one data-driven format (ScriptableObject or data table).
+0.9 Standardize prop fields: rarity, price, level cap, tags, scaling formula, and VFX id.
 0.10 Add synergy tags (Pierce, DoT, Shield, Summon, Economy) for automatic combo rules.
 0.11 Add anti-snowball checks: diminishing returns and hard caps on extreme stacks.
-0.12 Add 8-12 "bridge props" that connect offense + defense + economy paths.
+0.12 Add 8-12 bridge props that connect offense, defense, and economy paths.
 
-[D] Meta Progression & Run Structure
-0.13 Add unlock roadmap: what is unlocked by level, boss clear, and achievements.
+0.D. Meta Progression and Run Structure
+0.13 Add an unlock roadmap: level, boss-clear, and achievement unlocks.
 0.14 Define biome order and identity (enemy set, hazard, reward style per biome).
 0.15 Add mid-run decision nodes (risk room, shop room, heal room, challenge room).
 
-[E] Boss & Encounter Design
+0.E. Boss and Encounter Design
 0.16 Give each boss 3 phases with a readable pattern change at each HP threshold.
 0.17 Add anti-stall mechanics so bosses pressure passive kiting builds.
-0.18 Add boss reward clarity: one safe pick, one high-risk pick, one build-defining pick.
+0.18 Add boss reward clarity: one safe pick, one high-risk pick, and one build-defining pick.
 
-[F] UX, UI, and Readability
-0.19 Redesign HUD priority: HP/shield/status/coins first, low-value info second.
+0.F. UX, UI, and Readability
+0.19 Redesign HUD priority: HP, shield, status, and coins first; low-value info second.
 0.20 Add combat log snippets for major events (crit spike, shield break, prop trigger).
-0.21 Add a pause-screen build summary so players understand why they are strong/weak.
-0.22 Improve color language consistency (damage type, status type, rarity tier).
+0.21 Add a pause-screen build summary so players understand why they are strong or weak.
+0.22 Improve color language consistency across damage type, status type, and rarity tier.
 
-[G] Audio, Juice, and Game Feel
+0.G. Audio, Juice, and Game Feel
 0.23 Add layered hit audio (normal, crit, kill, shield break).
 0.24 Add distinct pickup sounds for coin, heal, rare prop, and key rewards.
-0.25 Add controlled screen FX policy to avoid visual overload in late waves.
+0.25 Add a controlled screen-effects policy to avoid visual overload in late waves.
 
-[H] Technical & Production
-0.26 Add save versioning + migration for future balance/data changes.
+0.H. Technical and Production
+0.26 Add save versioning and migration for future balance and data changes.
 0.27 Add debug tools: spawn waves, force props, DPS meter, economy simulator.
 0.28 Add telemetry events (death reason, pick rate, win rate by prop path).
-0.29 Set performance budget (target FPS, max enemies, max projectiles) and enforce it.
+0.29 Set a performance budget (target FPS, max enemies, max projectiles) and enforce it.
 
-[I] QA & Live Balance Loop
-0.30 Create a weekly balance cadence: collect metrics, patch numbers, re-test top builds.
-0.31 Add regression checklist before every build (shop, boss, save/load, UI, collisions).
-0.32 Run playtests for 3 player types: new, average, high-skill; tune separately.
+0.I. QA and Live Balance Loop
+0.30 Create a weekly balance cadence: collect metrics, patch numbers, and re-test top builds.
+0.31 Add a regression checklist before every build (shop, boss, save/load, UI, collisions).
+0.32 Run playtests for 3 player types: new, average, and high-skill; tune separately.
 
-[J] Onboarding & Player Learning
+0.J. Onboarding and Player Learning
 0.33 Add a 60-90 second interactive tutorial focused only on movement, shooting, and pickup flow.
 0.34 Add first-run helper prompts that disappear permanently after the player demonstrates mastery.
-0.35 Add codex/encyclopedia pages for enemies, statuses, and prop synergies.
-0.36 Add death recap screen: top damage source, build snapshot, and suggested improvement.
+0.35 Add codex or encyclopedia pages for enemies, statuses, and prop synergies.
+0.36 Add a death recap screen: top damage source, build snapshot, and suggested improvement.
 
-[K] Content Pipeline & Variety
-0.37 Build modular enemy ability components (dash, summon, shield, ranged burst) for faster new enemy creation.
-0.38 Define enemy role matrix per biome (chaser, zoner, sniper, tank, support) and enforce wave composition rules.
-0.39 Add mini-events during waves (meteor shower, cursed zone, treasure swarm) with clear risk/reward.
+0.K. Content Pipeline and Variety
+0.37 Build modular enemy ability components (dash, summon, shield, ranged burst) for faster enemy creation.
+0.38 Define an enemy role matrix per biome (chaser, zoner, sniper, tank, support) and enforce wave-composition rules.
+0.39 Add mini-events during waves (meteor shower, cursed zone, treasure swarm) with clear risk and reward.
 0.40 Create a rarity-gated prop pool rotation so each run has a slightly different shop meta.
 
-[L] Accessibility & Controls
+0.L. Accessibility and Controls
 0.41 Add full key remapping support for keyboard and controller.
-0.42 Add accessibility options: screen shake slider, flash reduction, colorblind-safe palette toggle.
-0.43 Add aim assist tuning presets (off/low/medium) and deadzone settings for controller.
+0.42 Add accessibility options: screen shake slider, flash reduction, and colorblind-safe palette toggle.
+0.43 Add aim-assist tuning presets (off, low, medium) and deadzone settings for controller.
 0.44 Add readable font scaling and UI safe-zone settings for small displays.
 
-[M] Economy, Difficulty, and Anti-Frustration
+0.M. Economy, Difficulty, and Anti-Frustration
 0.45 Add pity rules for shops to reduce no-synergy streaks across multiple refreshes.
-0.46 Add dynamic catch-up rewards for weak runs (small bonus currency/utility choices).
-0.47 Add optional challenge modifiers that increase score/reward without blocking normal progression.
-0.48 Add hard fail-state audit: prevent unavoidable damage chains and off-screen unfair kills.
+0.46 Add dynamic catch-up rewards for weak runs (small bonus currency or utility choices).
+0.47 Add optional challenge modifiers that increase score and reward without blocking normal progression.
+0.48 Add a hard fail-state audit to prevent unavoidable damage chains and off-screen unfair kills.
 
-[N] Release & Post-Launch Readiness
-0.49 Define release quality gates: crash-free threshold, average FPS floor, minimum content count.
-0.50 Prepare live-ops content packs (new props/enemies/events) with a versioned deployment checklist.
-0.51 Add structured bug triage labels: blocker, gameplay, balance, UX, cosmetic.
-0.52 Create a patch-note template that always includes balance intent, not just number changes.
+0.N. Release and Post-Launch Readiness
+0.49 Define release quality gates: crash-free threshold, average FPS floor, and minimum content count.
+0.50 Prepare live-ops content packs (new props, enemies, events) with a versioned deployment checklist.
+0.51 Add structured bug-triage labels: blocker, gameplay, balance, UX, cosmetic.
+0.52 Create a patch-note template that always includes balance intent, not only number changes.
 
-[O] Progression Math & Balance Infrastructure
-0.53 Build a single source-of-truth spreadsheet/model for damage, HP, armor, and economy scaling.
+0.O. Progression Math and Balance Infrastructure
+0.53 Build a single source-of-truth spreadsheet or model for damage, HP, armor, and economy scaling.
 0.54 Define target time-to-kill benchmarks by wave tier (trash, elite, miniboss, boss).
 0.55 Add scripted balance tests that simulate 1000+ runs with randomized prop picks.
 0.56 Define hard caps per stat bucket (attack speed, crit chance, projectile count, shield gain).
 
-[P] Enemy AI & Combat Behaviors
+0.P. Enemy AI and Combat Behaviors
 0.57 Add behavior state machine standards: idle, chase, attack, retreat, enraged, dead.
 0.58 Add anti-clump movement logic so enemies do not overlap into unreadable blobs.
-0.59 Add ranged enemy line-of-sight rules and reposition cooldowns to prevent spam loops.
-0.60 Add special "counter units" per build archetype so every run has adaptation pressure.
+0.59 Add ranged-enemy line-of-sight rules and reposition cooldowns to prevent spam loops.
+0.60 Add special counter units per build archetype so every run has adaptation pressure.
 
-[Q] Level Design & Biome Hazards
-0.61 Create biome hazard catalog with clear readability: fire pools, slow fields, lightning lanes.
+0.Q. Level Design and Biome Hazards
+0.61 Create a biome hazard catalog with clear readability: fire pools, slow fields, lightning lanes.
 0.62 Ensure each biome has one unique traversal challenge and one unique combat challenge.
-0.63 Add procedural room templates with guaranteed safe spawn radius around player entry.
-0.64 Add encounter pacing rules: relief wave after peak stress wave to reduce fatigue.
+0.63 Add procedural room templates with a guaranteed safe spawn radius around player entry.
+0.64 Add encounter pacing rules: relief waves after peak stress waves to reduce fatigue.
 
-[R] Tools for Designers
-0.65 Build in-editor prop sandbox that can preview DPS and status interactions in real time.
-0.66 Add encounter editor with seed replay so designers can reproduce exact wave patterns.
-0.67 Add one-click capture tool for balance snapshots (build stats + wave + survival time).
+0.R. Tools for Designers
+0.65 Build an in-editor prop sandbox that can preview DPS and status interactions in real time.
+0.66 Add an encounter editor with seed replay so designers can reproduce exact wave patterns.
+0.67 Add a one-click capture tool for balance snapshots (build stats, wave, survival time).
 0.68 Add validation checks for content data (missing VFX, bad rarity, invalid scaling values).
 
-[S] Stability, Security, and Platform
-0.69 Add crash-report pipeline with automatic symbol upload and reproducible seed logging.
-0.70 Add deterministic random seed mode for debugging and competitive challenge runs.
-0.71 Add input latency tests and frame pacing checks on low-end target hardware.
-0.72 Add anti-corruption protection for save files (backup slot + checksum verification).
+0.S. Stability, Security, and Platform
+0.69 Add a crash-report pipeline with automatic symbol upload and reproducible seed logging.
+0.70 Add deterministic random-seed mode for debugging and competitive challenge runs.
+0.71 Add input-latency tests and frame-pacing checks on low-end target hardware.
+0.72 Add anti-corruption protection for save files (backup slot and checksum verification).
 
-[T] Summoner Path Build (Priority Expansion)
+0.T. Summoner Path Build (Priority Expansion)
 0.73 Define Summoner archetypes: Swarm, Sniper Familiar, Tank Companion, Support Totem.
-0.74 Add Summoner command key (Focus Target / Regroup / Hold Position) with short cooldown.
-0.75 Implement summon scaling table per level: HP, damage, attack rate, move speed.
+0.74 Add a Summoner command key (Focus Target, Regroup, Hold Position) with a short cooldown.
+0.75 Implement a summon scaling table per level: HP, damage, attack rate, move speed.
 0.76 Add summon inheritance rules from player stats with explicit caps (damage, crit, projectile mods).
 0.77 Add summon AI threat logic: target priority = elite > ranged > nearest melee.
-0.78 Add summon deaths and respawn pacing rules so the path feels reliable but not immortal.
-0.79 Add dedicated Summoner UI panel (active summons, HP bars, command state, respawn timers).
+0.78 Add summon death and respawn pacing rules so the path feels reliable but not immortal.
+0.79 Add a dedicated Summoner UI panel (active summons, HP bars, command state, respawn timers).
 0.80 Add 10+ Summoner-specific props with internal synergies and anti-snowball guardrails.
-0.81 Add summon pathing fail-safe (stuck detector + forced reposition) to avoid DPS collapse.
-0.82 Add command latency budget: summons should react within 0.20s after player input.
-0.83 Add boss-specific summon AI profile (avoid lethal zones, keep uptime above 75%).
-0.84 Add summon damage telemetry split by source (basic attack / skill / on-hit effect).
-0.85 Add summon threat meter so tank summons can intentionally peel enemies off player.
-0.86 Add summon collision policy (ghost-through allies, soft-separate from enemies).
-0.87 Add summon level breakpoints with clear power spikes at levels 3/6/9.
-0.88 Add summoner fallback reward if AI uptime is low (small passive stat compensation).
+0.81 Add a summon pathing fail-safe (stuck detector and forced reposition) to avoid DPS collapse.
+0.82 Add a command latency budget: summons should react within 0.20s after player input.
+0.83 Add a boss-specific summon AI profile (avoid lethal zones, keep uptime above 75%).
+0.84 Add summon damage telemetry split by source (basic attack, skill, on-hit effect).
+0.85 Add a summon threat meter so tank summons can intentionally peel enemies off the player.
+0.86 Add a summon collision policy (ghost through allies, soft-separate from enemies).
+0.87 Add summon level breakpoints with clear power spikes at levels 3, 6, and 9.
+0.88 Add a summoner fallback reward if AI uptime is low (small passive stat compensation).
 
-Continue learning building more features in unity.
-Add more features to the game.
-Working with the biome in unity 
+0.U. Current Project Continuation Notes
+0.89 Continue biome work in Unity.
+0.90 Continue scene-design iteration and layout polish.
+0.91 Evaluate moving the rendering path to a GPU-driven Unity workflow against the current performance budget.
 
-=====================================================================
-Working on the game scene design
-Working on moving the rendering system to GPU Unity system
-===================PATH==============================================
-!!! Unlocking a piece of equipment can trigger a chain reaction,
-    achieving a special effect with another piece of equipment.
+Path System Overview
+Core design rule:
+Unlocking one piece of equipment can trigger a chain reaction that activates special interactions with another piece of equipment.
 
-Multi-element attribute synergy:
- e.g., Water + Lightning = AOE, linking enemies within the electric shock range.
+Multi-element synergy rule:
+Example: Water + Lightning creates chained area damage that links enemies within shock range.
 
-Ballistic Path has an initial prototype (Pierce / Ricochet / Shrapnel).
-Turret Path has the baseline variants (Auto / Stationary).
-Shield Path has a working baseline (Carapace + Bone Plating + Shield AOE).
-Economy Path has baseline systems (Coin / Coupon / Reroll).
+Baseline implementation status:
+Ballistic Path: initial prototype (Pierce, Ricochet, Shrapnel).
+Turret Path: baseline variants (Auto, Stationary).
+Shield Path: working baseline (Carapace, Bone Plating, Shield AOE).
+Economy Path: baseline systems (Coin, Coupon, Reroll).
+Status Path: baseline systems (Buff, Debuff, Status).
+Status Path runtime rule: leave a trace while moving; enemies in the area receive a status effect.
+Status Path cleanup rule: the effect expires after the player leaves the area for a short time, or on death, restart, or level clear.
+Summoner Path: baseline systems (Pet, Minion, Summoner).
+Summoner Path baseline behavior: summons follow the player, attack enemies, respawn after death, level with the player, and have unique active and passive abilities.
+Lucky Path: baseline systems (Lucky, Risk, Chance).
 
-Status Path has baseline systems (Buff / Debuff / Status).
-   Leave a trace wherever you go on map, then apply a status effect to enemies in the area.
-   Status effect will be removed when you leave the area for a while.
-   Status effect will be removed when you die/restart/clear the level.
+Path Archetype Summary
+Ballistic Path
+Fantasy: high projectile mastery and wave-clearing combos.
+Key scaling stats: projectile count, pierce count, ricochet count, projectile speed.
+Signature mechanics: hit chaining, wall-assisted bounces, kill-triggered shrapnel bursts.
+Weakness: underperforms when maps have low enemy density or poor bounce angles.
 
+Turret Path
+Fantasy: controlled zone defense with independent damage sources.
+Key scaling stats: turret count, duration, fire rate, lock-on range.
+Signature mechanics: auto turret tracking and stationary burst zones.
+Weakness: vulnerable to fast reposition encounters and forced-movement bosses.
 
-Summoner Path has baseline systems (Pet / Minion / Summoner).
-   Summon a Summoner that follows you and attacks enemies. When the Summoner dies, 
-   it will be replaced by a new one. Summoner will level up with you.
-   Summoner will have a unique ability that is different from your own.
-   Summoner will have a unique passive ability that is different from your own.
+Shield Path
+Fantasy: survive pressure and convert defense into controlled retaliation.
+Key scaling stats: shield capacity, recharge, shield-on-hit effects, break effects.
+Signature mechanics: one-time protection, plating stacks, shield pulse damage.
+Weakness: lower ceiling if the player avoids all damage and never triggers shield reactions.
 
-Lucky Path has baseline systems (Lucky / Risk / Chance).
+Economy Path
+Fantasy: leverage resources to snowball through smarter resource decisions instead of raw combat stats.
+Key scaling stats: coin gain multiplier, shop discount, reroll efficiency, protected coins.
+Signature mechanics: better shop control, safer greed choices, compound value over time.
+Weakness: weak immediate combat power if the path is over-invested too early.
 
-Path Detail (Expanded English Design Spec)
-1) Ballistic Path
-   Fantasy: high projectile mastery and wave-clearing combos.
-   Key scaling stats: projectile count, pierce count, ricochet count, projectile speed.
-   Signature mechanics: hit chaining, wall-assisted bounces, kill-triggered shrapnel bursts.
-   Weakness: can underperform if maps have low enemy density or poor bounce angles.
+Status Path
+Fantasy: control tempo through damage-over-time and debuff layers.
+Key scaling stats: status duration, tick damage, stack cap, application chance.
+Signature mechanics: trail zones, persistent debuffs, area denial through status fields.
+Weakness: slower burst against urgent threats without setup time.
 
-2) Turret Path
-   Fantasy: controlled zone defense with independent damage sources.
-   Key scaling stats: turret count, duration, fire rate, lock-on range.
-   Signature mechanics: auto turret for tracking, stationary turret for burst zones.
-   Weakness: vulnerable to fast reposition encounters and forced movement bosses.
+Summoner Path
+Fantasy: indirect power through companions and team-based combat flow.
+Key scaling stats: summon count, summon damage ratio, summon uptime, respawn speed.
+Signature mechanics: autonomous minions, command-based focus fire, summon-specific synergies.
+Weakness: AI and pathing downtime reduce real DPS in cluttered arenas.
 
-3) Shield Path
-   Fantasy: survive pressure and convert defense into controlled retaliation.
-   Key scaling stats: shield capacity, recharge, shield-on-hit effects, break effects.
-   Signature mechanics: Carapace one-time protection, plating stacks, shield pulse damage.
-   Weakness: lower ceiling if player avoids all damage and never triggers shield reactions.
+Lucky Path
+Fantasy: high-variance run shaping through risk and reward decisions.
+Key scaling stats: trigger chance, jackpot multiplier, fail penalty, reroll interaction.
+Signature mechanics: chance-based spikes, gamble props, and a high ceiling with an unstable floor.
+Weakness: inconsistent runs without protection mechanics.
 
-4) Economy Path
-   Fantasy: leverage resources to snowball smartly instead of pure combat stats.
-   Key scaling stats: coin gain multiplier, shop discount, reroll efficiency, protected coins.
-   Signature mechanics: better shop control, safer greed choices, compound value over time.
-   Weakness: weak immediate combat power if economy is over-invested too early.
+Cross-Path Design Rules
+Every major path should have at least 2 bridge props that connect it to two other paths.
+No single path should solve both elite waves and bosses without trade-offs.
+Utility paths (Economy and Status) should scale into strength over time, not deliver full value instantly.
+High-variance paths must include at least one stabilizer option for consistency.
+Economy Path and Control Path should remain universal side branches that can hybridize with any primary archetype.
+Status Path, Summoner Path, and Lucky Path should expand gradually only after their core loops are stable.
 
-5) Status Path
-   Fantasy: control tempo through damage-over-time and debuff layers.
-   Key scaling stats: status duration, tick damage, stack cap, application chance.
-   Signature mechanics: trail zones, persistent debuffs, area denial through status fields.
-   Weakness: slower burst against urgent threats without setup time.
-
-6) Summoner Path
-   Fantasy: indirect power through companions and team-style combat flow.
-   Key scaling stats: summon count, summon damage ratio, summon uptime, respawn speed.
-   Signature mechanics: autonomous minions, command-based focus fire, summon-specific synergies.
-   Weakness: AI/pathing downtime can reduce real DPS in cluttered arenas.
-
-7) Lucky Path
-   Fantasy: high-variance run shaping with risk-reward decisions.
-   Key scaling stats: trigger chance, jackpot multiplier, fail penalty, reroll interaction.
-   Signature mechanics: chance-based spikes, gamble props, high ceiling but unstable floor.
-   Weakness: can create inconsistent runs without protection mechanics.
-
-Cross-path design rules:
-   Every major path should have at least 2 bridge props with two other paths.
-   No single path should solve both elite waves and bosses without trade-offs.
-   Utility paths (Economy/Status) should become stronger over time, not instantly.
-   High-variance paths must include one stabilizer option for consistency.
-
-Path Tuning (Specific Numbers and Formulas)
+Path Tuning Targets
 Global run brackets:
-   Early: waves 1-5
-   Mid: waves 6-12
-   Late: waves 13+
+Early: waves 1-5
+Mid: waves 6-12
+Late: waves 13+
 
 Enemy scaling targets:
-   enemy_hp_multiplier = 1.00 / 1.85 / 3.10 (early/mid/late)
-   enemy_damage_multiplier = 1.00 / 1.35 / 1.80
-   elite_spawn_ratio = 8% / 16% / 24%
+enemy_hp_multiplier = 1.00 / 1.85 / 3.10 (early, mid, late)
+enemy_damage_multiplier = 1.00 / 1.35 / 1.80
+elite_spawn_ratio = 8% / 16% / 24%
 
-Path activation threshold:
-   A path is considered "online" when player owns >= 2 tagged props from that path.
-   A path is considered "fully online" when player owns >= 4 tagged props from that path.
+Path activation thresholds:
+A path is online when the player owns >= 2 tagged props from that path.
+A path is fully online when the player owns >= 4 tagged props from that path.
 
 Ballistic Path numeric targets:
-   effective_hit_count = 1 + pierce_count + (ricochet_count * 0.60)
-   shrapnel_proc_chance_cap = 55%
-   projectile_count_soft_cap = +4 (extra projectiles after cap get 50% damage)
-   target DPS gain from online to fully online: +35% to +55%
+effective_hit_count = 1 + pierce_count + (ricochet_count * 0.60)
+shrapnel_proc_chance_cap = 55%
+projectile_count_soft_cap = +4 (extra projectiles after cap deal 50% damage)
+target DPS gain from online to fully online = +35% to +55%
 
 Turret Path numeric targets:
-   max_active_turrets = 1 / 2 / 3 (by progression tier)
-   turret_damage_ratio_vs_player = 0.45 / 0.55 / 0.65
-   turret_duration = 8s base, +1.5s per level, cap 16s
-   retarget_interval = 0.25s (do not set lower to avoid visual jitter)
+max_active_turrets = 1 / 2 / 3 (by progression tier)
+turret_damage_ratio_vs_player = 0.45 / 0.55 / 0.65
+turret_duration = 8s base, +1.5s per level, capped at 16s
+retarget_interval = 0.25s minimum to avoid visual jitter
 
 Shield Path numeric targets:
-   shield_hp_gain_per_pick = +12 / +18 / +25
-   shield_recharge_delay = 5.0s base, minimum 2.5s
-   shield_break_explosion_ratio = 0.35 * player_bullet_base
-   max_total_shield_from_props = 220 (before temporary buffs)
+shield_hp_gain_per_pick = +12 / +18 / +25
+shield_recharge_delay = 5.0s base, minimum 2.5s
+shield_break_explosion_ratio = 0.35 * player_bullet_base
+max_total_shield_from_props = 220 before temporary buffs
 
 Economy Path numeric targets:
-   coin_gain_bonus_per_level = +8% (cap +56%)
-   shop_discount_per_level = 4% (cap 20%)
-   reroll_cost_growth = +1 coin per reroll, cap 12
-   no-combat-investment safety rule: if DPS is below threshold, offer one combat-biased shop slot
+coin_gain_bonus_per_level = +8% (cap +56%)
+shop_discount_per_level = 4% (cap 20%)
+reroll_cost_growth = +1 coin per reroll, capped at 12
+safety rule: if DPS is below threshold, offer one combat-biased shop slot
 
 Status Path numeric targets:
-   base_status_apply_chance = 18% / 24% / 30%
-   status_duration_bonus_per_level = +0.4s (cap +2.4s)
-   dot_tick_interval = 0.5s fixed for readability
-   max_parallel_damage_statuses_on_single_target = 3
+base_status_apply_chance = 18% / 24% / 30%
+status_duration_bonus_per_level = +0.4s (cap +2.4s)
+dot_tick_interval = 0.5s fixed for readability
+max_parallel_damage_statuses_on_single_target = 3
 
 Summoner Path numeric targets:
-   summon_count_base = 1, hard_cap = 3
-   summon_damage_ratio = 0.35 / 0.45 / 0.55 (early/mid/late)
-   summon_hp_ratio_vs_player = 0.60 / 0.80 / 1.00
-   summon_crit_inherit = min(player_crit * 0.40, 35%)
-   summon_fire_rate_inherit = min(player_fire_rate_bonus * 0.50, +80%)
-   summon_respawn_time = 6.0s base, floor 2.5s
-   boss_damage_penalty_default = -25% unless overridden by summon-specialized props
+summon_count_base = 1, hard_cap = 3
+summon_damage_ratio = 0.35 / 0.45 / 0.55 (early, mid, late)
+summon_hp_ratio_vs_player = 0.60 / 0.80 / 1.00
+summon_crit_inherit = min(player_crit * 0.40, 35%)
+summon_fire_rate_inherit = min(player_fire_rate_bonus * 0.50, +80%)
+summon_respawn_time = 6.0s base, floor 2.5s
+boss_damage_penalty_default = -25% unless overridden by summon-specialized props
 
 Lucky Path numeric targets:
-   high-roll_trigger_chance = 12% base, cap 35%
-   fail_penalty_limit = not more than -20% effective run DPS at full stack
-   expected_value_rule: over 10 encounters, Lucky path should be +5% to +12% average value
-   variance rule: standard deviation should stay below "one shop purchase equivalent" per wave
+high_roll_trigger_chance = 12% base, cap 35%
+fail_penalty_limit = no more than -20% effective run DPS at full stack
+expected_value_rule = over 10 encounters, Lucky Path should produce +5% to +12% average value
+variance rule = standard deviation should stay below one shop purchase equivalent per wave
 
-Summoner AI and Command Specifics
+Summoner Command and AI Specification
 Command inputs:
-   Focus command cooldown = 8s, duration = 4s, bonus damage during focus = +20%
-   Regroup command cooldown = 6s, forces summons to orbit player for 2.5s
-   Hold Position command cooldown = 10s, hold radius = 1.5 tiles, duration = 5s
+Focus command cooldown = 8s, duration = 4s, bonus damage during focus = +20%
+Regroup command cooldown = 6s, summons orbit the player for 2.5s
+Hold Position command cooldown = 10s, hold radius = 1.5 tiles, duration = 5s
 
 AI movement tuning:
-   follow_distance = 1.2 tiles
-   leash_break_distance = 5.0 tiles
-   teleport_back_delay_when_leash_broken = 1.0s
-   avoid_overlap_separation_radius = 0.55 tiles
+follow_distance = 1.2 tiles
+leash_break_distance = 5.0 tiles
+teleport_back_delay_when_leash_broken = 1.0s
+avoid_overlap_separation_radius = 0.55 tiles
 
 AI target scoring:
-   score = (threat_weight * enemy_threat) + (distance_weight / distance) + mark_bonus
-   recommended weights: threat_weight = 0.6, distance_weight = 0.3, mark_bonus = 0.4
-   forced retarget if current target is unreachable for > 0.75s
+score = (threat_weight * enemy_threat) + (distance_weight / distance) + mark_bonus
+recommended weights: threat_weight = 0.6, distance_weight = 0.3, mark_bonus = 0.4
+forced retarget if the current target is unreachable for > 0.75s
 
-Summoner branch progression breakpoints:
-   Level 1-2: baseline summon only, no branch passive
-   Level 3: choose branch (Swarm Commander / Arcane Familiar / Warden Totem)
-   Level 6: unlock branch active skill modifier
-   Level 9: unlock branch capstone passive
-   Level 10+: only horizontal growth (utility/consistency), no major raw DPS spike
+Summoner progression breakpoints:
+Level 1-2: baseline summon only, no branch passive
+Level 3: choose branch (Swarm Commander, Arcane Familiar, Warden Totem)
+Level 6: unlock branch active-skill modifier
+Level 9: unlock branch capstone passive
+Level 10+: horizontal growth only (utility and consistency), no major raw DPS spike
 
-Summoner Path Build (Design Draft)
+Summoner Path Build Draft
 Core identity:
-   Lower direct burst from player; higher map control and sustained team DPS through summons.
+Lower direct burst from the player; higher map control and sustained team DPS through summons.
 
 Core rules:
-   Base max summons: 1. Hard cap: 3 (only through rare props/upgrades).
-   Summon base damage scales from player bullet_base at a reduced ratio.
-   Suggested ratio by tier: 35% / 45% / 55% (early/mid/late unlock tiers).
-   Summon crit chance inherits 40% of player crit chance (capped at 35%).
-   Summon attack speed inherits 50% of player fire rate bonuses (capped).
-   Respawn delay after summon death: 6.0s base, can be reduced to minimum 2.5s.
+Base max summons = 1. Hard cap = 3 (only through rare props or upgrades).
+Summon base damage scales from player bullet_base at a reduced ratio.
+Suggested damage ratio by tier = 35% / 45% / 55% (early, mid, late unlock tiers).
+Summon crit chance inherits 40% of player crit chance, capped at 35%.
+Summon attack speed inherits 50% of player fire-rate bonuses, with a hard cap.
+Respawn delay after summon death = 6.0s base, reducible to a 2.5s minimum.
 
 AI behavior package:
-   Default: follow player at medium leash distance.
-   In combat: prioritize marked/high-threat enemies first.
-   Safety: if too far from player, teleport back after short timeout.
-   Command skill: Focus mode forces all summons to attack one target for 4s.
+Default: follow the player at medium leash distance.
+In combat: prioritize marked and high-threat enemies first.
+Safety: teleport back after a short timeout if too far from the player.
+Command skill: Focus mode forces all summons to attack one target for 4s.
 
 Build branches:
-   Swarm Commander: more summon count, lower per-unit damage, strong with on-hit effects.
-   Arcane Familiar: fewer summons, high single-target DPS, better boss pressure.
-   Warden Totem: defensive summon that grants shield pulses and slow zones.
+Swarm Commander: more summon count, lower per-unit damage, strong with on-hit effects.
+Arcane Familiar: fewer summons, higher single-target DPS, better boss pressure.
+Warden Totem: defensive summon that grants shield pulses and slow zones.
 
 Recommended synergy tags:
-   Summon + Status: summons apply bleed/burn/slow stacks.
-   Summon + Economy: summon kills have chance to drop bonus coin shards.
-   Summon + Shield: while shielded, summons gain damage reduction and taunt chance.
-   Summon + AoE: summon kill creates mini-explosion or shrapnel burst.
+Summon + Status: summons apply bleed, burn, or slow stacks.
+Summon + Economy: summon kills can drop bonus coin shards.
+Summon + Shield: while shielded, summons gain damage reduction and taunt chance.
+Summon + AoE: summon kills create a mini-explosion or shrapnel burst.
 
-Weaknesses to keep balance:
-   Summons do reduced damage to bosses unless specialized by props.
-   Summons have pathing downtime in dense obstacles.
-   Summons should not fully inherit projectile multipliers without strict caps.
+Balance constraints:
+Summons deal reduced damage to bosses unless specialized by props.
+Summons lose uptime in dense obstacle layouts.
+Summons should not fully inherit projectile multipliers without strict caps.
 
 Milestone unlock plan:
-   Milestone 1: basic summon follower + respawn system.
-   Milestone 2: summon command key + target priority AI.
-   Milestone 3: archetype split (Swarm/Familiar/Warden) with unique passives.
-   Milestone 4: legendary summon prop that changes your run win condition.
+Milestone 1: basic summon follower and respawn system.
+Milestone 2: summon command key and target-priority AI.
+Milestone 3: archetype split (Swarm, Familiar, Warden) with unique passives.
+Milestone 4: a legendary summon prop that changes the run win condition.
 
-
-Economy Path and Control Path should be universal side branches that can hybridize with any main archetype.
-
-Status Path / Summoner Path / Lucky Path should be expanded gradually after their core loops are stable.
-
+Boss concept placeholder:
 Boss: Anti-U
-================================RARITY=====================================
-Rarity tiers & behavior
 
-Let s use numeric rarity for easy tuning:
-1 Common: Very frequent in shop, almost never as boss rewards.
-2 Uncommon: Medium frequency.
-3 Rare: Low frequency early, gets more common in later levels.
-4 Epic: Very low chance in shop; most often from bosses.
+Rarity Policy
+Use numeric rarity for fast tuning:
+1 Common: very frequent in the shop, almost never used as a boss reward.
+2 Uncommon: medium frequency.
+3 Rare: low frequency early, then increases later.
+4 Epic: very low chance in the shop; usually appears through bosses.
 
-Rule you wanted:
-The higher the rarity, the lower the probability of appearing in the shop 
-(but the refresh chance increases as levels increase).
+Shop rarity rule:
+Higher rarity means lower shop probability.
+Shop refresh growth can increase higher-rarity availability as level increases.
 
-So for the shop we ll:
-Give lower base weight to higher rarity.
-Give higher growth per level to higher rarity.
-================================PROPS======================================
-'1. Core Offense Props'
+Rarity progression rule:
+Lower rarities keep higher base weight.
+Higher rarities keep lower base weight but higher growth per level.
+1. Core Offense Props
 
-;1.1. Piercing Rounds  =======================================================================
+1.1. Piercing Rounds
 Effect: Bullets can pass through N enemies, each hit deals full or slightly reduced damage.
 Synergy:
 Strong with range (bullets travel farther, hit more).
-Strong with firerate (more bullets → more multi-hits).
+Strong with firerate (more bullets �� more multi-hits).
 Good vs swarms, slightly weaker vs single bosses.
 
 Rarity: 1
@@ -374,7 +364,7 @@ Level 1/2/3/4/5: pierce_count = +1/+2/+3/+4/+5
 Damage falloff per extra pierced target: 0% / 4% / 8% / 12% / 16% (cap 30%).
 Rule: piercing checks enemy hit cooldown to avoid multi-hit in the same frame.
 
-;1.2. Ricochet Scope   ==========================================================================
+1.2. Ricochet Scope
 Effect: When a bullet hits an enemy or wall, it can bounce once toward the nearest enemy if exists.
 Synergy:
 Works nicely with your obstacles (walls turn into combo tools).
@@ -393,7 +383,7 @@ Effect: Your hits apply a stacking Bleed DoT over 3s (damage and stack cap scale
 Synergy:
 High firerate builds become DoT machines.
 Good vs high-HP bosses (persistent damage even while kiting).
-Can interact with other props: e.g.,“Hemorrhage” that increases damage to bleeding targets.
+Can interact with other props: e.g.,"Hemorrhage" that increases damage to bleeding targets.
 
 Rarity: 2
 Base Price: $17
@@ -404,7 +394,7 @@ Level 3: bleed_total = 52% bullet_base over 3.0s, max_stacks = 4
 Tick interval: 0.5s.
 Boss rule: bleed damage multiplier vs bosses = 0.75.
 
-;1.4. Shrapnel Shells  ==========================================================================
+1.4. Shrapnel Shells
 Effect: On enemy death, 25/35/45% to spawn 3-4 small projectiles in random directions.
 Synergy:
 Insane in big waves (chain-kill feeling).
@@ -421,14 +411,14 @@ Shard travel range: 2.2 / 2.6 / 3.0 tiles
 Chain guard: shrapnel kills cannot trigger another shrapnel proc more than 2 generations deep.
 Performance cap: max 36 live shrapnel bullets at once; excess shards are dropped.
 
-;1.5. Mark of Vulnerability
+1.5. Mark of Vulnerability
 
 Type: Offensive debuff / mark (shop prop)
 Rarity: 3
 Base Price: $25
 Max Level: 3
 Core Fantasy
-You periodically “expose” a high-priority enemy,
+You periodically "expose" a high-priority enemy,
  making them take extra damage from all sources.
 
 Level details:
@@ -439,7 +429,7 @@ Targeting priority: boss/elite > ranged > nearest.
 UI rule: mark icon pulses every 1.0s while active.
 
 
-;1.6. Explosive Rounds ================================================
+1.6. Explosive Rounds
 Rarity: 2
 Base Price: $18
 Max Level: 3
@@ -462,7 +452,7 @@ chain_depth_cap = 3 (original kill + 2 chained explosions)
 same_target_rehit_lockout = 0.20s
 Visual budget: max 12 concurrent explosive flash VFX instances.
 
-;1.7. DOT Rounds ===================================================
+1.7. DOT Rounds
 Rarity: 2
 Base Price: $20
 Max Level: 3
@@ -479,7 +469,7 @@ Applying a new stack refreshes only that stack duration, not all stacks.
 Per-target DoT cap:
 max_total_dot_damage_per_second = 120% bullet_base (before boss multiplier).
 
-;1.8. Ground Spikes ======================================
+1.8. Ground Spikes
 Rarity: 2
 Base Price: $18
 Max Level: 3
@@ -491,10 +481,10 @@ Level 2: spike_damage = 0.40 * bullet_base, lifetime = 4.0s, max_active = 10
 Level 3: spike_damage = 0.50 * bullet_base, lifetime = 5.0s, max_active = 14
 
 
-'2. Defense & Survival Props'
+2. Defense & Survival Props
 
-Not just raw HP—give them interesting defensive patterns.
-;2.1. Bone Plating rarity: 2  √  ==========================================================================
+Not just raw HP��give them interesting defensive patterns.
+2.1. Bone Plating rarity: 2
 Effect: Every 6 seconds, gain 2hp plating. Stacks are unlimited (reset each level). 
 Purchase limit 5, once capped, any time you have plating it negates the next hit entirely 
 (consuming one stack even if the damage exceeds the plating).
@@ -511,7 +501,7 @@ Speed trade-off in current implementation: each purchase multiplies move speed b
 2.2. Guardian Charm
 Effect: When your HP drops below 30%, gain a temporary shield and speed burst (values scale by level). Long cooldown.
 Synergy:
-Helps “glass cannon” builds survive mistakes.
+Helps "glass cannon" builds survive mistakes.
 Synergizes with speed / positioning to escape on low HP.
 
 Rarity: 2
@@ -541,7 +531,7 @@ UI note: show both values in red/green on purchase confirmation.
 2.4. Retaliation Thorns
 Effect: Enemies that hit you by contact damage take a flat damage or % of their max HP.
 Synergy:
-Works well with Bone Plating (you can “intentionally”  take occasional hits).
+Works well with Bone Plating (you can "intentionally"  take occasional hits).
 Encourages tanky, lower-mobility builds.
 
 Rarity: 2
@@ -553,7 +543,7 @@ Level 3: reflect = max(22, 8% enemy_max_hp), internal_cd_per_enemy = 0.30s
 Boss rule: % max HP component is halved against bosses.
 Anti-loop: reflected damage cannot trigger other reflection effects.
 
-;2.5. Aegis Pulse  ==========================================================================
+2.5. Aegis Pulse
     Trigger condition
 Only active while the player has any shield HP:
 player.shield_hp > 0 (biome/domain shields, future shield props)
@@ -575,7 +565,7 @@ damage = 30% / 45% / 60% / 80% / 100% of enemy max HP
 Wave behavior: one expanding pulse; high levels may add visual ripple layers only (no extra hidden damage ticks).
 Safety cap: pulse damage to bosses can be clamped to avoid one-cycle kills.
 
-;2.6. Carapace   ==========================================================================
+2.6. Carapace
 Effect: Add a one time shield for player
 
 Rarity: 1
@@ -612,7 +602,7 @@ Combos:
 Mirror Shell + Aegis Pulse
 You already want to stay close-ish to enemies for the pulse; reflected shots punish ranged hordes simultaneously.
 Mirror Shell + Bone Plating
-The more hits you can “eat” with temporary armor, the more reflected damage you dish out.
+The more hits you can "eat" with temporary armor, the more reflected damage you dish out.
 
 Base Price: $23
 Max Level: 3
@@ -661,15 +651,15 @@ Level 3: +24% bullet damage, +12% crit chance, duration 3.5s
 Refresh rule: retriggers refresh duration but cannot stack magnitude.
 Internal cooldown: 1.0s between retriggers.
 
-'3. Economy & Bandit Interaction Props'
+3. Economy & Bandit Interaction Props
 
 These are great for your Bandit mechanic and the shop fantasy.
 
-;3.1. Lockbox ==================================================
-Effect: A percentage of your coins becomes  “protected” and cannot be stolen by bandits.
+3.1. Lockbox
+Effect: A percentage of your coins becomes  "protected" and cannot be stolen by bandits.
 Synergy:
 Great early if bandits are frequent.
-Can open up “greedy” builds where you hoard coins instead of spending immediately.
+Can open up "greedy" builds where you hoard coins instead of spending immediately.
 
 Rarity: 2
 Base Price: $14
@@ -678,10 +668,10 @@ Protected coin ratio by level: 25% / 40% / 55% / 70%.
 Protection applies before bandit steal and before debt-style coin penalties.
 Suggested implementation: protected = floor(current_coins * ratio), unprotected = current_coins - protected.
 
-;3.2. Wanted Poster ======================================
+3.2. Wanted Poster
 Effect: Consumable: next 2 levels, the first Bandit kill pays a bounty.
 Synergy:
-Converts the “punishment” enemy into a high-reward target.
+Converts the "punishment" enemy into a high-reward target.
 Combos with high speed (easier to chase them down) and burst damage.
 
 Rarity: 2
@@ -691,7 +681,7 @@ Bounty payout per charge: +18 / +26 / +36 coins (scales by level bracket early/m
 Consumption rule: only consumed when player secures the first Bandit kill of that level.
 Fail-safe: if no bandit spawned, charge is retained.
 
-;3.3. Coin Magnet !!!!! ==========================================================================
+3.3. Coin Magnet
 Effect: Increases coin pickup radius. Each level increase 60 px.
 Synergy:
 Super good with high movement speed, kiting builds.
@@ -703,7 +693,7 @@ Max Level: 5
 Radius bonus: +60 / +120 / +180 / +240 / +300 px.
 QoL rule: coin pickup ignores micro-obstacle edges within 0.2 tiles when magnetized.
 
-;3.4. Golden Interest ==============================================
+3.4. Golden Interest
 Effect: At the start of each level, gain interest on unspent coins (5/10/15/20% by level).
 Synergy:
 Encourages the player to save coins and forgo instant power.
@@ -716,10 +706,10 @@ Interest rate by level: 5% / 10% / 15% / 20%
 Per-level payout cap: 30 / 50 / 70 / 90 coins
 Order rule: apply interest before debt repayment checks.
 
-;3.5. Bandit Radar ==================================
+3.5. Bandit Radar
 Effect: When a bandit spawns, highlight them and slow them slightly for a short duration.
 Synergy:
-Combined with Wanted Poster → “Bandit hunter” build.
+Combined with Wanted Poster �� "Bandit hunter" build.
 Fits your current collision volume and aura design (you can show a glowing outline).
 
 Rarity: 2
@@ -729,7 +719,7 @@ Slow strength by level: 8% / 12% / 16% / 20%
 Duration by level: 2s / 3s / 4s / 5s
 Visual: high-contrast outline + minimap ping pulse every 0.6s while effect is active.
   
-;3.6. Coupon  ==========================================================================
+3.6. Coupon
 Effect: Permanently decrease shop prices by 5% per level.
 
 Rarity: 1
@@ -738,7 +728,7 @@ Max Level: 4
 Discount by level: 5% / 10% / 15% / 20%
 Rule: applies to normal offers and reroll cost; price floor is 1 coin.
 
-;3.7. Shady Loan ============================================
+3.7. Shady Loan
 rarity: 3, cost: 5, max level: 3
 Effect: Take a risky loan: get +80/+120/+160 coins instantly, owe at least that much, and repay over 3/4/5 waves (25/30/35% of current coins, cap 50/80/110) after Golden Interest. Multiple loans stack debt and use the highest timer; the final wave attempts to clear all remaining debt at once, otherwise you lose 30/35/40% max HP.
 
@@ -748,7 +738,7 @@ UI requirement: always show debt left + waves left in both shop and pause posses
 
 3.8. Black Market pass
 Consumable, Rarity: 3, Base Price: $30
-Effect: You’ve got connections in the underworld.
+Effect: You��ve got connections in the underworld.
   the next shop becomes a bit of a black market with better econ deals.
   Shop prices +20%, with more rare items available.(all item >= rarity 3)
 
@@ -763,10 +753,10 @@ Protection rule: keep at least one affordable offer (price <= current_coins + 15
 3.9. VIP Punchcard
 
 Rarity: 3 (rare)
-Theme: “You’re a valued customer – the shop starts paying you.”
+Theme: "You��re a valued customer �C the shop starts paying you."
 Effect:
 You get cashback on shop spending each time you visit:
-Example: “Gain back 10/15/20/25% of coins spent in this shop as spoils at the end of the next level.”
+Example: "Gain back 10/15/20/25% of coins spent in this shop as spoils at the end of the next level."
 Cashback applies to all purchases including Reroll, which encourages heavy rolling and shopping.
 
 Base Price: $24
@@ -784,7 +774,7 @@ Rarity: 2 (uncommon)
 Effect:
 Every time you pick up a coin, you have a level-scaled chance to spawn +1 extra coin 
 (chance scales with level, e.g., 10/20/30/40/50%).
-Doesn’t trigger on “fake” coins (e.g., bank interest ticks, if you want to avoid loops) – only on actual pickups from the ground.
+Doesn��t trigger on "fake" coins (e.g., bank interest ticks, if you want to avoid loops) �C only on actual pickups from the ground.
 
 Base Price: $16
 Max Level: 5
@@ -793,15 +783,15 @@ Anti-loop rule: spawned bonus coin cannot recursively trigger Spoil Splitter.
 Performance rule: max 8 spawned bonus coins per second globally.
 Expected value guide: average coin gain should be +0.10 / +0.20 / +0.30 / +0.40 / +0.50 coins per pickup before caps.
 
-'4. Utility / Control Props'
+4. Utility / Control Props
 These change the way the player moves or controls space.
 
 4.1. Time Dilation Boots
-Effect: When you stop moving for ≥ 0.5s, enemies in a radius are slightly slowed.
+Effect: When you stop moving for �� 0.5s, enemies in a radius are slightly slowed.
 Synergy:
-Encourages a  “turret” playstyle: stand and shoot.
+Encourages a  "turret" playstyle: stand and shoot.
 Good with high firerate and range.
-Interesting opposite to normal  “run and gun” speed builds.
+Interesting opposite to normal  "run and gun" speed builds.
 
 Rarity: 2
 Base Price: $16
@@ -840,11 +830,11 @@ Level 2: puddle_radius = 1.1 tiles, slow = 20%, dot = 0.06 * bullet_base per 0.5
 Level 3: puddle_radius = 1.3 tiles, slow = 25%, dot = 0.08 * bullet_base per 0.5s, life = 4.5s
 Spawn cadence: drop one puddle every 2.2 / 1.9 / 1.6 seconds while moving.
  
-;4.4. Auto-Turret !!!!   ==========================================================================
+4.4. Auto-Turret
 Effect: Deploys a small turret that follows you and fires weak bullets at nearest enemy.
 Synergy:
 Scales with damage buffs if turret uses your damage.
-Good with any prop that boosts  “all sources” damage (e.g., Mark of Vulnerability).
+Good with any prop that boosts  "all sources" damage (e.g., Mark of Vulnerability).
 
 Rarity: 2
 Base Price: $14
@@ -869,7 +859,7 @@ Per purchase: +1 stationary turret spawn each level at valid clear tile.
 Suggested tuning: same bullet damage as auto turret, +15% range, -10% fire interval to reward setup play.
 Hard safety cap suggestion: max 8 active stationary turrets on map; extra copies become +6% turret damage each.
 
-'5. Crit, Element, and Synergy Props'
+5. Crit, Element, and Synergy Props
 
 These give crit & status builds more identity, especially since you already have crit chance.
 
@@ -928,8 +918,8 @@ Level 2: every 6th hit chains to up to 3 enemies, chain_damage = 40% bullet_base
 Level 3: every 5th hit chains to up to 4 enemies, chain_damage = 50% bullet_base
 Chain range: 1.8 / 2.2 / 2.6 tiles by level.
 
-'6.Core Paint System '
-Tiles can hold temporary “paint” that affects movement and combat. A tile’s paint has:
+6. Core Paint System
+Tiles can hold temporary "paint" that affects movement and combat. A tile��s paint has:
 Owner state: Neutral / Player Paint / Enemy Paint (enemy paint optional for later).
 Intensity: 0-1 , starts high when applied, then decays over time. Effects scale with intensity (fresh paint is stronger, faded paint is weaker).
 Sources of paint include:
@@ -941,9 +931,9 @@ Basic rules for Player Paint (future-proof):
 While standing on Player Paint:
 Small move-speed bonus (respect existing speed cap).
 Small attack / damage bonus vs enemies also standing on your paint.
-Optional: tiny HP / shield regen and faster “special/ult” meter gain.
+Optional: tiny HP / shield regen and faster "special/ult" meter gain.
 Enemy Paint (for later):
-Slows the player, may apply chip damage or debuffs (fog, blind, crit reduction), encouraging the player to “reclaim” the ground with their own paint.
+Slows the player, may apply chip damage or debuffs (fog, blind, crit reduction), encouraging the player to "reclaim" the ground with their own paint.
 Paint always fades over time, keeping the battlefield dynamic instead of permanently covered.
 All paint can be covered by other paint, and the new paint will replace the old paint.
 
@@ -970,7 +960,7 @@ Rarity: 2 (Common / Uncommon)
 Base Price: $12
 Max Level: 3
 Core Effect
-Your movement leaves a short trail of Player Paint (“curing ink”) on the ground.
+Your movement leaves a short trail of Player Paint ("curing ink") on the ground.
 
 Detailed tuning:
 Tick interval: 0.5s
@@ -1003,7 +993,7 @@ L2: conversion_rate = 0.30 intensity/s
 L3: conversion_rate = 0.45 intensity/s
 Bonus: while converting, gain 6%/9%/12% slow resistance.
 
-'7. “Set / Combo” Ideas'
+7. Set / Combo Ideas
 
 7.1. Ballistic Engine (2/3 piece set)
 Pieces:
@@ -1041,7 +1031,7 @@ Activation check cadence: recompute active sets on prop acquire/sell and once on
 Conflict rule: if two sets modify the same stat bucket, apply additive bonuses then clamp by stat caps.
 Telemetry recommendation: track set_pick_rate, set_completion_rate, and win_rate_with_set.
 
-'8. Prop Runtime Contract (Implementation Detail)'
+8. Prop Runtime Contract (Implementation Detail)
 8.1. Event order on bullet hit:
 Apply crit -> apply mark/vulnerability multiplier -> apply direct hit damage -> process on-hit status (bleed/dot/chill) -> process on-kill effects (explosion/shrapnel) if target died.
 
@@ -1061,7 +1051,7 @@ Persistent props store current level in save.
 Consumables store both level and remaining charges.
 Temporary combat states (active buffs, mark targets, current paint intensity) should not persist between levels unless explicitly marked.
 
-'9. Balance Verification Checklist'
+9. Balance Verification Checklist
 9.1. Single-path stress tests:
 Run 20 waves with pure Ballistic, pure Shield, pure Economy, pure Status.
 Target: no path should exceed 1.35x average win rate versus others.
@@ -1082,7 +1072,7 @@ Target: expected coin income should stay below 2.2x baseline over 3 consecutive 
 Worst-case waves with Shrapnel/Explosive/paint active simultaneously.
 Target: stable 60 FPS on target machine, no frame spike >25 ms for longer than 0.5s.
 
-'10. Shop Roll and Price Formula (Implementation Spec)'
+10. Shop Roll and Price Formula (Implementation Spec)
 10.1. Level-based rarity weights (shop normal slots):
 L1-L2: R1=78, R2=20, R3=2, R4=0
 L3-L4: R1=58, R2=30, R3=10, R4=2
@@ -1103,7 +1093,7 @@ At least one offer must be from player's top-2 active path tags.
 At least one offer must be affordable within current_coins + 15.
 No duplicate card ids in normal slots unless pool is exhausted.
 
-'11. Prop Tag Taxonomy (Runtime and UI)'
+11. Prop Tag Taxonomy (Runtime and UI)
 11.1. Primary tags:
 OFFENSE, DEFENSE, ECONOMY, CONTROL, STATUS, SUMMON, PAINT, CRIT, MOVEMENT
 
@@ -1121,7 +1111,7 @@ Bone Plating -> DEFENSE, SURVIVAL
 Golden Interest -> ECONOMY, GREED
 Curing Paint -> PAINT, STATUS, CONTROL
 
-'12. Playtest Script Pack (Repeatable)'
+12. Playtest Script Pack (Repeatable)
 12.1. Script A: Ballistic spike check
 Buy order: Piercing -> Ricochet -> Shrapnel -> Explosive
 Goal: verify no infinite kill loops and projectile counts stay within cap.
@@ -1141,7 +1131,7 @@ Goal: verify map-control playstyle is viable but not mandatory for wins.
 12.5. Logging template per test:
 run_id, level_reached, build_paths, avg_dps, damage_taken, coins_earned, boss_ttk, fps_min
 
-'13. Runtime State Machine (Per Prop Trigger Type)'
+13. Runtime State Machine (Per Prop Trigger Type)
 13.1. On-hit props (Bleed, DoT, Chill, Mark prep)
 State flow:
 IDLE -> HIT_DETECTED -> PROC_CHECK -> APPLY_EFFECT -> COOLDOWN/GCD -> IDLE
@@ -1163,7 +1153,7 @@ Rules:
 All reaction props read post-mitigation damage values.
 Per-source throttles required for rapid projectile spam scenarios.
 
-'14. Numeric Caps and Safety Floors'
+14. Numeric Caps and Safety Floors
 14.1. Damage-side caps
 max_total_damage_mult_from_props = +220%
 max_total_crit_chance_from_props = +65% (before base crit)
@@ -1188,7 +1178,7 @@ player_speed_floor = 30% of base speed (after all penalties)
 enemy_slow_floor = enemy retains at least 20% of base speed
 boss_slow_effectiveness_cap = 50% of listed slow values
 
-'15. Prop Authoring Template (Use For New Cards)'
+15. Prop Authoring Template (Use For New Cards)
 15.1. Required fields
 id:
 display_name:
@@ -1219,7 +1209,7 @@ Edge case:
 Failure mode:
 Expected telemetry signature:
 
-'16. Release Acceptance Criteria (Props System)'
+16. Release Acceptance Criteria (Props System)
 16.1. Functional
 All prop ids load from save without migration errors.
 No prop purchase can crash shop UI even with malformed levels.
@@ -1239,7 +1229,7 @@ Player can identify prop path from card outline color within 1 second.
 Tooltip "Now/Next" text fits in available panel space without clipping.
 Damage/event feedback remains readable during boss phase transitions.
 
-'17. Interaction Matrix (High Priority Pairs)'
+17. Interaction Matrix (High Priority Pairs)
 17.1. Offensive pairs
 Piercing + Ricochet:
 Expected effect: strong wave clear, moderate single-target.
@@ -1284,7 +1274,7 @@ Curing Paint + Cleanse Step:
 Expected effect: strong map control through reclaim and denial.
 Balance note: enemy paint should retain minimum persistence window (e.g., 0.6s) before instant overwrite.
 
-'18. Wave-by-Wave KPI Targets (Balance Dashboard)'
+18. Wave-by-Wave KPI Targets (Balance Dashboard)
 18.1. Survival targets
 Wave 1-3 expected player HP at end: 70-100%
 Wave 4-6 expected player HP at end: 50-85%
@@ -1319,7 +1309,7 @@ Early (L1-3): 3-5 purchased levels total
 Mid (L4-6): 7-11 purchased levels total
 Late (L7+): 12-18 purchased levels total
 
-'19. Data Validation Rules (Pre-Commit)'
+19. Data Validation Rules (Pre-Commit)
 19.1. Numeric validation
 No negative base_price, no negative cooldown, no negative duration.
 max_level must be integer >= 1 or explicit None for stackable/unbounded items.
@@ -1341,7 +1331,7 @@ Every spawned entity effect must define performance cap or pool limit.
 Every reactive trigger must define internal cooldown or per-source throttle.
 Every saveable prop state must include default value in run reset logic.
 
-'20. Patch Process (Weekly Loop)'
+20. Patch Process (Weekly Loop)
 20.1. Monday: collect telemetry snapshot
 pull pick rates, win rates, average DPS, boss TTK, FPS lows.
 
@@ -1359,7 +1349,7 @@ freeze values, update changelog notes with rationale.
 deploy patch, monitor first 24h telemetry for outlier spikes.
 if severe outlier (>20% delta in win rate or crash/FPS regression), hotfix within same day.
 
-'21. Code Constant Mapping (ZGame.py Integration)'
+21. Code Constant Mapping (ZGame.py Integration)
 21.1. Existing constants already aligned
 Explosive Rounds:
 EXPLOSIVE_ROUNDS_RADIUS_MULTS
@@ -1413,7 +1403,7 @@ All prop levels use *_level naming when level-based.
 All consumable counters use *_charges or *_waves.
 All temporary runtime values stay off META unless they must persist across level transitions.
 
-'22. Save Migration Plan (Props Data)'
+22. Save Migration Plan (Props Data)
 22.1. Version key
 Add props_schema_version in save payload.
 Current target version for this doc: 3.
@@ -1432,7 +1422,7 @@ remove deprecated transient runtime keys if present.
 If level is invalid type or out of range, coerce to nearest valid value and log migration warning.
 If prop id unknown, keep raw data in orphan_props for debug, but skip runtime use.
 
-'23. Telemetry Event Contract (Props)'
+23. Telemetry Event Contract (Props)
 23.1. Event: prop_offer_shown
 Fields:
 run_id, level, shop_id, slot_index, prop_id, rarity, cost, player_coins, active_paths
@@ -1453,7 +1443,7 @@ run_id, level, set_id, piece_count, bonus_tier, dps_delta_estimate
 Fields:
 run_id, level, system_name, cap_name, dropped_events_count, fps_at_trigger
 
-'24. QA Acceptance Matrix (Per Prop Family)'
+24. QA Acceptance Matrix (Per Prop Family)
 24.1. Offense family
 Must pass:
 No chain effect can recurse infinitely.
@@ -1478,7 +1468,7 @@ Paint ownership and overwrite logic deterministic under simultaneous writes.
 Tile caps and cleanup execute without frame spikes.
 Paint effects clear correctly on level transition unless persisted by design.
 
-'25. Implementation Order (Recommended Sprint Breakdown)'
+25. Implementation Order (Recommended Sprint Breakdown)
 Sprint 1 (core stabilization):
 Finalize offense + defense numeric constants.
 Implement runtime caps and deterministic event ordering.
@@ -1495,7 +1485,7 @@ Sprint 4 (hardening):
 Complete save migration v3.
 Run full QA matrix and performance soak test.
 
-'26. Steam Maturity Rubric (Current Version Readiness Score)'
+26. Steam Maturity Rubric (Current Version Readiness Score)
 26.1. Rubric scoring model (100 points total)
 Gameplay clarity and responsiveness: 15
 Build depth and prop-path identity: 15
@@ -1520,7 +1510,7 @@ No reproducible crash on default settings in 10 consecutive runs.
 No unreadable card/path identity conflicts in shop UI.
 No unresolved severe balance exploit that trivializes bosses.
 
-'27. Current Version Hard Requirements (Steam Candidate Baseline)'
+27. Current Version Hard Requirements (Steam Candidate Baseline)
 27.1. Gameplay loop requirements
 Time-to-fun <= 90 seconds from new run start.
 First meaningful build decision presented by minute 3.
@@ -1561,7 +1551,7 @@ Minimum content baseline for perceived value:
 40+ meaningful props with at least 65% having synergy hooks
 5+ clear long-run goals (achievements/challenges/unlocks)
 
-'28. Viral Readiness Requirements (Steam Discoverability + Shareability)'
+28. Viral Readiness Requirements (Steam Discoverability + Shareability)
 28.1. Clip-worthy moment density
 Target at least one clip-worthy event every 3-5 minutes:
 Large summon swarm spikes, chain-reaction clears, last-second clutch survivals, or massive paint territory flips.
@@ -1584,7 +1574,7 @@ No copyrighted placeholder assets/music in release candidate branch.
 Readable spectator moments:
 Boss telegraphs and prop trigger effects must be understandable without prior knowledge.
 
-'29. Solid Improvement Backlog (Prioritized)'
+29. Solid Improvement Backlog (Prioritized)
 29.1. P0 (ship blockers, highest impact)
 Implement strict path outline + icon system for every shop card.
 Add deterministic shop reroll protection against dead-offer streaks.
@@ -1608,7 +1598,7 @@ Add demo-to-full retention hooks and wishlist CTA timing.
 Create Steam capsule art A/B variants and trailer cut variants.
 Add in-game event calendar stub for update anticipation.
 
-'30. Summoner Path Build Requirements (Detailed)'
+30. Summoner Path Build Requirements (Detailed)
 30.1. Role definition
 Summoner path should feel like force multiplication through unit composition, not passive background damage.
 Player should make frequent tactical choices:
@@ -1644,7 +1634,7 @@ Tooltip first line format:
 [SUMMONER] + short role tag (Spawner, Commander, Sustain, Sacrifice).
 Card VFX should include subtle pulsing edge to distinguish from crit/economy cards.
 
-'31. Move-On Section (Execution Plan From Current Build)'
+31. Move-On Section (Execution Plan From Current Build)
 31.1. Immediate next milestone (next 7 days)
 Lock path-color visual language and ship it in shop UI.
 Run 100 internal seeded runs and score section 26 rubric.
@@ -1663,7 +1653,7 @@ Release as clearly labeled Early Access with published roadmap.
 If rubric < 70:
 Do not launch publicly; stay in focused iteration cycle.
 
-'32. Visual Identity System (Detailed Production Spec)'
+32. Visual Identity System (Detailed Production Spec)
 32.1. Visual pillars (must stay consistent across all features)
 Readability first under combat stress.
 Strong path identity in shop and HUD.
@@ -1721,7 +1711,7 @@ No icon should rely on color alone; shape identity is mandatory.
 Line weight consistency target:
 2px at 1080p baseline scale.
 
-'33. Combat Readability and VFX Budget Rules'
+33. Combat Readability and VFX Budget Rules
 33.1. Threat hierarchy visual priority
 Priority 1 (enemy lethal telegraphs):
 Bright edge + directional cue + high-contrast ground marker.
@@ -1750,7 +1740,7 @@ Boss slam max shake duration: 180ms.
 Rapid-hit effects should use micro-shake with cooldown (>= 300ms between shakes).
 No camera shake for passive DoT ticks.
 
-'34. UX, Accessibility, and Clarity Suggestions'
+34. UX, Accessibility, and Clarity Suggestions
 34.1. Information hierarchy in battle HUD
 Top priority:
 HP/shield, active cooldowns, summon cap usage, objective/wave timer.
@@ -1785,7 +1775,7 @@ Limit simultaneous tutorial popups to one.
 Do not open blocking modal popups during active combat unless paused.
 On death screen, show one primary recommendation and max two secondary suggestions.
 
-'35. Additional Product Suggestions (Beyond Visual Layer)'
+35. Additional Product Suggestions (Beyond Visual Layer)
 35.1. Audio direction improvements
 Each path gets a distinct purchase SFX motif (short < 0.5s).
 Boss telegraph audio should be frequency-distinct from player proc sounds.
@@ -1806,7 +1796,7 @@ Align achievements with memorable verbs (survive, command, chain, clutch).
 Store page GIFs should show clear high-contrast action in first 2 seconds.
 Demo should include one full run loop + one unlock moment before exit prompt.
 
-'36. Visual QA and Approval Checklist'
+36. Visual QA and Approval Checklist
 36.1. Shop card checklist
 Path outline color always matches path tag.
 Icon remains readable at minimum UI scale.
@@ -1827,7 +1817,7 @@ All core game actions verified with remapped controls.
 Do not ship visual patch unless all 36.x checklist items pass in QA report.
 If one fails, mark patch as visual-risk and block release candidate promotion.
 
-'37. Prop Presentation Standard (Per Card, Per Upgrade)'
+37. Prop Presentation Standard (Per Card, Per Upgrade)
 37.1. Required card data fields (display-facing)
 Every prop must expose:
 display_name
@@ -1874,7 +1864,7 @@ Primary path -> trigger type -> scaling stat -> notable combo.
 Example:
 SUMMONER | On Kill | Attack Speed | Swarm
 
-'38. Shop Anti-Frustration and Offer Quality Rules'
+38. Shop Anti-Frustration and Offer Quality Rules
 38.1. Offer quality baseline
 Every shop refresh should contain:
 At least 1 generally safe pick.
@@ -1904,7 +1894,7 @@ Mid-cost buy should feel like a meaningful choice.
 High-cost buy should feel aspirational, not impossible.
 If a player cannot afford any item in 2 consecutive shops in an average run, economy pacing is failing.
 
-'39. Run Summary, Loss Screen, and Build Clarity'
+39. Run Summary, Loss Screen, and Build Clarity
 39.1. End-run summary minimum content
 Show:
 Primary path
@@ -1941,7 +1931,7 @@ Best practice:
 One prominent stat card + up to two secondary record callouts.
 Do not flood the summary screen with too many celebration banners.
 
-'40. Content Pacing and Run Variety Requirements'
+40. Content Pacing and Run Variety Requirements
 40.1. Early game (minutes 0-5)
 Player should learn:
 Core movement safety
@@ -1975,7 +1965,7 @@ Event room choices
 Path-specific prop forks
 Randomness alone is not enough; controlled variation is better than chaos.
 
-'41. Production Polish Requirements (Mature Release Standard)'
+41. Production Polish Requirements (Mature Release Standard)
 41.1. Animation polish
 All major card interactions need one clear motion language:
 Appear, hover, buy, fail-to-buy, upgrade.
@@ -2016,7 +2006,7 @@ No missing icon assets
 No props with undocumented hidden effects
 No path colors that differ between shop, tooltip, and summary UI
 
-'42. Concrete Next-Step Suggestions For This Project'
+42. Concrete Next-Step Suggestions For This Project
 42.1. Highest-value immediate documentation improvements
 Add a complete prop roster table with:
 Name, path, rarity, max level, cost, trigger, scaling, synergy tags.
