@@ -2,6 +2,22 @@ Z Game Systems and Props Specification
 Status: Working Draft
 Purpose: Consolidated design, balance, UX, and production reference for the current version.
 
+Prop Roster Template
+Use this roster as the quick-reference layer before the detailed prop specifications. One row should represent one purchasable prop.
+
+Roster Columns
+prop_id | display_name | section | path_primary | path_secondary | role | rarity | base_price | max_level | trigger_type | scaling_summary | synergy_tags | tradeoff | ui_tag | implementation_status | notes
+
+Blank Row Template
+PROP_ID | Display Name | Section Name | PRIMARY | SECONDARY or NONE | Role | 1-4 | $00 | N | passive/on_hit/on_kill/on_damage/on_move/consumable | short numeric summary | tag1,tag2,tag3 | none or short drawback | border/icon tag | planned/prototype/implemented/balancing/final | short note
+
+Roster Rules
+1. Use the same display_name here as the in-shop card title.
+2. Use numeric rarity only so pricing and shop odds stay easy to tune.
+3. Keep scaling_summary short; the detailed formulas belong in the prop entry below.
+4. implementation_status should change whenever tuning or behavior changes.
+5. Add notes only for blockers, edge cases, or special UI/runtime requirements.
+
 0. Full-Game Professional To-Do (Modify/Add)
 
 0.A. Vision and Scope
