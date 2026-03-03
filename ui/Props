@@ -1421,7 +1421,7 @@ Deploy the patch and monitor the first 24 hours of telemetry for outlier spikes.
 If a severe outlier appears (>20% delta in win rate or crash/FPS regression), hotfix the same day.
 
 21. Code Constant Mapping (ZGame.py Integration)
-21.1. Existing constants already aligned
+21.1. Existing constants already aligned with implementation
 Explosive Rounds:
 EXPLOSIVE_ROUNDS_RADIUS_MULTS
 EXPLOSIVE_ROUNDS_DAMAGE_MULTS
@@ -1455,7 +1455,7 @@ AEGIS_PULSE_RADIUS_PER_LEVEL
 AEGIS_PULSE_BASE_COOLDOWN
 AEGIS_PULSE_COOLDOWN_DELTA
 
-21.2. Suggested new constants to add
+21.2. Suggested new constants
 BLEED_DAMAGE_TOTAL = (0.24, 0.36, 0.52)
 BLEED_DURATION = 3.0
 BLEED_MAX_STACKS = (2, 3, 4)
@@ -1470,71 +1470,71 @@ RETALIATION_CORE_CRIT_BONUS = (0.06, 0.09, 0.12)
 RETALIATION_CORE_DURATION = (2.5, 3.0, 3.5)
 
 21.3. META key naming policy
-All prop levels use *_level naming when level-based.
-All consumable counters use *_charges or *_waves.
-All temporary runtime values stay off META unless they must persist across level transitions.
+Use *_level for all level-based prop values.
+Use *_charges or *_waves for consumable counters.
+Keep temporary runtime values out of META unless they must persist across level transitions.
 
 22. Save Migration Plan (Props Data)
 22.1. Version key
 Add props_schema_version in save payload.
-Current target version for this doc: 3.
+Current target schema version for this spec: 3.
 
 22.2. Migration rules
 v1 -> v2:
-normalize coupon discount field to coupon_level.
-normalize magnet radius to coin_magnet_radius in pixels.
+Normalize coupon discount field to coupon_level.
+Normalize magnet radius to coin_magnet_radius in pixels.
 
 v2 -> v3:
-ensure missing keys are seeded with default 0/false values.
-clamp all levels to documented max levels.
-remove deprecated transient runtime keys if present.
+Seed missing keys with default 0/false values.
+Clamp all levels to documented max levels.
+Remove deprecated transient runtime keys if present.
 
 22.3. Corruption handling
-If level is invalid type or out of range, coerce to nearest valid value and log migration warning.
-If prop id unknown, keep raw data in orphan_props for debug, but skip runtime use.
+If a level has an invalid type or is out of range, coerce it to the nearest valid value and log a migration warning.
+If a prop id is unknown, store the raw data in orphan_props for debugging and skip runtime use.
 
 23. Telemetry Event Contract (Props)
 23.1. Event: prop_offer_shown
-Fields:
+Required fields:
 run_id, level, shop_id, slot_index, prop_id, rarity, cost, player_coins, active_paths
 
 23.2. Event: prop_purchased
-Fields:
+Required fields:
 run_id, level, prop_id, old_level, new_level, cost_paid, coins_after, path_primary
 
 23.3. Event: prop_triggered
-Fields:
+Required fields:
 run_id, level, prop_id, trigger_type, target_type, damage_done, stacks, cooldown_remaining
 
 23.4. Event: set_bonus_active
-Fields:
+Required fields:
 run_id, level, set_id, piece_count, bonus_tier, dps_delta_estimate
 
 23.5. Event: performance_guard_hit
-Fields:
+Required fields:
 run_id, level, system_name, cap_name, dropped_events_count, fps_at_trigger
 
 24. QA Acceptance Matrix (Per Prop Family)
 24.1. Offense family
-Must pass:
+Acceptance checks:
 No chain effect can recurse infinitely.
 Per-hit and per-kill triggers respect throttles.
 Boss damage modifiers always applied.
 
 24.2. Defense family
-Must pass:
+Acceptance checks:
 Shield routing order matches section 8.2.
 Reaction buffs trigger once per valid event and honor internal cooldown.
 No reflection feedback loops.
 
 24.3. Economy family
-Must pass:
+Acceptance checks:
 Shop discounts and surcharges apply in fixed deterministic order.
 Interest/cashback/loan logic cannot generate negative coin states.
 Bandit interactions never consume charges without valid trigger.
 
 24.4. Paint family
-Must pass:
+Acceptance checks:
 Paint ownership and overwrite logic deterministic under simultaneous writes.
 Tile caps and cleanup execute without frame spikes.
 Paint effects clear correctly on level transition unless persisted by design.
@@ -1546,11 +1546,11 @@ Implement runtime caps and deterministic event ordering.
 
 Sprint 2 (economy + shop):
 Implement dynamic pricing, offer guardrails, and economy telemetry.
-Ship Black Market/VIP/Splitter with full UI readouts.
+Ship Black Market, VIP Punchcard, and Spoil Splitter with full UI readouts.
 
 Sprint 3 (paint + sets):
 Implement paint runtime rules and set activation engine.
-Add set telemetry and balance pass against KPI targets.
+Add set telemetry and run a balance pass against KPI targets.
 
 Sprint 4 (hardening):
 Complete save migration v3.
@@ -1571,13 +1571,13 @@ Storefront and social conversion readiness: 10
 0-69:
 Not launch-ready. Keep in internal/closed testing only.
 70-84:
-Early Access candidate only if hard-gate requirements in 27 pass.
+Early Access candidate only if the hard-gate requirements in section 27 pass.
 85-100:
 Mature launch candidate with scale-ready marketing beats.
 
 26.3. Hard fail gates (must pass regardless of score)
 No reproducible progression blockers in first 60 minutes.
-No reproducible crash on default settings in 10 consecutive runs.
+No reproducible crash on default settings across 10 consecutive runs.
 No unreadable card/path identity conflicts in shop UI.
 No unresolved severe balance exploit that trivializes bosses.
 
@@ -1587,10 +1587,10 @@ Time-to-fun <= 90 seconds from new run start.
 First meaningful build decision presented by minute 3.
 At least 4 distinct viable archetypes:
 Summoner path, crit burst path, economy control path, paint control path.
-No single archetype should exceed 55% win rate in internal sample of 200+ runs.
+No single archetype should exceed a 55% win rate in an internal sample of 200+ runs.
 
 27.2. Shop and card clarity requirements
-All shop cards must show primary path tag in text + outline color.
+All shop cards must show the primary path tag in text plus outline color.
 Path outline color map must be fixed and globally consistent:
 Summoner: #4CAF50 (green)
 Crit/Burst: #E53935 (red)
@@ -1604,7 +1604,7 @@ Every path also gets an icon glyph and short label (e.g., SUM, CRT, DEF, ECO, PN
 27.3. Stability and performance requirements
 Crash-free session rate target: >= 99.5% over latest test build.
 Frame pacing target:
-60 FPS target on baseline device during wave combat with < 5% frames under 45 FPS.
+Maintain 60 FPS on the baseline device during wave combat, with < 5% of frames under 45 FPS.
 Load time target:
 Menu to first playable frame <= 8 seconds on baseline SSD.
 
@@ -1615,7 +1615,7 @@ Loss screen must show:
 Cause of death, top 3 damage sources, and one actionable build tip.
 
 27.5. Content requirements
-Minimum content baseline for perceived value:
+Minimum content baseline for perceived player value:
 10+ enemy types
 4+ bosses
 5+ major biomes/themes or visual wave variants
@@ -1650,7 +1650,7 @@ Boss telegraphs and prop trigger effects must be understandable without prior kn
 Implement strict path outline + icon system for every shop card.
 Add deterministic shop reroll protection against dead-offer streaks.
 Rebalance summoner path early game so it is strong but not autopilot.
-Add automated balance report after every tuning commit (win rate, TTK, FPS, crash).
+Add an automated balance report after every tuning commit (win rate, TTK, FPS, crash).
 
 29.2. P1 (retention and quality lift)
 Add challenge unlock track linked to prop-path mastery.
@@ -1671,7 +1671,7 @@ Add in-game event calendar stub for update anticipation.
 
 30. Summoner Path Build Requirements (Detailed)
 30.1. Role definition
-Summoner path should feel like force multiplication through unit composition, not passive background damage.
+The Summoner path should feel like force multiplication through unit composition, not passive background damage.
 Player should make frequent tactical choices:
 Positioning, summon timing, command focus target, and unit upgrade route.
 
@@ -1696,14 +1696,14 @@ HP/armor/resist parameters plus boss-damage modifier
 30.4. Counterplay and balance controls
 Global cap on total summon entities to protect FPS.
 Diminishing returns on overlapping aura buffs.
-Boss anti-summon mechanics on select encounters (zone clear, fear pulse, target swap) so play remains interactive.
-Summoner run should retain failure risk if player ignores movement and defensive timing.
+Use boss anti-summon mechanics on select encounters (zone clear, fear pulse, target swap) so play remains interactive.
+A Summoner run should still fail if the player ignores movement and defensive timing.
 
 30.5. Shop-path readability for summoner cards
 All summoner cards use green outline + summon icon + SUM label.
 Tooltip first line format:
 [SUMMONER] + short role tag (Spawner, Commander, Sustain, Sacrifice).
-Card VFX should include subtle pulsing edge to distinguish from crit/economy cards.
+Card VFX should include a subtle pulsing edge to distinguish them from crit and economy cards.
 
 31. Move-On Section (Execution Plan From Current Build)
 31.1. Immediate next milestone (next 7 days)
