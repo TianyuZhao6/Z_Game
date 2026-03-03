@@ -1,3 +1,8 @@
+Executive Summary
+This document is the master working specification for Z Game's prop system, path identity, balance rules, UX readability, and release-readiness requirements.
+Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and production guidance.
+Current intent: keep prop data consistent, make builds easier to read in-game, and align the current version toward a more polished Steam-ready release.
+
 Z Game Systems and Props Specification
 Status: Working Draft
 Purpose: Consolidated design, balance, UX, and production reference for the current version.
