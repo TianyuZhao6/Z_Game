@@ -1726,13 +1726,13 @@ Do not launch publicly; stay in focused iteration cycle.
 
 32. Visual Identity System (Detailed Production Spec)
 32.1. Visual pillars (must stay consistent across all features)
-Readability first under combat stress.
-Strong path identity in shop and HUD.
-High contrast between gameplay threats and player-owned effects.
-Clean silhouettes before detail density.
+Prioritize readability under combat stress.
+Maintain strong path identity in the shop and HUD.
+Keep clear contrast between gameplay threats and player-owned effects.
+Preserve clean silhouettes before adding detail density.
 
 32.2. Core color token set (UI + card integration)
-Use one stable palette file and do not hand-pick ad-hoc colors per screen.
+Maintain one stable palette file; do not hand-pick ad-hoc colors per screen.
 Path tokens:
 PATH_SUMMONER = #4CAF50
 PATH_CRIT = #E53935
@@ -1748,15 +1748,15 @@ UI_TEXT_SECONDARY = #A8B3BD
 UI_WARNING = #FF7043
 UI_POSITIVE = #66BB6A
 Contrast requirement:
-All text and icon overlays must hit minimum 4.5:1 contrast for default UI scale.
+All text and icon overlays must meet a minimum 4.5:1 contrast ratio at default UI scale.
 
 32.3. Shop card visual anatomy (single standard)
-Card layer order:
+Card render order:
 Background panel -> rarity frame -> path outline -> icon -> title -> stat line -> cost block -> synergy hint.
 Path outline thickness:
 Base 2px, hover 3px, selected 4px.
 Path strip indicator:
-8px vertical strip on left edge uses path color for instant scanning.
+Use an 8px vertical strip on the left edge for instant path scanning.
 Rarity markers:
 Common: no corner gem.
 Rare: one corner gem.
@@ -1776,7 +1776,7 @@ Purchased:
 Quick confirm flash <= 120ms + soft sound cue; no long blocking animation.
 
 32.5. Iconography rules
-Every path has one primary icon + one backup icon.
+Assign one primary icon and one fallback icon to each path.
 Icons must be recognizable at 20x20 and 32x32.
 No icon should rely on color alone; shape identity is mandatory.
 Line weight consistency target:
@@ -1785,16 +1785,16 @@ Line weight consistency target:
 33. Combat Readability and VFX Budget Rules
 33.1. Threat hierarchy visual priority
 Priority 1 (enemy lethal telegraphs):
-Bright edge + directional cue + high-contrast ground marker.
+Use a bright edge, directional cue, and high-contrast ground marker.
 Priority 2 (player damage procs):
-Visible but shorter duration and lower brightness than enemy lethal telegraphs.
+Keep visible, but with shorter duration and lower brightness than enemy lethal telegraphs.
 Priority 3 (ambient effects):
-Low contrast, low motion; never compete with threats.
+Keep low contrast and low motion; ambient effects must never compete with threats.
 
 33.2. VFX intensity budgets (performance + clarity)
 Max simultaneous major VFX bursts on screen: 8
 Max alpha-overdraw heavy effects per frame: 12
-Summoner path unit trails must be 50% opacity cap during swarm peak.
+Cap Summoner path unit trails at 50% opacity during swarm peaks.
 Paint overlays must clamp saturation when tile density > 65% coverage.
 
 33.3. Telegraph timing standards
@@ -1808,7 +1808,7 @@ Minimum 900ms + unique audio cue.
 33.4. Camera and screenshake policy
 Screenshake must be optional and default to medium.
 Boss slam max shake duration: 180ms.
-Rapid-hit effects should use micro-shake with cooldown (>= 300ms between shakes).
+Use micro-shake for rapid-hit effects with a cooldown (>= 300ms between shakes).
 No camera shake for passive DoT ticks.
 
 34. UX, Accessibility, and Clarity Suggestions
@@ -1829,7 +1829,7 @@ Line 3:
 Upgrade preview delta for next level.
 Line 4:
 Synergy tags (2-4 max) with plain words.
-Avoid vague terms like "greatly increases" without numbers.
+Do not use vague terms such as "greatly increases" without numeric values.
 
 34.3. Accessibility requirements
 Colorblind presets:
@@ -1839,58 +1839,58 @@ Minimum 85%, maximum 130%.
 Combat text readability mode:
 Bold font option + darker shadow stroke.
 Input accessibility:
-Allow remap for all core actions and hold/toggle alternatives where practical.
+Support remapping for all core actions, with hold/toggle alternatives where practical.
 
 34.4. Cognitive load management
 Limit simultaneous tutorial popups to one.
 Do not open blocking modal popups during active combat unless paused.
-On death screen, show one primary recommendation and max two secondary suggestions.
+On the death screen, show one primary recommendation and no more than two secondary suggestions.
 
 35. Additional Product Suggestions (Beyond Visual Layer)
 35.1. Audio direction improvements
-Each path gets a distinct purchase SFX motif (short < 0.5s).
+Assign each path a distinct purchase SFX motif (shorter than 0.5s).
 Boss telegraph audio should be frequency-distinct from player proc sounds.
 Duck ambient music by 4-6 dB during critical telegraph windows.
 
 35.2. Retention and progression improvements
 Introduce path mastery badges (bronze/silver/gold) per archetype.
 Add weekly objective chains that encourage underused builds.
-Track and show "new personal best" for wave, DPS peak, and survival streak.
+Track and surface "new personal best" for wave, DPS peak, and survival streak.
 
 35.3. Social and viral improvements
 Add quick "Build Card" export image from end-run summary.
 Include seed code + top 5 props + path ratio in export template.
-Create short "moment replay" save for last 12 seconds before death/victory.
+Capture a short "moment replay" clip from the last 12 seconds before death or victory.
 
 35.4. Steam conversion suggestions
 Align achievements with memorable verbs (survive, command, chain, clutch).
-Store page GIFs should show clear high-contrast action in first 2 seconds.
+Store-page GIFs should show clear, high-contrast action within the first 2 seconds.
 Demo should include one full run loop + one unlock moment before exit prompt.
 
 36. Visual QA and Approval Checklist
 36.1. Shop card checklist
-Path outline color always matches path tag.
-Icon remains readable at minimum UI scale.
-Cost state (affordable/unaffordable) immediately understandable.
-No overlapping text at localized string expansion up to 30%.
+Path outline color must always match the path tag.
+Icon must remain readable at minimum UI scale.
+Cost state (affordable/unaffordable) must be immediately understandable.
+Do not allow overlapping text at localized string expansion up to 30%.
 
 36.2. Combat readability checklist
-Enemy telegraphs always visible above paint and summon effects.
-Critical damage numbers do not hide danger zones.
-Boss ability color coding is internally consistent across all encounters.
+Enemy telegraphs must always remain visible above paint and summon effects.
+Critical damage numbers must not hide danger zones.
+Boss ability color coding must remain internally consistent across all encounters.
 
 36.3. Accessibility checklist
-All critical information available without color-only cues.
-Tutorial and tooltip text pass readability at smallest supported scale.
-All core game actions verified with remapped controls.
+All critical information must be available without color-only cues.
+Tutorial and tooltip text must remain readable at the smallest supported scale.
+All core game actions must be verified with remapped controls.
 
 36.4. Sign-off gate
-Do not ship visual patch unless all 36.x checklist items pass in QA report.
-If one fails, mark patch as visual-risk and block release candidate promotion.
+Do not ship a visual patch unless all 36.x checklist items pass in the QA report.
+If any item fails, mark the patch as visual-risk and block release-candidate promotion.
 
 37. Prop Presentation Standard (Per Card, Per Upgrade)
 37.1. Required card data fields (display-facing)
-Every prop must expose:
+Every prop must expose the following display-facing fields:
 display_name
 path_tag
 role_tag
@@ -1903,7 +1903,7 @@ risk_note (if the prop has a drawback or tradeoff)
 
 37.2. Naming rules
 Names should be short, distinct, and scannable in under 1 second.
-Target length:
+Target length guideline:
 1-3 words preferred, 18 characters soft cap before text scaling.
 Avoid generic names that overlap in function:
 Bad example:
@@ -1912,7 +1912,7 @@ Good example:
 Retaliation Core, Grave Beacon, Razor Loop.
 
 37.3. Short pitch format
-The short pitch is the "why buy this" sentence and must describe outcome, not only math.
+The short pitch is the primary purchase-value sentence and must describe outcome, not only math.
 Examples:
 Spawn an extra frontliner that draws enemy aggro.
 Turn crit chains into room-clearing burst windows.
@@ -1921,7 +1921,7 @@ Pitch length target:
 45-70 characters.
 
 37.4. Upgrade preview standard
-All upgrade previews must show absolute change and new total.
+All upgrade previews must show the absolute delta and the new total.
 Preferred format:
 Damage: +8 (32 -> 40)
 Cooldown: -0.3s (2.1s -> 1.8s)
@@ -1929,7 +1929,7 @@ Summon Cap: +1 (3 -> 4)
 Never show only a percentage if the player can understand the concrete number instead.
 
 37.5. Synergy tag rules
-Each prop should show 2-4 synergy tags max.
+Each prop should display 2-4 synergy tags at most.
 Tag priority order:
 Primary path -> trigger type -> scaling stat -> notable combo.
 Example:
@@ -1937,14 +1937,14 @@ SUMMONER | On Kill | Attack Speed | Swarm
 
 38. Shop Anti-Frustration and Offer Quality Rules
 38.1. Offer quality baseline
-Every shop refresh should contain:
+Each shop refresh should contain:
 At least 1 generally safe pick.
 At least 1 synergy-forward pick tied to current build if available.
 At least 1 wildcard pick with high upside or pivot potential.
 
 38.2. Dead shop prevention
-Do not allow 3 consecutive shops with zero path matches if player has already committed to a path.
-If player owns 3+ props of a single path, increase that path's appearance weight by a controlled amount only:
+Do not allow three consecutive shops with zero path matches once the player has committed to a path.
+If the player owns 3+ props from a single path, increase that path's appearance weight by a controlled amount only:
 Recommended range:
 +12% to +20%, not uncapped.
 
@@ -1957,17 +1957,17 @@ If a prop was rerolled away, reduce its immediate reappearance chance for one sh
 Even in a heavily committed build, keep 10-20% of offers open for pivot or rescue options.
 Purpose:
 Prevent runs from becoming solved too early.
-Allow comeback routes after bad boss matchups.
+Preserve comeback routes after bad boss matchups.
 
 38.5. Price feel targets
 Cheap buy should feel instantly attainable.
 Mid-cost buy should feel like a meaningful choice.
 High-cost buy should feel aspirational, not impossible.
-If a player cannot afford any item in 2 consecutive shops in an average run, economy pacing is failing.
+If a player cannot afford any item in two consecutive shops during an average run, economy pacing is failing.
 
 39. Run Summary, Loss Screen, and Build Clarity
 39.1. End-run summary minimum content
-Show:
+Required fields:
 Primary path
 Secondary path
 Top 5 props by impact
@@ -1978,13 +1978,13 @@ Bosses defeated
 Cause of death or victory condition
 
 39.2. Build identity callout
-Generate a readable build label from actual play behavior.
+Generate a readable build label from actual run behavior.
 Examples:
 Swarm Commander
 Crit Cascade
 Paint Lock Controller
 Greedy Merchant Tank
-This increases memorability and shareability.
+This improves memorability and shareability.
 
 39.3. Loss analysis suggestions
 Loss tips must be evidence-based.
@@ -1997,7 +1997,7 @@ Avoid generic advice like:
 Try a better build.
 
 39.4. Personal best and progression messaging
-Always surface when the player sets a new record.
+Always surface new personal records when they occur.
 Best practice:
 One prominent stat card + up to two secondary record callouts.
 Do not flood the summary screen with too many celebration banners.
@@ -2008,12 +2008,12 @@ Player should learn:
 Core movement safety
 One strong prop identity
 One upgrade rhythm
-The early game must be forgiving but not boring.
+The early game must be forgiving without feeling flat.
 Target:
 One exciting power spike before minute 4.
 
 40.2. Mid game (minutes 5-15)
-The run should start asking for specialization.
+The run should begin forcing specialization.
 Enemies should force tradeoff recognition:
 Single-target vs crowd clear
 Greed vs survival
@@ -2034,16 +2034,16 @@ Enemy composition shifts
 Boss modifier variants
 Event room choices
 Path-specific prop forks
-Randomness alone is not enough; controlled variation is better than chaos.
+Randomness alone is insufficient; controlled variation is preferable to chaos.
 
 41. Production Polish Requirements (Mature Release Standard)
 41.1. Animation polish
-All major card interactions need one clear motion language:
+All major card interactions must share one clear motion language:
 Appear, hover, buy, fail-to-buy, upgrade.
 Animation durations must be short and reliable:
 Recommended UI motion range:
 100-220ms.
-Longer than that makes repeated shopping feel slow.
+Longer timings make repeated shop interactions feel sluggish.
 
 41.2. Audio polish
 There must be separate layers for:
@@ -2054,23 +2054,23 @@ Boss phase transitions
 If two sounds compete for the same gameplay meaning, redesign one.
 
 41.3. Micro-feedback standards
-Every successful purchase should produce:
+Every successful purchase must produce:
 Visual confirmation
 Audio confirmation
 State update confirmation (coin count and item state)
-Every failed purchase should produce:
+Every failed purchase must produce:
 Short denied audio + red pulse + readable reason if relevant.
 
 41.4. Low-end device fallback
-Provide reduced VFX mode:
+Provide a reduced-VFX mode:
 Lower particle count
 Reduced bloom/glow
 Simplified paint overlay
 Lower summon trail density
-This mode should preserve gameplay clarity, not merely disable beauty.
+This mode must preserve gameplay clarity, not merely reduce visual quality.
 
 41.5. Final release polish gate
-Before public scale-up, verify:
+Before broader public release, verify:
 No placeholder text
 No inconsistent capitalization in tooltips
 No missing icon assets
@@ -2080,7 +2080,7 @@ No path colors that differ between shop, tooltip, and summary UI
 42. Concrete Next-Step Suggestions For This Project
 42.1. Highest-value immediate documentation improvements
 Add a complete prop roster table with:
-Name, path, rarity, max level, cost, trigger, scaling, synergy tags.
+Name, path, rarity, max level, cost, trigger, scaling summary, synergy tags.
 Add a one-page "design north star" summary at the top of `ui/Props`.
 Add a changelog section for balance revisions so future tuning stays traceable.
 
@@ -2090,7 +2090,7 @@ Add tooltip formatting helpers so all props follow section 34.2 automatically.
 Add a card validation pass that rejects props missing required display fields from section 37.1.
 
 42.3. Highest-value playtest improvements
-Run short tests focused on:
+Run short focused tests for:
 First 10 minutes fun factor
 Shop readability speed
 Summoner path clarity
@@ -2098,8 +2098,8 @@ Loss-screen usefulness
 Collect concrete metrics, not only subjective notes.
 
 42.4. Move-forward rule
-Do not keep expanding content before the presentation layer is stable.
-First lock:
+Do not expand content further until the presentation layer is stable.
+Lock these first:
 Card readability
 Path identity
 Tooltip standardization
