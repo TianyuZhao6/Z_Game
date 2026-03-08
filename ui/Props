@@ -26,6 +26,14 @@ Roster Rules
 Current Prop Roster (Seed Rows)
 These rows are draft roster entries for the current defined prop list in sections 1-6. Keep them synchronized with the detailed entries below.
 
+Section Scan Guide (Table Order)
+- Core Offense: BALLISTIC, CONTROL, OFFENSE
+- Core Paint System: PAINT
+- Crit / Element / Synergy: CRIT, STATUS
+- Defense & Survival: DEFENSE
+- Economy & Bandit: ECONOMY
+- Utility / Control: CONTROL, SUMMON
+
 | prop_id | display_name | section | path_primary | path_secondary | role | rarity | base_price | max_level | trigger_type | scaling_summary | synergy_tags | tradeoff | ui_tag | implementation_status | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | piercing_rounds | Piercing Rounds | Core Offense | BALLISTIC | NONE | Pierce scaler | 1 | $12 | 5 | passive | +1 to +5 pierce, up to 16% falloff | pierce,wave_clear,projectile | none | OFF | prototype | Core Ballistic baseline |
