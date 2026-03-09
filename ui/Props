@@ -77,6 +77,41 @@ Section Scan Guide (Table Order)
 | auto_turret | Auto-Turret | Utility / Control | SUMMON | CONTROL | Follower turret | 2 | $14 | 5 | passive | +1 turret per level, 0.33 to 0.42 damage ratio | turret,summon,sustained | count converts to quality after cap | SUM | implemented | Baseline turret path |
 | stationary_turret | Stationary Turret | Utility / Control | SUMMON | CONTROL | Static turret | 1 | $14 | 99 | passive | +1 static turret per purchase, max 8 active suggested | turret,holdout,zone_control | immobile placement | SUM | implemented | Baseline stationary turret variant |
 
+Set Bonus and Non-Shop Systems Roster
+Use this second roster to track systems that are not purchased directly in the shop but still define build identity, pacing, readability, and run difficulty.
+
+System Roster Columns
+system_id | display_name | system_group | source_module | activation_rule | effect_summary | scope | ui_surface | implementation_status | notes
+
+Blank System Row Template
+SYSTEM_ID | Display Name | SetBonus/Biome/Encounter/RunRule/UI | function/constants | short trigger condition | short numeric/behavior summary | per_wave/per_level/run_wide/ui_only | shop/pause/hud/combat/none | planned/prototype/implemented/balancing/final | short dependency note
+
+Current Set Bonus and Non-Shop Systems Roster (Seed Rows)
+These rows represent current runtime systems defined outside direct prop purchases.
+
+System Scan Guide (Table Order)
+- Set Bonus / Path States
+- Biome Domain Modifiers
+- Encounter and Spawn Rules
+- Run Timer and Difficulty Curves
+
+| system_id | display_name | system_group | source_module | activation_rule | effect_summary | scope | ui_surface | implementation_status | notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| path_state_online | Path State: Online | SetBonus | path_focus_summary_lines + PATH_ONLINE_THRESHOLD | path score >= 2 | Marks path as online in build summary; no direct combat stat bonus yet | run_wide | pause/shop summary | implemented | Threshold currently 2 |
+| path_state_full | Path State: Full | SetBonus | path_focus_summary_lines + PATH_FULL_THRESHOLD | path score >= 4 | Marks path as full in build summary; no direct combat stat bonus yet | run_wide | pause/shop summary | implemented | Threshold currently 4 |
+| path_tag_bridge_scoring | Path Bridge Scoring | SetBonus | PROP_PATH_TAGS + path_scores_from_meta | own multi-tag props | Dual-tag props contribute score to both paths for build identity tracking | run_wide | pause/shop summary | implemented | Example: mark_vulnerability, bandit_radar |
+| path_border_color_rules | Path Border Color Rules | UI | PATH_BORDER_COLORS + prop_path_border_color | card render for tagged prop | Card border color follows path; dual-tag props blend two path colors | ui_only | shop cards/tooltips | implemented | Fallback color uses general tag |
+| biome_picker_domain_choice | Domain Choice Picker | Biome | show_biome_picker_in_shop + SCENE_BIOMES | after shop Next flow | Player selects next level domain from 4 options | per_level | shop domain picker | implemented | Domains: Wind, Misty, Hell, Stone |
+| biome_misty_forest_mod | Misty Forest Modifier | Biome | apply_domain_buffs_for_level | biome_active == Misty Forest | Forces fog field and sets xp_gain_mult to 1.3 for the level | per_level | combat + ambient VFX | implemented | Temporary level-only effect |
+| biome_scorched_hell_mod | Scorched Hell Modifier | Biome | apply_domain_buffs_for_level | biome_active == Scorched Hell | Player bullet damage x2; enemy contact x2; boss contact x1.5; curing paint level +1 | per_level | combat + VFX | implemented | High-risk high-output biome |
+| biome_bastion_stone_mod | Bastion of Stone Modifier | Biome | apply_domain_buffs_for_level + apply_biome_on_enemy_spawn | biome_active == Bastion of Stone | Player starts with 50% max-HP shield; spawned enemies get shields (boss/bandit 25%, others 50%) | per_level | HUD shield + combat | implemented | Spawn-time shield injection |
+| biome_domain_wind_mod | Domain of Wind Modifier | Biome | apply_domain_buffs_for_level + spawn_hurricane | biome_active == Domain of Wind | Spawns hurricane hazard and applies temporary player speed multiplier x1.12 | per_level | combat arena + movement feel | implemented | Hazard placement avoids spawn zone |
+| bandit_spawn_protocol | Coin Bandit Spawn Protocol | Encounter | spawn_enemies_for_wave + BANDIT constants | non-boss wave, level >= 3, tleft > 20s, one-per-level gate, chance roll | Spawns coin bandit with alert banner and optional radar/lockbox interactions | per_wave | banner + telegraph + combat | implemented | Chance per wave currently 0.28 |
+| boss_interval_rule | Boss Interval Rule | RunRule | is_boss_level + BOSS_EVERY_N_LEVELS | every 5th level | Flags boss level and applies boss-level run flow and timing | per_level | level flow + HUD timer | implemented | BOSS_EVERY_N_LEVELS = 5 |
+| level_timer_profile | Level Timer Profile | RunRule | LEVEL_TIME_LIMIT + BOSS_TIME_LIMIT | level start | Uses 45s timer for standard levels and 60s for boss levels | per_level | HUD timer | implemented | Timer frozen in pause/shop transitions |
+| threat_budget_curve | Threat Budget Curve | Encounter | budget_for_level + THREAT_BUDGET_* | each wave spawn pass | Budget scales by level: max(min, round(base * exp^level)) controlling enemy composition pressure | per_wave | backend only | implemented | Defaults: base 6, exp 1.18, min 5 |
+| passage_budget_fail_safe | Passage Budget Fail-Safe | RunRule | ensure_passage_budget | map spawn path blocked | Removes destructible obstacles until player spawn can reach map edge | per_level | none | implemented | Anti-softlock safety net |
+
 0. Full-Game Professional To-Do (Modify/Add)
 
 0.A. Vision and Scope
