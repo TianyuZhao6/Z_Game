@@ -112,6 +112,195 @@ System Scan Guide (Table Order)
 | threat_budget_curve | Threat Budget Curve | Encounter | budget_for_level + THREAT_BUDGET_* | each wave spawn pass | Budget scales by level: max(min, round(base * exp^level)) controlling enemy composition pressure | per_wave | backend only | implemented | Defaults: base 6, exp 1.18, min 5 |
 | passage_budget_fail_safe | Passage Budget Fail-Safe | RunRule | ensure_passage_budget | map spawn path blocked | Removes destructible obstacles until player spawn can reach map edge | per_level | none | implemented | Anti-softlock safety net |
 
+Specification Operations Addendum
+This addendum defines production controls for status semantics, runtime mapping, formulas, trigger order, balancing guardrails, QA, telemetry, and change tracking.
+
+A1. Status Legend
+- planned: spec exists but no active runtime hook in shop or game loop.
+- prototype: partially wired runtime path exists, but behavior or data flow is incomplete.
+- implemented: purchasable/system is wired and behavior executes in runtime.
+- balancing: behavior is implemented and currently under numeric tuning pass.
+- final: locked for current release branch except critical hotfix.
+
+Status Promotion Rules
+1. planned -> prototype requires at least one runtime entry point.
+2. prototype -> implemented requires effect execution plus UI visibility.
+3. implemented -> balancing requires playtest metrics and patch iteration.
+4. balancing -> final requires regression pass and sign-off.
+
+A2. Runtime Field Map
+Implemented Shop Props (Current Runtime)
+| prop_id | meta_keys | apply_path | runtime_execution | status |
+| --- | --- | --- | --- | --- |
+| piercing_rounds | pierce_level | shop catalog apply | bullet pierce charge consumed on enemy hit | implemented |
+| ricochet_scope | ricochet_level | shop catalog apply | bullet ricochet attempt and retarget | implemented |
+| shrapnel_shells | shrapnel_level | shop catalog apply | on-kill shrapnel spawn roll and splash bullets | implemented |
+| explosive_rounds | explosive_rounds_level | shop catalog apply | on-kill explosive trigger and splash damage | implemented |
+| dot_rounds | dot_rounds_level | shop catalog apply | on-hit DoT stack apply and periodic tick loop | implemented |
+| ground_spikes | ground_spikes_level | shop catalog apply | move-trail spike spawn, hit, slow, lifetime cleanup | implemented |
+| curing_paint | curing_paint_level | shop catalog apply | move-trail paint spawn, bin query, periodic damage tick | implemented |
+| mark_vulnerability | vuln_mark_level | shop catalog apply | priority mark pulse and damage amplification | implemented |
+| bone_plating | bone_plating_level, bone_plating_hp | shop catalog apply | periodic plating gain and pre-HP mitigation | implemented |
+| carapace | carapace_shield_hp | shop catalog apply | persistent reserve shield consumed before HP | implemented |
+| aegis_pulse | aegis_pulse_level, _aegis_pulse_cd | shop catalog apply | shield-gated pulse emission and AoE damage rings | implemented |
+| coin_magnet | coin_magnet_radius | shop catalog apply | spoils pull radius increase in coin update loop | implemented |
+| coupon | coupon_level | shop catalog apply | global shop discount through shop_price | implemented |
+| golden_interest | golden_interest_level | shop catalog apply | post-shop interest payout with cap | implemented |
+| lockbox | lockbox_level | shop catalog apply | protected coin floor for bandit and loan loss clamps | implemented |
+| bandit_radar | bandit_radar_level | shop catalog apply | bandit slow and highlight on spawn | implemented |
+| wanted_poster | wanted_poster_waves, wanted_active | consumable apply function | bounty payout window and consume logic | implemented |
+| shady_loan | shady_loan_level, shady_loan_remaining_debt, shady_loan_waves_remaining, shady_loan_status | purchase function | upfront payout and wave-by-wave debt resolution | implemented |
+| auto_turret | auto_turret_level | shop catalog apply | level-start summon count and turret fire loop | implemented |
+| stationary_turret | stationary_turret_count | shop catalog apply | level-start static turret placement and fire loop | implemented |
+
+Set Bonus and Non-Shop Systems (Current Runtime)
+| system_id | runtime_symbols | execution_scope | status |
+| --- | --- | --- | --- |
+| path_state_online/full | path_scores_from_meta, path_focus_summary_lines, PATH_ONLINE_THRESHOLD, PATH_FULL_THRESHOLD | run_wide summary state | implemented |
+| path_border_color_rules | PROP_PATH_TAGS, PATH_BORDER_COLORS, prop_path_border_color | shop/pause visual identity | implemented |
+| biome_domain_selection | show_biome_picker_in_shop, SCENE_BIOMES | per-level domain selection | implemented |
+| biome_modifiers | apply_domain_buffs_for_level, apply_biome_on_enemy_spawn | per-level combat modifiers | implemented |
+| bandit_spawn_protocol | spawn_enemies_for_wave, BANDIT_MIN_LEVEL_IDX, BANDIT_SPAWN_CHANCE_PER_WAVE | per-wave encounter injection | implemented |
+| threat_budget_curve | budget_for_level, THREAT_BUDGET_* | per-wave spawn pressure | implemented |
+| timer_profile | LEVEL_TIME_LIMIT, BOSS_TIME_LIMIT | per-level pacing timer | implemented |
+| boss_interval_rule | is_boss_level, BOSS_EVERY_N_LEVELS | level cadence | implemented |
+
+A3. Formula Appendix
+Shop Price
+price = max(1, round(base_cost * SHOP_PRICE_EXP^level_idx * (1 + SHOP_PRICE_LINEAR * level_idx) * SHOP_PRICE_STACK^owned_level) * (1 - COUPON_DISCOUNT_PER * coupon_level))
+
+Path Score and State
+1. For each owned prop, add its current level to each tag in PROP_PATH_TAGS.
+2. state = seed when score < PATH_ONLINE_THRESHOLD (2).
+3. state = online when score >= PATH_ONLINE_THRESHOLD (2).
+4. state = full when score >= PATH_FULL_THRESHOLD (4).
+
+Threat Budget
+budget(level_idx) = max(THREAT_BUDGET_MIN, round(THREAT_BUDGET_BASE * THREAT_BUDGET_EXP^level_idx))
+Current constants: base=6, exp=1.18, min=5.
+
+Bandit Spawn Gate (Simplified)
+spawn if:
+1. non-boss level,
+2. level_idx >= BANDIT_MIN_LEVEL_IDX (2),
+3. time_left > 20 seconds,
+4. no bandit already spawned this level,
+5. random() < BANDIT_SPAWN_CHANCE_PER_WAVE (0.28),
+6. valid spawn position exists.
+
+A4. Trigger Order and Conflict Rules
+Bullet-Hit to Death Resolution Order
+1. Compute base hit damage and crit multiplier.
+2. Apply vulnerability bonus if mark is active.
+3. Apply damage to enemy shield first, then HP overflow.
+4. Apply on-hit side effects (for player bullets): DoT stack and related VFX.
+5. If target dies, process death path:
+6. increment kill count and death flags,
+7. run shrapnel roll,
+8. run explosive rounds trigger,
+9. resolve special enemy branch (bandit bounty/returns or split behavior),
+10. resolve normal drops and XP transfer,
+11. resolve bullet continuation logic (ricochet, pierce, despawn).
+
+Level-Start Order (Runtime)
+1. Build GameState and map safety checks.
+2. Apply domain/biome modifiers for this level.
+3. Instantiate player carryover state.
+4. Spawn auto and stationary turrets from META.
+5. Enter wave/timer loop.
+
+A5. Stacking and Cap Policy
+Current Hard Caps (Runtime-Enforced by max_level or logic)
+- piercing_rounds 5, ricochet_scope 3, shrapnel_shells 3, explosive_rounds 3, dot_rounds 3.
+- curing_paint 3, ground_spikes 3, bone_plating 5, aegis_pulse 5.
+- coupon 4, golden_interest 4, shady_loan 3, bandit_radar 4.
+- auto_turret 5, stationary_turret 99 (design soft cap still recommended).
+
+Policy Rules
+1. Prefer explicit max_level for every stackable effect.
+2. All economy loss/gain systems must route through lockbox-safe clamps where applicable.
+3. On-kill and on-hit proc chains must include anti-loop guards.
+4. Boss-specific multipliers must be explicit for every scalable damage-over-time or splash effect.
+5. Cross-system scaling must use multiplicative composition unless explicitly documented as additive.
+
+A6. Shop Economy Reference Table
+| knob | current value | note |
+| --- | --- | --- |
+| SHOP_PRICE_EXP | 1.12 | exponential price growth by level |
+| SHOP_PRICE_LINEAR | 0.02 | linear level modifier |
+| SHOP_PRICE_STACK | 1.15 | repeat-buy stack price growth |
+| COUPON_DISCOUNT_PER | 0.05 | 5 percent discount per coupon level |
+| COUPON_MAX_LEVEL | 4 | maximum coupon stacks |
+| GOLDEN_INTEREST_RATE_PER_LEVEL | 0.05 | 5 percent interest per level |
+| GOLDEN_INTEREST_CAPS | 30, 50, 70, 90 | cap per interest level |
+| GOLDEN_INTEREST_MAX_LEVEL | 4 | maximum interest level |
+| SHADY_LOAN_MAX_LEVEL | 3 | maximum loan level |
+| WANTED_POSTER_WAVES | 2 | active wave count after use |
+| WANTED_POSTER_BOUNTY_BASE | 30 | base bounty payout |
+| LOCKBOX_MAX_LEVEL | len(LOCKBOX_PROTECT_RATES) | runtime-derived cap |
+
+Price Resolution Order
+1. Compute level-based and owned-level stack scaling.
+2. Apply coupon discount multiplier.
+3. Round and clamp to minimum 1.
+
+A7. Set Bonus Matrix
+| path | seed state (<2) | online state (>=2) | full state (>=4) | current gameplay effect | next-step recommendation |
+| --- | --- | --- | --- | --- | --- |
+| Ballistic | tracked only | UI online label | UI full label | none direct | add projectile consistency bonus |
+| Turret | tracked only | UI online label | UI full label | none direct | add turret uptime or targeting bonus |
+| Shield | tracked only | UI online label | UI full label | none direct | add shield regen cadence bonus |
+| Status | tracked only | UI online label | UI full label | none direct | add status duration or application bonus |
+| Economy | tracked only | UI online label | UI full label | none direct | add controlled interest or drop utility |
+| Summoner | tracked only | UI online label | UI full label | none direct | add summon response/command bonus |
+| Lucky | tracked only | UI online label | UI full label | none direct | add bounded rare-event chance bonus |
+
+A8. QA Scenarios (Required Regression Set)
+| test_id | scenario | expected result |
+| --- | --- | --- |
+| PROP-QA-01 | Buy coupon to cap and reroll shop | prices follow formula and never go below 1 |
+| PROP-QA-02 | Stack lockbox then trigger bandit and loan losses | coin floor protection always respected |
+| PROP-QA-03 | Apply mark_vulnerability and verify hit numbers | marked targets receive bonus exactly once per hit |
+| PROP-QA-04 | DOT + explosive + shrapnel on dense wave | no infinite chain loop or crash |
+| PROP-QA-05 | Ground spikes and curing paint at max level | footprint count/lifetime constraints respected |
+| PROP-QA-06 | Bone plating + carapace + aegis pulse shield interactions | mitigation order and pulse trigger remain stable |
+| PROP-QA-07 | Domain of Wind with many projectiles | hurricane logic remains performant and deterministic |
+| PROP-QA-08 | Scorched Hell with boss contact damage | enemy and boss contact multipliers apply correctly |
+| PROP-QA-09 | Wanted poster claim path on bandit death | bounty pays once and state flags clear correctly |
+| PROP-QA-10 | Shady loan across repayment and default branches | debt, waves, and HP penalties resolve correctly |
+| PROP-QA-11 | Auto and stationary turrets with save/load cycle | turret counts persist and restore correctly |
+| PROP-QA-12 | Path summaries after mixed dual-tag props | path score and state labels match expected totals |
+
+A9. Telemetry Specification
+| event_name | trigger | minimum payload |
+| --- | --- | --- |
+| prop_purchased | shop purchase success | run_id, level_idx, prop_id, new_level, cost |
+| shop_rerolled | reroll action | run_id, level_idx, reroll_cost, coin_after |
+| path_state_changed | any path score crosses threshold | run_id, level_idx, path, old_state, new_state, score |
+| biome_selected | biome picker confirm | run_id, level_idx, biome_name |
+| bandit_spawned | bandit spawn success | run_id, level_idx, wave_idx, radar_level, lockbox_level |
+| bandit_killed | bandit death resolution | run_id, level_idx, stolen_total, refund, bounty_paid |
+| shady_loan_purchased | loan purchase | run_id, level_idx, loan_level, debt_total, waves_remaining |
+| shady_loan_resolved | repayment/default outcome | run_id, level_idx, outcome, hp_penalty, debt_remaining |
+| player_death | run fail | run_id, level_idx, cause_tag, top_damage_source, path_summary |
+| run_completed | victory/exit | run_id, final_level, total_time_s, key_props |
+
+A10. Change Log Template
+Entry Header
+[YYYY-MM-DD] [build_tag] [owner] [scope: prop/system/economy/ui]
+
+Entry Body Fields
+1. Intent: one sentence for why this change exists.
+2. Change: exact numeric or behavior delta.
+3. Expected Impact: what should improve or decrease.
+4. Validation: tests, metrics, and replay seeds used.
+5. Rollback Plan: exact condition and revert path.
+
+Change Log Row Template
+| date | build | owner | ids_affected | change_summary | intent | validation_ref | rollback_ref |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| YYYY-MM-DD | vX.Y.Z | name | comma-separated ids | one-line change | one-line intent | qa case or metric id | commit or patch id |
+
 0. Full-Game Professional To-Do (Modify/Add)
 
 0.A. Vision and Scope
