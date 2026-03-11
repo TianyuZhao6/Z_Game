@@ -1,4 +1,4 @@
-Executive Summary
+﻿Executive Summary
 This document is the master working specification for Z Game's prop system, path identity, balance rules, UX readability, and release-readiness requirements.
 Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and production guidance.
 Current intent: keep prop data consistent, make builds easier to read in-game, and align the current version toward a more polished Steam-ready release.
@@ -286,8 +286,7 @@ A9. Telemetry Specification
 | run_completed | victory/exit | run_id, final_level, total_time_s, key_props |
 
 A10. Change Log Template
-Entry Header
-[YYYY-MM-DD] [build_tag] [owner] [scope: prop/system/economy/ui]
+
 
 Entry Body Fields
 1. Intent: one sentence for why this change exists.
