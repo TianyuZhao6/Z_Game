@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 import heapq
 import sys
+import asyncio
 import pygame
 import math
 import threading
@@ -12,12 +13,19 @@ import copy
 import wave
 import hashlib
 import numpy as np
-import librosa
 import colorsys
 from effects import *
 from queue import PriorityQueue
 from collections import deque
 from typing import Dict, List, Set, Tuple, Optional
+
+try:
+    import librosa
+except Exception:
+    librosa = None
+
+IS_WEB = (sys.platform == "emscripten")
+WEB_WINDOW_SIZE = (1280, 720)
 
 # --- Event queue helper to prevent ghost clicks ---
 def flush_events():
@@ -2752,6 +2760,31 @@ SAVE_DIR = os.path.join(BASE_DIR, "TEMP")
 os.makedirs(SAVE_DIR, exist_ok=True)
 SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
 _shop_sprite_cache: dict[str, pygame.Surface | bool] = {}
+_web_save_cache: Optional[dict] = None
+
+
+def _audio_path_variants(path: str) -> list[str]:
+    """Prefer .ogg for web, but keep desktop .wav fallback."""
+    if not path:
+        return []
+    root, ext = os.path.splitext(path)
+    ext = ext.lower()
+    if ext == ".ogg":
+        return [path, f"{root}.wav"]
+    if ext == ".wav":
+        return [f"{root}.ogg", path]
+    return [path]
+
+
+def _expand_audio_candidates(candidates: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for c in candidates:
+        for p in _audio_path_variants(c):
+            if p and p not in seen:
+                seen.add(p)
+                out.append(p)
+    return out
 
 
 def _load_shop_sprite(filename: str, max_size: tuple[int, int],
@@ -3328,6 +3361,10 @@ def save_progress(current_level: int,
         data["max_wave_reached"] = int(max_wave_reached)
     if baseline_bundle:
         data["baseline"] = baseline_bundle  # ← survive across Save & Quit
+    global _web_save_cache
+    if IS_WEB:
+        _web_save_cache = copy.deepcopy(data)
+        return
     try:
         _atomic_write_json(SAVE_FILE, data)
     except Exception as e:
@@ -3393,6 +3430,10 @@ def capture_snapshot(game_state, player, enemies, current_level: int,
 
 def save_snapshot(snapshot: dict) -> None:
     """Write a snapshot dict to disk."""
+    global _web_save_cache
+    if IS_WEB:
+        _web_save_cache = copy.deepcopy(snapshot)
+        return
     try:
         _atomic_write_json(SAVE_FILE, snapshot)
     except Exception as e:
@@ -3401,6 +3442,10 @@ def save_snapshot(snapshot: dict) -> None:
 
 def load_save() -> Optional[dict]:
     """Load either meta or snapshot save; returns dict with 'mode' field or None."""
+    if IS_WEB:
+        if isinstance(_web_save_cache, dict):
+            return copy.deepcopy(_web_save_cache)
+        return None
     try:
         if not os.path.exists(SAVE_FILE):
             return None
@@ -3694,10 +3739,16 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
 
 
 def has_save() -> bool:
+    if IS_WEB:
+        return isinstance(_web_save_cache, dict)
     return os.path.exists(SAVE_FILE)
 
 
 def clear_save() -> None:
+    global _web_save_cache
+    if IS_WEB:
+        _web_save_cache = None
+        return
     try:
         if os.path.exists(SAVE_FILE):
             os.remove(SAVE_FILE)
@@ -3902,6 +3953,7 @@ class AudioAnalyzer:
         self.time_index_ratio = 0
         self.duration = 0.0
         self.loaded = False
+        self._fallback_mode = False
 
     def _get_cache_path(self, filename):
         """Generate cache file path. Only cache the homepage Intro track to avoid multiple files."""
@@ -3954,11 +4006,19 @@ class AudioAnalyzer:
         """Load and analyze audio file, using cache if available."""
         if not filename or not os.path.exists(filename):
             self.loaded = False
+            self._fallback_mode = True
+            return
+        if IS_WEB or librosa is None:
+            # Browser build: use lightweight synthetic response instead of librosa analysis.
+            self.loaded = False
+            self.duration = 0.0
+            self._fallback_mode = True
             return
         
         # Try to load from cache first (only for Intro_V0)
         cache_path = self._get_cache_path(filename)
         if cache_path and self._load_from_cache(cache_path):
+            self._fallback_mode = False
             return  # Successfully loaded from cache
         
         # Cache miss or invalid - perform analysis
@@ -3979,6 +4039,7 @@ class AudioAnalyzer:
             self.frequencies_index_ratio = len(frequencies) / frequencies[-1] if len(frequencies) > 0 else 0
             self.duration = float(times[-1]) if len(times) > 0 else 0.0
             self.loaded = True
+            self._fallback_mode = False
             print(f"[AudioAnalyzer] Analysis complete for {filename}")
             
             # Save to cache for next time
@@ -3988,8 +4049,12 @@ class AudioAnalyzer:
             print(f"[AudioAnalyzer] Failed to analyze {filename}: {e}")
             self.loaded = False
             self.duration = 0.0
+            self._fallback_mode = True
 
     def get_decibel(self, target_time, freq):
+        if self._fallback_mode:
+            # Smooth pseudo-spectrum fallback so the home visualizer still reacts.
+            return -50.0 + 18.0 * math.sin(float(target_time) * 6.0 + float(freq) * 0.012)
         if not self.loaded or self.spectrogram is None:
             return -80 # silence
         
@@ -5411,16 +5476,19 @@ def render_start_menu_surface(saved_exists: bool):
     return surf
 
 
-def show_start_menu(screen, *, skip_intro: bool = False):
+async def show_start_menu(screen, *, skip_intro: bool = False):
     """Return a tuple ('new', None) or ('continue', save_data) based on player's choice."""
     flush_events()
+    if IS_WEB:
+        skip_intro = True
     intro_flag = globals().pop("_skip_intro_once", False)
     if not skip_intro and not intro_flag:
         run_neuro_intro(screen)
     # Ensure home screen always uses Intro BGM
     try:
         cur = getattr(_bgm, "music_path", "") if "_bgm" in globals() else ""
-        if "intro_v0.wav" not in cur.lower():
+        cur_lower = cur.lower()
+        if "intro_v0.wav" not in cur_lower and "intro_v0.ogg" not in cur_lower:
             play_intro_bgm()
     except Exception:
         try:
@@ -5514,6 +5582,8 @@ def show_start_menu(screen, *, skip_intro: bool = False):
                 if drawn_rects["exit"].collidepoint(event.pos):
                     pygame.quit()
                     sys.exit()
+        if IS_WEB:
+            await asyncio.sleep(0)
 
 
 def show_instruction(screen):
@@ -5547,7 +5617,7 @@ def show_instruction(screen):
                 return
 
 
-def show_fail_screen(screen, background_surf):
+async def show_fail_screen(screen, background_surf):
     dim = pygame.Surface((VIEW_W, VIEW_H))
     dim.set_alpha(180)
     dim.fill((0, 0, 0))
@@ -5600,9 +5670,11 @@ def show_fail_screen(screen, background_surf):
                     start_menu_surf = start_menu_surf or render_start_menu_surface(has_save())
                     flush_events()
                     return "home"
+        if IS_WEB:
+            await asyncio.sleep(0)
 
 
-def show_success_screen(screen, background_surf, reward_choices):
+async def show_success_screen(screen, background_surf, reward_choices):
     dim = pygame.Surface((VIEW_W, VIEW_H))
     dim.set_alpha(150)
     dim.fill((0, 0, 0))
@@ -5674,6 +5746,8 @@ def show_success_screen(screen, background_surf, reward_choices):
                     # animation add if needed
                     flush_events()
                     return chosen
+        if IS_WEB:
+            await asyncio.sleep(0)
 
 
 def show_pause_menu(screen, background_surf):
@@ -10454,12 +10528,15 @@ def _load_effect_sound(filename: str):
     _init_effect_mixer()
     if filename in _effect_sfx_cache:
         return _effect_sfx_cache[filename]
-    candidates = [
-        os.path.join(BASE_DIR, "assets", "Effect", filename),
-        os.path.join(os.getcwd(), "assets", "Effect", filename),
-        os.path.join(BASE_DIR, "assets", filename),  # legacy fallback
-        os.path.join(os.getcwd(), "assets", filename),
-    ]
+    name_variants = _audio_path_variants(filename)
+    candidates: list[str] = []
+    for n in name_variants:
+        candidates.extend([
+            os.path.join(BASE_DIR, "assets", "Effect", n),
+            os.path.join(os.getcwd(), "assets", "Effect", n),
+            os.path.join(BASE_DIR, "assets", n),  # legacy fallback
+            os.path.join(os.getcwd(), "assets", n),
+        ])
     _effect_sfx_cache[filename] = False
     for p in candidates:
         if p and os.path.exists(p):
@@ -14721,6 +14798,7 @@ class GameSound:
         ]
         if music_path:
             candidates.insert(0, music_path)
+        candidates = _expand_audio_candidates(candidates)
         self.music_path = None
         for p in candidates:
             if p and os.path.exists(p):
@@ -14798,7 +14876,8 @@ def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms:
                 _bgm.stop(fade_ms=fadeout_ms)
             except Exception:
                 pass
-        path = next((p for p in candidates if p and os.path.exists(p)), None)
+        expanded = _expand_audio_candidates(candidates)
+        path = next((p for p in expanded if p and os.path.exists(p)), None)
         if not path:
             return False
         _bgm = GameSound(music_path=path, volume=volume)
@@ -14809,6 +14888,12 @@ def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms:
         def _kickoff_load(p: str):
             global _neuro_viz_loader, _neuro_viz_loader_path
             if not _neuro_viz:
+                return
+            if IS_WEB:
+                try:
+                    _neuro_viz.load_music(p)
+                except Exception as e:
+                    print(f"[AudioAnalyzer] web fallback load failed for {p}: {e}")
                 return
             # Avoid duplicate loaders on the same path
             if _neuro_viz_loader and _neuro_viz_loader.is_alive() and _neuro_viz_loader_path == p:
@@ -14861,7 +14946,7 @@ def play_combat_bgm():
 
 
 # ==================== 游戏主循环 ====================
-def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
+async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
     pygame.display.set_caption("Enemy Card Game – Level")
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
@@ -15120,6 +15205,8 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
                 update_hit_flash_timer(z, dt)
             last_frame = render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots,
                                          obstacles=game_state.obstacles)
+            if IS_WEB:
+                await asyncio.sleep(0)
             continue
         # ==== 消费镜头聚焦请求：完全暂停游戏与计时 ====
         pf = getattr(game_state, "pending_focus", None)
@@ -15442,10 +15529,12 @@ def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], 
         if game_result == "success":
             globals()["_last_spoils"] = getattr(game_state, "spoils_gained", 0)
             globals()["_carry_player_state"] = capture_player_carry(player)
+        if IS_WEB:
+            await asyncio.sleep(0)
     return game_result, config.get("reward", None), last_frame
 
 
-def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surface]:
+async def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surface]:
     """Resume a game from a snapshot in save_data; same return contract as main_run_level."""
     assert save_data.get("mode") == "snapshot"
     meta = save_data.get("meta", {})
@@ -15664,7 +15753,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         globals()["_time_left_runtime"] = time_left
         if time_left <= 0:
             # win on survival
-            chosen = show_success_screen(
+            chosen = await show_success_screen(
                 screen,
                 last_frame or render_game(screen, game_state, player, enemies, bullets, enemy_shots),
                 reward_choices=[]
@@ -15824,7 +15913,7 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                         obstacles=game_state.obstacles
                     )
                     last_frame = bg.copy()
-                    action = show_fail_screen(screen, bg)
+                    action = await show_fail_screen(screen, bg)
                     if action == "home":
                         clear_save();
                         flush_events()
@@ -15877,9 +15966,9 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
         # Fail check (redundant guard)
         if player.hp <= 0:
             clear_save()
-            action = show_fail_screen(screen,
-                                      last_frame or render_game(screen, game_state, player, enemies, bullets,
-                                                                enemy_shots))
+            action = await show_fail_screen(screen,
+                                            last_frame or render_game(screen, game_state, player, enemies, bullets,
+                                                                      enemy_shots))
             if action == "home":
                 clear_save();
                 flush_events()
@@ -15893,6 +15982,8 @@ def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surfa
                                          enemy_shots)
         else:
             last_frame = render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
+        if IS_WEB:
+            await asyncio.sleep(0)
     return "home", None, last_frame or screen.copy()
 
 
@@ -15903,9 +15994,13 @@ if __name__ == "__main__":
     pygame.init()
     info = pygame.display.Info()
     # Create the window first (safer on some systems)
-    screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
+    if IS_WEB:
+        screen = pygame.display.set_mode(WEB_WINDOW_SIZE)
+        VIEW_W, VIEW_H = WEB_WINDOW_SIZE
+    else:
+        screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
+        VIEW_W, VIEW_H = info.current_w, info.current_h
     pygame.display.set_caption(GAME_TITLE)
-    VIEW_W, VIEW_H = info.current_w, info.current_h
     # Make the world at least as big as what we can see (removes “non-playable band”)
     resize_world_to_view()
     # Now start BGM using Settings default (BGM_VOLUME 0-100)
@@ -15913,15 +16008,16 @@ if __name__ == "__main__":
         play_intro_bgm()
     except Exception as e:
         print(f"[Audio] background music not started: {e}")
-    # Borderless fullscreen to avoid display mode flicker
-    screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
-    pygame.display.set_caption(GAME_TITLE)
-    VIEW_W, VIEW_H = info.current_w, info.current_h
-    # Make the world at least as big as what we can see (removes “non-playable band”)
-    resize_world_to_view()
+    if not IS_WEB:
+        # Borderless fullscreen to avoid display mode flicker
+        screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
+        pygame.display.set_caption(GAME_TITLE)
+        VIEW_W, VIEW_H = info.current_w, info.current_h
+        # Make the world at least as big as what we can see (removes “non-playable band”)
+        resize_world_to_view()
     # Enter start menu
     flush_events()
-    selection = show_start_menu(screen)
+    selection = asyncio.run(show_start_menu(screen))
     if not selection:
         sys.exit()
     mode, save_data = selection
@@ -15972,7 +16068,7 @@ if __name__ == "__main__":
                 # keep the shop pending so CONTINUE returns here again
                 save_progress(current_level, pending_shop=True)
                 flush_events()
-                selection = show_start_menu(screen, skip_intro=True)
+                selection = asyncio.run(show_start_menu(screen, skip_intro=True))
                 if not selection: sys.exit()
                 mode, save_data = selection
                 if mode == "continue" and save_data:
@@ -16009,7 +16105,7 @@ if __name__ == "__main__":
             globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
         if globals().get("_menu_transition_frame") is None:
             flush_events()
-        result, reward, bg = main_run_level(config, chosen_enemy)
+        result, reward, bg = asyncio.run(main_run_level(config, chosen_enemy))
         if result == "restart":
             META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
             META["run_items_spawned"] = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
@@ -16025,7 +16121,7 @@ if __name__ == "__main__":
             continue
         if result == "home":
             flush_events()
-            selection = show_start_menu(screen, skip_intro=True)
+            selection = asyncio.run(show_start_menu(screen, skip_intro=True))
             if not selection:
                 sys.exit()
             mode, save_data = selection
@@ -16059,12 +16155,12 @@ if __name__ == "__main__":
             sys.exit()
         if result == "fail":
             clear_save()
-            action = show_fail_screen(screen, bg)
+            action = asyncio.run(show_fail_screen(screen, bg))
             flush_events()
             if action == "home":
                 # NEW: reset per-run carry
                 globals()["_carry_player_state"] = None
-                selection = show_start_menu(screen, skip_intro=True)
+                selection = asyncio.run(show_start_menu(screen, skip_intro=True))
                 if not selection:
                     sys.exit()
                 mode, save_data = selection
@@ -16086,10 +16182,10 @@ if __name__ == "__main__":
             # bank coins from this level
             META["spoils"] += int(globals().get("_last_spoils", 0))
             globals()["_last_spoils"] = 0
-            action = show_success_screen(screen, bg, [])
+            action = asyncio.run(show_success_screen(screen, bg, []))
             if action == "home":
                 flush_events()
-                selection = show_start_menu(screen, skip_intro=True)
+                selection = asyncio.run(show_start_menu(screen, skip_intro=True))
                 if not selection:
                     sys.exit()
                 mode, save_data = selection
@@ -16127,7 +16223,7 @@ if __name__ == "__main__":
             if action == "home":
                 save_progress(current_level, pending_shop=True)
                 flush_events()
-                selection = show_start_menu(screen, skip_intro=True)
+                selection = asyncio.run(show_start_menu(screen, skip_intro=True))
                 if not selection: sys.exit()
                 mode, save_data = selection
                 # keep your existing homepage handling logic
@@ -16174,7 +16270,7 @@ if __name__ == "__main__":
                 save_progress(current_level)
         else:
             # Unknown state -> go home
-            selection = show_start_menu(screen, skip_intro=True)
+            selection = asyncio.run(show_start_menu(screen, skip_intro=True))
             if not selection:
                 sys.exit()
             mode, save_data = selection

@@ -1,0 +1,3 @@
+pygbag>=0.9.3
+pygame-ce>=2.5.7
+numpy>=2.4.3
