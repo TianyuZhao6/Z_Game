@@ -300,6 +300,42 @@ Change Log Row Template
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | YYYY-MM-DD | vX.Y.Z | name | comma-separated ids | one-line change | one-line intent | qa case or metric id | commit or patch id |
 
+A11. Planned Prop Onboarding Checklist (Detailed)
+Use this checklist to move each planned prop from design-only into runtime-ready implementation.
+
+Checklist Columns
+prop_id | required_meta_keys | required_runtime_hooks | required_ui_or_vfx | minimum_qa_case
+
+| prop_id | required_meta_keys | required_runtime_hooks | required_ui_or_vfx | minimum_qa_case |
+| --- | --- | --- | --- | --- |
+| bleeding_edge | bleeding_edge_level, bleed_stack_cap | bullet hit apply + enemy bleed tick update | bleed stack icon + hit tint | verify stack cap and boss modifier |
+| cleanse_step | cleanse_step_level, cleanse_buffer | move tick conversion + paint ownership check | reclaim pulse ring + HUD resist indicator | verify no gain without hostile paint |
+| paint_converter | paint_converter_level, paint_bonus_cd | kill event hook + owned-paint zone validator | coin bonus popup + paint consume FX | verify bonus only in owned paint zone |
+| explosive_crits | explosive_crits_level | crit resolution hook + splash damage resolver | crit splash burst FX + radius ring | verify non-crit shots do not trigger |
+| razor_focus | razor_focus_level | fire-rate recompute + crit stat recompute | stat delta tooltip (crit up, speed down) | verify additive abuse is prevented |
+| frost_brand | frost_brand_level, chill_timer | on-hit chill apply + re-hit bonus resolver | chill icon + slow shader tint | verify boss slow reduction path |
+| shock_relay | shock_relay_level, relay_counter | hit counter + chain target selection | chain beam FX + jump count text | verify no infinite jump loops |
+| blood_pact | blood_pact_level | max-HP penalty apply + damage bonus apply | risk warning badge in shop card | verify HP floor guard on purchase |
+| guardian_charm | guardian_charm_level, guardian_cd | low-HP trigger + emergency shield apply | emergency proc banner + cooldown ring | verify cooldown lockout enforcement |
+| mirror_shell | mirror_shell_level | shield-state check + ranged reflect resolver | reflect arc FX + shield-state cue | verify disabled behavior without shield |
+| retaliation_core | retaliation_core_level, retaliate_timer | on-damage buff apply + timed decay | reactive buff icon + pulse outline | verify refresh behavior under rapid hits |
+| retaliation_thorns | retaliation_thorns_level | contact hit detector + reflect calculation | thorn flash FX on contact | verify boss reflect reduction rule |
+| shardstorm | shardstorm_level | shield-break event hook + shard spawn | shield-break burst FX + shard trails | verify single trigger per break instance |
+| shield_capacitor | shield_capacitor_level, temp_shield_cap | overheal convert pipeline + temp shield decay | temp shield bar segment + convert popup | verify cap enforcement at max HP |
+| black_market_pass | black_market_pass_charges | next-shop offer override + expiration clear | special shop frame + timer label | verify one-shop duration only |
+| spoil_splitter | spoil_splitter_level, split_proc_cd | coin pickup proc hook + anti-loop throttle | extra coin proc text + sparkle FX | verify proc cap under magnet farming |
+| vip_punchcard | vip_punchcard_level, cashback_bank | purchase event cashback accrual + payout | cashback meter in shop UI | verify payout cap and reset timing |
+| phantom_dash | phantom_dash_level | dash state event + contact strike resolver | dash trail FX + impact ring | verify no trigger when dash unavailable |
+| sticky_tar_flask | sticky_tar_flask_level | puddle spawn manager + slow aura tick | puddle decal + edge fade FX | verify duration cleanup on room reset |
+| time_dilation_boots | time_dilation_boots_level | stationary detector + periodic slow pulse | aura ring + standstill charge meter | verify movement cancels pulse build-up |
+
+Implementation Exit Criteria (for each planned prop)
+1. Added to shop catalog with max_level, rarity, and tooltip text.
+2. Added to META defaults and save/load serialization path.
+3. Added to runtime update loop with deterministic trigger conditions.
+4. Added to UI feedback layer (icon, tooltip, or event text).
+5. Added to at least one QA regression case and one telemetry event.
+
 0. Full-Game Professional To-Do (Modify/Add)
 
 0.A. Vision and Scope
