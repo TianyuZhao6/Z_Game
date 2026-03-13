@@ -423,6 +423,77 @@ Run Health Benchmarks
 3. Two-path bridge builds should be viable, not only pure mono-path stacks.
 4. High-risk props must pay back quickly enough to feel intentional, not bait.
 
+A14. Prop Synergy Matrix and Anti-Synergy Rules
+This section defines which prop combinations should be intentionally supported, which should remain neutral, and which require hard guardrails.
+
+Synergy Rating Legend
+- primary: intended signature combo that should be discoverable and satisfying.
+- support: useful connection that improves consistency but is not build-defining alone.
+- bridge: cross-path relationship that helps mixed builds stay viable.
+- guarded: allowed combo with explicit cap or anti-loop rule.
+
+Current and Planned Synergy Matrix
+| combo_id | props_or_paths | synergy_rating | design intent | runtime caution |
+| --- | --- | --- | --- | --- |
+| SYN-01 | piercing_rounds + ricochet_scope | primary | supports projectile routing and wave clear without requiring AoE | prevent multi-hit room wipe in narrow corridors |
+| SYN-02 | shrapnel_shells + explosive_rounds | guarded | turns kills into chained cleanup moments | cap recursive splash and secondary spawn density |
+| SYN-03 | dot_rounds + mark_vulnerability | primary | marked targets should reward sustained pressure builds | bonus applies to hit damage; avoid double-dipping DoT unless explicitly intended |
+| SYN-04 | curing_paint + ground_spikes | support | reinforces movement-based area denial play | overlap readability must stay clear on busy floors |
+| SYN-05 | curing_paint + paint_converter | primary | paint ownership becomes both combat and reward engine | reward proc must validate owned-paint condition only |
+| SYN-06 | bone_plating + aegis_pulse | primary | defensive stack enables repeated shield-gated pulse windows | pulse uptime must not become permanent stall loop |
+| SYN-07 | carapace + mirror_shell | support | reserve shield sustains reflect viability | disable reflect once reserve shield is fully spent |
+| SYN-08 | carapace + shardstorm | support | reserve shield increases chance of meaningful shield-break burst | single break event should only trigger once |
+| SYN-09 | lockbox + shady_loan | primary | coin protection reduces economic punishment of loan failure states | lockbox cannot trivialize loan risk entirely |
+| SYN-10 | wanted_poster + bandit_radar | support | radar increases bounty consistency without guaranteeing free payout | bandit spawn chance remains unchanged |
+| SYN-11 | coupon + golden_interest | bridge | enables disciplined economy runs with better long-term conversion | early combat weakness must remain visible |
+| SYN-12 | auto_turret + stationary_turret | primary | mixed summon setup covers both follow and holdout use cases | total turret count still needs performance gate |
+| SYN-13 | explosive_crits + razor_focus | primary | crit specialization turns fewer shots into meaningful burst | overkill waste should remain a balancing factor |
+| SYN-14 | frost_brand + shock_relay | bridge | layered elemental control into chain-clear package | target churn must remain readable in large waves |
+| SYN-15 | sticky_tar_flask + time_dilation_boots | primary | combines forced slowdown with standstill punishment zone | area stacking must use diminishing returns |
+| SYN-16 | guardian_charm + blood_pact | guarded | creates comeback windows for risky glass-cannon play | emergency survivability must not erase pact downside |
+
+Anti-Synergy and Guardrail Rules
+1. Never allow the same kill event to recursively trigger unlimited kill events.
+2. On-hit amplification and damage-over-time amplification must declare whether they stack multiplicatively or not.
+3. Dual-area denial props must share visual priority rules so the floor never becomes unreadable.
+4. Economy props may improve stability, but may not delete the intended risk of debt, bandits, or greedy holds.
+5. Summon-count props must convert excess quantity into quality before performance collapses.
+
+A15. Boss Modifier Policy and Performance Safety Rules
+This section defines how prop effects should be reduced, capped, or reformatted in boss encounters and high-density late-wave situations.
+
+Boss Modifier Policy
+| effect_family | default boss treatment | reason |
+| --- | --- | --- |
+| splash_damage | 40% to 60% effectiveness unless explicitly exempt | prevents wave-clear tools from becoming free boss delete buttons |
+| damage_over_time | reduced tick value or capped stack count | keeps DoT relevant without replacing mechanical execution |
+| hard_control | duration reduction or control immunity windows | bosses must remain readable and interactive |
+| coin_economy | no direct boss payout inflation beyond explicit reward rules | prevents boss farming exploits |
+| reflect_damage | capped by boss-facing multiplier or trigger cooldown | avoids passive kill loops |
+| summon_pressure | maintain uptime target, but reduce AI abuse around boss hazards | preserves path identity without cheese |
+
+Late-Wave Performance Safety Rules
+1. Any prop that spawns secondary projectiles must define a hard concurrent cap.
+2. Any trail or puddle system must define both a lifetime and maximum active count.
+3. Any chain effect must define max jumps, retarget filters, and duplicate-target lockout.
+4. Any periodic scan aura must define scan interval and maximum affected targets per tick.
+5. Any visually persistent floor effect must define z-order priority and fade behavior.
+
+Recommended Runtime Safety Checklist
+| system_type | required safety control | example |
+| --- | --- | --- |
+| projectile burst | max active secondary projectiles | shrapnel_shells, shardstorm |
+| chain logic | unique target list per trigger | shock_relay |
+| area decals | max active instances plus pooled cleanup | sticky_tar_flask, curing_paint |
+| pulse/aura | fixed tick interval and target cap | time_dilation_boots, aegis_pulse |
+| summon counts | soft cap with quality conversion | auto_turret, stationary_turret, future summoner props |
+
+Boss Design Compatibility Rules
+1. Every prop family should still matter in boss fights, but not at full trash-wave value.
+2. Boss nerfs must be surfaced in tooltip or inspect copy when the difference is material.
+3. If a prop is weak on bosses by design, it must be strong enough on waves to justify the slot.
+4. No boss should fully invalidate an entire path unless that path has alternative payoff elsewhere in the run.
+
 0. Full-Game Professional To-Do (Modify/Add)
 
 0.A. Vision and Scope
