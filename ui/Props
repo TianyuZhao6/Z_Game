@@ -336,6 +336,93 @@ Implementation Exit Criteria (for each planned prop)
 4. Added to UI feedback layer (icon, tooltip, or event text).
 5. Added to at least one QA regression case and one telemetry event.
 
+A12. Shop Card Readability and Presentation Spec
+This section defines how prop cards should communicate path identity, risk, rarity, and purchase value in under one second of player attention.
+
+Card Information Priority
+1. Display Name
+2. Path Identity
+3. Immediate Effect
+4. Cost
+5. Level / Max Level
+6. Tradeoff or restriction
+
+Required Card Fields
+| field | requirement | notes |
+| --- | --- | --- |
+| title | exact roster display_name | do not shorten unless UI overflow requires approved alias |
+| path_label | primary path or dual-path label | use runtime path tags where possible |
+| border_color | path-derived border | use path primary color or mixed color for bridge props |
+| rarity_marker | numeric rarity plus icon treatment | rarity must be legible without reading description |
+| current_level | owned level if any | show `Lv X/Y` or `Owned` for non-level props |
+| effect_line | single-sentence summary | front-load numeric value before flavor wording |
+| tradeoff_line | explicit drawback if present | red or amber emphasis; never hide drawbacks in tooltip only |
+| status_marker | planned/prototype/implemented only in dev tools, not shipping UI | useful for debug shop or editor panels |
+
+Card Copy Rules
+1. The first line of effect copy must explain what happens, not lore.
+2. Use numbers before adjectives: `+20 shield`, not `small shield gain`.
+3. If a prop has a condition, state the condition first: `On hit`, `On kill`, `While moving`.
+4. If a prop has a drawback, reserve a dedicated tradeoff line.
+5. If boss behavior differs, include boss rule in tooltip or expanded inspect panel.
+
+Color and Outline Rules
+| path | base outline intent | readability note |
+| --- | --- | --- |
+| BALLISTIC | warm orange | reads as direct damage / projectile aggression |
+| OFFENSE | vivid red-orange | reserved for raw damage and marked kill pressure |
+| CONTROL | cyan-teal | used for slows, traps, pulse zones, and positional effects |
+| DEFENSE | steel blue | used for shields, mitigation, and survival tools |
+| ECONOMY | gold | used for coin, savings, discount, and bounty systems |
+| STATUS | toxic green | used for DoT, debuff, chill, shock, and paint status effects |
+| SUMMON | violet | used for turret and future summoner packages |
+| PAINT | lime-green / ink-accent | keep visually distinct from generic status when possible |
+| CRIT | bright amber-white accent | should read as precision / burst identity |
+| RISK | crimson accent overlay | add secondary warning trim, not full-card replacement |
+
+Dual-Path Card Rules
+1. Mixed-path props should blend border colors or use split-corner accents.
+2. The primary path controls the border; the secondary path controls a badge, stripe, or icon.
+3. Do not use more than two path colors on a single card.
+4. If a prop is economy plus risk, the risk warning must visually outrank the economy color.
+
+Card Hover / Inspect Requirements
+1. Base card must be readable at a glance without hover.
+2. Hover panel should show current value and next-level value.
+3. Hover panel should show trigger type and boss modifier if applicable.
+4. Hover panel should show synergy tags in a compact chip list.
+5. Hover panel should not exceed three short paragraphs or equivalent rows.
+
+A13. Path Balance Targets and Build Identity Benchmarks
+This section defines the intended gameplay promise of each path so future props do not drift into generic stat inflation.
+
+| path | player promise | strength window | main weakness | required counter-pressure |
+| --- | --- | --- | --- | --- |
+| BALLISTIC | reliable projectile scaling and clean wave clear | early to late if line tools stack well | can become too linear without utility | armor, spread enemies, angle checks |
+| OFFENSE | burst and kill-speed acceleration | mid-run spike | fragile if overcommitted to damage | contact pressure and boss sustain phases |
+| CONTROL | safer space management and tempo denial | early to mid stability | lower raw DPS ceiling | ranged enemies and mobility checks |
+| DEFENSE | mistake forgiveness and sustain | all-run consistency | can over-stall fights | anti-stall bosses and shield breakers |
+| ECONOMY | stronger long-run scaling through resource advantage | mid to late payoff | weak short-term combat tempo | fast pressure waves and debt risk |
+| STATUS | compounding value over time and on crowded waves | mid to late | boss tuning can invalidate it if over-nerfed | cleanse enemies or burst windows |
+| SUMMON | distributed damage and positional pressure | mid to late | AI failure or pathing loss | hazard-heavy arenas and target priority checks |
+| CRIT | explosive spikes and elite deletion | mid burst peaks | high variance and overkill waste | crit resistance, pressure during downtime |
+| PAINT | territory control and layered attrition | early to mid space control | weak if enemies never stay in zone | jumpers, ranged pressure, forced movement |
+| RISK | high reward through deliberate downside | depends on player mastery | can feel unfair if downside is hidden | transparent UI, predictable penalties |
+
+Path Tuning Benchmarks
+1. Every primary path should have one early anchor prop, two mid-run scaling props, and one late-run payoff prop.
+2. No path should require one exact prop to become functional by wave 3.
+3. Economy path must recover combat tempo by mid-run or it becomes a trap.
+4. Defense path must preserve survivability without producing unkillable stall loops.
+5. Status path must retain boss relevance through capped but meaningful conversion rules.
+6. Summon path must maintain uptime targets even in hazard-dense encounters.
+
+Run Health Benchmarks
+1. A weak but coherent build should still clear standard waves on pace.
+2. A strong build should feel dominant without deleting all boss mechanics instantly.
+3. Two-path bridge builds should be viable, not only pure mono-path stacks.
+4. High-risk props must pay back quickly enough to feel intentional, not bait.
+
 0. Full-Game Professional To-Do (Modify/Add)
 
 0.A. Vision and Scope
