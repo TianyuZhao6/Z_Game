@@ -494,6 +494,22 @@ Boss Design Compatibility Rules
 3. If a prop is weak on bosses by design, it must be strong enough on waves to justify the slot.
 4. No boss should fully invalidate an entire path unless that path has alternative payoff elsewhere in the run.
 
+A16. Naming and Tooltip Standards
+Use these rules to keep prop names and descriptions clean, readable, and consistent across shop, pause, and debug UI.
+
+Naming Rules
+1. Prefer 2-3 word names unless a longer name is clearly more readable.
+2. Avoid duplicate fantasy words that do not explain gameplay role.
+3. If a prop is risk-based, the name should imply danger or sacrifice.
+4. If a prop is economy-based, the name should imply value, debt, saving, bounty, or trade.
+
+Tooltip Rules
+1. First sentence: trigger plus outcome.
+2. Second sentence: scaling or level-up gain.
+3. Third sentence only if needed: tradeoff, boss modifier, or cap.
+4. Keep base tooltip under 140 characters when possible.
+5. Expanded tooltip may show formulas, but the first line must stay plain English.
+
 0. Full-Game Professional To-Do (Modify/Add)
 
 0.A. Vision and Scope
