@@ -510,6 +510,24 @@ Tooltip Rules
 4. Keep base tooltip under 140 characters when possible.
 5. Expanded tooltip may show formulas, but the first line must stay plain English.
 
+A17. Abbreviation and Tag Standards
+Use short tags consistently so debug screens, compact HUD elements, and shop cards do not drift into conflicting naming.
+
+UI Tag Meanings
+- OFF = offense
+- DEF = defense
+- ECO = economy
+- CTL = control
+- CRT = crit / burst
+- PNT = paint
+- SUM = summon
+
+Tag Rules
+1. A short tag should never replace the full path name in expanded UI.
+2. A short tag may appear on card corners, debug panels, or compact possession lists.
+3. If a prop bridges two paths, show one primary short tag and one secondary icon, not two equal tags.
+4. Rarity and path tag must remain visually distinct.
+
 0. Full-Game Professional To-Do (Modify/Add)
 
 0.A. Vision and Scope
