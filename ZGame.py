@@ -10,9 +10,11 @@ import json
 import os
 import shutil
 import copy
-import wave
 import hashlib
-import numpy as np
+try:
+    import numpy as np
+except Exception:
+    np = None
 import colorsys
 from effects import *
 from queue import PriorityQueue
@@ -3970,6 +3972,8 @@ class AudioAnalyzer:
     def _load_from_cache(self, cache_path):
         """Load analysis results from cache file."""
         try:
+            if np is None:
+                return False
             if not cache_path or not os.path.exists(cache_path):
                 return False
             data = np.load(cache_path)
@@ -3987,6 +3991,8 @@ class AudioAnalyzer:
     def _save_to_cache(self, cache_path):
         """Save analysis results to cache file."""
         try:
+            if np is None:
+                return False
             if not cache_path or self.spectrogram is None:
                 return False
             np.savez_compressed(
@@ -4008,7 +4014,7 @@ class AudioAnalyzer:
             self.loaded = False
             self._fallback_mode = True
             return
-        if IS_WEB or librosa is None:
+        if IS_WEB or librosa is None or np is None:
             # Browser build: use lightweight synthetic response instead of librosa analysis.
             self.loaded = False
             self.duration = 0.0
@@ -4117,7 +4123,10 @@ class NeuroMusicVisualizer:
             for _ in range(group["count"]):
                 # Store freq range and current angle for this bar
                 # Use a small range around the center freq for averaging
-                freq_rng = np.arange(rng, rng + step + 1)
+                if np is not None:
+                    freq_rng = np.arange(rng, rng + step + 1)
+                else:
+                    freq_rng = list(range(int(rng), int(rng + step) + 1))
                 self.bars.append({
                     "freq_rng": freq_rng,
                     "angle": current_angle,
@@ -5198,6 +5207,16 @@ def _current_music_pos_ms() -> int | None:
         return None
 
 
+def _music_is_busy() -> bool:
+    """Safe wrapper for pygame.mixer.music.get_busy()."""
+    try:
+        if not pygame.mixer.get_init():
+            return False
+        return bool(pygame.mixer.music.get_busy())
+    except Exception:
+        return False
+
+
 def _skill_cast_range(skill_id: str, player) -> float:
     if skill_id == "blast":
         base_range = clamp_player_range(getattr(player, "range", PLAYER_RANGE_DEFAULT))
@@ -5503,9 +5522,10 @@ async def show_start_menu(screen, *, skip_intro: bool = False):
     while True:
         dt = clock.tick(60) / 1000.0
         t += dt
-        
-        if pygame.mixer.music.get_busy():
-            pos = pygame.mixer.music.get_pos() / 1000.0
+
+        pos_ms = _current_music_pos_ms()
+        if _music_is_busy() and pos_ms is not None:
+            pos = pos_ms / 1000.0
             _neuro_viz.update(dt, pos)
             
         saved_exists = has_save()
@@ -15988,7 +16008,8 @@ async def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame
 
 
 # ==================== 入口 ====================
-if __name__ == "__main__":
+async def app_main() -> None:
+    global VIEW_W, VIEW_H, current_level
     os.environ['SDL_VIDEO_CENTERED'] = '0'
     os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0'
     pygame.init()
@@ -16013,11 +16034,11 @@ if __name__ == "__main__":
         screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
         pygame.display.set_caption(GAME_TITLE)
         VIEW_W, VIEW_H = info.current_w, info.current_h
-        # Make the world at least as big as what we can see (removes “non-playable band”)
-        resize_world_to_view()
+    # Make the world at least as big as what we can see (removes “non-playable band”)
+    resize_world_to_view()
     # Enter start menu
     flush_events()
-    selection = asyncio.run(show_start_menu(screen))
+    selection = await show_start_menu(screen)
     if not selection:
         sys.exit()
     mode, save_data = selection
@@ -16068,7 +16089,7 @@ if __name__ == "__main__":
                 # keep the shop pending so CONTINUE returns here again
                 save_progress(current_level, pending_shop=True)
                 flush_events()
-                selection = asyncio.run(show_start_menu(screen, skip_intro=True))
+                selection = await show_start_menu(screen, skip_intro=True)
                 if not selection: sys.exit()
                 mode, save_data = selection
                 if mode == "continue" and save_data:
@@ -16105,7 +16126,7 @@ if __name__ == "__main__":
             globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
         if globals().get("_menu_transition_frame") is None:
             flush_events()
-        result, reward, bg = asyncio.run(main_run_level(config, chosen_enemy))
+        result, reward, bg = await main_run_level(config, chosen_enemy)
         if result == "restart":
             META["spoils"] = int(globals().get("_coins_at_level_start", META.get("spoils", 0)))
             META["run_items_spawned"] = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
@@ -16121,7 +16142,7 @@ if __name__ == "__main__":
             continue
         if result == "home":
             flush_events()
-            selection = asyncio.run(show_start_menu(screen, skip_intro=True))
+            selection = await show_start_menu(screen, skip_intro=True)
             if not selection:
                 sys.exit()
             mode, save_data = selection
@@ -16155,12 +16176,12 @@ if __name__ == "__main__":
             sys.exit()
         if result == "fail":
             clear_save()
-            action = asyncio.run(show_fail_screen(screen, bg))
+            action = await show_fail_screen(screen, bg)
             flush_events()
             if action == "home":
                 # NEW: reset per-run carry
                 globals()["_carry_player_state"] = None
-                selection = asyncio.run(show_start_menu(screen, skip_intro=True))
+                selection = await show_start_menu(screen, skip_intro=True)
                 if not selection:
                     sys.exit()
                 mode, save_data = selection
@@ -16182,10 +16203,10 @@ if __name__ == "__main__":
             # bank coins from this level
             META["spoils"] += int(globals().get("_last_spoils", 0))
             globals()["_last_spoils"] = 0
-            action = asyncio.run(show_success_screen(screen, bg, []))
+            action = await show_success_screen(screen, bg, [])
             if action == "home":
                 flush_events()
-                selection = asyncio.run(show_start_menu(screen, skip_intro=True))
+                selection = await show_start_menu(screen, skip_intro=True)
                 if not selection:
                     sys.exit()
                 mode, save_data = selection
@@ -16223,7 +16244,7 @@ if __name__ == "__main__":
             if action == "home":
                 save_progress(current_level, pending_shop=True)
                 flush_events()
-                selection = asyncio.run(show_start_menu(screen, skip_intro=True))
+                selection = await show_start_menu(screen, skip_intro=True)
                 if not selection: sys.exit()
                 mode, save_data = selection
                 # keep your existing homepage handling logic
@@ -16270,7 +16291,7 @@ if __name__ == "__main__":
                 save_progress(current_level)
         else:
             # Unknown state -> go home
-            selection = asyncio.run(show_start_menu(screen, skip_intro=True))
+            selection = await show_start_menu(screen, skip_intro=True)
             if not selection:
                 sys.exit()
             mode, save_data = selection
@@ -16294,6 +16315,10 @@ if __name__ == "__main__":
                 globals()["_carry_player_state"] = None
                 globals().pop("_next_biome", None)
                 globals().pop("_last_biome", None)
+
+
+if __name__ == "__main__":
+    asyncio.run(app_main())
 # TODO
 # Attack MODE need to figure out
 # The item collection system can be hugely impact this game to next level
