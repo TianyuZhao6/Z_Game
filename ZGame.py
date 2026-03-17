@@ -27,7 +27,33 @@ except Exception:
     librosa = None
 
 IS_WEB = (sys.platform == "emscripten")
-WEB_WINDOW_SIZE = (1280, 720)
+WEB_WINDOW_SIZE = (960, 540)
+WEB_TARGET_FPS = 30
+_web_keys_down: set[int] = set()
+
+
+def _sync_web_input_event(event) -> None:
+    if not IS_WEB:
+        return
+    try:
+        if event.type == pygame.KEYDOWN:
+            _web_keys_down.add(int(event.key))
+        elif event.type == pygame.KEYUP:
+            _web_keys_down.discard(int(event.key))
+    except Exception:
+        pass
+
+
+def _get_initial_web_window_size() -> tuple[int, int]:
+    try:
+        info = pygame.display.Info()
+        w = int(getattr(info, "current_w", 0) or 0)
+        h = int(getattr(info, "current_h", 0) or 0)
+    except Exception:
+        w = h = 0
+    if w <= 0 or h <= 0:
+        return WEB_WINDOW_SIZE
+    return max(800, w), max(450, h)
 
 # --- Event queue helper to prevent ghost clicks ---
 def flush_events():
@@ -35,6 +61,8 @@ def flush_events():
         pygame.event.clear()
     except Exception:
         pass
+    if IS_WEB:
+        _web_keys_down.clear()
 
 
 # --- UI helper ---
@@ -2706,6 +2734,11 @@ def binding_pressed(keys, action: str) -> bool:
     key = action_key(action)
     if key is None:
         return False
+    if IS_WEB:
+        try:
+            return int(key) in _web_keys_down
+        except Exception:
+            return False
     pressed = pygame.key.get_pressed()  # ensures we use pygame's full key mapping
     sc = BINDING_SCANCODES.get(action)
     if sc is not None and 0 <= sc < len(pressed) and pressed[sc]:
@@ -4100,12 +4133,20 @@ class NeuroMusicVisualizer:
         self.poly_color_bass = [180, 100, 255] # Purple tinge on bass kick
         
         # Frequency Bands definition (Hz)
-        self.freq_groups = [
-            {"start": 50, "stop": 100, "count": 10},    # Sub Bass
-            {"start": 120, "stop": 250, "count": 25},   # Bass
-            {"start": 251, "stop": 2000, "count": 40},  # Mids
-            {"start": 2001, "stop": 6000, "count": 15}  # Highs
-        ]
+        if IS_WEB:
+            self.freq_groups = [
+                {"start": 50, "stop": 100, "count": 6},     # Sub Bass
+                {"start": 120, "stop": 250, "count": 12},   # Bass
+                {"start": 251, "stop": 2000, "count": 18},  # Mids
+                {"start": 2001, "stop": 6000, "count": 8}   # Highs
+            ]
+        else:
+            self.freq_groups = [
+                {"start": 50, "stop": 100, "count": 10},    # Sub Bass
+                {"start": 120, "stop": 250, "count": 25},   # Bass
+                {"start": 251, "stop": 2000, "count": 40},  # Mids
+                {"start": 2001, "stop": 6000, "count": 15}  # Highs
+            ]
         
         self._init_bars()
         
@@ -4909,7 +4950,7 @@ def draw_intro_waves(target: pygame.Surface, t: float):
     ripple_freq_hz = 0.9   # fixed spawn rate (waves per second)
     ripple_speed = 320.0    # px per second expansion
     max_age = max_r / ripple_speed
-    active_ripples = int(max_age * ripple_freq_hz) + 4
+    active_ripples = int(max_age * ripple_freq_hz) + (2 if IS_WEB else 4)
     wave_period = 1.0 / ripple_freq_hz
     loop_window = max_age + wave_period  # wrap time so waves never end
     
@@ -4940,13 +4981,13 @@ def draw_intro_waves(target: pygame.Surface, t: float):
         if alpha <= 0:
             continue
         
-        thickness = max(1, int(base_thickness + 2 * fade))
+        thickness = max(1, int(base_thickness + (1 if IS_WEB else 2) * fade))
         col = (70, 200 + hue_shift, 255, alpha)
         pygame.draw.circle(overlay, col, (cx, cy), int(radius), thickness)
         
         # Subtle shimmer on each ring for a liquid feel
         shimmer_radius = radius + (6 + energy_norm * 6) * math.sin(age * math.tau * 0.33)
-        if 0 < shimmer_radius < max_r:
+        if (not IS_WEB) and 0 < shimmer_radius < max_r:
             pygame.draw.circle(overlay, (col[0], col[1], col[2], int(alpha * 0.6)), (cx, cy), int(shimmer_radius), 1)
     
     target.blit(overlay, (0, 0))
@@ -4968,7 +5009,7 @@ def draw_neuro_waves(target: pygame.Surface, t: float):
     scale_speed = 0.85       # how fast each outline grows per second
     max_scale = 4.5          # where we fade out the ring
     max_age = (max_scale - 1.0) / scale_speed
-    active_ripples = int(max_age * ripple_freq_hz) + 4
+    active_ripples = int(max_age * ripple_freq_hz) + (2 if IS_WEB else 4)
     wave_period = 1.0 / ripple_freq_hz
     loop_window = max_age + wave_period  # wrap time so waves never end
     
@@ -5012,7 +5053,7 @@ def draw_neuro_waves(target: pygame.Surface, t: float):
         
         # Light shimmer echo for a more liquid feel
         shimmer_scale = scale + 0.05 + 0.02 * math.sin(age * math.tau * 0.5)
-        if shimmer_scale < max_scale and len(base_pts) >= 3:
+        if (not IS_WEB) and shimmer_scale < max_scale and len(base_pts) >= 3:
             pts_shimmer = [
                 (int(round(cx + (x - cx) * shimmer_scale)), int(round(cy + (y - cy) * shimmer_scale)))
                 for x, y in base_pts
@@ -5026,13 +5067,15 @@ def draw_neuro_waves(target: pygame.Surface, t: float):
         (max(0, min(255, col_base[0])), max(0, min(255, col_base[1])), max(0, min(255, col_base[2])), 130),
         (max(0, min(255, col_base[0] + 20)), max(0, min(255, col_base[1] - 20)), max(0, min(255, col_base[2])), 110),
     ]
+    if IS_WEB:
+        line_cols = line_cols[:1]
     for i, col in enumerate(line_cols):
         mid_y = int(VIEW_H * (0.34 + i * 0.18))
         amp = 14 + i * 5
         freq = 0.018 + i * 0.007
         speed = 80 + i * 40
         pts = []
-        for x in range(0, VIEW_W + 12, 8):
+        for x in range(0, VIEW_W + 12, 16 if IS_WEB else 8):
             phase = t * speed * 0.05 + x * freq
             w = math.sin(phase) * amp + math.sin(phase * 0.35 + i) * amp * 0.24
             pts.append((x, int(round(mid_y + w))))
@@ -5519,7 +5562,7 @@ async def run_neuro_intro(screen: pygame.Surface):
     prompt_font = pygame.font.SysFont("Consolas", 24)
     t = 0.0
     while True:
-        dt = clock.tick(60) / 1000.0
+        dt = clock.tick(WEB_TARGET_FPS if IS_WEB else 60) / 1000.0
         t += dt
         screen.blit(ensure_neuro_background(), (0, 0))
         _draw_intro_starfield(screen, t)
@@ -5592,7 +5635,7 @@ async def show_start_menu(screen, *, skip_intro: bool = False):
     info_font = pygame.font.SysFont("Consolas", 18)
     t = 0.0
     while True:
-        dt = clock.tick(60) / 1000.0
+        dt = clock.tick(WEB_TARGET_FPS if IS_WEB else 60) / 1000.0
         t += dt
 
         pos_ms = _current_music_pos_ms()
@@ -5600,8 +5643,6 @@ async def show_start_menu(screen, *, skip_intro: bool = False):
             _neuro_viz.update(dt, pos_ms / 1000.0)
         else:
             _neuro_viz.update(dt, t)
-            if IS_WEB:
-                _resume_bgm_if_needed()
             
         saved_exists = has_save()
         base_rects = neuro_menu_layout(include_continue=saved_exists)
@@ -5671,10 +5712,16 @@ async def show_start_menu(screen, *, skip_intro: bool = False):
                     instr_surf = render_instruction_surface()
                     play_hex_transition(screen, from_surf, instr_surf, direction="down")
                     flush_events()
-                    show_instruction(screen)
+                    if IS_WEB:
+                        await show_instruction_web(screen)
+                    else:
+                        show_instruction(screen)
                     flush_events()
                 if drawn_rects["settings"].collidepoint(event.pos):
-                    show_settings_popup(screen, screen.copy())
+                    if IS_WEB:
+                        await show_settings_popup_web(screen, screen.copy())
+                    else:
+                        show_settings_popup(screen, screen.copy())
                     flush_events()
                 if drawn_rects["exit"].collidepoint(event.pos):
                     pygame.quit()
@@ -5712,6 +5759,129 @@ def show_instruction(screen):
                 to_surf = render_start_menu_surface(has_save())
                 play_hex_transition(screen, from_surf, to_surf, direction="up")
                 return
+
+
+async def show_instruction_web(screen):
+    clock = pygame.time.Clock()
+    body_font = pygame.font.SysFont("Consolas", 18)
+    title_font = pygame.font.SysFont("Consolas", 30, bold=True)
+    btn_font = pygame.font.SysFont(None, 28)
+    t = 0.0
+    while True:
+        dt = clock.tick(WEB_TARGET_FPS) / 1000.0
+        t += dt
+        _, back_rect = neuro_instruction_layout()
+        hover_back = back_rect.inflate(int(back_rect.width * 0.08), int(back_rect.height * 0.08)).collidepoint(
+            pygame.mouse.get_pos()
+        )
+        screen.blit(ensure_neuro_background(), (0, 0))
+        back = draw_neuro_instruction(screen, t, hover_back=hover_back,
+                                      title_font=title_font, body_font=body_font, btn_font=btn_font)
+        pygame.display.flip()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                from_surf = screen.copy()
+                to_surf = render_start_menu_surface(has_save())
+                play_hex_transition(screen, from_surf, to_surf, direction="up")
+                return
+            if event.type == pygame.MOUSEBUTTONDOWN and back.collidepoint(event.pos):
+                from_surf = screen.copy()
+                to_surf = render_start_menu_surface(has_save())
+                play_hex_transition(screen, from_surf, to_surf, direction="up")
+                return
+        await asyncio.sleep(0)
+
+
+async def show_settings_popup_web(screen, background_surf):
+    global FX_VOLUME, BGM_VOLUME
+    clock = pygame.time.Clock()
+    panel = pygame.Rect(0, 0, min(560, VIEW_W - 60), min(360, VIEW_H - 80))
+    panel.center = (VIEW_W // 2, VIEW_H // 2)
+    title_font = pygame.font.SysFont(None, 48)
+    label_font = pygame.font.SysFont(None, 28)
+    btn_font = pygame.font.SysFont(None, 30)
+    fx_val = int(FX_VOLUME)
+    bgm_val = int(BGM_VOLUME)
+
+    while True:
+        screen.blit(background_surf, (0, 0))
+        dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 165))
+        screen.blit(dim, (0, 0))
+        pygame.draw.rect(screen, UI_PANEL, panel, border_radius=16)
+        pygame.draw.rect(screen, UI_BORDER, panel, width=3, border_radius=16)
+        title = title_font.render("Settings", True, UI_TEXT)
+        screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 46)))
+
+        info = label_font.render("Web demo settings: audio only", True, (180, 215, 235))
+        screen.blit(info, info.get_rect(center=(panel.centerx, panel.top + 88)))
+
+        fx_minus = pygame.Rect(panel.left + 54, panel.top + 130, 54, 42)
+        fx_plus = pygame.Rect(panel.right - 108, panel.top + 130, 54, 42)
+        bgm_minus = pygame.Rect(panel.left + 54, panel.top + 206, 54, 42)
+        bgm_plus = pygame.Rect(panel.right - 108, panel.top + 206, 54, 42)
+        close_btn = pygame.Rect(0, 0, 180, 50)
+        close_btn.center = (panel.centerx, panel.bottom - 46)
+
+        fx_label = label_font.render(f"Effects Volume: {fx_val}", True, UI_TEXT)
+        bgm_label = label_font.render(f"BGM Volume: {bgm_val}", True, UI_TEXT)
+        screen.blit(fx_label, fx_label.get_rect(center=(panel.centerx, fx_minus.centery)))
+        screen.blit(bgm_label, bgm_label.get_rect(center=(panel.centerx, bgm_minus.centery)))
+
+        hover_pos = pygame.mouse.get_pos()
+        for rect, text in (
+            (fx_minus, "-"), (fx_plus, "+"),
+            (bgm_minus, "-"), (bgm_plus, "+"),
+            (close_btn, "Close"),
+        ):
+            draw_neuro_button(
+                screen, rect, text, btn_font,
+                hovered=rect.collidepoint(hover_pos),
+                disabled=False,
+                t=pygame.time.get_ticks() * 0.001,
+                show_spike=False
+            )
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                FX_VOLUME = fx_val
+                BGM_VOLUME = bgm_val
+                if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                    _bgm.set_volume(BGM_VOLUME / 100.0)
+                flush_events()
+                return "close"
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if fx_minus.collidepoint(event.pos):
+                    fx_val = max(0, fx_val - 10)
+                    FX_VOLUME = fx_val
+                elif fx_plus.collidepoint(event.pos):
+                    fx_val = min(100, fx_val + 10)
+                    FX_VOLUME = fx_val
+                elif bgm_minus.collidepoint(event.pos):
+                    bgm_val = max(0, bgm_val - 10)
+                    BGM_VOLUME = bgm_val
+                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                        _bgm.set_volume(BGM_VOLUME / 100.0)
+                elif bgm_plus.collidepoint(event.pos):
+                    bgm_val = min(100, bgm_val + 10)
+                    BGM_VOLUME = bgm_val
+                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                        _bgm.set_volume(BGM_VOLUME / 100.0)
+                elif close_btn.collidepoint(event.pos):
+                    FX_VOLUME = fx_val
+                    BGM_VOLUME = bgm_val
+                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
+                        _bgm.set_volume(BGM_VOLUME / 100.0)
+                    flush_events()
+                    return "close"
+        await asyncio.sleep(0)
 
 
 async def show_fail_screen(screen, background_surf):
@@ -13937,6 +14107,9 @@ def play_focus_chain_iso(screen, clock, game_state, player, enemies, bullets, en
     targets: list of (x_px, y_px) world-pixel centers (e.g., rect.centerx, rect.centery).
     Plays boss → boss → … → player (once).
     """
+    if IS_WEB:
+        flush_events()
+        return
     last_cam = None
     for i, pos in enumerate(targets):
         fx, fy = pos
@@ -13971,6 +14144,9 @@ def play_focus_cinematic_iso(screen, clock,
     - 相机从 start_cam(若无则玩家) → 焦点；可选 焦点 → 玩家。
     - 冻结时间与世界更新，仅渲染。
     """
+    if IS_WEB:
+        flush_events()
+        return
 
     def _cam_for_world_px(wx: float, wy: float) -> tuple[int, int]:
         gx = wx / CELL_SIZE
@@ -14074,13 +14250,14 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             draw_iso_tile(screen, gx, gy, grid_col, camx, camy, border=1)
     # 2.5) 地面覆盖层：落点提示圈 + 酸池
     # 先画提示圈（空心，颜色来自 TelegraphCircle.color）
-    for t in getattr(game_state, "telegraphs", []):
-        draw_iso_ground_ellipse(
-            screen, t.x, t.y, t.r,
-            color=t.color, alpha=180,
-            camx=camx, camy=camy,
-            fill=False, width=3
-        )
+    if not IS_WEB:
+        for t in getattr(game_state, "telegraphs", []):
+            draw_iso_ground_ellipse(
+                screen, t.x, t.y, t.r,
+                color=t.color, alpha=180,
+                camx=camx, camy=camy,
+                fill=False, width=3
+            )
     # Skill targeting overlay (range + target marker)
     if getattr(player, "targeting_skill", None):
         skill = player.targeting_skill
@@ -14101,71 +14278,75 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             draw_iso_ground_ellipse(screen, tx, ty, max(20, player.size), col, 80 if valid else 50, camx, camy, fill=False, width=4)
 
     # [UPDATED] Hurricanes (Wind Biome) - Now draws the 3D TornadoEntity
-    for h in getattr(game_state, "hurricanes", []):
-        # Draw the base ground shadow/influence ring
-        pulse = 0.6 + 0.4 * math.sin(pygame.time.get_ticks() * 0.008)
-        alpha = int(40 + 60 * pulse)
-        draw_iso_ground_ellipse(
-            screen, h.x, h.y, h.r * HURRICANE_RANGE_MULT,
-            color=(100, 120, 150), alpha=alpha,
-            camx=camx, camy=camy,
-            fill=False, width=2
-        )
-        
-        # Delegate actual model drawing to the class
-        if hasattr(h, "draw"):
-            h.draw(screen, camx, camy)
-        else:
-            # Fallback for old save compatibility if h is a dict
-            hx, hy = float(h.get("x", 0)), float(h.get("y", 0))
-            draw_iso_ground_ellipse(screen, hx, hy, 40, (100,100,100), 200, camx, camy)
+    if not IS_WEB:
+        for h in getattr(game_state, "hurricanes", []):
+            # Draw the base ground shadow/influence ring
+            pulse = 0.6 + 0.4 * math.sin(pygame.time.get_ticks() * 0.008)
+            alpha = int(40 + 60 * pulse)
+            draw_iso_ground_ellipse(
+                screen, h.x, h.y, h.r * HURRICANE_RANGE_MULT,
+                color=(100, 120, 150), alpha=alpha,
+                camx=camx, camy=camy,
+                fill=False, width=2
+            )
+            
+            # Delegate actual model drawing to the class
+            if hasattr(h, "draw"):
+                h.draw(screen, camx, camy)
+            else:
+                # Fallback for old save compatibility if h is a dict
+                hx, hy = float(h.get("x", 0)), float(h.get("y", 0))
+                draw_iso_ground_ellipse(screen, hx, hy, 40, (100,100,100), 200, camx, camy)
 
     # Aegis Pulse rings (ground-level hexes)
-    for p in getattr(game_state, "aegis_pulses", []):
-        age = max(0.0, float(getattr(p, "age", 0.0)))
-        delay = max(0.0, float(getattr(p, "delay", 0.0)))
-        expand_time = max(0.001, float(getattr(p, "expand_time", AEGIS_PULSE_BASE_EXPAND_TIME)))
-        fade_time = max(0.001, float(getattr(p, "fade_time", AEGIS_PULSE_RING_FADE)))
-        if age < delay:
-            continue
-        grow_progress = max(0.0, min(1.0, (age - delay) / expand_time))
-        fade_age = age - (delay + expand_time)
-        fade = 1.0 if fade_age <= 0 else max(0.0, 1.0 - fade_age / fade_time)
-        if fade <= 0:
-            continue
-        current_r = max(AEGIS_PULSE_MIN_START_R, float(getattr(p, "r", 0.0)) * grow_progress)
-        
-        draw_iso_hex_ring(
-            screen, p.x, p.y, current_r,
-            AEGIS_PULSE_COLOR, int(AEGIS_PULSE_RING_ALPHA * fade),
-            camx, camy,
-            sides=6,
-            fill_alpha=int(AEGIS_PULSE_FILL_ALPHA * fade),
-            width=2
-        )
+    if not IS_WEB:
+        for p in getattr(game_state, "aegis_pulses", []):
+            age = max(0.0, float(getattr(p, "age", 0.0)))
+            delay = max(0.0, float(getattr(p, "delay", 0.0)))
+            expand_time = max(0.001, float(getattr(p, "expand_time", AEGIS_PULSE_BASE_EXPAND_TIME)))
+            fade_time = max(0.001, float(getattr(p, "fade_time", AEGIS_PULSE_RING_FADE)))
+            if age < delay:
+                continue
+            grow_progress = max(0.0, min(1.0, (age - delay) / expand_time))
+            fade_age = age - (delay + expand_time)
+            fade = 1.0 if fade_age <= 0 else max(0.0, 1.0 - fade_age / fade_time)
+            if fade <= 0:
+                continue
+            current_r = max(AEGIS_PULSE_MIN_START_R, float(getattr(p, "r", 0.0)) * grow_progress)
+            
+            draw_iso_hex_ring(
+                screen, p.x, p.y, current_r,
+                AEGIS_PULSE_COLOR, int(AEGIS_PULSE_RING_ALPHA * fade),
+                camx, camy,
+                sides=6,
+                fill_alpha=int(AEGIS_PULSE_FILL_ALPHA * fade),
+                width=2
+            )
     # 再画酸池（实心，微透明绿；你也可以做成分层：外圈更亮）
-    for a in getattr(game_state, "acids", []):
-        draw_iso_ground_ellipse(
-            screen, a.x, a.y, a.r,
-            color=(60, 200, 90), alpha=110,
-            camx=camx, camy=camy,
-            fill=True
-        )
+    if not IS_WEB:
+        for a in getattr(game_state, "acids", []):
+            draw_iso_ground_ellipse(
+                screen, a.x, a.y, a.r,
+                color=(60, 200, 90), alpha=110,
+                camx=camx, camy=camy,
+                fill=True
+            )
     # Ravager/other afterimages (rendered under entities)
     player_rect = getattr(player, "rect", None)
     enemy_rects = [getattr(z, "rect", None) for z in enemies if getattr(z, "rect", None)]
-    for g in getattr(game_state, "ghosts", []):
-        gw = getattr(g, "w", 0)
-        gh = getattr(g, "h", 0)
-        if gw and gh:
-            ghost_rect = pygame.Rect(0, 0, int(gw), int(gh))
-            ghost_rect.midbottom = (int(getattr(g, "x", 0)), int(getattr(g, "y", 0)))
-            if player_rect and ghost_rect.colliderect(player_rect):
-                continue
-            if enemy_rects and any(ghost_rect.colliderect(er) for er in enemy_rects if er):
-                continue
-        g.draw_iso(screen, camx, camy)
-    if hasattr(game_state, "draw_paint_iso"):
+    if not IS_WEB:
+        for g in getattr(game_state, "ghosts", []):
+            gw = getattr(g, "w", 0)
+            gh = getattr(g, "h", 0)
+            if gw and gh:
+                ghost_rect = pygame.Rect(0, 0, int(gw), int(gh))
+                ghost_rect.midbottom = (int(getattr(g, "x", 0)), int(getattr(g, "y", 0)))
+                if player_rect and ghost_rect.colliderect(player_rect):
+                    continue
+                if enemy_rects and any(ghost_rect.colliderect(er) for er in enemy_rects if er):
+                    continue
+            g.draw_iso(screen, camx, camy)
+    if (not IS_WEB) and hasattr(game_state, "draw_paint_iso"):
         game_state.draw_paint_iso(screen, camx, camy)
     # 3) 收集需要按底部Y排序的可绘制体
     drawables = []
@@ -14226,7 +14407,6 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                     "src": getattr(b, "source", "player"),
                 },
             ))
-            drawables.append(("bullet", sy, {"cx": sx, "cy": sy, "r": int(getattr(b, "r", BULLET_RADIUS))}))
     if enemy_shots:
         for es in enemy_shots:
             wx, wy = es.x / CELL_SIZE, (es.y - INFO_BAR_HEIGHT) / CELL_SIZE
@@ -14758,45 +14938,46 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                     ]
                     pygame.draw.polygon(screen, BONE_PLATING_COLOR, sparkle, width=1)
     # --- damage numbers (iso) ---
-    for d in getattr(game_state, "dmg_texts", []):
-        # 世界像素 -> 格 -> 等距投影
-        wx = d.x / CELL_SIZE
-        wy = (d.y - INFO_BAR_HEIGHT) / CELL_SIZE
-        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-        sy += d.screen_offset_y()
-        # 颜色：HP=红/白，护盾=蓝
-        color_map = {
-            "shield": ((120, 200, 255), (120, 200, 255)),
-            "aegis": (AEGIS_PULSE_COLOR, AEGIS_PULSE_COLOR),
-            "hp_player": ((255, 255, 255), (255, 255, 220)),
-            "dot": ((80, 220, 255), (140, 255, 255)),
-            "hp_enemy": ((255, 60, 60), (255, 140, 140)),
-        }
-        normal, crit = color_map.get(d.kind, ((255, 100, 100), (255, 240, 120)))
-        col = crit if d.crit else normal
-        if d.kind == "dot":
-            size = max(14, DMG_TEXT_SIZE_NORMAL - 6)
-        else:
-            size = DMG_TEXT_SIZE_NORMAL if not d.crit else DMG_TEXT_SIZE_CRIT
-        font = pygame.font.SysFont(None, size, bold=d.crit)
-        surf = font.render(str(d.amount), True, col)
-        surf.set_alpha(d.alpha())
-        screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
+    if not IS_WEB:
+        for d in getattr(game_state, "dmg_texts", []):
+            # 世界像素 -> 格 -> 等距投影
+            wx = d.x / CELL_SIZE
+            wy = (d.y - INFO_BAR_HEIGHT) / CELL_SIZE
+            sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            sy += d.screen_offset_y()
+            # 颜色：HP=红/白，护盾=蓝
+            color_map = {
+                "shield": ((120, 200, 255), (120, 200, 255)),
+                "aegis": (AEGIS_PULSE_COLOR, AEGIS_PULSE_COLOR),
+                "hp_player": ((255, 255, 255), (255, 255, 220)),
+                "dot": ((80, 220, 255), (140, 255, 255)),
+                "hp_enemy": ((255, 60, 60), (255, 140, 140)),
+            }
+            normal, crit = color_map.get(d.kind, ((255, 100, 100), (255, 240, 120)))
+            col = crit if d.crit else normal
+            if d.kind == "dot":
+                size = max(14, DMG_TEXT_SIZE_NORMAL - 6)
+            else:
+                size = DMG_TEXT_SIZE_NORMAL if not d.crit else DMG_TEXT_SIZE_CRIT
+            font = pygame.font.SysFont(None, size, bold=d.crit)
+            surf = font.render(str(d.amount), True, col)
+            surf.set_alpha(d.alpha())
+            screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
     # Skill targeting overlay drawn on top of obstacles so it never appears blocked
     _draw_skill_overlay(screen, player, camx, camy)
     game_state.draw_hazards_iso(screen, camx, camy)
-    if hasattr(game_state, "draw_comet_blasts"):
+    if (not IS_WEB) and hasattr(game_state, "draw_comet_blasts"):
         game_state.draw_comet_blasts(screen, camx, camy)
-    if hasattr(game_state, "draw_comet_corpses"):
+    if (not IS_WEB) and hasattr(game_state, "draw_comet_corpses"):
         game_state.draw_comet_corpses(screen, camx, camy)
-    if getattr(game_state, "fog_enabled", False):
+    if (not IS_WEB) and getattr(game_state, "fog_enabled", False):
         game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)
-    if USE_ISO:
+    if (not IS_WEB) and USE_ISO:
         game_state.draw_lanterns_iso(screen, camx, camy)
-    else:
+    elif (not IS_WEB):
         game_state.draw_lanterns_topdown(screen, camx, camy)
     # --- DRAW PARTICLES (ISO CORRECTED) ---
-    if hasattr(game_state, "fx"):
+    if (not IS_WEB) and hasattr(game_state, "fx"):
         # We manually iterate particles to apply Isometric Projection
         for p in game_state.fx.particles:
             if p.size < 1: continue
@@ -14816,7 +14997,7 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
             # Center the particle image at the projected screen coordinates
             screen.blit(glow, (sx - p.size, sy - p.size), special_flags=pygame.BLEND_ADD)
     vignette_t = float(getattr(player, "_enemy_paint_vignette_t", 0.0))
-    if vignette_t > 0.0:
+    if (not IS_WEB) and vignette_t > 0.0:
         ratio = max(0.0, min(1.0, vignette_t / 0.18))
         alpha = int(80 * ratio)
         if alpha > 0:
@@ -15299,13 +15480,14 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
     running = True
     game_result = None
     last_frame = None
-    clock.tick(60)
+    clock.tick(WEB_TARGET_FPS if IS_WEB else 60)
     entry_freeze = 0.4  # pause briefly on entry to prevent over-firing bursts
     while running:
-        dt = clock.tick(60) / 1000.0
+        dt = clock.tick(WEB_TARGET_FPS if IS_WEB else 60) / 1000.0
         if entry_freeze > 0:
             entry_freeze = max(0.0, entry_freeze - dt)
             for event in pygame.event.get():
+                _sync_web_input_event(event)
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             update_hit_flash_timer(player, dt)
             for z in enemies:
@@ -15366,6 +15548,7 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
                     wave_index += 1
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
         for event in pygame.event.get():
+            _sync_web_input_event(event)
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if is_action_event(event, "blast") and getattr(player, "targeting_skill", None) == "blast":
                 player.targeting_skill = None
@@ -15859,7 +16042,7 @@ async def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame
         z._hit_flash = 0.0
         z._flash_prev_hp = int(getattr(z, "hp", 0))
     while running:
-        dt = clock.tick(60) / 1000.0
+        dt = clock.tick(WEB_TARGET_FPS if IS_WEB else 60) / 1000.0
         # survival timer
         time_left -= dt
         globals()["_time_left_runtime"] = time_left
@@ -15873,6 +16056,7 @@ async def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame
             return "success", None, last_frame or screen.copy()
         # input
         for event in pygame.event.get():
+            _sync_web_input_event(event)
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if is_action_event(event, "blast") and getattr(player, "targeting_skill", None) == "blast":
                 player.targeting_skill = None
@@ -16108,8 +16292,9 @@ async def app_main() -> None:
     info = pygame.display.Info()
     # Create the window first (safer on some systems)
     if IS_WEB:
-        screen = pygame.display.set_mode(WEB_WINDOW_SIZE)
-        VIEW_W, VIEW_H = WEB_WINDOW_SIZE
+        web_w, web_h = _get_initial_web_window_size()
+        screen = pygame.display.set_mode((web_w, web_h), pygame.RESIZABLE)
+        VIEW_W, VIEW_H = screen.get_size()
     else:
         screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
         VIEW_W, VIEW_H = info.current_w, info.current_h
