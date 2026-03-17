@@ -30,6 +30,117 @@ IS_WEB = (sys.platform == "emscripten")
 WEB_WINDOW_SIZE = (960, 540)
 WEB_TARGET_FPS = 30
 _web_keys_down: set[int] = set()
+_web_actions_down: set[str] = set()
+_web_binding_aliases: dict[str, set[str]] = {}
+
+
+def _normalize_web_key_name(name: str | None) -> str:
+    raw = str(name or "").strip().lower()
+    if not raw or raw == "unknown key":
+        return ""
+    raw = raw.replace("keypad ", "kp ")
+    raw = raw.replace("arrowup", "up")
+    raw = raw.replace("arrowdown", "down")
+    raw = raw.replace("arrowleft", "left")
+    raw = raw.replace("arrowright", "right")
+    alias_map = {
+        "return": "enter",
+        "kp enter": "enter",
+        "left shift": "shift",
+        "right shift": "shift",
+        "left ctrl": "ctrl",
+        "right ctrl": "ctrl",
+        "left alt": "alt",
+        "right alt": "alt",
+        "escape": "esc",
+    }
+    return alias_map.get(raw, raw)
+
+
+def _aliases_for_keycode(keycode: int | None) -> set[str]:
+    aliases: set[str] = set()
+    if keycode is None:
+        return aliases
+    try:
+        key_name = _normalize_web_key_name(pygame.key.name(int(keycode)))
+    except Exception:
+        key_name = ""
+    if key_name:
+        aliases.add(key_name)
+        if key_name.startswith("kp "):
+            aliases.add(key_name[3:])
+    return aliases
+
+
+def _aliases_for_event(event) -> set[str]:
+    aliases: set[str] = set()
+    try:
+        aliases.update(_aliases_for_keycode(int(getattr(event, "key", None))))
+    except Exception:
+        pass
+    try:
+        text = str(getattr(event, "unicode", "") or "").strip().lower()
+    except Exception:
+        text = ""
+    if text:
+        aliases.add(_normalize_web_key_name(text))
+    aliases.discard("")
+    return aliases
+
+
+def _refresh_web_binding_aliases() -> None:
+    _web_binding_aliases.clear()
+    for action, keycode in BINDINGS.items():
+        _web_binding_aliases[action] = _aliases_for_keycode(int(keycode))
+
+
+def _event_matches_action(event, action: str) -> bool:
+    if getattr(event, "type", None) not in (pygame.KEYDOWN, pygame.KEYUP):
+        return False
+    key = action_key(action)
+    if key is None:
+        return False
+    try:
+        if int(getattr(event, "key", -1)) == int(key):
+            return True
+    except Exception:
+        pass
+    expected = _web_binding_aliases.get(action) or _aliases_for_keycode(int(key))
+    if not expected:
+        return False
+    return bool(expected & _aliases_for_event(event))
+
+
+def _invalidate_view_caches() -> None:
+    globals()["_hex_bg_surface"] = None
+    globals()["_hex_grid_cache"] = None
+    globals()["_neuro_bg_surface"] = None
+
+
+def _refresh_viewport(surface: pygame.Surface | None = None) -> pygame.Surface | None:
+    global VIEW_W, VIEW_H
+    surface = surface or pygame.display.get_surface()
+    if surface is not None:
+        VIEW_W, VIEW_H = surface.get_size()
+    return surface
+
+
+def _handle_web_window_event(event) -> pygame.Surface | None:
+    if not IS_WEB:
+        return pygame.display.get_surface()
+    resize_types = {pygame.VIDEORESIZE}
+    for name in ("WINDOWRESIZED", "WINDOWSIZECHANGED"):
+        etype = getattr(pygame, name, None)
+        if etype is not None:
+            resize_types.add(etype)
+    if getattr(event, "type", None) not in resize_types:
+        return pygame.display.get_surface()
+    width = max(640, int(getattr(event, "w", 0) or VIEW_W or WEB_WINDOW_SIZE[0]))
+    height = max(360, int(getattr(event, "h", 0) or VIEW_H or WEB_WINDOW_SIZE[1]))
+    surface = pygame.display.set_mode((width, height), pygame.RESIZABLE)
+    _refresh_viewport(surface)
+    _invalidate_view_caches()
+    return surface
 
 
 def _sync_web_input_event(event) -> None:
@@ -38,8 +149,19 @@ def _sync_web_input_event(event) -> None:
     try:
         if event.type == pygame.KEYDOWN:
             _web_keys_down.add(int(event.key))
+            for action in BINDINGS:
+                if _event_matches_action(event, action):
+                    _web_actions_down.add(action)
         elif event.type == pygame.KEYUP:
             _web_keys_down.discard(int(event.key))
+            for action in tuple(_web_actions_down):
+                if _event_matches_action(event, action):
+                    _web_actions_down.discard(action)
+        else:
+            focus_lost_types = {getattr(pygame, "WINDOWFOCUSLOST", None), getattr(pygame, "WINDOWLEAVE", None)}
+            if event.type in focus_lost_types:
+                _web_keys_down.clear()
+                _web_actions_down.clear()
     except Exception:
         pass
 
@@ -63,6 +185,7 @@ def flush_events():
         pass
     if IS_WEB:
         _web_keys_down.clear()
+        _web_actions_down.clear()
 
 
 # --- UI helper ---
@@ -2682,6 +2805,7 @@ def _refresh_scancodes():
         sc = _compute_scancode(int(keycode))
         if sc is not None:
             BINDING_SCANCODES[action] = sc
+    _refresh_web_binding_aliases()
     # mirror into META for persistence
     META["bindings"] = {k: int(v) for k, v in BINDINGS.items()}
 
@@ -2736,7 +2860,7 @@ def binding_pressed(keys, action: str) -> bool:
         return False
     if IS_WEB:
         try:
-            return int(key) in _web_keys_down
+            return action in _web_actions_down or int(key) in _web_keys_down
         except Exception:
             return False
     pressed = pygame.key.get_pressed()  # ensures we use pygame's full key mapping
@@ -2788,7 +2912,11 @@ def increment_kill_count(amount: int = 1) -> None:
 
 def is_action_event(event, action: str) -> bool:
     """Shortcut for KEYDOWN on a given action binding."""
-    return event.type == pygame.KEYDOWN and event.key == action_key(action)
+    if event.type != pygame.KEYDOWN:
+        return False
+    if IS_WEB:
+        return _event_matches_action(event, action)
+    return event.key == action_key(action)
 # ==================== Save/Load Helpers ====================
 BASE_DIR = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
 SAVE_DIR = os.path.join(BASE_DIR, "TEMP")
@@ -5573,6 +5701,7 @@ async def run_neuro_intro(screen: pygame.Surface):
         draw_neuro_title_intro(screen, title_font, prompt_font, t)
         pygame.display.flip()
         for event in pygame.event.get():
+            screen = _handle_web_window_event(event) or screen
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -5686,6 +5815,7 @@ async def show_start_menu(screen, *, skip_intro: bool = False):
         run_pending_menu_transition(screen)
         pygame.display.flip()
         for event in pygame.event.get():
+            screen = _handle_web_window_event(event) or screen
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -5779,6 +5909,7 @@ async def show_instruction_web(screen):
                                       title_font=title_font, body_font=body_font, btn_font=btn_font)
         pygame.display.flip()
         for event in pygame.event.get():
+            screen = _handle_web_window_event(event) or screen
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -5847,6 +5978,7 @@ async def show_settings_popup_web(screen, background_surf):
         pygame.display.flip()
 
         for event in pygame.event.get():
+            screen = _handle_web_window_event(event) or screen
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -15243,7 +15375,7 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
     combat_bgm_started = not IS_WEB
     if combat_bgm_started:
         play_combat_bgm()
-    elif IS_WEB:
+    elif not IS_WEB:
         _draw_loading_screen(screen, "INITIALIZING LEVEL", "Generating arena and loading gameplay state")
         pygame.display.flip()
         await asyncio.sleep(0)
@@ -15257,7 +15389,7 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
         main_block_hp=config["block_hp"],
         level_idx=level_idx
     )
-    if IS_WEB:
+    if not IS_WEB:
         _draw_loading_screen(screen, "INITIALIZING LEVEL", "Building pathing and entity state")
         pygame.display.flip()
         await asyncio.sleep(0)
@@ -15487,6 +15619,7 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
         if entry_freeze > 0:
             entry_freeze = max(0.0, entry_freeze - dt)
             for event in pygame.event.get():
+                screen = _handle_web_window_event(event) or screen
                 _sync_web_input_event(event)
                 if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             update_hit_flash_timer(player, dt)
@@ -15548,6 +15681,7 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
                     wave_index += 1
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
         for event in pygame.event.get():
+            screen = _handle_web_window_event(event) or screen
             _sync_web_input_event(event)
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if is_action_event(event, "blast") and getattr(player, "targeting_skill", None) == "blast":
@@ -16056,6 +16190,7 @@ async def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame
             return "success", None, last_frame or screen.copy()
         # input
         for event in pygame.event.get():
+            screen = _handle_web_window_event(event) or screen
             _sync_web_input_event(event)
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if is_action_event(event, "blast") and getattr(player, "targeting_skill", None) == "blast":
