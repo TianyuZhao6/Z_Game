@@ -4141,7 +4141,13 @@ class NeuroMusicVisualizer:
             self.analyzer.load(path)
 
     def update(self, dt, music_pos_seconds):
-        if not self.analyzer.loaded:
+        if not self.analyzer.loaded and not self.analyzer._fallback_mode:
+            self.radius += (self.min_radius - self.radius) * min(1.0, 6.0 * dt)
+            self.radius_vel *= 0.85
+            for c in range(3):
+                self.poly_color[c] += (self.poly_color_default[c] - self.poly_color[c]) * 4 * dt
+            for bar in self.bars:
+                bar["val"] += (0.0 - bar["val"]) * min(1.0, 10.0 * dt)
             return
         
         # Keep playback position in track range so looping songs stay synced
@@ -4204,7 +4210,7 @@ class NeuroMusicVisualizer:
         self.radius_vel *= 0.9
 
     def draw(self, screen, center_x, center_y):
-        if not self.analyzer.loaded:
+        if not self.analyzer.loaded and not self.analyzer._fallback_mode:
             # Fallback idle animation if no music loaded
             pygame.draw.circle(screen, self.circle_color, (center_x, center_y), int(self.min_radius), 2)
             return
@@ -4491,6 +4497,12 @@ def run_pending_menu_transition(screen: pygame.Surface):
         return
     from_surf = _menu_transition_frame
     to_surf = screen.copy()
+    if IS_WEB:
+        screen.blit(to_surf, (0, 0))
+        pygame.display.flip()
+        _menu_transition_frame = None
+        flush_events()
+        return
     play_hex_transition(screen, from_surf, to_surf, direction="down")
     _menu_transition_frame = None
 
@@ -4503,6 +4515,12 @@ def play_hex_transition(screen: pygame.Surface, from_surface: pygame.Surface, to
     2. Swaps to to_surface when fully dark.
     3. Plays Open animation over to_surface.
     """
+    if IS_WEB:
+        if to_surface is not None:
+            screen.blit(to_surface, (0, 0))
+        pygame.display.flip()
+        flush_events()
+        return
     trans = ensure_hex_transition()
     trans.start()
     
@@ -5217,6 +5235,59 @@ def _music_is_busy() -> bool:
         return False
 
 
+_last_bgm_resume_retry_s = -999.0
+
+
+def _resume_bgm_if_needed(min_interval_s: float = 1.25) -> bool:
+    """Retry BGM playback when browser autoplay or a scene swap left music stopped."""
+    global _last_bgm_resume_retry_s
+    if _music_is_busy() or _current_music_pos_ms() is not None:
+        return True
+    bgm = globals().get("_bgm")
+    if bgm is None or not getattr(bgm, "_ready", False):
+        return False
+    now_s = pygame.time.get_ticks() / 1000.0
+    if (now_s - _last_bgm_resume_retry_s) < float(min_interval_s):
+        return False
+    _last_bgm_resume_retry_s = now_s
+    try:
+        bgm.playBackGroundMusic(loops=-1, fade_ms=0)
+        return True
+    except Exception as e:
+        print(f"[Audio] resume retry failed: {e}")
+        return False
+
+
+def _draw_loading_screen(screen: pygame.Surface, title: str, subtitle: str = "") -> None:
+    """Simple non-blocking loading frame for browser builds."""
+    screen.blit(ensure_neuro_background(), (0, 0))
+    _draw_intro_scanlines(screen, pygame.time.get_ticks() / 1000.0)
+    title_font = _get_sekuya_font(42)
+    body_font = pygame.font.SysFont("Consolas", 22)
+    accent = (70, 230, 255)
+    panel = pygame.Rect(0, 0, min(720, VIEW_W - 120), 170)
+    panel.center = (VIEW_W // 2, VIEW_H // 2)
+    pygame.draw.rect(screen, (8, 18, 30), panel, border_radius=22)
+    pygame.draw.rect(screen, accent, panel, 2, border_radius=22)
+    title_surf = title_font.render(title, True, (220, 245, 255))
+    screen.blit(title_surf, title_surf.get_rect(center=(panel.centerx, panel.y + 58)))
+    if subtitle:
+        body_surf = body_font.render(subtitle, True, (170, 215, 235))
+        screen.blit(body_surf, body_surf.get_rect(center=(panel.centerx, panel.y + 108)))
+    bar_rect = pygame.Rect(panel.x + 54, panel.bottom - 44, panel.width - 108, 10)
+    pygame.draw.rect(screen, (22, 42, 58), bar_rect, border_radius=8)
+    fill_w = max(
+        18,
+        int((bar_rect.width - 6) * (0.25 + 0.75 * (0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.008))))
+    )
+    pygame.draw.rect(
+        screen,
+        accent,
+        pygame.Rect(bar_rect.x + 3, bar_rect.y + 3, fill_w, max(1, bar_rect.height - 6)),
+        border_radius=8
+    )
+
+
 def _skill_cast_range(skill_id: str, player) -> float:
     if skill_id == "blast":
         base_range = clamp_player_range(getattr(player, "range", PLAYER_RANGE_DEFAULT))
@@ -5441,7 +5512,7 @@ def animate_menu_exit(screen: pygame.Surface, snapshot: pygame.Surface, duration
         clock.tick(60)
 
 
-def run_neuro_intro(screen: pygame.Surface):
+async def run_neuro_intro(screen: pygame.Surface):
     """Show one-time minimal intro (background + link prompt)."""
     clock = pygame.time.Clock()
     title_font = _get_sekuya_font(64)
@@ -5466,6 +5537,8 @@ def run_neuro_intro(screen: pygame.Surface):
                 return
             if event.type == pygame.MOUSEBUTTONDOWN:
                 return
+        if IS_WEB:
+            await asyncio.sleep(0)
 
 
 def render_start_menu_surface(saved_exists: bool):
@@ -5498,11 +5571,9 @@ def render_start_menu_surface(saved_exists: bool):
 async def show_start_menu(screen, *, skip_intro: bool = False):
     """Return a tuple ('new', None) or ('continue', save_data) based on player's choice."""
     flush_events()
-    if IS_WEB:
-        skip_intro = True
     intro_flag = globals().pop("_skip_intro_once", False)
     if not skip_intro and not intro_flag:
-        run_neuro_intro(screen)
+        await run_neuro_intro(screen)
     # Ensure home screen always uses Intro BGM
     try:
         cur = getattr(_bgm, "music_path", "") if "_bgm" in globals() else ""
@@ -5514,6 +5585,7 @@ async def show_start_menu(screen, *, skip_intro: bool = False):
             play_intro_bgm()
         except Exception:
             pass
+    _resume_bgm_if_needed(min_interval_s=0.0)
     clock = pygame.time.Clock()
     header_font = _get_sekuya_font(22)
     btn_font = pygame.font.SysFont(None, 30)
@@ -5524,9 +5596,12 @@ async def show_start_menu(screen, *, skip_intro: bool = False):
         t += dt
 
         pos_ms = _current_music_pos_ms()
-        if _music_is_busy() and pos_ms is not None:
-            pos = pos_ms / 1000.0
-            _neuro_viz.update(dt, pos)
+        if pos_ms is not None:
+            _neuro_viz.update(dt, pos_ms / 1000.0)
+        else:
+            _neuro_viz.update(dt, t)
+            if IS_WEB:
+                _resume_bgm_if_needed()
             
         saved_exists = has_save()
         base_rects = neuro_menu_layout(include_continue=saved_exists)
@@ -5573,6 +5648,8 @@ async def show_start_menu(screen, *, skip_intro: bool = False):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+                _resume_bgm_if_needed(min_interval_s=0.0)
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if drawn_rects["start"].collidepoint(event.pos):
                     # hard reset the run state the instant START NEW is clicked
@@ -14982,7 +15059,13 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
     time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
     globals()["_time_left_runtime"] = time_left
     globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
-    play_combat_bgm()
+    combat_bgm_started = not IS_WEB
+    if combat_bgm_started:
+        play_combat_bgm()
+    elif IS_WEB:
+        _draw_loading_screen(screen, "INITIALIZING LEVEL", "Generating arena and loading gameplay state")
+        pygame.display.flip()
+        await asyncio.sleep(0)
    
     spatial = SpatialHash(SPATIAL_CELL)
     obstacles, items, player_start, enemy_starts, main_item_list, decorations = generate_game_entities(
@@ -14993,6 +15076,10 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
         main_block_hp=config["block_hp"],
         level_idx=level_idx
     )
+    if IS_WEB:
+        _draw_loading_screen(screen, "INITIALIZING LEVEL", "Building pathing and entity state")
+        pygame.display.flip()
+        await asyncio.sleep(0)
     last_counted_level = globals().get("_items_counted_level")
     if last_counted_level != level_idx:
         META["run_items_spawned"] = int(META.get("run_items_spawned", 0)) + len(items)
@@ -15226,6 +15313,11 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
             last_frame = render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots,
                                          obstacles=game_state.obstacles)
             if IS_WEB:
+                if not combat_bgm_started:
+                    await asyncio.sleep(0)
+                    play_combat_bgm()
+                    combat_bgm_started = True
+                    _resume_bgm_if_needed(min_interval_s=0.0)
                 await asyncio.sleep(0)
             continue
         # ==== 消费镜头聚焦请求：完全暂停游戏与计时 ====
