@@ -35,6 +35,7 @@ from zgame.paths import (
     expand_audio_candidates as _expand_audio_candidates,
     first_existing_path as _first_existing_path,
 )
+from zgame import entity_core as entity_core_support
 from zgame import menu_flow as menu_flow_support
 from zgame import persistence as persistence_support
 from zgame import shop_support
@@ -5638,336 +5639,44 @@ def spawn_wave_with_budget(game_state: "GameState",
 
 
 def trigger_twin_enrage(dead_boss, enemies, game_state):
-    """当一只 Twin Boss 死亡时，令存活的孪生体回满血并进入狂暴。"""
+    """If a bonded twin dies, power up the partner exactly once."""
     if not getattr(dead_boss, "is_boss", False):
         return
-    tid = getattr(dead_boss, "twin_id", None)
-    if tid is None:
-        # 若没 twin_id，尝试用绑定的引用取另一只
-        ref = getattr(dead_boss, "_twin_partner_ref", None)
-        partner = ref() if callable(ref) else ref
+    partner = _find_twin_partner(dead_boss, enemies)
+    if not partner or getattr(partner, "hp", 0) <= 0:
+        return
+    if getattr(partner, "_twin_powered", False):
+        return
+    enraged_now = False
+    if hasattr(partner, "on_twin_partner_death"):
+        partner.on_twin_partner_death()
+        enraged_now = True
     else:
-        partner = None
-        ref = getattr(dead_boss, "_twin_partner_ref", None)
-        if callable(ref):
-            partner = ref()
-        if partner is None:
-            # 在场上按 twin_id 搜索另一只
-            for z in enemies:
-                if z is not dead_boss and getattr(z, "is_boss", False) and getattr(z, "twin_id", None) == tid:
-                    partner = z
-                    break
-    if partner and getattr(partner, "hp", 0) > 0 and not getattr(partner, "_twin_powered", False):
-        if hasattr(partner, "on_twin_partner_death"):
-            partner.on_twin_partner_death()
-        else:
-            # 兜底：没有方法也直接赋值
-            partner.hp = int(getattr(partner, "max_hp", partner.hp))
-            partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
-            partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
-            partner._twin_powered = True
-        # 小提示：给点飘字/特效
+        partner.hp = int(getattr(partner, "max_hp", partner.hp))
+        partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
+        partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
+        partner._twin_powered = True
+        partner.is_enraged = True
+        enraged_now = True
         try:
-            game_state.add_damage_text(partner.rect.centerx, partner.rect.centery, "ENRAGED", crit=False, kind="shield")
+            partner.boss_name = (getattr(partner, "boss_name", "BOSS") + " [ENRAGED]")
         except Exception:
             pass
+    if enraged_now and getattr(partner, "type", "") == "boss_mem":
+        enraged_color = ENEMY_COLORS.get("boss_mem_enraged", BOSS_MEM_ENRAGED_COLOR)
+        partner._current_color = enraged_color
+        partner.color = enraged_color
+    game_state.add_damage_text(
+        partner.rect.centerx,
+        partner.rect.top - 10,
+        "ENRAGE!",
+        crit=True,
+        kind="hp",
+    )
 
 
 # ==================== 数据结构 ====================
-class Graph:
-    def __init__(self):
-        self.edges: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
-        self.weights: Dict[Tuple[Tuple[int, int], Tuple[int, int]], float] = {}
-
-    def add_edge(self, a, b, w):
-        self.edges.setdefault(a, []).append(b)
-        self.weights[(a, b)] = w
-
-    def neighbors(self, node): return self.edges.get(node, [])
-
-    def cost(self, a, b): return self.weights.get((a, b), float('inf'))
-
-
-class Obstacle:
-    def __init__(self, x: int, y: int, obstacle_type: str, health: Optional[int] = None):
-        px = x * CELL_SIZE;
-        py = y * CELL_SIZE + INFO_BAR_HEIGHT
-        self.rect = pygame.Rect(px, py, CELL_SIZE, CELL_SIZE)
-        self.type: str = obstacle_type
-        self.health: Optional[int] = health
-
-    def is_destroyed(self) -> bool:
-        return self.type == "Destructible" and self.health <= 0
-
-    @property
-    def grid_pos(self):
-        return self.rect.x // CELL_SIZE, (self.rect.y - INFO_BAR_HEIGHT) // CELL_SIZE
-
-
-class FogLantern(Obstacle):
-    def __init__(self, x: int, y: int, hp: int = FOG_LANTERN_HP):
-        super().__init__(x, y, "Lantern", health=hp)
-        self.nonblocking = False  # 关键：不参与移动碰撞
-        # 更明显一点的可视尺寸
-        self.rect = pygame.Rect(self.rect.x + 6, self.rect.y + 6, CELL_SIZE - 12, CELL_SIZE - 12)
-
-    @property
-    def alive(self):
-        return self.health is None or self.health > 0
-
-
-class MainBlock(Obstacle):
-    def __init__(self, x: int, y: int, health: Optional[int] = MAIN_BLOCK_HEALTH):
-        super().__init__(x, y, "Destructible", health)
-        self.is_main_block = True
-
-
-class Item:
-    def __init__(self, x: int, y: int, is_main=False):
-        self.x = x
-        self.y = y
-        self.is_main = is_main
-        self.radius = CELL_SIZE // 3
-        self.center = (self.x * CELL_SIZE + CELL_SIZE // 2, self.y * CELL_SIZE + CELL_SIZE // 2 + INFO_BAR_HEIGHT)
-        self.rect = pygame.Rect(self.center[0] - self.radius, self.center[1] - self.radius, self.radius * 2,
-                                self.radius * 2)
-
-
-class Player:
-    def __init__(self, pos: Tuple[int, int], speed: int = PLAYER_SPEED):
-        self.x = pos[0] * CELL_SIZE
-        self.y = pos[1] * CELL_SIZE
-        self.speed = float(speed)
-        self.size = int(CELL_SIZE * 0.6)
-        self.rect = pygame.Rect(self.x, self.y + INFO_BAR_HEIGHT, self.size, self.size)
-        self.max_hp = int(PLAYER_MAX_HP)
-        self.hp = int(PLAYER_MAX_HP)
-        # 暴击：base + 附加
-        self.crit_chance = max(0.0,
-                               min(0.95, float(META.get("base_crit", CRIT_CHANCE_BASE)) + float(META.get("crit", 0.0))))
-        self.crit_mult = float(CRIT_MULT_BASE)
-        self.slow_t = 0.0
-        self.slow_mult = 1.0  #
-        self._slow_frac = 0.0
-        self.hit_cd = 0.0  # contact invulnerability timer (seconds)
-        self.radius = PLAYER_RADIUS
-        # progression
-        self.level = 1
-        self.xp = 0
-        self.xp_to_next = player_xp_required(self.level)
-        self.xp_to_next = player_xp_required(self.level)
-        self.levelup_pending = 0  # NEW: # of level-up selections to show
-        self.xp_gain_mult = 1.0
-        # per-run upgrades from shop (applied on spawn)
-        self.bullet_damage = int(META.get("base_dmg", BULLET_DAMAGE_ENEMY)) + int(META.get("dmg", 0))
-        self.fire_rate_mult = float(META.get("firerate_mult", 1.0))
-        # bullet behavior
-        self.bullet_pierce = int(META.get("pierce_level", 0))
-        self.bullet_ricochet = int(META.get("ricochet_level", 0))
-        # on-kill shrapnel splashes
-        self.shrapnel_level = int(META.get("shrapnel_level", 0))
-        self.explosive_rounds_level = int(META.get("explosive_rounds_level", 0))
-        self.dot_rounds_level = int(META.get("dot_rounds_level", 0))
-        self.aegis_pulse_level = int(META.get("aegis_pulse_level", 0))
-        if self.aegis_pulse_level > 0:
-            _, _, cd = aegis_pulse_stats(self.aegis_pulse_level, self.max_hp)
-            self._aegis_pulse_cd = float(cd)
-        else:
-            self._aegis_pulse_cd = 0.0
-        # 射程：base × mult
-        self.range_base = clamp_player_range(META.get("base_range", PLAYER_RANGE_DEFAULT))
-        self.range = compute_player_range(self.range_base, META.get("range_mult", 1.0))
-        spd0 = float(META.get("base_speed", PLAYER_SPEED))
-        spd_mult = float(META.get("speed_mult", 1.0))
-        spd_add = float(META.get("speed", 0))
-        self.speed = min(PLAYER_SPEED_CAP, max(1.0, spd0 * spd_mult + spd_add))
-        # 生命：base + 附加
-        hp0 = int(META.get("base_maxhp", PLAYER_MAX_HP))
-        self.max_hp = hp0 + int(META.get("maxhp", 0))
-        self.hp = min(self.max_hp, self.max_hp)  # 刚生成满血
-        self._hit_flash = 0.0
-        self._flash_prev_hp = int(self.hp)
-        # Shield state: per-level shield plus persistent Carapace reserve
-        self.shield_hp = 0
-        self.shield_max = 0
-        self._hud_shield_vis = 0.0
-        self.carapace_hp = int(META.get("carapace_shield_hp", 0))
-        if self.carapace_hp > 0:
-            self._hud_shield_vis = self.carapace_hp / float(max(1, self.max_hp))
-        self.bone_plating_level = int(META.get("bone_plating_level", 0))
-        self.bone_plating_hp = 0
-        self._bone_plating_cd = float(BONE_PLATING_GAIN_INTERVAL)
-        self._bone_plating_glow = 0.0
-        self.acid_dot_timer = 0.0  # 还剩多少秒的DoT
-        self.acid_dot_dps = 0.0  # 当前DoT每秒伤害（根据最近踩到的酸池设置）
-        self._acid_dmg_accum = 0.0  # 在池中时的“本帧累计伤害”浮点缓存
-        self._acid_dot_accum = 0.0  # 离开池后DoT的累计伤害缓存
-        self._enemy_paint_slow = 0.0
-        self._enemy_paint_dot_t = 0.0
-        self._enemy_paint_dot_accum = 0.0
-        self._enemy_paint_vignette_t = 0.0
-        self.dot_ticks = []  # list[(dps, t_left)]
-        self.apply_slow_extra = 0.0  # extra slow gathered each frame (hazards add to this)
-        self.facing = "S"  # N/NE/E/SE/S/SW/W/NW for sprite selection
-        self.status = "S"
-        self.is_moving = False
-        # Active skills
-        self.blast_cd = 0.0
-        self.teleport_cd = 0.0
-        self.targeting_skill = None  # "blast" | "teleport" | None
-        self.skill_target_pos = (self.rect.centerx, self.rect.centery)
-        self.skill_target_valid = False
-        self.skill_target_origin = None  # anchor for range clamp (blast stays stable vs forces)
-        self.skill_flash = {"blast": 0.0, "teleport": 0.0}
-
-    @staticmethod
-    def _dir8_from_vec(dx: float, dy: float) -> Optional[str]:
-        if dx == 0 and dy == 0:
-            return None
-        ang = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
-        idx = int((ang + 22.5) // 45.0) % 8
-        return ["E", "SE", "S", "SW", "W", "NW", "N", "NE"][idx]
-
-    def _update_move_status(self, dx: float, dy: float) -> None:
-        if dx == 0 and dy == 0:
-            self.is_moving = False
-            return
-        self.is_moving = True
-        if USE_ISO:
-            screen_dx = dx - dy
-            screen_dy = dx + dy
-        else:
-            screen_dx, screen_dy = dx, dy
-        new_dir = self._dir8_from_vec(screen_dx, screen_dy)
-        if new_dir:
-            self.facing = new_dir
-            self.status = new_dir
-
-    @property
-    def pos(self):
-        return int((self.x + self.size // 2) // CELL_SIZE), int((self.y + self.size // 2) // CELL_SIZE)
-
-    def apply_dot(self, dps: float, duration: float):
-        """Stackable DoT: each new source adds another ticking entry."""
-        self.dot_ticks.append((float(dps), float(duration)))
-
-    def reset_bone_plating(self):
-        self.bone_plating_hp = 0
-        self._bone_plating_cd = float(BONE_PLATING_GAIN_INTERVAL)
-        self._bone_plating_glow = 0.0
-
-    def on_level_start(self):
-        self.reset_bone_plating()
-
-    def update_bone_plating(self, dt: float):
-        lvl = int(getattr(self, "bone_plating_level", 0))
-        glow = float(getattr(self, "_bone_plating_glow", 0.0))
-        if lvl <= 0:
-            self._bone_plating_glow = max(0.0, glow - dt * 0.6)
-            return
-        cd = float(getattr(self, "_bone_plating_cd", BONE_PLATING_GAIN_INTERVAL))
-        cd -= dt
-        gained = False
-        while cd <= 0.0:
-            cd += BONE_PLATING_GAIN_INTERVAL
-            self.bone_plating_hp = int(self.bone_plating_hp) + max(1, lvl) * BONE_PLATING_STACK_HP
-            gained = True
-        self._bone_plating_cd = cd
-        if gained:
-            glow = 0.85
-        else:
-            glow = max(0.0, glow - dt * 0.6)
-        self._bone_plating_glow = glow
-
-    def take_damage(self, amount: int):
-        """Used by enemy projectiles / hazards that call player.take_damage."""
-        if self.hit_cd <= 0.0:
-            before = int(self.hp)
-            self.hp = max(0, self.hp - int(amount))
-            if self.hp < before:
-                self._hit_flash = float(HIT_FLASH_DURATION)
-                self._flash_prev_hp = int(self.hp)
-            self.hit_cd = float(PLAYER_HIT_COOLDOWN)
-
-    def move(self, keys, obstacles, dt):
-        # reset frame-accumulated slow from hazards
-        self.apply_slow_extra = 0.0
-        lingering_slow = float(getattr(self, "_slow_frac", 0.0))
-        if lingering_slow > 0.0:
-            self.apply_slow_extra = max(self.apply_slow_extra, lingering_slow)
-        paint_slow = float(getattr(self, "_enemy_paint_slow", 0.0))
-        if paint_slow > 0.0:
-            self.apply_slow_extra = max(self.apply_slow_extra, paint_slow)
-        # tick active DoTs (stackable)
-        if self.dot_ticks:
-            total = 0.0
-            for i in range(len(self.dot_ticks) - 1, -1, -1):
-                dps, t = self.dot_ticks[i]
-                dtick = min(dt, t)
-                total += dps * dtick
-                t -= dt
-                if t <= 0:
-                    self.dot_ticks.pop(i)
-                else:
-                    self.dot_ticks[i] = (dps, t)
-            if total > 0:
-                # integers feel better in this game; keep float if you prefer
-                self.hp = max(0, self.hp - int(total))
-        # --- ISO 控制映射---
-        mx = my = 0
-        if binding_pressed(keys, "move_up"):
-            mx -= 1;
-            my -= 1  # 屏幕↑
-        if binding_pressed(keys, "move_down"):
-            mx += 1;
-            my += 1  # 屏幕↓
-        if binding_pressed(keys, "move_left"):
-            mx -= 1;
-            my += 1  # 屏幕←
-        if binding_pressed(keys, "move_right"):
-            mx += 1;
-            my -= 1  # 屏幕→
-        if mx != 0 or my != 0:
-            # 归一化保证对角速度一致
-            length = (mx * mx + my * my) ** 0.5
-            dx = (mx / length)
-            dy = (my / length)
-        else:
-            dx = dy = 0.0
-        self._update_move_status(dx, dy)
-        frame_scale = dt * 60.0  # keep speed tuned for a 60 FPS baseline
-        # 基础速度
-        spd = int(self.speed)
-        # 处于减速状态 → 应用减速（例如 35% 减速 = 速度*0.65）
-        # hazards (acid) add extra slow this frame
-        if getattr(self, "apply_slow_extra", 0.0) > 0.0:
-            spd = max(1, int(spd * (1.0 - min(0.85, float(self.apply_slow_extra)))))
-        # 把“减速后的速度”喂给步进与碰撞
-        prev_cx, prev_cy = self.rect.centerx, self.rect.centery
-        step_x, step_y = iso_equalized_step(dx, dy, spd * frame_scale)
-        collide_and_slide_circle(self, obstacles.values(), step_x, step_y)
-        self._last_move_vec = (self.rect.centerx - prev_cx, self.rect.centery - prev_cy)
-
-    def fire_cooldown(self) -> float:
-        eff = min(MAX_FIRERATE_MULT, float(self.fire_rate_mult))
-        return max(MIN_FIRE_COOLDOWN, FIRE_COOLDOWN / max(1.0, eff))
-
-    def add_xp(self, amount: int):
-        gain = max(0, amount)
-        gain = int(round(gain * max(0.0, float(getattr(self, "xp_gain_mult", 1.0)))))
-        self.xp += gain
-        leveled = 0
-        while self.xp >= self.xp_to_next:
-            self.xp -= self.xp_to_next
-            self.level += 1
-            self.hp = min(self.max_hp, self.hp + 3)
-            self.xp_to_next = player_xp_required(self.level)
-            leveled += 1
-        # queue that many picker opens (consumed in the main loop)
-        self.levelup_pending = getattr(self, "levelup_pending", 0) + leveled
-
-    def draw(self, screen):
-        pygame.draw.rect(screen, (0, 255, 0), self.rect)
+Graph, Obstacle, FogLantern, MainBlock, Item, Player = entity_core_support.install(_THIS_MODULE)
 
 
 # --- module-level helper: split parent into 3 splinterlings ---
@@ -9880,52 +9589,6 @@ def _find_twin_partner(z, enemies):
                 partner = cand
                 break
     return partner
-
-
-def trigger_twin_enrage(dead_boss, enemies, game_state):
-    """If a bonded twin dies, power up the partner exactly once."""
-    # locate partner
-    partner = None
-    ref = getattr(dead_boss, "_twin_partner_ref", None)
-    if callable(ref):
-        partner = ref()
-    elif ref is not None:
-        partner = ref
-    if partner is None:  # fall back: search by twin_id
-        tid = getattr(dead_boss, "twin_id", None)
-        if tid is not None:
-            for z in enemies:
-                if getattr(z, "is_boss", False) and getattr(z, "twin_id", None) == tid and z is not dead_boss:
-                    partner = z
-                    break
-    if not partner or getattr(partner, "hp", 0) <= 0:
-        return
-    if getattr(partner, "_twin_powered", False):
-        return
-    enraged_now = False
-    if hasattr(partner, "on_twin_partner_death"):
-        partner.on_twin_partner_death()
-        enraged_now = True
-    else:
-        partner.hp = int(getattr(partner, "max_hp", partner.hp))
-        partner.attack = int(partner.attack * TWIN_ENRAGE_ATK_MULT)
-        partner.speed = int(partner.speed + TWIN_ENRAGE_SPD_ADD)
-        partner._twin_powered = True
-        partner.is_enraged = True
-        enraged_now = True
-        try:
-            partner.boss_name = (getattr(partner, "boss_name", "BOSS") + " [ENRAGED]")
-        except Exception:
-            pass
-    if enraged_now and getattr(partner, "type", "") == "boss_mem":
-        enraged_color = ENEMY_COLORS.get("boss_mem_enraged", BOSS_MEM_ENRAGED_COLOR)
-        partner._current_color = enraged_color
-        partner.color = enraged_color
-    # floating label (now safe—accepts strings)
-    game_state.add_damage_text(partner.rect.centerx,
-                               partner.rect.top - 10,
-                               "ENRAGE!",  # string OK after step #1/#2
-                               crit=True, kind="hp")
 
 
 def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
