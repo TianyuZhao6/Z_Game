@@ -11,6 +11,7 @@ import os
 import shutil
 import copy
 import hashlib
+from datetime import datetime
 try:
     import numpy as np
 except Exception:
@@ -29,6 +30,8 @@ except Exception:
 IS_WEB = (sys.platform == "emscripten")
 WEB_WINDOW_SIZE = (960, 540)
 WEB_TARGET_FPS = 30
+WEB_FLOW_REFRESH_INTERVAL = 0.60
+WEB_ENEMY_CAP = 10
 _web_keys_down: set[int] = set()
 _web_actions_down: set[str] = set()
 _web_binding_aliases: dict[str, set[str]] = {}
@@ -167,6 +170,16 @@ def _sync_web_input_event(event) -> None:
 
 
 def _get_initial_web_window_size() -> tuple[int, int]:
+    if IS_WEB:
+        try:
+            import platform as web_platform  # pygbag bridge on web
+            win = getattr(web_platform, "window", None)
+            w = int(getattr(win, "innerWidth", 0) or 0)
+            h = int(getattr(win, "innerHeight", 0) or 0)
+            if w > 0 and h > 0:
+                return max(640, w), max(360, h)
+        except Exception:
+            pass
     try:
         info = pygame.display.Info()
         w = int(getattr(info, "current_w", 0) or 0)
@@ -1136,12 +1149,10 @@ def _get_sekuya_font(size: int) -> pygame.font.Font:
     if size in _SEKUYA_FONT_CACHE:
         return _SEKUYA_FONT_CACHE[size]
     try:
-        base_dir = os.path.dirname(__file__)
-        candidates = [
-            os.path.join(base_dir, "assets", "fonts", "Sekuya-Regular.ttf"),
-            os.path.join(base_dir, "assets", "fonts", "Sekuya.ttf"),
-        ]
-        path = next((p for p in candidates if os.path.exists(p)), None)
+        path = _first_existing_path([
+            *_asset_candidates("fonts", "Sekuya-Regular.ttf"),
+            *_asset_candidates("fonts", "Sekuya.ttf"),
+        ])
         if not path:
             raise FileNotFoundError("Sekuya font not found")
         font = pygame.font.Font(path, size)
@@ -2922,8 +2933,86 @@ BASE_DIR = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
 SAVE_DIR = os.path.join(BASE_DIR, "TEMP")
 os.makedirs(SAVE_DIR, exist_ok=True)
 SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
+EXPORT_DIR = os.path.join(SAVE_DIR, "exports")
 _shop_sprite_cache: dict[str, pygame.Surface | bool] = {}
 _web_save_cache: Optional[dict] = None
+WEB_SAVE_STORAGE_KEY = "z_game_save_v1"
+
+
+def _project_roots() -> list[str]:
+    roots: list[str] = []
+    for raw in (BASE_DIR, os.getcwd()):
+        if not raw:
+            continue
+        norm = os.path.normpath(raw)
+        if norm not in roots:
+            roots.append(norm)
+        nested = os.path.normpath(os.path.join(norm, "Z_Game"))
+        if nested not in roots:
+            roots.append(nested)
+    return roots
+
+
+def _candidate_paths(*parts: str) -> list[str]:
+    if not parts:
+        return []
+    rel = os.path.normpath(os.path.join(*parts))
+    seen: set[str] = set()
+    candidates: list[str] = []
+    for root in _project_roots():
+        path = os.path.normpath(os.path.join(root, rel))
+        if path not in seen:
+            seen.add(path)
+            candidates.append(path)
+    return candidates
+
+
+def _asset_candidates(*parts: str) -> list[str]:
+    return _candidate_paths("assets", *parts)
+
+
+def _first_existing_path(candidates: list[str]) -> Optional[str]:
+    for path in candidates:
+        if path and os.path.exists(path):
+            return path
+    return None
+
+
+def _web_storage():
+    if not IS_WEB:
+        return None
+    try:
+        import platform as web_platform
+        return getattr(getattr(web_platform, "window", None), "localStorage", None)
+    except Exception:
+        return None
+
+
+def _store_web_save(data: Optional[dict]) -> None:
+    storage = _web_storage()
+    if storage is None:
+        return
+    try:
+        if data is None:
+            storage.removeItem(WEB_SAVE_STORAGE_KEY)
+        else:
+            storage.setItem(WEB_SAVE_STORAGE_KEY, json.dumps(data, ensure_ascii=False))
+    except Exception:
+        pass
+
+
+def _load_web_save() -> Optional[dict]:
+    storage = _web_storage()
+    if storage is None:
+        return None
+    try:
+        raw = storage.getItem(WEB_SAVE_STORAGE_KEY)
+        if not raw:
+            return None
+        data = json.loads(str(raw))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
 
 
 def _audio_path_variants(path: str) -> list[str]:
@@ -2960,10 +3049,7 @@ def _load_shop_sprite(filename: str, max_size: tuple[int, int],
     if key in _shop_sprite_cache:
         cached = _shop_sprite_cache[key]
         return cached if cached is not False else None
-    candidates = [
-        os.path.join(BASE_DIR, "assets", "sprites", rel_path),
-        os.path.join(os.getcwd(), "assets", "sprites", rel_path),
-    ]
+    candidates = _asset_candidates("sprites", rel_path)
     _shop_sprite_cache[key] = False
     for p in candidates:
         if p and os.path.exists(p):
@@ -2997,6 +3083,58 @@ def _clear_shop_cache():
     globals().pop("_shop_reroll_cache", None)
     globals().pop("_resume_shop_cache", None)
     globals().pop("_intro_envelope", None)
+
+
+def _exportable_save_data() -> Optional[dict]:
+    if isinstance(_web_save_cache, dict):
+        return copy.deepcopy(_web_save_cache)
+    data = load_save()
+    if isinstance(data, dict):
+        return copy.deepcopy(data)
+    return None
+
+
+def _web_download_text(filename: str, text: str) -> tuple[bool, str]:
+    if not IS_WEB:
+        return False, "Web download is only available in the browser build."
+    try:
+        import platform as web_platform
+        window = getattr(web_platform, "window", None)
+        document = getattr(window, "document", None) if window else None
+        body = getattr(document, "body", None) if document else None
+        if window is None or document is None or body is None:
+            return False, "Browser download API is unavailable."
+        anchor = document.createElement("a")
+        anchor.href = "data:application/json;charset=utf-8," + window.encodeURIComponent(text)
+        anchor.download = filename
+        anchor.style.display = "none"
+        body.appendChild(anchor)
+        anchor.click()
+        try:
+            anchor.remove()
+        except Exception:
+            body.removeChild(anchor)
+        return True, f"Downloaded {filename}"
+    except Exception as e:
+        return False, f"Export failed: {e}"
+
+
+def export_current_save() -> tuple[bool, str]:
+    data = _exportable_save_data()
+    if not isinstance(data, dict):
+        return False, "No save is available to export."
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"z_game_save_{stamp}.json"
+    if IS_WEB:
+        payload = json.dumps(data, ensure_ascii=False, indent=2)
+        return _web_download_text(filename, payload)
+    try:
+        os.makedirs(EXPORT_DIR, exist_ok=True)
+        out_path = os.path.join(EXPORT_DIR, filename)
+        _atomic_write_json(out_path, data)
+        return True, f"Exported to {out_path}"
+    except Exception as e:
+        return False, f"Export failed: {e}"
 
 
 def _golden_interest_gain(coins: int, level: int) -> int:
@@ -3527,6 +3665,7 @@ def save_progress(current_level: int,
     global _web_save_cache
     if IS_WEB:
         _web_save_cache = copy.deepcopy(data)
+        _store_web_save(_web_save_cache)
         return
     try:
         _atomic_write_json(SAVE_FILE, data)
@@ -3596,6 +3735,7 @@ def save_snapshot(snapshot: dict) -> None:
     global _web_save_cache
     if IS_WEB:
         _web_save_cache = copy.deepcopy(snapshot)
+        _store_web_save(_web_save_cache)
         return
     try:
         _atomic_write_json(SAVE_FILE, snapshot)
@@ -3606,8 +3746,13 @@ def save_snapshot(snapshot: dict) -> None:
 def load_save() -> Optional[dict]:
     """Load either meta or snapshot save; returns dict with 'mode' field or None."""
     if IS_WEB:
+        global _web_save_cache
         if isinstance(_web_save_cache, dict):
             return copy.deepcopy(_web_save_cache)
+        cached = _load_web_save()
+        if isinstance(cached, dict):
+            _web_save_cache = copy.deepcopy(cached)
+            return copy.deepcopy(cached)
         return None
     try:
         if not os.path.exists(SAVE_FILE):
@@ -3903,7 +4048,7 @@ def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: 
 
 def has_save() -> bool:
     if IS_WEB:
-        return isinstance(_web_save_cache, dict)
+        return isinstance(_web_save_cache, dict) or isinstance(_load_web_save(), dict)
     return os.path.exists(SAVE_FILE)
 
 
@@ -3911,6 +4056,7 @@ def clear_save() -> None:
     global _web_save_cache
     if IS_WEB:
         _web_save_cache = None
+        _store_web_save(None)
         return
     try:
         if os.path.exists(SAVE_FILE):
@@ -6886,7 +7032,8 @@ def show_shop_screen(screen) -> Optional[str]:
     if not globals().get("_resume_shop_cache", False):
         _clear_shop_cache()
     globals()["_resume_shop_cache"] = False
-    play_combat_bgm()  # ensure shop uses the combat/main track
+    if not IS_WEB:
+        play_combat_bgm()  # ensure shop uses the combat/main track
     # snapshot coins at shop entry (post-bank, pre-purchase)
     globals()["_coins_at_shop_entry"] = int(META.get("spoils", 0))
     globals()["_in_shop_ui"] = True
@@ -10930,12 +11077,8 @@ def _load_effect_sound(filename: str):
     name_variants = _audio_path_variants(filename)
     candidates: list[str] = []
     for n in name_variants:
-        candidates.extend([
-            os.path.join(BASE_DIR, "assets", "Effect", n),
-            os.path.join(os.getcwd(), "assets", "Effect", n),
-            os.path.join(BASE_DIR, "assets", n),  # legacy fallback
-            os.path.join(os.getcwd(), "assets", n),
-        ])
+        candidates.extend(_asset_candidates("Effect", n))
+        candidates.extend(_asset_candidates(n))  # legacy fallback
     _effect_sfx_cache[filename] = False
     for p in candidates:
         if p and os.path.exists(p):
@@ -11314,6 +11457,16 @@ def resize_world_to_view():
         GRID_SIZE = new_size
         WINDOW_SIZE = GRID_SIZE * CELL_SIZE
         TOTAL_HEIGHT = WINDOW_SIZE + INFO_BAR_HEIGHT
+
+
+def _web_level_config(config: dict) -> dict:
+    if not IS_WEB:
+        return config
+    web_cfg = dict(config)
+    web_cfg["obstacle_count"] = min(int(web_cfg.get("obstacle_count", 0)), 10)
+    web_cfg["item_count"] = min(int(web_cfg.get("item_count", 0)), 2)
+    web_cfg["enemy_count"] = min(int(web_cfg.get("enemy_count", 0)), 1)
+    return web_cfg
 
 
 def play_bounds_for_circle(radius: float) -> tuple[float, float, float, float]:
@@ -13652,16 +13805,19 @@ class GameState:
         self._ff_dirty = True
 
     def refresh_flow_field(self, player_tile, dt=0.0):
-        # throttle rebuilds to ~0.3s or on dirty/goal change
+        # throttle rebuilds; browser gets a lighter cadence to keep gameplay responsive
+        rebuild_interval = WEB_FLOW_REFRESH_INTERVAL if IS_WEB else 0.30
         self._ff_timer = max(0.0, self._ff_timer - dt)
         self._ff_tacc = min(1.0, float(getattr(self, "_ff_tacc", 0.0)) + float(dt or 0.0))
         if self._ff_dirty or self._ff_timer <= 0.0 or self._ff_goal != player_tile:
             self.ff_dist, self.ff_next = build_flow_field(GRID_SIZE, self.obstacles, player_tile)
             self._ff_goal = player_tile
             self._ff_dirty = False
-            self._ff_timer = 0.30
+            self._ff_timer = rebuild_interval
             self._ff_tacc = 0.0
-        if self._ff_tacc >= 0.30 or self._ff_dirty:
+            if IS_WEB:
+                return
+        if self._ff_tacc >= rebuild_interval or self._ff_dirty:
             goal = self._ff_goal or player_tile
             # pad=1 uses the optional arg from build_flow_field(...) signature
             self.ff_dist, self.ff_next = build_flow_field(GRID_SIZE, self.obstacles, goal, pad=1)
@@ -14347,9 +14503,150 @@ def play_focus_cinematic_iso(screen, clock,
     flush_events()
 
 
+def render_game_iso_web_lite(screen, game_state, player, enemies, bullets, enemy_shots, obstacles,
+                             override_cam: tuple[int, int] | None = None) -> pygame.Surface:
+    px_grid = (player.x + player.size / 2) / CELL_SIZE
+    py_grid = (player.y + player.size / 2) / CELL_SIZE
+    if override_cam is not None:
+        camx, camy = override_cam
+    else:
+        camx, camy = calculate_iso_camera(player.x + player.size * 0.5,
+                                          player.y + player.size * 0.5 + INFO_BAR_HEIGHT)
+    if hasattr(game_state, "camera_shake_offset"):
+        dx, dy = game_state.camera_shake_offset()
+        camx += dx
+        camy += dy
+
+    screen.fill(MAP_BG)
+    margin = 2
+    gx_min = max(0, int(px_grid - VIEW_W // max(1, ISO_CELL_W)) - margin)
+    gx_max = min(GRID_SIZE - 1, int(px_grid + VIEW_W // max(1, ISO_CELL_W)) + margin)
+    gy_min = max(0, int(py_grid - VIEW_H // max(1, ISO_CELL_H)) - margin)
+    gy_max = min(GRID_SIZE - 1, int(py_grid + VIEW_H // max(1, ISO_CELL_H)) + margin)
+
+    if getattr(player, "targeting_skill", None):
+        _draw_skill_overlay(screen, player, camx, camy)
+
+    drawables = []
+    for (gx, gy), ob in obstacles.items():
+        if not (gx_min <= gx <= gx_max and gy_min <= gy <= gy_max):
+            continue
+        if getattr(ob, "type", "") in ("Lantern", "StationaryTurret"):
+            continue
+        base_col = (120, 120, 120) if getattr(ob, "type", "") == "Indestructible" else (200, 80, 80)
+        if getattr(ob, "type", "") == "Destructible" and getattr(ob, "health", None) is not None:
+            t = max(0.4, min(1.0, ob.health / float(max(1, OBSTACLE_HEALTH))))
+            base_col = (int(200 * t), int(80 * t), int(80 * t))
+        top_pts = iso_tile_points(gx, gy, camx, camy)
+        drawables.append(("wall", top_pts[2][1], {"gx": gx, "gy": gy, "color": base_col}))
+
+    for s in getattr(game_state, "spoils", []):
+        wx, wy = s.base_x / CELL_SIZE, (s.base_y - s.h - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+        drawables.append(("coin", sy, {"cx": sx, "cy": sy, "r": s.r}))
+    for h in getattr(game_state, "heals", []):
+        wx, wy = h.base_x / CELL_SIZE, (h.base_y - h.h - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+        drawables.append(("heal", sy, {"cx": sx, "cy": sy, "r": h.r}))
+    for it in getattr(game_state, "items", []):
+        wx = it.center[0] / CELL_SIZE
+        wy = (it.center[1] - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+        drawables.append(("item", sy, {"cx": sx, "cy": sy, "r": it.radius, "main": it.is_main}))
+    for t in getattr(game_state, "turrets", []):
+        wx, wy = t.x / CELL_SIZE, (t.y - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+        drawables.append(("turret", sy, {"cx": sx, "cy": sy, "obj": t}))
+    for z in enemies:
+        wx = z.rect.centerx / CELL_SIZE
+        wy = (z.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+        drawables.append(("enemy", sy, {"cx": sx, "cy": sy, "z": z}))
+    wx = player.rect.centerx / CELL_SIZE
+    wy = (player.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
+    psx, psy = iso_world_to_screen(wx, wy, 0, camx, camy)
+    drawables.append(("player", psy, {"cx": psx, "cy": psy, "p": player}))
+    for b in bullets or []:
+        wx, wy = b.x / CELL_SIZE, (b.y - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+        drawables.append(("bullet", sy, {
+            "cx": sx,
+            "cy": sy,
+            "r": int(getattr(b, "r", BULLET_RADIUS)),
+            "src": getattr(b, "source", "player"),
+        }))
+    for es in enemy_shots or []:
+        wx, wy = es.x / CELL_SIZE, (es.y - INFO_BAR_HEIGHT) / CELL_SIZE
+        sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+        drawables.append(("eshot", sy, {
+            "cx": sx,
+            "cy": sy,
+            "r": int(getattr(es, "r", BULLET_RADIUS)),
+            "col": getattr(es, "color", (255, 120, 50)),
+        }))
+
+    drawables.sort(key=lambda x: x[1])
+    for kind, _, data in drawables:
+        if kind == "wall":
+            draw_iso_tile(screen, data["gx"], data["gy"], data["color"], camx, camy, border=0)
+        elif kind == "coin":
+            pygame.draw.circle(screen, (255, 215, 80), (int(data["cx"]), int(data["cy"])), int(data["r"]))
+        elif kind == "heal":
+            pygame.draw.circle(screen, (225, 225, 225), (int(data["cx"]), int(data["cy"])), int(data["r"]))
+        elif kind == "item":
+            col = (255, 224, 0) if data.get("main", False) else (240, 210, 90)
+            pygame.draw.circle(screen, col, (int(data["cx"]), int(data["cy"])), int(data["r"]))
+        elif kind == "turret":
+            pygame.draw.circle(screen, (80, 180, 255), (int(data["cx"]), int(data["cy"]) - 6), max(7, CELL_SIZE // 5))
+        elif kind == "bullet":
+            col = (0, 255, 255) if data.get("src") == "turret" else (120, 204, 121)
+            pygame.draw.circle(screen, col, (int(data["cx"]), int(data["cy"])), max(2, int(data["r"])))
+        elif kind == "eshot":
+            pygame.draw.circle(screen, data.get("col", (255, 120, 50)),
+                               (int(data["cx"]), int(data["cy"])), max(2, int(data["r"])))
+        elif kind == "enemy":
+            z = data["z"]
+            cx = int(data["cx"])
+            cy = int(data["cy"] - max(10, int(getattr(z, "size", CELL_SIZE * 0.6) * 0.45)))
+            body_r = max(8, int(getattr(z, "size", CELL_SIZE * 0.6) * 0.34))
+            pygame.draw.circle(screen, getattr(z, "color", (220, 90, 90)), (cx, cy), body_r)
+            pygame.draw.circle(screen, (16, 26, 40), (cx, cy), body_r, 2)
+            hp = max(0, int(getattr(z, "hp", 0)))
+            hp_max = max(1, int(getattr(z, "max_hp", hp or 1)))
+            if hp < hp_max:
+                bar_w = max(18, body_r * 2)
+                top = cy - body_r - 10
+                pygame.draw.rect(screen, (24, 34, 48), (cx - bar_w // 2, top, bar_w, 4))
+                pygame.draw.rect(screen, (90, 220, 120), (cx - bar_w // 2, top, int(bar_w * hp / hp_max), 4))
+        elif kind == "player":
+            p = data["p"]
+            cx = int(data["cx"])
+            cy = int(data["cy"] - max(10, int(getattr(p, "size", CELL_SIZE * 0.6) * 0.45)))
+            body_r = max(9, int(getattr(p, "size", CELL_SIZE * 0.6) * 0.36))
+            pygame.draw.circle(screen, getattr(p, "color", (110, 250, 170)), (cx, cy), body_r)
+            pygame.draw.circle(screen, (12, 24, 40), (cx, cy), body_r, 2)
+
+    draw_ui_topbar(screen, game_state, player,
+                   time_left=globals().get("_time_left_runtime"),
+                   enemies=enemies)
+    bosses = _find_all_bosses(enemies)
+    if len(bosses) >= 2:
+        draw_boss_hp_bars_twin(screen, bosses[:2])
+    elif len(bosses) == 1:
+        draw_boss_hp_bar(screen, bosses[0])
+    run_pending_menu_transition(screen)
+    pygame.display.flip()
+    return screen.copy()
+
+
 # ==================== 游戏渲染函数 ====================
 def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles,
                     override_cam: tuple[int, int] | None = None):
+    if IS_WEB:
+        return render_game_iso_web_lite(
+            screen, game_state, player, enemies, bullets, enemy_shots, obstacles,
+            override_cam=override_cam
+        )
     # 1) 计算以“玩家所在格”为中心的相机
     px_grid = (player.x + player.size / 2) / CELL_SIZE
     py_grid = (player.y + player.size / 2) / CELL_SIZE
@@ -15189,31 +15486,14 @@ class GameSound:
     def __init__(self, music_path: str = None, volume: float = 0.6):
         self.volume = max(0.0, min(1.0, float(volume)))
         self._ready = False
-        # --- pick a path ---
-        here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
         candidates = [
-            # preferred intro BGM (music folder)
-            os.path.join(here, "assets", "music", "Intro_V0.wav"),
-            os.path.join(here, "Z_Game", "assets", "music", "Intro_V0.wav"),
-            os.path.join(os.getcwd(), "assets", "music", "Intro_V0.wav"),
-            os.path.join(os.getcwd(), "Z_Game", "assets", "music", "Intro_V0.wav"),
-            # project-typical main BGM (music folder)
-            os.path.join(here, "Z_Game", "assets", "music", "ZGAME.wav"),
-            os.path.join(here, "assets", "music", "ZGAME.wav"),
-            # run-from-working-dir
-            os.path.join(os.getcwd(), "Z_Game", "assets", "music", "ZGAME.wav"),
-            os.path.join(os.getcwd(), "assets", "music", "ZGAME.wav"),
-            # user-provided absolute-like hint (DON'T rely on drive root)
-            r"C:\Users\%USERNAME%\Z_Game\assets\music\ZGAME.wav".replace("%USERNAME%", os.environ.get("USERNAME", "")),
+            *_asset_candidates("music", "Intro_V0.wav"),
+            *_asset_candidates("music", "ZGAME.wav"),
         ]
         if music_path:
             candidates.insert(0, music_path)
         candidates = _expand_audio_candidates(candidates)
-        self.music_path = None
-        for p in candidates:
-            if p and os.path.exists(p):
-                self.music_path = p
-                break
+        self.music_path = _first_existing_path(candidates)
         if not self.music_path:
             print("[Audio] ZGAME.wav not found in expected locations.")
             return
@@ -15328,29 +15608,17 @@ def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms:
 
 def play_intro_bgm():
     """Play Intro_V0 if present (home/start), fallback to ZGAME.wav."""
-    here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
     intro_candidates = [
-        os.path.join(here, "assets", "music", "Intro_V0.wav"),
-        os.path.join(here, "Z_Game", "assets", "music", "Intro_V0.wav"),
-        os.path.join(os.getcwd(), "assets", "music", "Intro_V0.wav"),
-        os.path.join(os.getcwd(), "Z_Game", "assets", "music", "Intro_V0.wav"),
-        # fallback
-        os.path.join(here, "assets", "music", "ZGAME.wav"),
-        os.path.join(here, "Z_Game", "assets", "music", "ZGAME.wav"),
-        os.path.join(os.getcwd(), "assets", "music", "ZGAME.wav"),
-        os.path.join(os.getcwd(), "Z_Game", "assets", "music", "ZGAME.wav"),
+        *_asset_candidates("music", "Intro_V0.wav"),
+        *_asset_candidates("music", "ZGAME.wav"),
     ]
     _play_bgm_candidates(intro_candidates, volume=BGM_VOLUME / 100.0)
 
 
 def play_combat_bgm():
     """Play the main combat/shop track (ZGAME.wav)."""
-    here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
     combat_candidates = [
-        os.path.join(here, "assets", "music", "ZGAME.wav"),
-        os.path.join(here, "Z_Game", "assets", "music", "ZGAME.wav"),
-        os.path.join(os.getcwd(), "assets", "music", "ZGAME.wav"),
-        os.path.join(os.getcwd(), "Z_Game", "assets", "music", "ZGAME.wav"),
+        *_asset_candidates("music", "ZGAME.wav"),
     ]
     _play_bgm_candidates(combat_candidates, volume=BGM_VOLUME / 100.0)
 
@@ -15372,9 +15640,12 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
     time_left = float(BOSS_TIME_LIMIT) if is_boss_level(level_idx) else float(LEVEL_TIME_LIMIT)
     globals()["_time_left_runtime"] = time_left
     globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
-    combat_bgm_started = not IS_WEB
+    level_config = _web_level_config(config)
+    enemy_cap = WEB_ENEMY_CAP if IS_WEB else ENEMY_CAP
+    combat_bgm_started = IS_WEB
     if combat_bgm_started:
-        play_combat_bgm()
+        if not IS_WEB:
+            play_combat_bgm()
     elif not IS_WEB:
         _draw_loading_screen(screen, "INITIALIZING LEVEL", "Generating arena and loading gameplay state")
         pygame.display.flip()
@@ -15383,10 +15654,10 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
     spatial = SpatialHash(SPATIAL_CELL)
     obstacles, items, player_start, enemy_starts, main_item_list, decorations = generate_game_entities(
         grid_size=GRID_SIZE,
-        obstacle_count=config["obstacle_count"],
-        item_count=config["item_count"],
-        enemy_count=config["enemy_count"],
-        main_block_hp=config["block_hp"],
+        obstacle_count=level_config["obstacle_count"],
+        item_count=level_config["item_count"],
+        enemy_count=level_config["enemy_count"],
+        main_block_hp=level_config["block_hp"],
         level_idx=level_idx
     )
     if not IS_WEB:
@@ -15600,7 +15871,7 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
         # We had already entered this same level earlier in this run → restore for a clean restart
         _restore_level_start_baseline(current_level, player, game_state)
     # Initial spawn: use threat budget once
-    spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, enemies, ENEMY_CAP)
+    spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, enemies, enemy_cap)
     if spawned > 0:
         wave_index += 1
         globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
@@ -15675,8 +15946,8 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
         spawn_timer += dt
         if spawn_timer >= SPAWN_INTERVAL:
             spawn_timer = 0.0
-            if len(enemies) < ENEMY_CAP:
-                spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, enemies, ENEMY_CAP)
+            if len(enemies) < enemy_cap:
+                spawned = spawn_wave_with_budget(game_state, player, current_level, wave_index, enemies, enemy_cap)
                 if spawned > 0:
                     wave_index += 1
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
@@ -15760,9 +16031,10 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
         game_state.update_telegraphs(dt)  # 到时生成酸池
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
-        game_state.update_enemy_paint(dt, player)
-        game_state.update_vulnerability_marks(enemies, dt)
-        game_state.update_hurricanes(dt, player, enemies, bullets, enemy_shots)
+        if not IS_WEB:
+            game_state.update_enemy_paint(dt, player)
+            game_state.update_vulnerability_marks(enemies, dt)
+            game_state.update_hurricanes(dt, player, enemies, bullets, enemy_shots)
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
 
@@ -15784,8 +16056,9 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
             z._gold_glow_t = max(0.0, getattr(z, "_gold_glow_t", 0.0) - dt)
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
-        game_state.update_damage_texts(dt)
-        game_state.update_aegis_pulses(dt, player, enemies)
+        if not IS_WEB:
+            game_state.update_damage_texts(dt)
+            game_state.update_aegis_pulses(dt, player, enemies)
         game_state.collect_heals(player)
         player.update_bone_plating(dt)
         # Active skill cooldowns
@@ -15793,10 +16066,6 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
         player.teleport_cd = max(0.0, getattr(player, "teleport_cd", 0.0) - dt)
         player.skill_flash["blast"] = max(0.0, float(player.skill_flash.get("blast", 0.0)) - dt)
         player.skill_flash["teleport"] = max(0.0, float(player.skill_flash.get("teleport", 0.0)) - dt)
-        # --- NEW: Telegraph/Acid 更新 + 减速衰减 ---
-        game_state.update_telegraphs(dt)  # 倒计时→到时生成酸池
-        game_state.update_acids(dt, player)  # 酸池伤害&施加 slow_t
-        player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)  # 每帧自然恢复
         # —— 结算离开酸池后的 DoT（中毒） ——
         if player.acid_dot_timer > 0.0:
             player.acid_dot_timer = max(0.0, player.acid_dot_timer - dt)
@@ -15867,10 +16136,12 @@ async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[
                     game_result = "fail"
                     running = False
                     break
-        game_state.update_ground_spikes(dt, player, enemies)
-        game_state.update_curing_paint(dt, player, enemies)
+        if not IS_WEB:
+            game_state.update_ground_spikes(dt, player, enemies)
+            game_state.update_curing_paint(dt, player, enemies)
         # special behaviors & enemy shots
-        game_state.update_dot_rounds(enemies, dt)
+        if not IS_WEB:
+            game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
             z.update_special(dt, player, enemies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):
@@ -16092,6 +16363,7 @@ async def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame
     running = True
     last_frame = None
     chosen_enemy_type = meta.get("chosen_enemy_type", "basic")
+    enemy_cap = WEB_ENEMY_CAP if IS_WEB else ENEMY_CAP
     # Spawner state
     spawn_timer = 0.0
     wave_index = 0
@@ -16267,8 +16539,9 @@ async def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame
         player.slow_t = max(0.0, getattr(player, "slow_t", 0.0) - dt)
         game_state.update_telegraphs(dt)  # 到时生成酸池
         game_state.update_acids(dt, player)  # 结算DoT并刷新 slow_t
-        game_state.update_enemy_paint(dt, player)
-        game_state.update_vulnerability_marks(enemies, dt)
+        if not IS_WEB:
+            game_state.update_enemy_paint(dt, player)
+            game_state.update_vulnerability_marks(enemies, dt)
         # -----------------------------------------------
         player.move(keys, game_state.obstacles, dt)
         game_state.fx.update(dt)
@@ -16278,8 +16551,9 @@ async def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame
         game_state.update_spoils(dt, player)
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
-        game_state.update_damage_texts(dt)
-        game_state.update_aegis_pulses(dt, player, enemies)
+        if not IS_WEB:
+            game_state.update_damage_texts(dt)
+            game_state.update_aegis_pulses(dt, player, enemies)
         game_state.collect_heals(player)
         tick_aegis_pulse(player, game_state, enemies, dt)
         # Active skill cooldowns
@@ -16315,8 +16589,8 @@ async def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame
         spawn_timer += dt
         if spawn_timer >= SPAWN_INTERVAL:
             spawn_timer = 0.0
-            if len(enemies) < ENEMY_CAP:
-                spawned = spawn_wave_with_budget(game_state, player, level_idx, wave_index, enemies, ENEMY_CAP)
+            if len(enemies) < enemy_cap:
+                spawned = spawn_wave_with_budget(game_state, player, level_idx, wave_index, enemies, enemy_cap)
                 if spawned > 0:
                     wave_index += 1
                     globals()["_max_wave_reached"] = max(globals().get("_max_wave_reached", 0), wave_index)
@@ -16353,10 +16627,12 @@ async def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame
                         clear_save();
                         flush_events()
                         return "restart", None, last_frame or screen.copy()
-        game_state.update_ground_spikes(dt, player, enemies)
-        game_state.update_curing_paint(dt, player, enemies)
+        if not IS_WEB:
+            game_state.update_ground_spikes(dt, player, enemies)
+            game_state.update_curing_paint(dt, player, enemies)
         # Special behaviors & enemy shots
-        game_state.update_dot_rounds(enemies, dt)
+        if not IS_WEB:
+            game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
             z.update_special(dt, player, enemies, enemy_shots, game_state)
             if z.hp <= 0 and not getattr(z, "_death_processed", False):

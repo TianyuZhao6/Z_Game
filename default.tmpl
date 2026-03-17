@@ -150,7 +150,7 @@ asyncio.run( custom_site() )
 config = {
     xtermjs : "1" ,
     _sdl2 : "canvas",
-    user_canvas : 0,
+    user_canvas : 1,
     user_canvas_managed : 0,
     gui_divider : 1,
     ume_block : 0,
@@ -177,6 +177,30 @@ function applyViewportConfig() {
     config.fb_width = String(viewportWidth());
     config.fb_height = String(viewportHeight());
     config.fb_ar = viewportWidth() / Math.max(1, viewportHeight());
+}
+
+function applyCanvasFullscreen() {
+    applyViewportConfig();
+    const width = viewportWidth();
+    const height = viewportHeight();
+    const targets = [window.canvas, window.canvas3d].filter(Boolean);
+    for (const node of targets) {
+        node.width = width;
+        node.height = height;
+        node.style.position = "fixed";
+        node.style.left = "0px";
+        node.style.top = "0px";
+        node.style.right = "auto";
+        node.style.bottom = "auto";
+        node.style.margin = "0";
+        node.style.width = width + "px";
+        node.style.height = height + "px";
+        node.style.maxWidth = "100vw";
+        node.style.maxHeight = "100vh";
+    }
+    if (typeof queue_event === "function") {
+        queue_event("resize", { width : width, height : height });
+    }
 }
 
 function focusCanvas() {
@@ -428,16 +452,18 @@ frameborder="1"
         info.hidden = true
         box.hidden = true
         infobox.style.display = "none"
+        if (window.vm && window.vm.config) {
+            window.vm.config.user_canvas = 1
+            window.vm.config.user_canvas_managed = 1
+        }
+        globalThis.window_resize = applyCanvasFullscreen
 
-        applyViewportConfig()
+        applyCanvasFullscreen()
         focusCanvas()
     }
 
     window.addEventListener("resize", () => {
-        applyViewportConfig();
-        if (typeof window_resize === "function") {
-            window_resize();
-        }
+        applyCanvasFullscreen();
         focusCanvas();
     });
     window.addEventListener("pointerdown", focusCanvas, { passive: true });
@@ -453,6 +479,8 @@ frameborder="1"
     function custom_postrun(){
         // python main and no VFS filesystem yet.
         console.log(__FILE__, "custom_postrun")
+        applyCanvasFullscreen()
+        focusCanvas()
 
     }
 
