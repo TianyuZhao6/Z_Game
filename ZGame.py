@@ -6,12 +6,9 @@ import pygame
 import math
 import threading
 import random
-import json
 import os
-import shutil
 import copy
 import hashlib
-from datetime import datetime
 import colorsys
 from effects import *
 from queue import PriorityQueue
@@ -38,6 +35,10 @@ from zgame.paths import (
     expand_audio_candidates as _expand_audio_candidates,
     first_existing_path as _first_existing_path,
 )
+from zgame import persistence as persistence_support
+from zgame import screens as screens_support
+
+_THIS_MODULE = sys.modules[__name__]
 
 
 def _invalidate_view_caches() -> None:
@@ -2817,40 +2818,15 @@ WEB_SAVE_STORAGE_KEY = "z_game_save_v1"
 
 
 def _web_storage():
-    if not IS_WEB:
-        return None
-    try:
-        import platform as web_platform
-        return getattr(getattr(web_platform, "window", None), "localStorage", None)
-    except Exception:
-        return None
+    return persistence_support.web_storage(_THIS_MODULE)
 
 
 def _store_web_save(data: Optional[dict]) -> None:
-    storage = _web_storage()
-    if storage is None:
-        return
-    try:
-        if data is None:
-            storage.removeItem(WEB_SAVE_STORAGE_KEY)
-        else:
-            storage.setItem(WEB_SAVE_STORAGE_KEY, json.dumps(data, ensure_ascii=False))
-    except Exception:
-        pass
+    persistence_support.store_web_save(_THIS_MODULE, data)
 
 
 def _load_web_save() -> Optional[dict]:
-    storage = _web_storage()
-    if storage is None:
-        return None
-    try:
-        raw = storage.getItem(WEB_SAVE_STORAGE_KEY)
-        if not raw:
-            return None
-        data = json.loads(str(raw))
-        return data if isinstance(data, dict) else None
-    except Exception:
-        return None
+    return persistence_support.load_web_save(_THIS_MODULE)
 def _load_shop_sprite(filename: str, max_size: tuple[int, int],
                       *, allow_upscale: bool = False) -> Optional["pygame.Surface"]:
     """Load and cache a sprite from assets/sprites, scaled to max_size."""
@@ -2898,55 +2874,15 @@ def _clear_shop_cache():
 
 
 def _exportable_save_data() -> Optional[dict]:
-    if isinstance(_web_save_cache, dict):
-        return copy.deepcopy(_web_save_cache)
-    data = load_save()
-    if isinstance(data, dict):
-        return copy.deepcopy(data)
-    return None
+    return persistence_support.exportable_save_data(_THIS_MODULE)
 
 
 def _web_download_text(filename: str, text: str) -> tuple[bool, str]:
-    if not IS_WEB:
-        return False, "Web download is only available in the browser build."
-    try:
-        import platform as web_platform
-        window = getattr(web_platform, "window", None)
-        document = getattr(window, "document", None) if window else None
-        body = getattr(document, "body", None) if document else None
-        if window is None or document is None or body is None:
-            return False, "Browser download API is unavailable."
-        anchor = document.createElement("a")
-        anchor.href = "data:application/json;charset=utf-8," + window.encodeURIComponent(text)
-        anchor.download = filename
-        anchor.style.display = "none"
-        body.appendChild(anchor)
-        anchor.click()
-        try:
-            anchor.remove()
-        except Exception:
-            body.removeChild(anchor)
-        return True, f"Downloaded {filename}"
-    except Exception as e:
-        return False, f"Export failed: {e}"
+    return persistence_support.web_download_text(_THIS_MODULE, filename, text)
 
 
 def export_current_save() -> tuple[bool, str]:
-    data = _exportable_save_data()
-    if not isinstance(data, dict):
-        return False, "No save is available to export."
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"z_game_save_{stamp}.json"
-    if IS_WEB:
-        payload = json.dumps(data, ensure_ascii=False, indent=2)
-        return _web_download_text(filename, payload)
-    try:
-        os.makedirs(EXPORT_DIR, exist_ok=True)
-        out_path = os.path.join(EXPORT_DIR, filename)
-        _atomic_write_json(out_path, data)
-        return True, f"Exported to {out_path}"
-    except Exception as e:
-        return False, f"Export failed: {e}"
+    return persistence_support.export_current_save(_THIS_MODULE)
 
 
 def _golden_interest_gain(coins: int, level: int) -> int:
@@ -3375,506 +3311,54 @@ def clamp_coin_loss_with_lockbox(coins_before: int, raw_loss: int, level: int | 
 
 
 def _atomic_write_json(path: str, data: dict) -> None:
-    """Write json to a temp file then replace so crashes can't zero the save."""
-    tmp = f"{path}.tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
+    persistence_support.atomic_write_json(path, data)
 
 
 def save_progress(current_level: int,
                   max_wave_reached: int | None = None,
                   pending_shop: bool = False):
-    """Persist minimal progress plus META upgrades and player carry.
-       If we're mid-level and a baseline exists for this same level,
-       save META['spoils'] as the baseline coins (pre-bandit), and
-       persist the baseline so CONTINUE can restore it."""
-    # 1) Build a META copy; if baseline for this level exists, save baseline coins
-    meta_for_save = dict(META)
-    try:
-        if bool(pending_shop) or bool(globals().get("_in_shop_ui", False)):
-            # In/at the shop → keep current bank as-is
-            meta_for_save["spoils"] = int(META.get("spoils", 0))
-        else:
-            # Mid-level → save the level-start baseline as before
-            if int(globals().get("_baseline_for_level", -999)) == int(current_level):
-                if "_coins_at_level_start" in globals():
-                    meta_for_save["spoils"] = int(globals()["_coins_at_level_start"])
-                items_base = globals().get("_items_run_baseline", {})
-                try:
-                    base_spawn = int(items_base.get("spawned", globals().get("_run_items_spawned_start",
-                                                                             META.get("run_items_spawned", 0))))
-                except Exception:
-                    base_spawn = int(META.get("run_items_spawned", 0))
-                try:
-                    base_collect = int(items_base.get("collected", globals().get("_run_items_collected_start",
-                                                                                 META.get("run_items_collected", 0))))
-                except Exception:
-                    base_collect = int(META.get("run_items_collected", 0))
-                meta_for_save["run_items_spawned"] = max(0, int(base_spawn))
-                meta_for_save["run_items_collected"] = max(0, int(base_collect))
-    except Exception:
-        pass
-    # 2) Persist the baseline bundle if present
-    baseline_bundle = {}
-    if "_baseline_for_level" in globals():
-        try:
-            baseline_bundle["level"] = int(globals()["_baseline_for_level"])
-        except Exception:
-            pass
-    if "_coins_at_level_start" in globals():
-        try:
-            baseline_bundle["coins"] = int(globals()["_coins_at_level_start"])
-        except Exception:
-            pass
-    if "_player_level_baseline" in globals() and isinstance(globals()["_player_level_baseline"], dict):
-        baseline_bundle["player"] = dict(globals()["_player_level_baseline"])
-    if "_items_run_baseline" in globals() and isinstance(globals()["_items_run_baseline"], dict):
-        try:
-            ib = dict(globals()["_items_run_baseline"])
-            if "count_this_level" in ib and ib["count_this_level"] is not None:
-                ib["count_this_level"] = int(ib["count_this_level"])
-            baseline_bundle["items"] = ib
-        except Exception:
-            pass
-    if "_consumable_baseline" in globals() and isinstance(globals()["_consumable_baseline"], dict):
-        try:
-            baseline_bundle["consumables"] = dict(globals()["_consumable_baseline"])
-        except Exception:
-            pass
-    data = {
-        "mode": "progress",
-        "current_level": int(current_level),
-        "meta": meta_for_save,  # uses baseline spoils when appropriate
-        "carry_player": globals().get("_carry_player_state", None),
-        "pending_shop": bool(pending_shop),
-        "biome": globals().get("_next_biome") or globals().get("_last_biome")
-    }
-    # Persist shop offer cache so exiting to desktop can't reroll for free
-    slots_cache = globals().get("_shop_slot_ids_cache") or globals().get("_shop_slots_cache")
-    if slots_cache and isinstance(slots_cache, list):
-        ids_only = []
-        for s in slots_cache:
-            if isinstance(s, dict):
-                ids_only.append(s.get("id") or s.get("name"))
-            else:
-                ids_only.append(s)
-        slots_cache = ids_only
-    reroll_cache = globals().get("_shop_reroll_id_cache") or globals().get("_shop_reroll_cache")
-    if reroll_cache and isinstance(reroll_cache, dict):
-        reroll_cache = reroll_cache.get("id") or reroll_cache.get("name")
-    if slots_cache is not None or reroll_cache is not None:
-        data["shop_cache"] = {
-            "slots": slots_cache,
-            "reroll": reroll_cache,
-        }
-    if max_wave_reached is not None:
-        data["max_wave_reached"] = int(max_wave_reached)
-    if baseline_bundle:
-        data["baseline"] = baseline_bundle  # ← survive across Save & Quit
-    global _web_save_cache
-    if IS_WEB:
-        _web_save_cache = copy.deepcopy(data)
-        _store_web_save(_web_save_cache)
-        return
-    try:
-        _atomic_write_json(SAVE_FILE, data)
-    except Exception as e:
-        print("save_progress error:", e)
+    persistence_support.save_progress(_THIS_MODULE, current_level, max_wave_reached, pending_shop)
 
 
 def capture_snapshot(game_state, player, enemies, current_level: int,
                      chosen_enemy_type: str = "basic", bullets: Optional[List['Bullet']] = None) -> dict:
-    """Create a full mid-run snapshot of the current game state."""
-    snap = {
-        "mode": "snapshot",
-        "version": 3,
-        "meta": {
-            "current_level": int(current_level),
-            "chosen_enemy_type": str(chosen_enemy_type or "basic"),
-            "biome": getattr(game_state, "biome_active", globals().get("_next_biome"))
-        },
-        "snapshot": {
-            "player": {"x": float(player.x), "y": float(player.y),
-                       "speed": player.speed, "size": player.size,
-                       "fire_cd": float(getattr(player, "fire_cd", 0.0)),
-                       "hp": int(getattr(player, "hp", PLAYER_MAX_HP)),
-                       "max_hp": int(getattr(player, "max_hp", PLAYER_MAX_HP)),
-                       "hit_cd": float(getattr(player, "hit_cd", 0.0)),
-                       "level": int(getattr(player, "level", 1)),
-                       "xp": int(getattr(player, "xp", 0)),
-                       "bone_plating_hp": int(getattr(player, "bone_plating_hp", 0)),
-                       "bone_plating_cd": float(getattr(player, "_bone_plating_cd", BONE_PLATING_GAIN_INTERVAL)),
-                       "aegis_pulse_cd": float(getattr(player, "_aegis_pulse_cd", 0.0))},
-            "enemies": [{
-                "x": float(z.x), "y": float(z.y),
-                "attack": int(getattr(z, "attack", 10)),
-                "speed": int(getattr(z, "speed", 2)),
-                "type": str(getattr(z, "type", "basic")),
-                "hp": int(getattr(z, "hp", 30)),
-                "max_hp": int(getattr(z, "max_hp", getattr(z, "hp", 30))),
-                "spawn_elapsed": float(getattr(z, "_spawn_elapsed", 0.0)),
-                "attack_timer": float(getattr(z, "attack_timer", 0.0)),
-            } for z in enemies],
-            "obstacles": [{
-                "x": int(ob.rect.x // CELL_SIZE),
-                "y": int((ob.rect.y - INFO_BAR_HEIGHT) // CELL_SIZE),
-                "type": ob.type,
-                "health": None if ob.health is None else int(ob.health),
-                "main": bool(getattr(ob, "is_main_block", False)),
-            } for ob in game_state.obstacles.values()],
-            "items": [{
-                "x": int(it.x),
-                "y": int(it.y),
-                "is_main": bool(it.is_main),
-            } for it in game_state.items],
-            "decorations": [[int(dx), int(dy)] for (dx, dy) in getattr(game_state, "decorations", [])],
-            "bullets": [{
-                "x": float(b.x), "y": float(b.y),
-                "vx": float(b.vx), "vy": float(b.vy),
-                "traveled": float(b.traveled)
-            } for b in (bullets or []) if getattr(b, "alive", True)],
-            "time_left": float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
-        }
-    }
-    return snap
+    return persistence_support.capture_snapshot(
+        _THIS_MODULE,
+        game_state,
+        player,
+        enemies,
+        current_level,
+        chosen_enemy_type,
+        bullets,
+    )
 
 
 def save_snapshot(snapshot: dict) -> None:
-    """Write a snapshot dict to disk."""
-    global _web_save_cache
-    if IS_WEB:
-        _web_save_cache = copy.deepcopy(snapshot)
-        _store_web_save(_web_save_cache)
-        return
-    try:
-        _atomic_write_json(SAVE_FILE, snapshot)
-    except Exception as e:
-        print(f"[Save] Failed to write snapshot: {e}", file=sys.stderr)
+    persistence_support.save_snapshot(_THIS_MODULE, snapshot)
 
 
 def load_save() -> Optional[dict]:
-    """Load either meta or snapshot save; returns dict with 'mode' field or None."""
-    if IS_WEB:
-        global _web_save_cache
-        if isinstance(_web_save_cache, dict):
-            return copy.deepcopy(_web_save_cache)
-        cached = _load_web_save()
-        if isinstance(cached, dict):
-            _web_save_cache = copy.deepcopy(cached)
-            return copy.deepcopy(cached)
-        return None
-    try:
-        if not os.path.exists(SAVE_FILE):
-            return None
-        try:
-            with open(SAVE_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except json.JSONDecodeError as e:
-            print(f"[Save] Failed to read save file: {e}", file=sys.stderr)
-            # move the bad save aside so we don't keep failing
-            try:
-                bad_path = SAVE_FILE + ".bak"
-                shutil.move(SAVE_FILE, bad_path)
-            except Exception:
-                try:
-                    os.remove(SAVE_FILE)
-                except Exception:
-                    pass
-            return None
-        if not isinstance(data, dict):
-            return None
-        # v1 compatibility (no mode)
-        if "mode" not in data:
-            data["mode"] = "meta"
-        # normalize fields
-        if data["mode"] == "meta":
-            data.setdefault("current_level", 0)
-        elif data["mode"] == "snapshot":
-            data.setdefault("meta", {})
-            data["meta"].setdefault("current_level", 0)
-            data["meta"].setdefault("chosen_enemy_type", "basic")
-            data.setdefault("snapshot", {})
-        # --- Hydrate baseline globals so CONTINUE can restore on level entry ---
-        try:
-            b = data.get("baseline")
-            if isinstance(b, dict):
-                if "level" in b:
-                    globals()["_baseline_for_level"] = int(b["level"])
-                if "coins" in b:
-                    globals()["_coins_at_level_start"] = int(b["coins"])
-                if isinstance(b.get("items"), dict):
-                    try:
-                        ib = b.get("items", {})
-                        spawn = int(ib.get("spawned", 0))
-                        collect = int(ib.get("collected", 0))
-                        cnt = ib.get("count_this_level", None)
-                        if cnt is not None:
-                            try:
-                                cnt = int(cnt)
-                            except Exception:
-                                cnt = None
-                        globals()["_items_run_baseline"] = {
-                            "spawned": spawn,
-                            "collected": collect,
-                            "count_this_level": cnt,
-                        }
-                    except Exception:
-                        pass
-                if isinstance(b.get("consumables"), dict):
-                    try:
-                        cb = b.get("consumables", {})
-                        globals()["_consumable_baseline"] = {
-                            "carapace_shield_hp": int(cb.get("carapace_shield_hp", 0)),
-                            "wanted_poster_waves": int(cb.get("wanted_poster_waves", 0)),
-                            "wanted_active": bool(cb.get("wanted_active", False)),
-                        }
-                    except Exception:
-                        pass
-                if isinstance(b.get("player"), dict):
-                    _pbase = dict(b["player"])
-                    # Back-compat: if meta_stats missing, seed from save meta
-                    if "meta_stats" not in _pbase and isinstance(data.get("meta"), dict):
-                        meta = data["meta"]
-                        try:
-                            rng_base = clamp_player_range(_pbase.get("range_base", meta.get("base_range", PLAYER_RANGE_DEFAULT)))
-                            rng_val = clamp_player_range(_pbase.get("range", rng_base))
-                            rng_mult_est = rng_val / rng_base if rng_base else meta.get("range_mult", 1.0)
-                        except Exception:
-                            rng_mult_est = meta.get("range_mult", 1.0)
-                        _pbase["meta_stats"] = {
-                            "dmg": int(meta.get("dmg", 0)),
-                            "firerate_mult": float(meta.get("firerate_mult", 1.0)),
-                            "range_mult": float(meta.get("range_mult", rng_mult_est)),
-                            "speed_mult": float(meta.get("speed_mult", 1.0)),
-                            "crit": float(meta.get("crit", 0.0)),
-                            "maxhp": int(meta.get("maxhp", 0)),
-                        }
-                    globals()["_player_level_baseline"] = _pbase
-        except Exception as e:
-            print(f"[Save] Baseline hydrate failed: {e}", file=sys.stderr)
-        # hydrate shop cache so exiting doesn't reroll offers for free
-        try:
-            cache = data.get("shop_cache")
-            if isinstance(cache, dict):
-                slots = cache.get("slots")
-                reroll = cache.get("reroll")
-                if slots is not None:
-                    globals()["_shop_slot_ids_cache"] = slots
-                if reroll is not None:
-                    globals()["_shop_reroll_id_cache"] = reroll
-                globals()["_resume_shop_cache"] = True
-        except Exception:
-            pass
-        return data
-    except Exception as e:
-        print(f"[Save] Failed to read save file: {e}", file=sys.stderr)
-        return None
+    return persistence_support.load_save(_THIS_MODULE)
 
 
 def _clear_level_start_baseline():
-    globals().pop("_baseline_for_level", None)
-    globals().pop("_coins_at_level_start", None)
-    globals().pop("_coins_at_shop_entry", None)
-    globals().pop("_player_level_baseline", None)
-    globals().pop("_items_run_baseline", None)
-    globals().pop("_consumable_baseline", None)
-    globals().pop("_items_counted_level", None)
-    globals().pop("_restart_from_shop", None)
+    persistence_support.clear_level_start_baseline(_THIS_MODULE)
 
 
 def _capture_level_start_baseline(level_idx: int, player: "Player", game_state: "GameState" | None = None):
-    """Record the exact state the first time we enter this level in this run."""
-    globals()["_baseline_for_level"] = int(level_idx)
-    # Snapshot level-start coins once per level so bandit thefts don't persist across restarts
-    if (globals().get("_baseline_for_level", None) != level_idx
-            or "_coins_at_level_start" not in globals()):
-        globals()["_coins_at_level_start"] = int(META.get("spoils", 0))
-    globals()["_player_level_baseline"] = {
-        "level": int(getattr(player, "level", 1)),
-        "xp": int(getattr(player, "xp", 0)),
-        "xp_to_next": int(getattr(player, "xp_to_next", player_xp_required(1))),
-        # keep these so level-ups during a failed attempt don't carry into restart
-        "bullet_damage": int(getattr(player, "bullet_damage", META.get("base_dmg", 0) + META.get("dmg", 0))),
-        "max_hp": int(getattr(player, "max_hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
-        "hp": int(getattr(player, "hp", META.get("base_maxhp", 0) + META.get("maxhp", 0))),
-        "biome": getattr(game_state, "biome_active", globals().get("_next_biome")),
-        # combat stats that may have been modified by level-up choices
-        "fire_rate_mult": float(getattr(player, "fire_rate_mult", 1.0)),
-        "range": clamp_player_range(getattr(player, "range", PLAYER_RANGE_DEFAULT)),
-        "range_base": clamp_player_range(getattr(player, "range_base", PLAYER_RANGE_DEFAULT)),
-        "crit_chance": float(getattr(player, "crit_chance", CRIT_CHANCE_BASE)),
-        "crit_mult": float(getattr(player, "crit_mult", CRIT_MULT_BASE)),
-        "speed": float(getattr(player, "speed", PLAYER_SPEED)),
-        # snapshot the META stat multipliers so restarts don't re-stack level-up perks
-        "meta_stats": {
-            "dmg": int(META.get("dmg", 0)),
-            "firerate_mult": float(META.get("firerate_mult", 1.0)),
-            "range_mult": float(META.get("range_mult", 1.0)),
-            "speed_mult": float(META.get("speed_mult", 1.0)),
-            "crit": float(META.get("crit", 0.0)),
-            "maxhp": int(META.get("maxhp", 0)),
-        },
-    }
-    try:
-        base_spawn = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
-    except Exception:
-        base_spawn = int(META.get("run_items_spawned", 0))
-    try:
-        base_collect = int(globals().get("_run_items_collected_start", META.get("run_items_collected", 0)))
-    except Exception:
-        base_collect = int(META.get("run_items_collected", 0))
-    lvl_items = None
-    if game_state is not None:
-        try:
-            lvl_items = int(getattr(game_state, "items_total", len(getattr(game_state, "items", []))))
-        except Exception:
-            try:
-                lvl_items = len(getattr(game_state, "items", []))
-            except Exception:
-                lvl_items = None
-    globals()["_items_run_baseline"] = {
-        "spawned": base_spawn,
-        "collected": base_collect,
-        "count_this_level": lvl_items,
-    }
-    # Snapshot consumable props that can be depleted mid-level (e.g., Carapace shield, Wanted Poster charge)
-    globals()["_consumable_baseline"] = {
-        "carapace_shield_hp": int(META.get("carapace_shield_hp", 0)),
-        "wanted_poster_waves": int(META.get("wanted_poster_waves", 0)),
-        "wanted_active": bool(META.get("wanted_active", False)),
-    }
+    persistence_support.capture_level_start_baseline(_THIS_MODULE, level_idx, player, game_state)
 
 
 def _restore_level_start_baseline(level_idx: int, player: "Player", game_state: "GameState"):
-    """Re-entering the same level: restore bank & player progression.
-       If the restart originated from the shop, restore coins to the shop-entry snapshot;
-       otherwise restore to the level-start snapshot as before.
-    """
-    if int(globals().get("_baseline_for_level", -999999)) != int(level_idx):
-        return  # entering a different level → nothing to restore
-    # 1) Coins: prefer shop-entry baseline if we just continue from  the shop
-    # Always restore coins to the LEVEL-START snapshot on any restart.
-    # If it's missing (shouldn't happen), fall back to shop-entry or 0.
-    _ = bool(globals().pop("_restart_from_shop", False))  # still clear the flag
-    if "_coins_at_level_start" in globals():
-        META["spoils"] = int(globals()["_coins_at_level_start"])
-    elif "_coins_at_shop_entry" in globals():
-        META["spoils"] = int(globals()["_coins_at_shop_entry"])
-    else:
-        META["spoils"] = 0
-    # 1.5) Items: restore run-level item counters to the level-start baseline
-    items_base = globals().get("_items_run_baseline", None)
-    if isinstance(items_base, dict):
-        base_spawn = int(items_base.get("spawned", META.get("run_items_spawned", 0)))
-        base_collect = int(items_base.get("collected", META.get("run_items_collected", 0)))
-        lvl_items = items_base.get("count_this_level", None)
-    else:
-        base_spawn = int(globals().get("_run_items_spawned_start", META.get("run_items_spawned", 0)))
-        base_collect = int(globals().get("_run_items_collected_start", META.get("run_items_collected", 0)))
-        lvl_items = None
-    if lvl_items is None:
-        try:
-            lvl_items = int(getattr(game_state, "items_total", len(getattr(game_state, "items", []))))
-        except Exception:
-            try:
-                lvl_items = len(getattr(game_state, "items", []))
-            except Exception:
-                lvl_items = 0
-    try:
-        lvl_items = int(lvl_items)
-    except Exception:
-        lvl_items = 0
-    META["run_items_spawned"] = max(0, int(base_spawn) + max(0, int(lvl_items)))
-    META["run_items_collected"] = max(0, int(base_collect))
-    globals()["_run_items_spawned_start"] = int(base_spawn)
-    globals()["_run_items_collected_start"] = int(base_collect)
-    globals()["_items_counted_level"] = int(level_idx)
-    # 2) Clear per-level counters/state (same as before)
-    if hasattr(game_state, "spoils_gained"):
-        game_state.spoils_gained = 0
-    if hasattr(game_state, "_bandit_stolen"):
-        game_state._bandit_stolen = 0
-    if hasattr(game_state, "level_coin_delta"):
-        game_state.level_coin_delta = 0
-    if hasattr(game_state, "bandit_spawned_this_level"):
-        game_state.bandit_spawned_this_level = False
-    # 3) Restore the player's baseline snapshot (unchanged logic)
-    b = globals().get("_player_level_baseline", None)
-    if isinstance(b, dict):
-        # restore META stat multipliers first, so downstream calculations align with the baseline
-        meta_stats = b.get("meta_stats", {})
-        if not isinstance(meta_stats, dict):
-            # Back-compat: derive a best-effort snapshot from baseline + current META
-            try:
-                rng_base = clamp_player_range(b.get("range_base", getattr(player, "range_base", PLAYER_RANGE_DEFAULT)))
-                rng_val = clamp_player_range(b.get("range", rng_base))
-                rng_mult_est = rng_val / rng_base if rng_base else META.get("range_mult", 1.0)
-            except Exception:
-                rng_mult_est = META.get("range_mult", 1.0)
-            meta_stats = {
-                "dmg": int(META.get("dmg", 0)),
-                "firerate_mult": float(b.get("fire_rate_mult", META.get("firerate_mult", 1.0))),
-                "range_mult": float(META.get("range_mult", rng_mult_est)),
-                "speed_mult": float(META.get("speed_mult", 1.0)),
-                "crit": float(META.get("crit", 0.0)),
-                "maxhp": int(META.get("maxhp", 0)),
-            }
-        for k in ("dmg", "firerate_mult", "range_mult", "speed_mult", "crit", "maxhp"):
-            if k in meta_stats:
-                META[k] = meta_stats[k]
-        player.level = int(b.get("level", 1))
-        player.xp = int(b.get("xp", 0))
-        player.xp_to_next = int(b.get("xp_to_next", player_xp_required(player.level)))
-        player.bullet_damage = int(b.get("bullet_damage", player.bullet_damage))
-        player.max_hp = int(b.get("max_hp", player.max_hp))
-        player.hp = min(player.max_hp, int(b.get("hp", player.max_hp)))
-        player.fire_rate_mult = float(b.get("fire_rate_mult", META.get("firerate_mult", getattr(player, "fire_rate_mult", 1.0))))
-        player.range_base = clamp_player_range(b.get("range_base", getattr(player, "range_base", PLAYER_RANGE_DEFAULT)))
-        # re-derive range from baseline base + current (restored) META multiplier to avoid cumulative drift
-        player.range = compute_player_range(player.range_base, float(META.get("range_mult", 1.0)))
-        player.crit_chance = float(b.get("crit_chance", getattr(player, "crit_chance", CRIT_CHANCE_BASE)))
-        player.crit_mult = float(b.get("crit_mult", getattr(player, "crit_mult", CRIT_MULT_BASE)))
-        player.speed = float(b.get("speed", getattr(player, "speed", PLAYER_SPEED)))
-        # ensure biome is consistent on restore (helps downstream logic that reads game_state.biome_active)
-        if b.get("biome") is not None:
-            game_state.biome_active = b.get("biome")
-        # clean any queued level-up picks on a restart to prevent double-application
-        player.levelup_pending = 0
-    # Restore consumable props to their level-start snapshot so retries don't stay depleted
-    consumables = globals().get("_consumable_baseline")
-    if isinstance(consumables, dict):
-        if "carapace_shield_hp" in consumables:
-            cap_hp = max(0, int(consumables.get("carapace_shield_hp", 0)))
-            META["carapace_shield_hp"] = cap_hp
-            player.carapace_hp = cap_hp
-            player._hud_shield_vis = cap_hp / float(max(1, player.max_hp)) if cap_hp > 0 else 0.0
-        if "wanted_poster_waves" in consumables:
-            META["wanted_poster_waves"] = max(0, int(consumables.get("wanted_poster_waves", 0)))
-        if "wanted_active" in consumables:
-            META["wanted_active"] = bool(consumables.get("wanted_active", False))
-            game_state.wanted_wave_active = bool(META.get("wanted_active", False))
+    persistence_support.restore_level_start_baseline(_THIS_MODULE, level_idx, player, game_state)
 
 
 def has_save() -> bool:
-    if IS_WEB:
-        return isinstance(_web_save_cache, dict) or isinstance(_load_web_save(), dict)
-    return os.path.exists(SAVE_FILE)
+    return persistence_support.has_save(_THIS_MODULE)
 
 
 def clear_save() -> None:
-    global _web_save_cache
-    if IS_WEB:
-        _web_save_cache = None
-        _store_web_save(None)
-        return
-    try:
-        if os.path.exists(SAVE_FILE):
-            os.remove(SAVE_FILE)
-    except Exception as e:
-        print(f"[Save] Failed to delete save file: {e}", file=sys.stderr)
+    persistence_support.clear_save(_THIS_MODULE)
 
 
 # ==================== UI Helpers ====================
@@ -5579,239 +5063,15 @@ async def show_instruction_web(screen):
 
 
 async def show_settings_popup_web(screen, background_surf):
-    global FX_VOLUME, BGM_VOLUME
-    clock = pygame.time.Clock()
-    panel = pygame.Rect(0, 0, min(560, VIEW_W - 60), min(360, VIEW_H - 80))
-    panel.center = (VIEW_W // 2, VIEW_H // 2)
-    title_font = pygame.font.SysFont(None, 48)
-    label_font = pygame.font.SysFont(None, 28)
-    btn_font = pygame.font.SysFont(None, 30)
-    status_font = pygame.font.SysFont("Consolas", 18)
-    fx_val = int(FX_VOLUME)
-    bgm_val = int(BGM_VOLUME)
-    status_msg = ""
-    status_color = (170, 210, 230)
-
-    while True:
-        screen.blit(background_surf, (0, 0))
-        dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 165))
-        screen.blit(dim, (0, 0))
-        pygame.draw.rect(screen, UI_PANEL, panel, border_radius=16)
-        pygame.draw.rect(screen, UI_BORDER, panel, width=3, border_radius=16)
-        title = title_font.render("Settings", True, UI_TEXT)
-        screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 46)))
-
-        info = label_font.render("Web demo settings: audio + save export", True, (180, 215, 235))
-        screen.blit(info, info.get_rect(center=(panel.centerx, panel.top + 88)))
-        if status_msg:
-            status = status_font.render(status_msg[:48], True, status_color)
-            screen.blit(status, status.get_rect(center=(panel.centerx, panel.top + 116)))
-
-        fx_minus = pygame.Rect(panel.left + 54, panel.top + 146, 54, 42)
-        fx_plus = pygame.Rect(panel.right - 108, panel.top + 146, 54, 42)
-        bgm_minus = pygame.Rect(panel.left + 54, panel.top + 222, 54, 42)
-        bgm_plus = pygame.Rect(panel.right - 108, panel.top + 222, 54, 42)
-        export_btn = pygame.Rect(0, 0, 180, 50)
-        close_btn = pygame.Rect(0, 0, 180, 50)
-        export_btn.center = (panel.centerx - 104, panel.bottom - 46)
-        close_btn.center = (panel.centerx + 104, panel.bottom - 46)
-
-        fx_label = label_font.render(f"Effects Volume: {fx_val}", True, UI_TEXT)
-        bgm_label = label_font.render(f"BGM Volume: {bgm_val}", True, UI_TEXT)
-        screen.blit(fx_label, fx_label.get_rect(center=(panel.centerx, fx_minus.centery)))
-        screen.blit(bgm_label, bgm_label.get_rect(center=(panel.centerx, bgm_minus.centery)))
-
-        hover_pos = pygame.mouse.get_pos()
-        for rect, text in (
-            (fx_minus, "-"), (fx_plus, "+"),
-            (bgm_minus, "-"), (bgm_plus, "+"),
-            (export_btn, "Export Save"),
-            (close_btn, "Close"),
-        ):
-            draw_neuro_button(
-                screen, rect, text, btn_font,
-                hovered=rect.collidepoint(hover_pos),
-                disabled=False,
-                t=pygame.time.get_ticks() * 0.001,
-                show_spike=False
-            )
-        pygame.display.flip()
-
-        for event in pygame.event.get():
-            screen = _handle_web_window_event(event) or screen
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                FX_VOLUME = fx_val
-                BGM_VOLUME = bgm_val
-                if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                    _bgm.set_volume(BGM_VOLUME / 100.0)
-                flush_events()
-                return "close"
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if fx_minus.collidepoint(event.pos):
-                    fx_val = max(0, fx_val - 10)
-                    FX_VOLUME = fx_val
-                elif fx_plus.collidepoint(event.pos):
-                    fx_val = min(100, fx_val + 10)
-                    FX_VOLUME = fx_val
-                elif bgm_minus.collidepoint(event.pos):
-                    bgm_val = max(0, bgm_val - 10)
-                    BGM_VOLUME = bgm_val
-                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                        _bgm.set_volume(BGM_VOLUME / 100.0)
-                elif bgm_plus.collidepoint(event.pos):
-                    bgm_val = min(100, bgm_val + 10)
-                    BGM_VOLUME = bgm_val
-                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                        _bgm.set_volume(BGM_VOLUME / 100.0)
-                elif export_btn.collidepoint(event.pos):
-                    ok, msg = export_current_save()
-                    status_msg = msg
-                    status_color = (120, 230, 160) if ok else (255, 150, 150)
-                elif close_btn.collidepoint(event.pos):
-                    FX_VOLUME = fx_val
-                    BGM_VOLUME = bgm_val
-                    if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                        _bgm.set_volume(BGM_VOLUME / 100.0)
-                    flush_events()
-                    return "close"
-        await asyncio.sleep(0)
+    return await screens_support.show_settings_popup_web(_THIS_MODULE, screen, background_surf)
 
 
 async def show_fail_screen(screen, background_surf):
-    dim = pygame.Surface((VIEW_W, VIEW_H))
-    dim.set_alpha(180)
-    dim.fill((0, 0, 0))
-    screen.blit(pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H)), (0, 0))
-    screen.blit(dim, (0, 0))
-    title = pygame.font.SysFont(None, 80).render("YOU WERE CORRUPTED!", True, (255, 60, 60))
-    screen.blit(title, title.get_rect(center=(VIEW_W // 2, 140)))
-    retry = draw_button(screen, "RETRY", (VIEW_W // 2 - 200, 300))
-    home = draw_button(screen, "HOME", (VIEW_W // 2 + 20, 300))
-    pygame.display.flip()
-    start_menu_surf = None
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                bg = pygame.display.get_surface().copy()
-                pick = pause_from_overlay(screen, bg)
-                if pick == "continue":
-                    # Repaint this Fail screen and keep waiting for input
-                    return_to_fail = True
-                    # Re-draw the same Fail UI:
-                    dim = pygame.Surface((VIEW_W, VIEW_H))
-                    dim.set_alpha(180)
-                    dim.fill((0, 0, 0))
-                    screen.blit(pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H)), (0, 0))
-                    screen.blit(dim, (0, 0))
-                    title = pygame.font.SysFont(None, 80).render("YOU WERE CORRUPTED!", True, (255, 60, 60))
-                    screen.blit(title, title.get_rect(center=(VIEW_W // 2, 140)))
-                    retry = draw_button(screen, "RETRY", (VIEW_W // 2 - 200, 300))
-                    home = draw_button(screen, "HOME", (VIEW_W // 2 + 20, 300))
-                    pygame.display.flip()
-                    continue
-                if pick == "home":
-                    queue_menu_transition(pygame.display.get_surface().copy())
-                    start_menu_surf = start_menu_surf or render_start_menu_surface(has_save())
-                    flush_events()
-                    return "home"
-                if pick == "restart":
-                    queue_menu_transition(pygame.display.get_surface().copy())
-                    flush_events()
-                    return "retry"
-                if pick == "exit": pygame.quit(); sys.exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if retry.collidepoint(event.pos):
-                    queue_menu_transition(pygame.display.get_surface().copy())
-                    flush_events()
-                    return "retry"
-                if home.collidepoint(event.pos):
-                    queue_menu_transition(pygame.display.get_surface().copy())
-                    start_menu_surf = start_menu_surf or render_start_menu_surface(has_save())
-                    flush_events()
-                    return "home"
-        if IS_WEB:
-            await asyncio.sleep(0)
+    return await screens_support.show_fail_screen(_THIS_MODULE, screen, background_surf)
 
 
 async def show_success_screen(screen, background_surf, reward_choices):
-    dim = pygame.Surface((VIEW_W, VIEW_H))
-    dim.set_alpha(150)
-    dim.fill((0, 0, 0))
-    screen.blit(pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H)), (0, 0))
-    screen.blit(dim, (0, 0))
-    title = pygame.font.SysFont(None, 80).render("MEMORY RESTORED!", True, (0, 255, 120))
-    screen.blit(title, title.get_rect(center=(VIEW_W // 2, 100)))
-    card_rects = []
-    for i, card in enumerate(reward_choices):
-        x = VIEW_W // 2 - (len(reward_choices) * 140) // 2 + i * 140
-        rect = pygame.Rect(x, 180, 120, 160)
-        pygame.draw.rect(screen, (220, 220, 220), rect)
-        name = pygame.font.SysFont(None, 24).render(card.replace("_", " ").upper(), True, (20, 20, 20))
-        screen.blit(name, name.get_rect(center=(rect.centerx, rect.bottom - 18)))
-        pygame.draw.rect(screen, (40, 40, 40), rect, 3)
-        pygame.draw.rect(screen, (70, 90, 90), rect.inflate(-30, -50))
-        card_rects.append((rect, card))
-    next_btn = draw_button(screen, "CONFIRM", (VIEW_W // 2 - 90, 370))
-    chosen = None
-    pygame.display.flip()
-    start_menu_surf = None
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT: pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                bg = pygame.display.get_surface().copy()
-                pick = pause_from_overlay(screen, bg)  # 只在暂停菜单里设置→返回暂停→继续
-                if pick == "continue":
-                    # —— 重新绘制“成功界面”，而不是失败界面 ——
-                    dim = pygame.Surface((VIEW_W, VIEW_H))
-                    dim.set_alpha(150)
-                    dim.fill((0, 0, 0))
-                    screen.blit(pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H)), (0, 0))
-                    screen.blit(dim, (0, 0))
-                    title = pygame.font.SysFont(None, 80).render("MEMORY RESTORED!", True, (0, 255, 120))
-                    screen.blit(title, title.get_rect(center=(VIEW_W // 2, 100)))
-                    card_rects = []
-                    for i, card in enumerate(reward_choices):
-                        x = VIEW_W // 2 - (len(reward_choices) * 140) // 2 + i * 140
-                        rect = pygame.Rect(x, 180, 120, 160)
-                        pygame.draw.rect(screen, (220, 220, 220), rect)
-                        name = pygame.font.SysFont(None, 24).render(card.replace("_", " ").upper(), True, (20, 20, 20))
-                        screen.blit(name, name.get_rect(center=(rect.centerx, rect.bottom - 18)))
-                        pygame.draw.rect(screen, (40, 40, 40), rect, 3)
-                        pygame.draw.rect(screen, (70, 90, 90), rect.inflate(-30, -50))
-                        card_rects.append((rect, card))
-                    next_btn = draw_button(screen, "CONFIRM", (VIEW_W // 2 - 90, 370))
-                    pygame.display.flip()
-                    continue  # 回到本界面等待点击
-                if pick == "home":
-                    queue_menu_transition(pygame.display.get_surface().copy())
-                    flush_events()
-                    return "home"  # 让上层逻辑去处理“回主页”
-                if pick == "restart":
-                    queue_menu_transition(pygame.display.get_surface().copy())
-                    flush_events()
-                    return "restart"  # 让上层逻辑去处理“重开本关”
-                if pick == "exit":
-                    pygame.quit()
-                    sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                if chosen or len(reward_choices) == 0:
-                    flush_events()
-                    return chosen
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                for rect, card in card_rects:
-                    if rect.collidepoint(event.pos): chosen = card
-                if next_btn.collidepoint(event.pos) and (chosen or len(reward_choices) == 0):
-                    # animation add if needed
-                    flush_events()
-                    return chosen
-        if IS_WEB:
-            await asyncio.sleep(0)
+    return await screens_support.show_success_screen(_THIS_MODULE, screen, background_surf, reward_choices)
 
 
 def show_pause_menu(screen, background_surf):
@@ -6311,253 +5571,7 @@ def levelup_modal(screen, bg_surface, clock, time_left, player):
 
 
 def show_settings_popup(screen, background_surf):
-    """Settings hub with category buttons and rebinding for core controls."""
-    global FX_VOLUME, BGM_VOLUME
-    clock = pygame.time.Clock()
-    dim = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-    dim.fill((0, 0, 0, 170))
-    bg_scaled = pygame.transform.smoothscale(background_surf, (VIEW_W, VIEW_H))
-    panel_w, panel_h = min(520, VIEW_W - 80), min(520, VIEW_H - 160)
-    panel = pygame.Rect(0, 0, panel_w, panel_h)
-    panel.center = (VIEW_W // 2, VIEW_H // 2)
-    title_font = pygame.font.SysFont(None, 56)
-    font = pygame.font.SysFont(None, 26)
-    section_font = pygame.font.SysFont(None, 28, bold=True)
-    btn_font = pygame.font.SysFont(None, 32)
-    status_font = pygame.font.SysFont("Consolas", 18)
-    # working values
-    fx_val = int(FX_VOLUME)
-    bgm_val = int(BGM_VOLUME)
-    dragging = None  # None | "fx" | "bgm"
-    page = "root"  # "root" | "audio" | "controls"
-    waiting_action = None
-    status_msg = ""
-    status_color = (170, 210, 230)
-    ctrl_buttons: list[tuple[pygame.Rect, str]] = []
-
-    control_actions = [
-        ("Move Up", "move_up"),
-        ("Move Left", "move_left"),
-        ("Move Down", "move_down"),
-        ("Move Right", "move_right"),
-        ("Blast", "blast"),
-        ("Teleport", "teleport"),
-    ]
-
-    def draw_slider(label, value, top_y):
-        screen.blit(font.render(f"{label}: {value}", True, UI_TEXT), (panel.left + 40, top_y))
-        bar = pygame.Rect(panel.left + 40, top_y + 24, panel_w - 80, 10)
-        knob_x = bar.x + int((value / 100) * bar.width)
-        pygame.draw.rect(screen, (60, 70, 90), bar, border_radius=6)
-        pygame.draw.circle(screen, UI_ACCENT, (knob_x, bar.y + 5), 8)
-        return bar
-
-    def val_from_bar(bar, mx):
-        return max(0, min(100, int(((mx - bar.x) / max(1, bar.width)) * 100)))
-
-    def draw_root():
-        screen.blit(bg_scaled, (0, 0))
-        screen.blit(dim, (0, 0))
-        pygame.draw.rect(screen, UI_PANEL, panel, border_radius=16)
-        pygame.draw.rect(screen, UI_BORDER, panel, width=3, border_radius=16)
-        title = title_font.render("Settings", True, UI_TEXT)
-        screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 60)))
-        btn_w, btn_h = 220, 56
-        audio_btn = pygame.Rect(0, 0, btn_w, btn_h)
-        ctrl_btn = pygame.Rect(0, 0, btn_w, btn_h)
-        export_btn = pygame.Rect(0, 0, btn_w, btn_h)
-        close_btn = pygame.Rect(0, 0, btn_w, btn_h)
-        audio_btn.center = (panel.centerx, panel.top + 160)
-        ctrl_btn.center = (panel.centerx, panel.top + 230)
-        export_btn.center = (panel.centerx, panel.top + 300)
-        close_btn.center = (panel.centerx, panel.bottom - 60)
-        draw_neuro_button(screen, audio_btn, "Audio", btn_font,
-                          hovered=audio_btn.collidepoint(pygame.mouse.get_pos()),
-                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
-        draw_neuro_button(screen, ctrl_btn, "Controls", btn_font,
-                          hovered=ctrl_btn.collidepoint(pygame.mouse.get_pos()),
-                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
-        draw_neuro_button(screen, export_btn, "Export Save", btn_font,
-                          hovered=export_btn.collidepoint(pygame.mouse.get_pos()),
-                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
-        draw_neuro_button(screen, close_btn, "Close", btn_font,
-                          hovered=close_btn.collidepoint(pygame.mouse.get_pos()),
-                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
-        if status_msg:
-            status = status_font.render(status_msg[:64], True, status_color)
-            screen.blit(status, status.get_rect(center=(panel.centerx, panel.bottom - 110)))
-        pygame.display.flip()
-        return audio_btn, ctrl_btn, export_btn, close_btn
-
-    def draw_audio():
-        screen.blit(bg_scaled, (0, 0))
-        screen.blit(dim, (0, 0))
-        pygame.draw.rect(screen, UI_PANEL, panel, border_radius=16)
-        pygame.draw.rect(screen, UI_BORDER, panel, width=3, border_radius=16)
-        title = title_font.render("Audio", True, UI_TEXT)
-        screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 60)))
-        nonlocal fx_bar, bgm_bar
-        fx_bar = draw_slider("Effects Volume", fx_val, panel.top + 120)
-        bgm_bar = draw_slider("BGM Volume", bgm_val, panel.top + 180)
-        btn_w, btn_h = 180, 52
-        back_btn = pygame.Rect(0, 0, btn_w, btn_h)
-        close_btn = pygame.Rect(0, 0, btn_w, btn_h)
-        back_btn.center = (panel.centerx - 100, panel.bottom - 60)
-        close_btn.center = (panel.centerx + 100, panel.bottom - 60)
-        draw_neuro_button(screen, back_btn, "Back", btn_font,
-                          hovered=back_btn.collidepoint(pygame.mouse.get_pos()),
-                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
-        draw_neuro_button(screen, close_btn, "Save", btn_font,
-                          hovered=close_btn.collidepoint(pygame.mouse.get_pos()),
-                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
-        pygame.display.flip()
-        return back_btn, close_btn
-
-    def draw_controls():
-        screen.blit(bg_scaled, (0, 0))
-        screen.blit(dim, (0, 0))
-        pygame.draw.rect(screen, UI_PANEL, panel, border_radius=16)
-        pygame.draw.rect(screen, UI_BORDER, panel, width=3, border_radius=16)
-        title = title_font.render("Controls", True, UI_TEXT)
-        screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 52)))
-        hint = font.render("Click an action, then press a key to rebind.", True, UI_TEXT)
-        screen.blit(hint, hint.get_rect(center=(panel.centerx, panel.top + 92)))
-        ctrl_buttons.clear()
-        start_y = panel.top + 130
-        row_h = 46
-        btn_w, btn_h = 180, 34
-        for idx, (label, action) in enumerate(control_actions):
-            y = start_y + idx * row_h
-            screen.blit(font.render(label, True, UI_TEXT), (panel.left + 36, y))
-            btn = pygame.Rect(0, 0, btn_w, btn_h)
-            btn.center = (panel.centerx + 80, y + btn_h // 2)
-            ctrl_buttons.append((btn, action))
-            text = "Press a key..." if waiting_action == action else binding_name(action)
-            draw_neuro_button(screen, btn, text, font,
-                              hovered=btn.collidepoint(pygame.mouse.get_pos()),
-                              disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
-        back_btn = pygame.Rect(0, 0, 160, 48)
-        close_btn = pygame.Rect(0, 0, 160, 48)
-        back_btn.center = (panel.centerx - 90, panel.bottom - 60)
-        close_btn.center = (panel.centerx + 90, panel.bottom - 60)
-        draw_neuro_button(screen, back_btn, "Back", btn_font,
-                          hovered=back_btn.collidepoint(pygame.mouse.get_pos()),
-                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
-        draw_neuro_button(screen, close_btn, "Save", btn_font,
-                          hovered=close_btn.collidepoint(pygame.mouse.get_pos()),
-                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
-        pygame.display.flip()
-        return back_btn, close_btn
-
-    # initial draw placeholders
-    fx_bar = bgm_bar = None
-    audio_btn = ctrl_btn = export_btn = close_btn = None
-    while True:
-        if page == "root":
-            audio_btn, ctrl_btn, export_btn, close_btn = draw_root()
-        elif page == "audio":
-            back_btn, close_btn = draw_audio()
-        elif page == "controls":
-            back_btn, close_btn = draw_controls()
-        else:
-            page = "root"
-            continue
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and waiting_action:
-                waiting_action = None
-                continue
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                FX_VOLUME = fx_val
-                BGM_VOLUME = bgm_val
-                if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                    _bgm.set_volume(BGM_VOLUME / 100.0)
-                flush_events()
-                return "close"
-
-            if page == "root":
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    mx, my = event.pos
-                    if audio_btn and audio_btn.collidepoint((mx, my)):
-                        page = "audio"; dragging = None
-                    elif ctrl_btn and ctrl_btn.collidepoint((mx, my)):
-                        page = "controls"; waiting_action = None
-                    elif export_btn and export_btn.collidepoint((mx, my)):
-                        ok, msg = export_current_save()
-                        status_msg = msg
-                        status_color = (120, 230, 160) if ok else (255, 150, 150)
-                    elif close_btn and close_btn.collidepoint((mx, my)):
-                        FX_VOLUME = fx_val; BGM_VOLUME = bgm_val
-                        if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                            _bgm.set_volume(BGM_VOLUME / 100.0)
-                        flush_events()
-                        return "close"
-
-            elif page == "audio":
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    mx, my = event.pos
-                    if fx_bar and fx_bar.collidepoint((mx, my)):
-                        fx_val = val_from_bar(fx_bar, mx)
-                        FX_VOLUME = fx_val
-                        dragging = "fx"
-                    elif bgm_bar and bgm_bar.collidepoint((mx, my)):
-                        bgm_val = val_from_bar(bgm_bar, mx)
-                        BGM_VOLUME = bgm_val
-                        if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                            _bgm.set_volume(BGM_VOLUME / 100.0)
-                        dragging = "bgm"
-                    elif back_btn and back_btn.collidepoint((mx, my)):
-                        page = "root"; dragging = None
-                    elif close_btn and close_btn.collidepoint((mx, my)):
-                        FX_VOLUME = fx_val; BGM_VOLUME = bgm_val
-                        if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                            _bgm.set_volume(BGM_VOLUME / 100.0)
-                        flush_events()
-                        return "close"
-                if event.type == pygame.MOUSEBUTTONUP:
-                    dragging = None
-                if event.type == pygame.MOUSEMOTION and dragging:
-                    mx, my = event.pos
-                    if dragging == "fx" and fx_bar:
-                        fx_val = val_from_bar(fx_bar, mx)
-                        FX_VOLUME = fx_val
-                    elif dragging == "bgm" and bgm_bar:
-                        bgm_val = val_from_bar(bgm_bar, mx)
-                        BGM_VOLUME = bgm_val
-                        if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                            _bgm.set_volume(BGM_VOLUME / 100.0)
-
-            elif page == "controls":
-                if waiting_action and event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        waiting_action = None
-                    else:
-                        set_binding(waiting_action, event.key)
-                        waiting_action = None
-                    continue
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    mx, my = event.pos
-                    clicked_any = False
-                    for rect, action in ctrl_buttons:
-                        if rect.collidepoint((mx, my)):
-                            waiting_action = action
-                            clicked_any = True
-                            break
-                    if clicked_any:
-                        continue
-                    if back_btn and back_btn.collidepoint((mx, my)):
-                        waiting_action = None
-                        page = "root"
-                    elif close_btn and close_btn.collidepoint((mx, my)):
-                        FX_VOLUME = fx_val; BGM_VOLUME = bgm_val
-                        if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
-                            _bgm.set_volume(BGM_VOLUME / 100.0)
-                        flush_events()
-                        return "close"
-
-        clock.tick(60)
+    return screens_support.show_settings_popup(_THIS_MODULE, screen, background_surf)
 
 
 def show_shop_screen(screen) -> Optional[str]:
