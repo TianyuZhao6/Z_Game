@@ -6687,52 +6687,7 @@ class AegisPulseRing:
         return float(self.life0 - self.t)
 
 
-EnemyShot = enemy_projectiles_support.install(_THIS_MODULE)
-
-
-
-class MistShot(EnemyShot):
-    """Mistweaver 专用弹幕：自带半径/颜色，不影响普通 EnemyShot。"""
-
-    def __init__(self, x, y, vx, vy, damage, radius=10, color=None):
-        super().__init__(x, y, vx, vy, damage)
-        self.r = int(radius)
-        self.color = color or HAZARD_STYLES["mist"]["ring"]
-
-
-class DamageText:
-    """世界坐标下的飘字（x,y 为像素，含 INFO_BAR_HEIGHT），按时间上浮并淡出。"""
-
-    def __init__(self, x_px: float, y_px: float, amount: int,
-                 crit: bool = False, kind: str = "hp"):
-        self.x = float(x_px)
-        self.y = float(y_px)
-        if isinstance(amount, (int, float)):
-            self.amount = int(amount)
-        else:
-            self.amount = str(amount)
-        self.crit = bool(crit)
-        self.kind = kind  # "hp"|"shield"
-        self.t = 0.0
-        self.ttl = float(DMG_TEXT_TTL)
-
-    def alive(self) -> bool:
-        return self.t < self.ttl
-
-    def step(self, dt: float):
-        self.t += dt
-
-    def screen_offset_y(self) -> float:
-        # 线性上升
-        return -DMG_TEXT_RISE * (self.t / self.ttl)
-
-    def alpha(self) -> int:
-        # 后段逐渐淡出
-        p = self.t / self.ttl
-        if p <= (1.0 - DMG_TEXT_FADE):
-            return 255
-        tail = (p - (1.0 - DMG_TEXT_FADE)) / max(1e-4, DMG_TEXT_FADE)
-        return max(0, int(255 * (1.0 - tail)))
+EnemyShot, MistShot, DamageText = enemy_projectiles_support.install(_THIS_MODULE)
 
 
 # ==================== 算法函数 ====================

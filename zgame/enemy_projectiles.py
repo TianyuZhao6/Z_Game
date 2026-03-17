@@ -83,5 +83,45 @@ def install(game):
             wy = (self.y - game.INFO_BAR_HEIGHT) / game.CELL_SIZE
             sx, sy = game.iso_world_to_screen(wx, wy, 0.0, camx, camy)
             pygame.draw.circle(screen, self.color, (int(sx), int(sy)), self.r)
-    game.__dict__.update({'EnemyShot': EnemyShot})
-    return EnemyShot
+
+    class MistShot(EnemyShot):
+        """Mistweaver-specific projectile with its own radius and color."""
+
+        def __init__(self, x, y, vx, vy, damage, radius=10, color=None):
+            super().__init__(x, y, vx, vy, damage)
+            self.r = int(radius)
+            self.color = color or game.HAZARD_STYLES["mist"]["ring"]
+
+    class DamageText:
+        """Floating world-space damage text."""
+
+        def __init__(self, x_px: float, y_px: float, amount: int, crit: bool = False, kind: str = "hp"):
+            self.x = float(x_px)
+            self.y = float(y_px)
+            if isinstance(amount, (int, float)):
+                self.amount = int(amount)
+            else:
+                self.amount = str(amount)
+            self.crit = bool(crit)
+            self.kind = kind
+            self.t = 0.0
+            self.ttl = float(game.DMG_TEXT_TTL)
+
+        def alive(self) -> bool:
+            return self.t < self.ttl
+
+        def step(self, dt: float):
+            self.t += dt
+
+        def screen_offset_y(self) -> float:
+            return -game.DMG_TEXT_RISE * (self.t / self.ttl)
+
+        def alpha(self) -> int:
+            p = self.t / self.ttl
+            if p <= 1.0 - game.DMG_TEXT_FADE:
+                return 255
+            tail = (p - (1.0 - game.DMG_TEXT_FADE)) / max(1e-4, game.DMG_TEXT_FADE)
+            return max(0, int(255 * (1.0 - tail)))
+
+    game.__dict__.update({"EnemyShot": EnemyShot, "MistShot": MistShot, "DamageText": DamageText})
+    return EnemyShot, MistShot, DamageText
