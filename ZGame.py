@@ -12,106 +12,32 @@ import shutil
 import copy
 import hashlib
 from datetime import datetime
-try:
-    import numpy as np
-except Exception:
-    np = None
 import colorsys
 from effects import *
 from queue import PriorityQueue
 from collections import deque
 from typing import Dict, List, Set, Tuple, Optional
 
-try:
-    import librosa
-except Exception:
-    librosa = None
-
-IS_WEB = (sys.platform == "emscripten")
-WEB_WINDOW_SIZE = (960, 540)
-WEB_TARGET_FPS = 30
-WEB_FLOW_REFRESH_INTERVAL = 0.60
-WEB_ENEMY_CAP = 10
-_web_keys_down: set[int] = set()
-_web_actions_down: set[str] = set()
-_web_binding_aliases: dict[str, set[str]] = {}
-
-
-def _normalize_web_key_name(name: str | None) -> str:
-    raw = str(name or "").strip().lower()
-    if not raw or raw == "unknown key":
-        return ""
-    raw = raw.replace("keypad ", "kp ")
-    raw = raw.replace("arrowup", "up")
-    raw = raw.replace("arrowdown", "down")
-    raw = raw.replace("arrowleft", "left")
-    raw = raw.replace("arrowright", "right")
-    alias_map = {
-        "return": "enter",
-        "kp enter": "enter",
-        "left shift": "shift",
-        "right shift": "shift",
-        "left ctrl": "ctrl",
-        "right ctrl": "ctrl",
-        "left alt": "alt",
-        "right alt": "alt",
-        "escape": "esc",
-    }
-    return alias_map.get(raw, raw)
-
-
-def _aliases_for_keycode(keycode: int | None) -> set[str]:
-    aliases: set[str] = set()
-    if keycode is None:
-        return aliases
-    try:
-        key_name = _normalize_web_key_name(pygame.key.name(int(keycode)))
-    except Exception:
-        key_name = ""
-    if key_name:
-        aliases.add(key_name)
-        if key_name.startswith("kp "):
-            aliases.add(key_name[3:])
-    return aliases
-
-
-def _aliases_for_event(event) -> set[str]:
-    aliases: set[str] = set()
-    try:
-        aliases.update(_aliases_for_keycode(int(getattr(event, "key", None))))
-    except Exception:
-        pass
-    try:
-        text = str(getattr(event, "unicode", "") or "").strip().lower()
-    except Exception:
-        text = ""
-    if text:
-        aliases.add(_normalize_web_key_name(text))
-    aliases.discard("")
-    return aliases
-
-
-def _refresh_web_binding_aliases() -> None:
-    _web_binding_aliases.clear()
-    for action, keycode in BINDINGS.items():
-        _web_binding_aliases[action] = _aliases_for_keycode(int(keycode))
-
-
-def _event_matches_action(event, action: str) -> bool:
-    if getattr(event, "type", None) not in (pygame.KEYDOWN, pygame.KEYUP):
-        return False
-    key = action_key(action)
-    if key is None:
-        return False
-    try:
-        if int(getattr(event, "key", -1)) == int(key):
-            return True
-    except Exception:
-        pass
-    expected = _web_binding_aliases.get(action) or _aliases_for_keycode(int(key))
-    if not expected:
-        return False
-    return bool(expected & _aliases_for_event(event))
+from zgame.audio_analysis import NeuroMusicVisualizer
+from zgame.browser import (
+    IS_WEB,
+    WEB_ENEMY_CAP,
+    WEB_FLOW_REFRESH_INTERVAL,
+    WEB_INPUT,
+    WEB_TARGET_FPS,
+    WEB_WINDOW_SIZE,
+    get_initial_web_window_size,
+)
+from zgame.paths import (
+    BASE_DIR,
+    EXPORT_DIR,
+    SAVE_DIR,
+    SAVE_FILE,
+    asset_candidates as _asset_candidates,
+    audio_path_variants as _audio_path_variants,
+    expand_audio_candidates as _expand_audio_candidates,
+    first_existing_path as _first_existing_path,
+)
 
 
 def _invalidate_view_caches() -> None:
@@ -147,48 +73,7 @@ def _handle_web_window_event(event) -> pygame.Surface | None:
 
 
 def _sync_web_input_event(event) -> None:
-    if not IS_WEB:
-        return
-    try:
-        if event.type == pygame.KEYDOWN:
-            _web_keys_down.add(int(event.key))
-            for action in BINDINGS:
-                if _event_matches_action(event, action):
-                    _web_actions_down.add(action)
-        elif event.type == pygame.KEYUP:
-            _web_keys_down.discard(int(event.key))
-            for action in tuple(_web_actions_down):
-                if _event_matches_action(event, action):
-                    _web_actions_down.discard(action)
-        else:
-            focus_lost_types = {getattr(pygame, "WINDOWFOCUSLOST", None), getattr(pygame, "WINDOWLEAVE", None)}
-            if event.type in focus_lost_types:
-                _web_keys_down.clear()
-                _web_actions_down.clear()
-    except Exception:
-        pass
-
-
-def _get_initial_web_window_size() -> tuple[int, int]:
-    if IS_WEB:
-        try:
-            import platform as web_platform  # pygbag bridge on web
-            win = getattr(web_platform, "window", None)
-            w = int(getattr(win, "innerWidth", 0) or 0)
-            h = int(getattr(win, "innerHeight", 0) or 0)
-            if w > 0 and h > 0:
-                return max(640, w), max(360, h)
-        except Exception:
-            pass
-    try:
-        info = pygame.display.Info()
-        w = int(getattr(info, "current_w", 0) or 0)
-        h = int(getattr(info, "current_h", 0) or 0)
-    except Exception:
-        w = h = 0
-    if w <= 0 or h <= 0:
-        return WEB_WINDOW_SIZE
-    return max(800, w), max(450, h)
+    WEB_INPUT.sync_event(event, BINDINGS, action_key)
 
 # --- Event queue helper to prevent ghost clicks ---
 def flush_events():
@@ -197,8 +82,7 @@ def flush_events():
     except Exception:
         pass
     if IS_WEB:
-        _web_keys_down.clear()
-        _web_actions_down.clear()
+        WEB_INPUT.clear()
 
 
 # --- UI helper ---
@@ -2816,7 +2700,7 @@ def _refresh_scancodes():
         sc = _compute_scancode(int(keycode))
         if sc is not None:
             BINDING_SCANCODES[action] = sc
-    _refresh_web_binding_aliases()
+    WEB_INPUT.refresh_binding_aliases(BINDINGS)
     # mirror into META for persistence
     META["bindings"] = {k: int(v) for k, v in BINDINGS.items()}
 
@@ -2852,6 +2736,7 @@ def set_binding(action: str, keycode: int) -> None:
         elif action in BINDING_SCANCODES:
             BINDING_SCANCODES.pop(action, None)
         META.setdefault("bindings", {})[action] = int(keycode)
+        WEB_INPUT.refresh_binding_aliases(BINDINGS)
 
 
 def binding_name(action: str) -> str:
@@ -2870,10 +2755,7 @@ def binding_pressed(keys, action: str) -> bool:
     if key is None:
         return False
     if IS_WEB:
-        try:
-            return action in _web_actions_down or int(key) in _web_keys_down
-        except Exception:
-            return False
+        return WEB_INPUT.binding_pressed(action, key)
     pressed = pygame.key.get_pressed()  # ensures we use pygame's full key mapping
     sc = BINDING_SCANCODES.get(action)
     if sc is not None and 0 <= sc < len(pressed) and pressed[sc]:
@@ -2926,56 +2808,12 @@ def is_action_event(event, action: str) -> bool:
     if event.type != pygame.KEYDOWN:
         return False
     if IS_WEB:
-        return _event_matches_action(event, action)
+        return WEB_INPUT.event_matches_action(event, action, action_key)
     return event.key == action_key(action)
 # ==================== Save/Load Helpers ====================
-BASE_DIR = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
-SAVE_DIR = os.path.join(BASE_DIR, "TEMP")
-os.makedirs(SAVE_DIR, exist_ok=True)
-SAVE_FILE = os.path.join(SAVE_DIR, "savegame.json")
-EXPORT_DIR = os.path.join(SAVE_DIR, "exports")
 _shop_sprite_cache: dict[str, pygame.Surface | bool] = {}
 _web_save_cache: Optional[dict] = None
 WEB_SAVE_STORAGE_KEY = "z_game_save_v1"
-
-
-def _project_roots() -> list[str]:
-    roots: list[str] = []
-    for raw in (BASE_DIR, os.getcwd()):
-        if not raw:
-            continue
-        norm = os.path.normpath(raw)
-        if norm not in roots:
-            roots.append(norm)
-        nested = os.path.normpath(os.path.join(norm, "Z_Game"))
-        if nested not in roots:
-            roots.append(nested)
-    return roots
-
-
-def _candidate_paths(*parts: str) -> list[str]:
-    if not parts:
-        return []
-    rel = os.path.normpath(os.path.join(*parts))
-    seen: set[str] = set()
-    candidates: list[str] = []
-    for root in _project_roots():
-        path = os.path.normpath(os.path.join(root, rel))
-        if path not in seen:
-            seen.add(path)
-            candidates.append(path)
-    return candidates
-
-
-def _asset_candidates(*parts: str) -> list[str]:
-    return _candidate_paths("assets", *parts)
-
-
-def _first_existing_path(candidates: list[str]) -> Optional[str]:
-    for path in candidates:
-        if path and os.path.exists(path):
-            return path
-    return None
 
 
 def _web_storage():
@@ -3013,32 +2851,6 @@ def _load_web_save() -> Optional[dict]:
         return data if isinstance(data, dict) else None
     except Exception:
         return None
-
-
-def _audio_path_variants(path: str) -> list[str]:
-    """Prefer .ogg for web, but keep desktop .wav fallback."""
-    if not path:
-        return []
-    root, ext = os.path.splitext(path)
-    ext = ext.lower()
-    if ext == ".ogg":
-        return [path, f"{root}.wav"]
-    if ext == ".wav":
-        return [f"{root}.ogg", path]
-    return [path]
-
-
-def _expand_audio_candidates(candidates: list[str]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for c in candidates:
-        for p in _audio_path_variants(c):
-            if p and p not in seen:
-                seen.add(p)
-                out.append(p)
-    return out
-
-
 def _load_shop_sprite(filename: str, max_size: tuple[int, int],
                       *, allow_upscale: bool = False) -> Optional["pygame.Surface"]:
     """Load and cache a sprite from assets/sprites, scaled to max_size."""
@@ -4249,312 +4061,6 @@ def hex_points_flat(cx: float, cy: float, r: float) -> list[tuple[float, float]]
     return pts
 
 # ==================== NEURO MUSIC VISUALIZATION ====================
-
-class AudioAnalyzer:
-    """
-    Embedded analyzer using librosa to generate spectrogram data for visualization.
-    Refactored from AudioAnalyzer.py for Game integration.
-    Now includes caching to avoid re-analyzing the same BGM file every time.
-    """
-    def __init__(self):
-        self.spectrogram = None
-        self.frequencies_index_ratio = 0
-        self.time_index_ratio = 0
-        self.duration = 0.0
-        self.loaded = False
-        self._fallback_mode = False
-
-    def _get_cache_path(self, filename):
-        """Generate cache file path. Only cache the homepage Intro track to avoid multiple files."""
-        try:
-            name = os.path.basename(filename).lower()
-            if "intro_v0" not in name:
-                return None  # skip caching for non-homepage tracks to avoid extra npz files
-            cache_dir = os.path.join(os.path.dirname(__file__) if "__file__" in globals() else os.getcwd(), "TEMP")
-            os.makedirs(cache_dir, exist_ok=True)
-            return os.path.join(cache_dir, "audio_analysis_intro_v0.npz")
-        except Exception:
-            return None
-
-    def _load_from_cache(self, cache_path):
-        """Load analysis results from cache file."""
-        try:
-            if np is None:
-                return False
-            if not cache_path or not os.path.exists(cache_path):
-                return False
-            data = np.load(cache_path)
-            self.spectrogram = data['spectrogram']
-            self.time_index_ratio = float(data['time_index_ratio'])
-            self.frequencies_index_ratio = float(data['frequencies_index_ratio'])
-            self.duration = float(data['duration'])
-            self.loaded = True
-            print(f"[AudioAnalyzer] Loaded from cache: {cache_path}")
-            return True
-        except Exception as e:
-            print(f"[AudioAnalyzer] Cache load failed: {e}")
-            return False
-
-    def _save_to_cache(self, cache_path):
-        """Save analysis results to cache file."""
-        try:
-            if np is None:
-                return False
-            if not cache_path or self.spectrogram is None:
-                return False
-            np.savez_compressed(
-                cache_path,
-                spectrogram=self.spectrogram,
-                time_index_ratio=self.time_index_ratio,
-                frequencies_index_ratio=self.frequencies_index_ratio,
-                duration=self.duration
-            )
-            print(f"[AudioAnalyzer] Saved to cache: {cache_path}")
-            return True
-        except Exception as e:
-            print(f"[AudioAnalyzer] Cache save failed: {e}")
-            return False
-
-    def load(self, filename):
-        """Load and analyze audio file, using cache if available."""
-        if not filename or not os.path.exists(filename):
-            self.loaded = False
-            self._fallback_mode = True
-            return
-        if IS_WEB or librosa is None or np is None:
-            # Browser build: use lightweight synthetic response instead of librosa analysis.
-            self.loaded = False
-            self.duration = 0.0
-            self._fallback_mode = True
-            return
-        
-        # Try to load from cache first (only for Intro_V0)
-        cache_path = self._get_cache_path(filename)
-        if cache_path and self._load_from_cache(cache_path):
-            self._fallback_mode = False
-            return  # Successfully loaded from cache
-        
-        # Cache miss or invalid - perform analysis
-        try:
-            print(f"[AudioAnalyzer] Analyzing {filename} (this may take a moment)...")
-            # Load with librosa
-            time_series, sample_rate = librosa.load(filename)
-            
-            # STFT -> Spectrogram (Decibels)
-            # Using parameters tuned for visualizer responsiveness
-            stft = np.abs(librosa.stft(time_series, hop_length=512, n_fft=2048*2))
-            self.spectrogram = librosa.amplitude_to_db(stft, ref=np.max)
-            
-            frequencies = librosa.core.fft_frequencies(n_fft=2048*2)
-            times = librosa.core.frames_to_time(np.arange(self.spectrogram.shape[1]), sr=sample_rate, hop_length=512, n_fft=2048*2)
-
-            self.time_index_ratio = len(times) / times[-1] if len(times) > 0 else 0
-            self.frequencies_index_ratio = len(frequencies) / frequencies[-1] if len(frequencies) > 0 else 0
-            self.duration = float(times[-1]) if len(times) > 0 else 0.0
-            self.loaded = True
-            self._fallback_mode = False
-            print(f"[AudioAnalyzer] Analysis complete for {filename}")
-            
-            # Save to cache for next time
-            if cache_path:
-                self._save_to_cache(cache_path)
-        except Exception as e:
-            print(f"[AudioAnalyzer] Failed to analyze {filename}: {e}")
-            self.loaded = False
-            self.duration = 0.0
-            self._fallback_mode = True
-
-    def get_decibel(self, target_time, freq):
-        if self._fallback_mode:
-            # Smooth pseudo-spectrum fallback so the home visualizer still reacts.
-            return -50.0 + 18.0 * math.sin(float(target_time) * 6.0 + float(freq) * 0.012)
-        if not self.loaded or self.spectrogram is None:
-            return -80 # silence
-        
-        # Wrap/guard time so looping BGM stays in-range
-        if self.duration > 0:
-            target_time = target_time % self.duration
-        if target_time < 0:
-            target_time = 0
-        
-        t_idx = int(target_time * self.time_index_ratio)
-        f_idx = int(freq * self.frequencies_index_ratio)
-        
-        # Clamp indices
-        if t_idx < 0: t_idx = 0
-        if t_idx >= self.spectrogram.shape[1]: t_idx = self.spectrogram.shape[1] - 1
-        if f_idx >= self.spectrogram.shape[0]: f_idx = self.spectrogram.shape[0] - 1
-        
-        return self.spectrogram[f_idx][t_idx]
-
-class NeuroMusicVisualizer:
-    """
-    Real-time frequency visualizer in Neuroscape style.
-    Replaces the old 'fake' waveform visualizer.
-    """
-    def __init__(self):
-        self.analyzer = AudioAnalyzer()
-        self.bars = []
-        self.radius = 120
-        self.min_radius = 120
-        self.max_radius = 140
-        self.radius_vel = 0
-        
-        # Visualization Config
-        self.circle_color = (6, 10, 16) # Navy Dark
-        self.poly_color = [70, 230, 255] # Neuro Cyan
-        self.poly_color_default = [70, 230, 255]
-        self.poly_color_bass = [180, 100, 255] # Purple tinge on bass kick
-        
-        # Frequency Bands definition (Hz)
-        if IS_WEB:
-            self.freq_groups = [
-                {"start": 50, "stop": 100, "count": 6},     # Sub Bass
-                {"start": 120, "stop": 250, "count": 12},   # Bass
-                {"start": 251, "stop": 2000, "count": 18},  # Mids
-                {"start": 2001, "stop": 6000, "count": 8}   # Highs
-            ]
-        else:
-            self.freq_groups = [
-                {"start": 50, "stop": 100, "count": 10},    # Sub Bass
-                {"start": 120, "stop": 250, "count": 25},   # Bass
-                {"start": 251, "stop": 2000, "count": 40},  # Mids
-                {"start": 2001, "stop": 6000, "count": 15}  # Highs
-            ]
-        
-        self._init_bars()
-        
-    def _init_bars(self):
-        self.bars = []
-        # Create bar definitions
-        total_bars = sum(g["count"] for g in self.freq_groups)
-        angle_step = 360 / total_bars
-        current_angle = 0
-        
-        for group in self.freq_groups:
-            step = (group["stop"] - group["start"]) / group["count"]
-            rng = group["start"]
-            
-            for _ in range(group["count"]):
-                # Store freq range and current angle for this bar
-                # Use a small range around the center freq for averaging
-                if np is not None:
-                    freq_rng = np.arange(rng, rng + step + 1)
-                else:
-                    freq_rng = list(range(int(rng), int(rng + step) + 1))
-                self.bars.append({
-                    "freq_rng": freq_rng,
-                    "angle": current_angle,
-                    "val": 0.0, # current height/value
-                    "x": 0, "y": 0 # screen pos
-                })
-                rng += step
-                current_angle += angle_step
-
-    def load_music(self, path):
-        if path:
-            self.analyzer.load(path)
-
-    def update(self, dt, music_pos_seconds):
-        if not self.analyzer.loaded and not self.analyzer._fallback_mode:
-            self.radius += (self.min_radius - self.radius) * min(1.0, 6.0 * dt)
-            self.radius_vel *= 0.85
-            for c in range(3):
-                self.poly_color[c] += (self.poly_color_default[c] - self.poly_color[c]) * 4 * dt
-            for bar in self.bars:
-                bar["val"] += (0.0 - bar["val"]) * min(1.0, 10.0 * dt)
-            return
-        
-        # Keep playback position in track range so looping songs stay synced
-        if self.analyzer.duration > 0:
-            music_pos_seconds = music_pos_seconds % self.analyzer.duration
-        elif music_pos_seconds < 0:
-            music_pos_seconds = 0.0
-
-        # 1. Update bars based on spectrogram
-        avg_bass = 0
-        bass_count = 0
-        
-        for i, bar in enumerate(self.bars):
-            # Sample Db
-            db_sum = 0
-            for f in bar["freq_rng"]:
-                db_sum += self.analyzer.get_decibel(music_pos_seconds, f)
-            avg_db = db_sum / len(bar["freq_rng"])
-            
-            # Normalize Db (-80 to 0) to (0 to 1) roughly
-            # Noise floor usually -80db
-            val = (avg_db + 80) / 80.0
-            val = max(0.0, val) # Clamp
-            
-            # Smooth interpolation
-            # Determine target height (scale factor)
-            target = val * 80 # Max extra height 80px
-            
-            # Apply to bar value with smoothing
-            bar["val"] += (target - bar["val"]) * 15 * dt
-            
-            # Track bass for the circle pump effect
-            # First group is sub bass
-            if i < self.freq_groups[0]["count"]:
-                avg_bass += val
-                bass_count += 1
-
-        # 2. Update Central Circle Pump (Bass kick)
-        if bass_count > 0:
-            avg_bass /= bass_count
-        
-        # Threshold for "Beat"
-        bass_trigger = 0.65 
-        
-        if avg_bass > bass_trigger:
-            target_r = self.max_radius + (avg_bass - bass_trigger) * 60
-            self.radius_vel = (target_r - self.radius) * 10
-            # Shift color towards bass color
-            for c in range(3):
-                self.poly_color[c] += (self.poly_color_bass[c] - self.poly_color[c]) * 5 * dt
-        else:
-            self.radius_vel += (self.min_radius - self.radius) * 8 * dt # spring back
-            # Shift color back to default
-            for c in range(3):
-                self.poly_color[c] += (self.poly_color_default[c] - self.poly_color[c]) * 5 * dt
-                
-        self.radius += self.radius_vel * dt
-        
-        # Dampening
-        self.radius_vel *= 0.9
-
-    def draw(self, screen, center_x, center_y):
-        if not self.analyzer.loaded and not self.analyzer._fallback_mode:
-            # Fallback idle animation if no music loaded
-            pygame.draw.circle(screen, self.circle_color, (center_x, center_y), int(self.min_radius), 2)
-            return
-
-        poly_points = []
-        
-        # Calculate vertices
-        for bar in self.bars:
-            # r = base radius + bar height
-            r = self.radius + bar["val"]
-            rad = math.radians(bar["angle"] - 90)
-            
-            x = center_x + math.cos(rad) * r
-            y = center_y + math.sin(rad) * r
-            # Cast to int to avoid pygame rejecting numpy/float coordinate pairs
-            poly_points.append((int(round(x)), int(round(y))))
-            
-        if len(poly_points) > 2:
-            # Clamp colors to valid pygame ints
-            poly_col = tuple(max(0, min(255, int(round(c)))) for c in self.poly_color)
-            circle_col = tuple(max(0, min(255, int(round(c)))) for c in self.circle_color)
-            # Draw the filled shape (Navy background)
-            pygame.draw.polygon(screen, circle_col, poly_points)
-            # Draw the neon outline
-            pygame.draw.polygon(screen, poly_col, poly_points, 3)
-            
-        # Draw inner decorative ring
-        pygame.draw.circle(screen, (30, 40, 50), (center_x, center_y), int(self.radius * 0.8), 1)
-
 # Global Instance
 _neuro_viz = NeuroMusicVisualizer()
 _neuro_viz_loader: threading.Thread | None = None
@@ -6080,8 +5586,11 @@ async def show_settings_popup_web(screen, background_surf):
     title_font = pygame.font.SysFont(None, 48)
     label_font = pygame.font.SysFont(None, 28)
     btn_font = pygame.font.SysFont(None, 30)
+    status_font = pygame.font.SysFont("Consolas", 18)
     fx_val = int(FX_VOLUME)
     bgm_val = int(BGM_VOLUME)
+    status_msg = ""
+    status_color = (170, 210, 230)
 
     while True:
         screen.blit(background_surf, (0, 0))
@@ -6093,15 +5602,20 @@ async def show_settings_popup_web(screen, background_surf):
         title = title_font.render("Settings", True, UI_TEXT)
         screen.blit(title, title.get_rect(center=(panel.centerx, panel.top + 46)))
 
-        info = label_font.render("Web demo settings: audio only", True, (180, 215, 235))
+        info = label_font.render("Web demo settings: audio + save export", True, (180, 215, 235))
         screen.blit(info, info.get_rect(center=(panel.centerx, panel.top + 88)))
+        if status_msg:
+            status = status_font.render(status_msg[:48], True, status_color)
+            screen.blit(status, status.get_rect(center=(panel.centerx, panel.top + 116)))
 
-        fx_minus = pygame.Rect(panel.left + 54, panel.top + 130, 54, 42)
-        fx_plus = pygame.Rect(panel.right - 108, panel.top + 130, 54, 42)
-        bgm_minus = pygame.Rect(panel.left + 54, panel.top + 206, 54, 42)
-        bgm_plus = pygame.Rect(panel.right - 108, panel.top + 206, 54, 42)
+        fx_minus = pygame.Rect(panel.left + 54, panel.top + 146, 54, 42)
+        fx_plus = pygame.Rect(panel.right - 108, panel.top + 146, 54, 42)
+        bgm_minus = pygame.Rect(panel.left + 54, panel.top + 222, 54, 42)
+        bgm_plus = pygame.Rect(panel.right - 108, panel.top + 222, 54, 42)
+        export_btn = pygame.Rect(0, 0, 180, 50)
         close_btn = pygame.Rect(0, 0, 180, 50)
-        close_btn.center = (panel.centerx, panel.bottom - 46)
+        export_btn.center = (panel.centerx - 104, panel.bottom - 46)
+        close_btn.center = (panel.centerx + 104, panel.bottom - 46)
 
         fx_label = label_font.render(f"Effects Volume: {fx_val}", True, UI_TEXT)
         bgm_label = label_font.render(f"BGM Volume: {bgm_val}", True, UI_TEXT)
@@ -6112,6 +5626,7 @@ async def show_settings_popup_web(screen, background_surf):
         for rect, text in (
             (fx_minus, "-"), (fx_plus, "+"),
             (bgm_minus, "-"), (bgm_plus, "+"),
+            (export_btn, "Export Save"),
             (close_btn, "Close"),
         ):
             draw_neuro_button(
@@ -6152,6 +5667,10 @@ async def show_settings_popup_web(screen, background_surf):
                     BGM_VOLUME = bgm_val
                     if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
                         _bgm.set_volume(BGM_VOLUME / 100.0)
+                elif export_btn.collidepoint(event.pos):
+                    ok, msg = export_current_save()
+                    status_msg = msg
+                    status_color = (120, 230, 160) if ok else (255, 150, 150)
                 elif close_btn.collidepoint(event.pos):
                     FX_VOLUME = fx_val
                     BGM_VOLUME = bgm_val
@@ -6805,12 +6324,15 @@ def show_settings_popup(screen, background_surf):
     font = pygame.font.SysFont(None, 26)
     section_font = pygame.font.SysFont(None, 28, bold=True)
     btn_font = pygame.font.SysFont(None, 32)
+    status_font = pygame.font.SysFont("Consolas", 18)
     # working values
     fx_val = int(FX_VOLUME)
     bgm_val = int(BGM_VOLUME)
     dragging = None  # None | "fx" | "bgm"
     page = "root"  # "root" | "audio" | "controls"
     waiting_action = None
+    status_msg = ""
+    status_color = (170, 210, 230)
     ctrl_buttons: list[tuple[pygame.Rect, str]] = []
 
     control_actions = [
@@ -6843,9 +6365,11 @@ def show_settings_popup(screen, background_surf):
         btn_w, btn_h = 220, 56
         audio_btn = pygame.Rect(0, 0, btn_w, btn_h)
         ctrl_btn = pygame.Rect(0, 0, btn_w, btn_h)
+        export_btn = pygame.Rect(0, 0, btn_w, btn_h)
         close_btn = pygame.Rect(0, 0, btn_w, btn_h)
         audio_btn.center = (panel.centerx, panel.top + 160)
         ctrl_btn.center = (panel.centerx, panel.top + 230)
+        export_btn.center = (panel.centerx, panel.top + 300)
         close_btn.center = (panel.centerx, panel.bottom - 60)
         draw_neuro_button(screen, audio_btn, "Audio", btn_font,
                           hovered=audio_btn.collidepoint(pygame.mouse.get_pos()),
@@ -6853,11 +6377,17 @@ def show_settings_popup(screen, background_surf):
         draw_neuro_button(screen, ctrl_btn, "Controls", btn_font,
                           hovered=ctrl_btn.collidepoint(pygame.mouse.get_pos()),
                           disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
+        draw_neuro_button(screen, export_btn, "Export Save", btn_font,
+                          hovered=export_btn.collidepoint(pygame.mouse.get_pos()),
+                          disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
         draw_neuro_button(screen, close_btn, "Close", btn_font,
                           hovered=close_btn.collidepoint(pygame.mouse.get_pos()),
                           disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
+        if status_msg:
+            status = status_font.render(status_msg[:64], True, status_color)
+            screen.blit(status, status.get_rect(center=(panel.centerx, panel.bottom - 110)))
         pygame.display.flip()
-        return audio_btn, ctrl_btn, close_btn
+        return audio_btn, ctrl_btn, export_btn, close_btn
 
     def draw_audio():
         screen.blit(bg_scaled, (0, 0))
@@ -6921,10 +6451,10 @@ def show_settings_popup(screen, background_surf):
 
     # initial draw placeholders
     fx_bar = bgm_bar = None
-    audio_btn = ctrl_btn = close_btn = None
+    audio_btn = ctrl_btn = export_btn = close_btn = None
     while True:
         if page == "root":
-            audio_btn, ctrl_btn, close_btn = draw_root()
+            audio_btn, ctrl_btn, export_btn, close_btn = draw_root()
         elif page == "audio":
             back_btn, close_btn = draw_audio()
         elif page == "controls":
@@ -6954,6 +6484,10 @@ def show_settings_popup(screen, background_surf):
                         page = "audio"; dragging = None
                     elif ctrl_btn and ctrl_btn.collidepoint((mx, my)):
                         page = "controls"; waiting_action = None
+                    elif export_btn and export_btn.collidepoint((mx, my)):
+                        ok, msg = export_current_save()
+                        status_msg = msg
+                        status_color = (120, 230, 160) if ok else (255, 150, 150)
                     elif close_btn and close_btn.collidepoint((mx, my)):
                         FX_VOLUME = fx_val; BGM_VOLUME = bgm_val
                         if "_bgm" in globals() and getattr(_bgm, "set_volume", None):
@@ -16703,7 +16237,7 @@ async def app_main() -> None:
     info = pygame.display.Info()
     # Create the window first (safer on some systems)
     if IS_WEB:
-        web_w, web_h = _get_initial_web_window_size()
+        web_w, web_h = get_initial_web_window_size()
         screen = pygame.display.set_mode((web_w, web_h), pygame.RESIZABLE)
         VIEW_W, VIEW_H = screen.get_size()
     else:
