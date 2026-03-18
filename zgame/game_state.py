@@ -57,6 +57,7 @@ def install(game):
             self._ff_dirty = True
             self._ff_timer = 0.0
             self._ff_tacc = 0.0
+            self.projectiles = []
             self.pending_bullets: List['Bullet'] = []
             self._vuln_mark_cd: float = 0.0
             self.hurricanes: list[dict] = []
