@@ -39,6 +39,7 @@ from zgame import entity_core as entity_core_support
 from zgame import enemy_core as enemy_core_support
 from zgame import enemy_projectiles as enemy_projectiles_support
 from zgame import enemy_subclasses as enemy_subclasses_support
+from zgame import hazards as hazards_support
 from zgame import menu_flow as menu_flow_support
 from zgame import persistence as persistence_support
 from zgame import shop_support
@@ -6285,14 +6286,7 @@ class HealPickup:
         self._update_rect()
 
 
-class AcidPool:
-    def __init__(self, x, y, r, dps, slow_frac, life):
-        self.x, self.y, self.r = x, y, r
-        self.dps, self.slow_frac = dps, slow_frac
-        self.t = life  # remaining time
-
-    def contains(self, px, py):
-        return (px - self.x) ** 2 + (py - self.y) ** 2 <= self.r ** 2
+AcidPool, TelegraphCircle = hazards_support.install(_THIS_MODULE)
 
 
 class GroundSpike:
@@ -6357,15 +6351,6 @@ class PaintTile:
         self._blob_rot = random.uniform(0.0, math.tau)
         self._spark_phase = random.uniform(0.0, math.tau)
         self._static_cache = None
-
-
-class TelegraphCircle:
-    def __init__(self, x, y, r, life, kind="acid", payload=None, color=(255, 60, 60)):
-        self.x, self.y, self.r = x, y, r
-        self.t = life
-        self.kind = kind
-        self.payload = payload or {}
-        self.color = color
 
 
 # ==================== NEW HIGH-FIDELITY COMET SYSTEM ====================
