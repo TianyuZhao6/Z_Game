@@ -1,0 +1,1156 @@
+"""Level and app flow extracted from ZGame.py."""
+from __future__ import annotations
+import asyncio
+import copy
+import math
+import os
+import random
+import sys
+from typing import Dict, List, Optional, Set, Tuple
+import pygame
+
+async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
+    pygame.display.set_caption('Enemy Card Game – Level')
+    screen = pygame.display.get_surface()
+    clock = pygame.time.Clock()
+    game_state = None
+    wanted_active_for_level = False
+    level_idx = int(game.__dict__.get('current_level', 0))
+    if level_idx == 0:
+        game.META['run_items_spawned'] = 0
+        game.META['run_items_collected'] = 0
+    game.__dict__['_run_items_spawned_start'] = int(game.META.get('run_items_spawned', 0))
+    game.__dict__['_run_items_collected_start'] = int(game.META.get('run_items_collected', 0))
+    time_left = float(game.BOSS_TIME_LIMIT) if game.is_boss_level(level_idx) else float(game.LEVEL_TIME_LIMIT)
+    game.__dict__['_time_left_runtime'] = time_left
+    game.__dict__['_coins_at_level_start'] = int(game.META.get('spoils', 0))
+    level_config = game._web_level_config(config)
+    enemy_cap = game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP
+    combat_bgm_started = game.IS_WEB
+    if combat_bgm_started:
+        if not game.IS_WEB:
+            game.play_combat_bgm()
+    elif not game.IS_WEB:
+        game._draw_loading_screen(screen, 'INITIALIZING LEVEL', 'Generating arena and loading gameplay state')
+        pygame.display.flip()
+        await asyncio.sleep(0)
+    spatial = game.SpatialHash(game.SPATIAL_CELL)
+    obstacles, items, player_start, enemy_starts, main_item_list, decorations = game.generate_game_entities(grid_size=game.GRID_SIZE, obstacle_count=level_config['obstacle_count'], item_count=level_config['item_count'], enemy_count=level_config['enemy_count'], main_block_hp=level_config['block_hp'], level_idx=level_idx)
+    if not game.IS_WEB:
+        game._draw_loading_screen(screen, 'INITIALIZING LEVEL', 'Building pathing and entity state')
+        pygame.display.flip()
+        await asyncio.sleep(0)
+    last_counted_level = game.__dict__.get('_items_counted_level')
+    if last_counted_level != level_idx:
+        game.META['run_items_spawned'] = int(game.META.get('run_items_spawned', 0)) + len(items)
+        game.__dict__['_items_counted_level'] = level_idx
+    game.ensure_passage_budget(obstacles, game.GRID_SIZE, player_start)
+    game_state = game.GameState(obstacles, items, main_item_list, decorations)
+    game_state.spatial = spatial
+    game_state.current_level = game.current_level
+    game_state.bandit_spawned_this_level = False
+    wp = int(game.META.get('wanted_poster_waves', 0))
+    if wp > 0:
+        game.META['wanted_poster_waves'] = max(0, wp - 1)
+        game.META['wanted_active'] = True
+        wanted_active_for_level = True
+    else:
+        game.META['wanted_active'] = False
+    game_state.wanted_wave_active = bool(game.META.get('wanted_active', False))
+    level_idx = int(getattr(game_state, 'current_level', 0))
+    time_left = float(game.BOSS_TIME_LIMIT) if game.is_boss_level(level_idx) else float(game.LEVEL_TIME_LIMIT)
+    game.__dict__['_time_left_runtime'] = time_left
+    player = game.Player(player_start, speed=game.PLAYER_SPEED)
+    player.fire_cd = 0.0
+    game.apply_player_carry(player, game.__dict__.get('_carry_player_state'))
+    if int(game.__dict__.get('_baseline_for_level', -1)) == int(game.current_level):
+        baseline = game.__dict__.get('_player_level_baseline', None)
+        if isinstance(baseline, dict) and baseline.get('biome') is not None:
+            game.__dict__['_next_biome'] = baseline.get('biome')
+    game.apply_domain_buffs_for_level(game_state, player)
+    if hasattr(player, 'on_level_start'):
+        player.on_level_start()
+    game.__dict__['_next_biome'] = None
+    turret_level = int(game.META.get('auto_turret_level', 0))
+    turrets: List[game.AutoTurret] = []
+    if turret_level > 0:
+        for i in range(turret_level):
+            angle = 2.0 * math.pi * i / max(1, turret_level)
+            off_x = math.cos(angle) * game.AUTO_TURRET_OFFSET_RADIUS
+            off_y = math.sin(angle) * game.AUTO_TURRET_OFFSET_RADIUS
+            turrets.append(game.AutoTurret(player, (off_x, off_y)))
+    stationary_count = int(game.META.get('stationary_turret_count', 0))
+    added_stationary = False
+    if stationary_count > 0:
+        for _ in range(stationary_count):
+            for _attempt in range(40):
+                gx = random.randrange(game.GRID_SIZE)
+                gy = random.randrange(game.GRID_SIZE)
+                if (gx, gy) in game_state.obstacles:
+                    continue
+                wx = gx * game.CELL_SIZE + game.CELL_SIZE // 2
+                wy = gy * game.CELL_SIZE + game.CELL_SIZE // 2 + game.INFO_BAR_HEIGHT
+                turret = game.StationaryTurret(wx, wy)
+                turrets.append(turret)
+                game_state.obstacles[gx, gy] = game.StationaryTurretObstacle(turret.rect)
+                added_stationary = True
+                break
+    if added_stationary and hasattr(game_state, 'mark_nav_dirty'):
+        game_state.mark_nav_dirty()
+    game_state.turrets = turrets
+    ztype_map = {'enemy_fast': 'fast', 'enemy_tank': 'tank', 'enemy_strong': 'strong', 'basic': 'basic'}
+    zt = ztype_map.get(chosen_enemy_type, 'basic')
+    enemies = [game.Enemy(pos, speed=game.ENEMY_SPEED, ztype=zt) for pos in enemy_starts]
+    bullets: List[game.Bullet] = []
+    enemy_shots: List[game.EnemyShot] = []
+    spawn_timer = 0.0
+    wave_index = 0
+
+    def player_center():
+        return (player.x + player.size / 2, player.y + player.size / 2 + game.INFO_BAR_HEIGHT)
+
+    def pick_enemy_type_weighted():
+        table = [('basic', 50), ('fast', 15), ('tank', 10), ('ranged', 12), ('suicide', 8), ('buffer', 3), ('shielder', 2)]
+        r = random.uniform(0, sum((w for _, w in table)))
+        acc = 0
+        for t, w in table:
+            acc += w
+            if r <= acc:
+                return t
+        return 'basic'
+
+    def find_spawn_positions(n: int) -> List[Tuple[int, int]]:
+        all_pos = [(x, y) for x in range(game.GRID_SIZE) for y in range(game.GRID_SIZE)]
+        blocked = set(game_state.obstacles.keys()) | set(((i.x, i.y) for i in game_state.items))
+        px, py = player.pos
+        cand = [p for p in all_pos if p not in blocked and abs(p[0] - px) + abs(p[1] - py) >= 6]
+        random.shuffle(cand)
+        zcells = {(int((z.x + z.size // 2) // game.CELL_SIZE), int((z.y + z.size // 2) // game.CELL_SIZE)) for z in enemies}
+        out = []
+        for p in cand:
+            if p in zcells:
+                continue
+            out.append(p)
+            if len(out) >= n:
+                break
+        return out
+
+    def find_target():
+        px, py = (player.rect.centerx, player.rect.centery)
+        pgx = int(px // game.CELL_SIZE)
+        pgy = int((py - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
+        force_blocks = []
+        for gp, ob in game_state.obstacles.items():
+            if getattr(ob, 'type', '') != 'Destructible':
+                continue
+            gx, gy = gp
+            manh = abs(gx - pgx) + abs(gy - pgy)
+            if manh <= int(game.PLAYER_BLOCK_FORCE_RANGE_TILES):
+                cx, cy = (ob.rect.centerx, ob.rect.centery)
+                d2 = (cx - px) ** 2 + (cy - py) ** 2
+                force_blocks.append((d2, ('block', gp, ob, cx, cy)))
+        if force_blocks:
+            force_blocks.sort(key=lambda t: t[0])
+            best_tuple = force_blocks[0][1]
+            d = force_blocks[0][0] ** 0.5
+            return (best_tuple, d)
+        cur_range = game.clamp_player_range(getattr(player, 'range', game.PLAYER_RANGE_DEFAULT))
+        R2 = cur_range ** 2
+        z_cands = []
+        for z in enemies:
+            cx, cy = (z.rect.centerx, z.rect.centery)
+            d2 = (cx - px) ** 2 + (cy - py) ** 2
+            if d2 <= R2:
+                z_cands.append((z, cx, cy, d2))
+        b_cands = []
+        for gp, ob in game_state.obstacles.items():
+            if getattr(ob, 'type', '') != 'Destructible':
+                continue
+            cx, cy = (ob.rect.centerx, ob.rect.centery)
+            d2 = (cx - px) ** 2 + (cy - py) ** 2
+            if d2 <= R2:
+                b_cands.append((gp, ob, cx, cy, d2))
+        if not z_cands and (not b_cands):
+            return (None, None)
+        DIST_K = 0.0001
+        W_ENEMY = 1200.0
+        W_BLOCK = 800.0
+        best = None
+        best_score = -1e+18
+        for z, cx, cy, d2 in z_cands:
+            s = -d2 * DIST_K + W_ENEMY
+            if s > best_score:
+                best_score = s
+                best = ('enemy', None, z, cx, cy, d2)
+        for gp, ob, cx, cy, d2 in b_cands:
+            s = -d2 * DIST_K + W_BLOCK
+            if s > best_score:
+                best_score = s
+                best = ('block', gp, ob, cx, cy, d2)
+        if best is None:
+            return (None, None)
+        kind, gp_or_none, obj, cx, cy, d2 = best
+        return ((kind, gp_or_none, obj, cx, cy), d2 ** 0.5)
+    if int(game.__dict__.get('_baseline_for_level', -999)) == int(game.current_level) and '_consumable_baseline' not in game.__dict__:
+        game.__dict__['_consumable_baseline'] = {'carapace_shield_hp': int(game.META.get('carapace_shield_hp', 0)), 'wanted_poster_waves': int(game.META.get('wanted_poster_waves', 0)), 'wanted_active': bool(game.META.get('wanted_active', False))}
+    if int(game.__dict__.get('_baseline_for_level', -999)) != int(game.current_level):
+        game._capture_level_start_baseline(game.current_level, player, game_state)
+    else:
+        game._restore_level_start_baseline(game.current_level, player, game_state)
+    spawned = game.spawn_wave_with_budget(game_state, player, game.current_level, wave_index, enemies, enemy_cap)
+    if spawned > 0:
+        wave_index += 1
+        game.__dict__['_max_wave_reached'] = max(game.__dict__.get('_max_wave_reached', 0), wave_index)
+    player._hit_flash = 0.0
+    player._flash_prev_hp = int(player.hp)
+    for z in enemies:
+        z._hit_flash = 0.0
+        z._flash_prev_hp = int(getattr(z, 'hp', 0))
+    running = True
+    game_result = None
+    last_frame = None
+    clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60)
+    entry_freeze = 0.4
+    while running:
+        dt = clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60) / 1000.0
+        if entry_freeze > 0:
+            entry_freeze = max(0.0, entry_freeze - dt)
+            for event in pygame.event.get():
+                screen = game._handle_web_window_event(event) or screen
+                game._sync_web_input_event(event)
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+            game.update_hit_flash_timer(player, dt)
+            for z in enemies:
+                game.update_hit_flash_timer(z, dt)
+            last_frame = game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=game_state.obstacles)
+            if game.IS_WEB:
+                if not combat_bgm_started:
+                    await asyncio.sleep(0)
+                    game.play_combat_bgm()
+                    combat_bgm_started = True
+                    game._resume_bgm_if_needed(min_interval_s=0.0)
+                await asyncio.sleep(0)
+            continue
+        pf = getattr(game_state, 'pending_focus', None)
+        if pf:
+            fkind, (fx, fy) = pf
+            game.play_focus_cinematic_iso(screen, clock, game_state, player, enemies, bullets, enemy_shots, (fx, fy), label='BANDIT!' if fkind == 'bandit' else 'BOSS!')
+            game_state.pending_focus = None
+        fq = getattr(game_state, 'focus_queue', None)
+        if fq:
+            if fq[0][0] == 'boss':
+                boss_targets = []
+                while fq and fq[0][0] == 'boss':
+                    _, pos = fq.pop(0)
+                    boss_targets.append(pos)
+                game.play_focus_chain_iso(screen, clock, game_state, player, enemies, bullets, enemy_shots, boss_targets)
+            else:
+                tag, pos = fq.pop(0)
+                lbl = 'COIN BANDIT!' if tag == 'bandit' else None
+                game.play_focus_cinematic_iso(screen, clock, game_state, player, enemies, bullets, enemy_shots, pos, label=lbl, return_to_player=True)
+        time_left -= dt
+        game.__dict__['_time_left_runtime'] = time_left
+        if time_left <= 0:
+            game_result = 'success' if 'game_result' in locals() else 'success'
+            running = False
+        spawn_timer += dt
+        if spawn_timer >= game.SPAWN_INTERVAL:
+            spawn_timer = 0.0
+            if len(enemies) < enemy_cap:
+                spawned = game.spawn_wave_with_budget(game_state, player, game.current_level, wave_index, enemies, enemy_cap)
+                if spawned > 0:
+                    wave_index += 1
+                    game.__dict__['_max_wave_reached'] = max(game.__dict__.get('_max_wave_reached', 0), wave_index)
+        for event in pygame.event.get():
+            screen = game._handle_web_window_event(event) or screen
+            game._sync_web_input_event(event)
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if game.is_action_event(event, 'blast') and getattr(player, 'targeting_skill', None) == 'blast':
+                player.targeting_skill = None
+                player.skill_target_origin = None
+                continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_t:
+                game.activate_ultimate_mode(player, game_state)
+            if game.is_action_event(event, 'teleport') and getattr(player, 'targeting_skill', None) == 'teleport':
+                player.targeting_skill = None
+                player.skill_target_origin = None
+                continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, 'targeting_skill', None):
+                player.targeting_skill = None
+                continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                bg = last_frame or game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=game_state.obstacles)
+                choice, time_left = game.pause_game_modal(screen, bg, clock, time_left, player)
+                if choice == 'continue':
+                    pass
+                elif choice == 'restart':
+                    game.queue_menu_transition(pygame.display.get_surface().copy())
+                    return ('restart', config.get('reward', None), bg)
+                elif choice == 'home':
+                    game.queue_menu_transition(pygame.display.get_surface().copy())
+                    game.__dict__['_carry_player_state'] = game.capture_player_carry(player)
+                    game.save_progress(current_level=game.current_level, max_wave_reached=wave_index)
+                    game.__dict__['_skip_intro_once'] = True
+                    return ('home', config.get('reward', None), bg)
+                elif choice == 'exit':
+                    game.save_progress(current_level=game.current_level, max_wave_reached=wave_index)
+                    return ('exit', config.get('reward', None), bg)
+            if game.is_action_event(event, 'blast'):
+                if getattr(player, 'blast_cd', 0.0) <= 0.0:
+                    player.targeting_skill = 'blast'
+                    player.skill_target_origin = None
+                    game._update_skill_target(player, game_state)
+                else:
+                    player.skill_flash['blast'] = 0.35
+            if game.is_action_event(event, 'teleport'):
+                if getattr(player, 'teleport_cd', 0.0) <= 0.0:
+                    player.targeting_skill = 'teleport'
+                    player.skill_target_origin = None
+                    game._update_skill_target(player, game_state)
+                else:
+                    player.skill_flash['teleport'] = 0.35
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and getattr(player, 'targeting_skill', None):
+                game._update_skill_target(player, game_state)
+                if player.targeting_skill == 'blast':
+                    if player.skill_target_valid and game._cast_fixed_point_blast(player, game_state, enemies, player.skill_target_pos):
+                        player.blast_cd = float(game.BLAST_COOLDOWN)
+                        player.targeting_skill = None
+                    else:
+                        player.skill_flash['blast'] = 0.35
+                elif player.targeting_skill == 'teleport':
+                    if player.skill_target_valid and game._teleport_player_to(player, game_state, player.skill_target_pos):
+                        player.teleport_cd = float(game.TELEPORT_COOLDOWN)
+                        player.targeting_skill = None
+                        player.skill_target_origin = None
+                    else:
+                        player.skill_flash['teleport'] = 0.35
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and getattr(player, 'targeting_skill', None):
+                player.targeting_skill = None
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, 'targeting_skill', None):
+                player.targeting_skill = None
+        if getattr(player, 'targeting_skill', None):
+            game._update_skill_target(player, game_state)
+        keys = pygame.key.get_pressed()
+        player.slow_t = max(0.0, getattr(player, 'slow_t', 0.0) - dt)
+        game_state.update_telegraphs(dt)
+        game_state.update_acids(dt, player)
+        if not game.IS_WEB:
+            game_state.update_enemy_paint(dt, player)
+            game_state.update_vulnerability_marks(enemies, dt)
+            game_state.update_hurricanes(dt, player, enemies, bullets, enemy_shots)
+        player.move(keys, game_state.obstacles, dt)
+        game_state.fx.update(dt)
+        game_state.update_comet_blasts(dt, player, enemies)
+        game_state.update_camera_shake(dt)
+        ptile = (int(player.rect.centerx // game.CELL_SIZE), int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE))
+        game_state.refresh_flow_field(ptile, dt)
+        game_state.collect_item(player.rect)
+        game_state.update_spoils(dt, player)
+        for z in enemies:
+            got = game_state.collect_spoils_for_enemy(z)
+            if got > 0:
+                z.add_spoils(got)
+            z._gold_glow_t = max(0.0, getattr(z, '_gold_glow_t', 0.0) - dt)
+        game_state.collect_spoils(player.rect)
+        game_state.update_heals(dt)
+        if not game.IS_WEB:
+            game_state.update_damage_texts(dt)
+            game_state.update_aegis_pulses(dt, player, enemies)
+        game_state.collect_heals(player)
+        player.update_bone_plating(dt)
+        player.blast_cd = max(0.0, getattr(player, 'blast_cd', 0.0) - dt)
+        player.teleport_cd = max(0.0, getattr(player, 'teleport_cd', 0.0) - dt)
+        player.skill_flash['blast'] = max(0.0, float(player.skill_flash.get('blast', 0.0)) - dt)
+        player.skill_flash['teleport'] = max(0.0, float(player.skill_flash.get('teleport', 0.0)) - dt)
+        if player.acid_dot_timer > 0.0:
+            player.acid_dot_timer = max(0.0, player.acid_dot_timer - dt)
+            player._acid_dot_accum += player.acid_dot_dps * dt
+            whole = int(player._acid_dot_accum)
+            if whole > 0:
+                game_state.damage_player(player, whole)
+                player._acid_dot_accum -= whole
+            if player.acid_dot_timer <= 0.0:
+                player.acid_dot_dps = 0.0
+        player.update_bone_plating(dt)
+        game.tick_aegis_pulse(player, game_state, enemies, dt)
+        while getattr(player, 'levelup_pending', 0) > 0:
+            bg = last_frame or game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles)
+            time_left = game.levelup_modal(screen, bg, clock, time_left, player)
+            player.levelup_pending -= 1
+            last_frame = game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles)
+        player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
+        target, dist = find_target()
+        if target and player.fire_cd <= 0 and (dist is None or dist <= player.range):
+            _, gp, ob_or_z, cx, cy = target
+            px, py = player_center()
+            dx, dy = (cx - px, cy - py)
+            L = (dx * dx + dy * dy) ** 0.5 or 1.0
+            vx, vy = (dx / L * game.BULLET_SPEED, dy / L * game.BULLET_SPEED)
+            b = game.Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage)
+            b.pierce_left = int(getattr(player, 'bullet_pierce', 0))
+            b.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
+            bullets.append(b)
+            player.fire_cd += player.fire_cooldown()
+        for t in getattr(game_state, 'turrets', []):
+            t.update(dt, game_state, enemies, bullets)
+        if getattr(game_state, 'spatial', None):
+            game_state.spatial_query_radius = max(game.CELL_SIZE, int(game.clamp_player_range(getattr(player, 'range', game.PLAYER_RANGE_DEFAULT)) or game.PLAYER_RANGE_DEFAULT))
+            game_state.spatial.rebuild(enemies)
+        for b in list(bullets):
+            b.update(dt, game_state, enemies, player)
+            if not b.alive:
+                bullets.remove(b)
+        player.hit_cd = max(0.0, player.hit_cd - dt)
+        if getattr(game_state, 'pending_bullets', None):
+            bullets.extend(game_state.pending_bullets)
+            game_state.pending_bullets.clear()
+        for enemy in list(enemies):
+            enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
+            if player.hit_cd <= 0.0 and game.circle_touch(enemy, player):
+                mult = getattr(game_state, 'biome_enemy_contact_mult', 1.0)
+                base_mult = getattr(enemy, 'contact_damage_mult', 1.0)
+                paint_mult = getattr(enemy, '_paint_contact_mult', 1.0)
+                dmg_mult = base_mult * paint_mult
+                dmg = int(round(game.ENEMY_CONTACT_DAMAGE * max(1.0, mult) * max(0.1, dmg_mult)))
+                game_state.damage_player(player, dmg)
+                player.hit_cd = float(game.PLAYER_HIT_COOLDOWN)
+                if player.hp <= 0:
+                    game_result = 'fail'
+                    running = False
+                    break
+        if not game.IS_WEB:
+            game_state.update_ground_spikes(dt, player, enemies)
+            game_state.update_curing_paint(dt, player, enemies)
+        if not game.IS_WEB:
+            game_state.update_dot_rounds(enemies, dt)
+        for z in list(enemies):
+            z.update_special(dt, player, enemies, enemy_shots, game_state)
+            if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
+                z._death_processed = True
+                game.increment_kill_count()
+                game._bandit_death_notice(z, game_state)
+                if getattr(z, '_comet_death', False) and (not getattr(z, '_comet_fx_done', False)):
+                    z._comet_fx_done = True
+                    if hasattr(game_state, 'comet_corpses'):
+                        body_size = max(int(z.rect.w), int(z.rect.h))
+                        game_state.comet_corpses.append(game.CometCorpse(z.rect.centerx, z.rect.centery, getattr(z, 'color', (255, 60, 60)), body_size))
+                if getattr(z, 'is_boss', False) and getattr(z, 'twin_id', None) is not None:
+                    game.trigger_twin_enrage(z, enemies, game_state)
+                total_drop = int(game.SPOILS_PER_KILL) + int(getattr(z, 'spoils', 0))
+                if total_drop > 0:
+                    game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
+                if getattr(z, 'is_boss', False):
+                    for _ in range(game.BOSS_HEAL_POTIONS):
+                        game_state.spawn_heal(z.rect.centerx, z.rect.centery, game.HEAL_POTION_AMOUNT)
+                elif random.random() < game.HEAL_DROP_CHANCE_ENEMY:
+                    game_state.spawn_heal(z.rect.centerx, z.rect.centery, game.HEAL_POTION_AMOUNT)
+                if not getattr(z, '_xp_awarded', False):
+                    try:
+                        player.add_xp(int(getattr(z, 'spoils', 0)) * int(game.Z_SPOIL_XP_BONUS_PER))
+                        setattr(z, '_xp_awarded', True)
+                    except Exception:
+                        pass
+                game.transfer_xp_to_neighbors(z, enemies)
+                enemies.remove(z)
+        for es in list(enemy_shots):
+            es.update(dt, player, game_state)
+            if not es.alive:
+                enemy_shots.remove(es)
+        game.update_hit_flash_timer(player, dt)
+        for z in enemies:
+            game.update_hit_flash_timer(z, dt)
+        if game_state.ghosts:
+            game_state.ghosts[:] = [g for g in game_state.ghosts if g.update(dt)]
+        boss_now = game._find_current_boss(enemies)
+        if boss_now and getattr(boss_now, 'type', '') == 'boss_mist':
+            if not getattr(game_state, 'fog_on', False):
+                game_state.enable_fog_field()
+        elif getattr(game_state, 'fog_on', False):
+            game_state.disable_fog_field()
+        if player.hp <= 0:
+            game_result = 'fail'
+            running = False
+            if game.USE_ISO:
+                last_frame = game.render_game_iso(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots, obstacles=obstacles)
+            else:
+                last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
+            continue
+        if game.USE_ISO:
+            last_frame = game.render_game_iso(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots, obstacles)
+        else:
+            last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
+        if game_result == 'success':
+            game.__dict__['_last_spoils'] = getattr(game_state, 'spoils_gained', 0)
+            game.__dict__['_carry_player_state'] = game.capture_player_carry(player)
+        if game.IS_WEB:
+            await asyncio.sleep(0)
+    return (game_result, config.get('reward', None), last_frame)
+
+async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], pygame.Surface]:
+    """Resume a game from a snapshot in save_data; same return contract as main_run_level."""
+    assert save_data.get('mode') == 'snapshot'
+    meta = save_data.get('meta', {})
+    snap = save_data.get('snapshot', {})
+    level_idx = int(meta.get('current_level', game.current_level))
+    obstacles: Dict[Tuple[int, int], game.Obstacle] = {}
+    stationary_from_save: List[game.StationaryTurret] = []
+    for o in snap.get('obstacles', []):
+        typ = o.get('type', 'Indestructible')
+        x, y = (int(o.get('x', 0)), int(o.get('y', 0)))
+        if typ == 'StationaryTurret':
+            cx = x * game.CELL_SIZE + game.CELL_SIZE // 2
+            cy = y * game.CELL_SIZE + game.CELL_SIZE // 2 + game.INFO_BAR_HEIGHT
+            turret = game.StationaryTurret(cx, cy)
+            stationary_from_save.append(turret)
+            ob = game.StationaryTurretObstacle(turret.rect)
+        elif o.get('main', False):
+            ob = game.MainBlock(x, y, health=o.get('health', game.MAIN_BLOCK_HEALTH))
+        else:
+            ob = game.Obstacle(x, y, typ, health=o.get('health', None))
+        obstacles[x, y] = ob
+    items = [game.Item(int(it.get('x', 0)), int(it.get('y', 0)), bool(it.get('is_main', False))) for it in snap.get('items', [])]
+    decorations = [tuple(d) for d in snap.get('decorations', [])]
+    game_state = game.GameState(obstacles, items, [(i.x, i.y) for i in items if getattr(i, 'is_main', False)], decorations)
+    game_state.current_level = level_idx
+    p = snap.get('player', {})
+    player = game.Player((0, 0), speed=int(p.get('speed', game.PLAYER_SPEED)))
+    player.x = float(p.get('x', 0.0))
+    player.y = float(p.get('y', 0.0))
+    player.rect.x = int(player.x)
+    player.rect.y = int(player.y) + game.INFO_BAR_HEIGHT
+    player.fire_cd = float(p.get('fire_cd', 0.0))
+    player.max_hp = int(p.get('max_hp', game.PLAYER_MAX_HP))
+    player.hp = int(p.get('hp', game.PLAYER_MAX_HP))
+    player.hit_cd = float(p.get('hit_cd', 0.0))
+    player.level = int(p.get('level', 1))
+    player.xp = int(p.get('xp', 0))
+    player.xp_to_next = game.player_xp_required(player.level)
+    player.bone_plating_hp = int(p.get('bone_plating_hp', 0))
+    player._bone_plating_cd = float(p.get('bone_plating_cd', game.BONE_PLATING_GAIN_INTERVAL))
+    player._bone_plating_glow = 0.0
+    player.aegis_pulse_level = int(meta.get('aegis_pulse_level', game.META.get('aegis_pulse_level', 0)))
+    if player.aegis_pulse_level > 0:
+        _, _, cd = game.aegis_pulse_stats(player.aegis_pulse_level, player.max_hp)
+        player._aegis_pulse_cd = float(p.get('aegis_pulse_cd', cd))
+    else:
+        player._aegis_pulse_cd = 0.0
+    if not hasattr(player, 'fire_cd'):
+        player.fire_cd = 0.0
+    player._hit_flash = 0.0
+    player._flash_prev_hp = int(player.hp)
+    turret_level = int(meta.get('auto_turret_level', game.META.get('auto_turret_level', 0)))
+    turrets: List[game.AutoTurret | game.StationaryTurret] = []
+    if turret_level > 0:
+        for i in range(turret_level):
+            angle = 2.0 * math.pi * i / max(1, turret_level)
+            off_x = math.cos(angle) * game.AUTO_TURRET_OFFSET_RADIUS
+            off_y = math.sin(angle) * game.AUTO_TURRET_OFFSET_RADIUS
+            turrets.append(game.AutoTurret(player, (off_x, off_y)))
+    turrets.extend(stationary_from_save)
+    stationary_count = int(meta.get('stationary_turret_count', 0))
+    added_stationary = False
+    remaining = max(0, stationary_count - len(stationary_from_save))
+    if remaining > 0:
+        for _ in range(remaining):
+            for _attempt in range(40):
+                gx = random.randrange(game.GRID_SIZE)
+                gy = random.randrange(game.GRID_SIZE)
+                if (gx, gy) in game_state.obstacles:
+                    continue
+                wx = gx * game.CELL_SIZE + game.CELL_SIZE // 2
+                wy = gy * game.CELL_SIZE + game.CELL_SIZE // 2 + game.INFO_BAR_HEIGHT
+                turret = game.StationaryTurret(wx, wy)
+                turrets.append(turret)
+                game_state.obstacles[gx, gy] = game.StationaryTurretObstacle(turret.rect)
+                added_stationary = True
+                break
+    if (added_stationary or stationary_from_save) and hasattr(game_state, 'mark_nav_dirty'):
+        game_state.mark_nav_dirty()
+    game_state.turrets = turrets
+    enemies: List[game.Enemy] = []
+    for z in snap.get('enemies', []):
+        zobj = game.Enemy((0, 0), attack=int(z.get('attack', game.ENEMY_ATTACK)), speed=int(z.get('speed', game.ENEMY_SPEED)), ztype=z.get('type', 'basic'), hp=int(z.get('hp', 30)))
+        zobj.max_hp = int(z.get('max_hp', int(z.get('hp', 30))))
+        zobj.x = float(z.get('x', 0.0))
+        zobj.y = float(z.get('y', 0.0))
+        zobj.rect.x = int(zobj.x)
+        zobj.rect.y = int(zobj.y) + game.INFO_BAR_HEIGHT
+        zobj._spawn_elapsed = float(z.get('spawn_elapsed', 0.0))
+        zobj.attack_timer = float(z.get('attack_timer', 0.0))
+        zobj.speed = min(game.ENEMY_SPEED_MAX, max(1, int(zobj.speed)))
+        zobj._hit_flash = 0.0
+        zobj._flash_prev_hp = int(zobj.hp)
+        enemies.append(zobj)
+    bullets: List[game.Bullet] = []
+    for b in snap.get('bullets', []):
+        bobj = game.Bullet(float(b.get('x', 0.0)), float(b.get('y', 0.0)), float(b.get('vx', 0.0)), float(b.get('vy', 0.0)), game.clamp_player_range(getattr(player, 'range', game.PLAYER_RANGE_DEFAULT)))
+        bobj.traveled = float(b.get('traveled', 0.0))
+        bobj.pierce_left = int(getattr(player, 'bullet_pierce', 0))
+        bobj.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
+        bullets.append(bobj)
+    enemy_shots: List[game.EnemyShot] = []
+    time_left = float(snap.get('time_left', game.LEVEL_TIME_LIMIT))
+    game.__dict__['_time_left_runtime'] = time_left
+    screen = pygame.display.get_surface()
+    clock = pygame.time.Clock()
+    running = True
+    last_frame = None
+    chosen_enemy_type = meta.get('chosen_enemy_type', 'basic')
+    enemy_cap = game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP
+    spawn_timer = 0.0
+    wave_index = 0
+
+    def player_center():
+        return (player.x + player.size / 2, player.y + player.size / 2 + game.INFO_BAR_HEIGHT)
+
+    def find_target():
+        px, py = (player.rect.centerx, player.rect.centery)
+        pgx = int(px // game.CELL_SIZE)
+        pgy = int((py - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
+        force_blocks = []
+        for gp, ob in game_state.obstacles.items():
+            if getattr(ob, 'type', '') != 'Destructible':
+                continue
+            gx, gy = gp
+            manh = abs(gx - pgx) + abs(gy - pgy)
+            if manh <= int(game.PLAYER_BLOCK_FORCE_RANGE_TILES):
+                cx, cy = (ob.rect.centerx, ob.rect.centery)
+                d2 = (cx - px) ** 2 + (cy - py) ** 2
+                force_blocks.append((d2, ('block', gp, ob, cx, cy)))
+        if force_blocks:
+            force_blocks.sort(key=lambda t: t[0])
+            best_tuple = force_blocks[0][1]
+            d = force_blocks[0][0] ** 0.5
+            return (best_tuple, d)
+        cur_range = game.clamp_player_range(getattr(player, 'range', game.PLAYER_RANGE_DEFAULT))
+        R2 = cur_range ** 2
+        z_cands = []
+        for z in enemies:
+            cx, cy = (z.rect.centerx, z.rect.centery)
+            d2 = (cx - px) ** 2 + (cy - py) ** 2
+            if d2 <= R2:
+                z_cands.append((z, cx, cy, d2))
+        b_cands = []
+        for gp, ob in game_state.obstacles.items():
+            if getattr(ob, 'type', '') != 'Destructible':
+                continue
+            cx, cy = (ob.rect.centerx, ob.rect.centery)
+            d2 = (cx - px) ** 2 + (cy - py) ** 2
+            if d2 <= R2:
+                b_cands.append((gp, ob, cx, cy, d2))
+        if not z_cands and (not b_cands):
+            return (None, None)
+        DIST_K = 0.0001
+        W_ENEMY = 1200.0
+        W_BLOCK = 800.0
+        best = None
+        best_score = -1e+18
+        for z, cx, cy, d2 in z_cands:
+            s = -d2 * DIST_K + W_ENEMY
+            if s > best_score:
+                best_score = s
+                best = ('enemy', None, z, cx, cy, d2)
+        for gp, ob, cx, cy, d2 in b_cands:
+            s = -d2 * DIST_K + W_BLOCK
+            if s > best_score:
+                best_score = s
+                best = ('block', gp, ob, cx, cy, d2)
+        if best is None:
+            return (None, None)
+        kind, gp_or_none, obj, cx, cy, d2 = best
+        return ((kind, gp_or_none, obj, cx, cy), d2 ** 0.5)
+    player._hit_flash = 0.0
+    player._flash_prev_hp = int(player.hp)
+    for z in enemies:
+        z._hit_flash = 0.0
+        z._flash_prev_hp = int(getattr(z, 'hp', 0))
+    while running:
+        dt = clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60) / 1000.0
+        time_left -= dt
+        game.__dict__['_time_left_runtime'] = time_left
+        if time_left <= 0:
+            chosen = await game.show_success_screen(screen, last_frame or game.render_game(screen, game_state, player, enemies, bullets, enemy_shots), reward_choices=[])
+            return ('success', None, last_frame or screen.copy())
+        for event in pygame.event.get():
+            screen = game._handle_web_window_event(event) or screen
+            game._sync_web_input_event(event)
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if game.is_action_event(event, 'blast') and getattr(player, 'targeting_skill', None) == 'blast':
+                player.targeting_skill = None
+                continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_t:
+                game.activate_ultimate_mode(player, game_state)
+            if game.is_action_event(event, 'teleport') and getattr(player, 'targeting_skill', None) == 'teleport':
+                player.targeting_skill = None
+                continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, 'targeting_skill', None):
+                player.targeting_skill = None
+                continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                bg = last_frame or game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=game_state.obstacles)
+                choice, time_left = game.pause_game_modal(screen, bg, clock, time_left, player)
+                if choice == 'continue':
+                    pass
+                elif choice == 'restart':
+                    game.queue_menu_transition(pygame.display.get_surface().copy())
+                    return ('restart', None, bg)
+                elif choice == 'home':
+                    game.queue_menu_transition(pygame.display.get_surface().copy())
+                    snap2 = game.capture_snapshot(game_state, player, enemies, level_idx, chosen_enemy_type, bullets)
+                    game.save_snapshot(snap2)
+                    game.__dict__['_skip_intro_once'] = True
+                    return ('home', None, bg)
+                elif choice == 'exit':
+                    game.save_progress(current_level=level_idx, max_wave_reached=wave_index)
+                    return ('exit', None, bg)
+            if game.is_action_event(event, 'blast'):
+                if getattr(player, 'blast_cd', 0.0) <= 0.0:
+                    player.targeting_skill = 'blast'
+                    game._update_skill_target(player, game_state)
+                else:
+                    player.skill_flash['blast'] = 0.35
+            if game.is_action_event(event, 'teleport'):
+                if getattr(player, 'teleport_cd', 0.0) <= 0.0:
+                    player.targeting_skill = 'teleport'
+                    game._update_skill_target(player, game_state)
+                else:
+                    player.skill_flash['teleport'] = 0.35
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and getattr(player, 'targeting_skill', None):
+                game._update_skill_target(player, game_state)
+                if player.targeting_skill == 'blast':
+                    if player.skill_target_valid and game._cast_fixed_point_blast(player, game_state, enemies, player.skill_target_pos):
+                        player.blast_cd = float(game.BLAST_COOLDOWN)
+                        player.targeting_skill = None
+                    else:
+                        player.skill_flash['blast'] = 0.35
+                elif player.targeting_skill == 'teleport':
+                    if player.skill_target_valid and game._teleport_player_to(player, game_state, player.skill_target_pos):
+                        player.teleport_cd = float(game.TELEPORT_COOLDOWN)
+                        player.targeting_skill = None
+                    else:
+                        player.skill_flash['teleport'] = 0.35
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and getattr(player, 'targeting_skill', None):
+                player.targeting_skill = None
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, 'targeting_skill', None):
+                player.targeting_skill = None
+        if getattr(player, 'targeting_skill', None):
+            game._update_skill_target(player, game_state)
+        keys = pygame.key.get_pressed()
+        player.slow_t = max(0.0, getattr(player, 'slow_t', 0.0) - dt)
+        game_state.update_telegraphs(dt)
+        game_state.update_acids(dt, player)
+        if not game.IS_WEB:
+            game_state.update_enemy_paint(dt, player)
+            game_state.update_vulnerability_marks(enemies, dt)
+        player.move(keys, game_state.obstacles, dt)
+        game_state.fx.update(dt)
+        game_state.update_comet_blasts(dt, player, enemies)
+        game_state.update_camera_shake(dt)
+        game_state.collect_item(player.rect)
+        game_state.update_spoils(dt, player)
+        game_state.collect_spoils(player.rect)
+        game_state.update_heals(dt)
+        if not game.IS_WEB:
+            game_state.update_damage_texts(dt)
+            game_state.update_aegis_pulses(dt, player, enemies)
+        game_state.collect_heals(player)
+        game.tick_aegis_pulse(player, game_state, enemies, dt)
+        player.blast_cd = max(0.0, getattr(player, 'blast_cd', 0.0) - dt)
+        player.teleport_cd = max(0.0, getattr(player, 'teleport_cd', 0.0) - dt)
+        player.skill_flash['blast'] = max(0.0, float(player.skill_flash.get('blast', 0.0)) - dt)
+        player.skill_flash['teleport'] = max(0.0, float(player.skill_flash.get('teleport', 0.0)) - dt)
+        player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
+        target, dist = find_target()
+        if target and player.fire_cd <= 0 and (dist is None or dist <= player.range):
+            _, gp, ob_or_z, cx, cy = target
+            px, py = player_center()
+            dx, dy = (cx - px, cy - py)
+            L = (dx * dx + dy * dy) ** 2 ** 0.5 if False else (dx * dx + dy * dy) ** 0.5
+            L = L or 1.0
+            vx, vy = (dx / L * game.BULLET_SPEED, dy / L * game.BULLET_SPEED)
+            b = game.Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage)
+            b.pierce_left = int(getattr(player, 'bullet_pierce', 0))
+            b.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
+            bullets.append(b)
+            player.fire_cd += player.fire_cooldown()
+        for t in getattr(game_state, 'turrets', []):
+            t.update(dt, game_state, enemies, bullets)
+        for b in list(bullets):
+            b.update(dt, game_state, enemies, player)
+            if not b.alive:
+                bullets.remove(b)
+        spawn_timer += dt
+        if spawn_timer >= game.SPAWN_INTERVAL:
+            spawn_timer = 0.0
+            if len(enemies) < enemy_cap:
+                spawned = game.spawn_wave_with_budget(game_state, player, level_idx, wave_index, enemies, enemy_cap)
+                if spawned > 0:
+                    wave_index += 1
+                    game.__dict__['_max_wave_reached'] = max(game.__dict__.get('_max_wave_reached', 0), wave_index)
+        player.hit_cd = max(0.0, player.hit_cd - dt)
+        pgx = int(player.rect.centerx // game.CELL_SIZE)
+        pgy = int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
+        game_state.refresh_flow_field((pgx, pgy), dt)
+        for enemy in list(enemies):
+            enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
+            if player.hit_cd <= 0.0 and game.circle_touch(enemy, player):
+                mult = getattr(game_state, 'biome_enemy_contact_mult', 1.0)
+                base_mult = getattr(enemy, 'contact_damage_mult', 1.0)
+                paint_mult = getattr(enemy, '_paint_contact_mult', 1.0)
+                dmg_mult = base_mult * paint_mult
+                dmg = int(round(game.ENEMY_CONTACT_DAMAGE * max(1.0, mult) * max(0.1, dmg_mult)))
+                game_state.damage_player(player, dmg)
+                player.hit_cd = float(game.PLAYER_HIT_COOLDOWN)
+                if player.hp <= 0:
+                    game.clear_save()
+                    bg = game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=game_state.obstacles)
+                    last_frame = bg.copy()
+                    action = await game.show_fail_screen(screen, bg)
+                    if action == 'home':
+                        game.clear_save()
+                        game.flush_events()
+                        return ('home', None, last_frame or screen.copy())
+                    elif action == 'retry':
+                        game.clear_save()
+                        game.flush_events()
+                        return ('restart', None, last_frame or screen.copy())
+        if not game.IS_WEB:
+            game_state.update_ground_spikes(dt, player, enemies)
+            game_state.update_curing_paint(dt, player, enemies)
+        if not game.IS_WEB:
+            game_state.update_dot_rounds(enemies, dt)
+        for z in list(enemies):
+            z.update_special(dt, player, enemies, enemy_shots, game_state)
+            if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
+                z._death_processed = True
+                game.increment_kill_count()
+                game._bandit_death_notice(z, game_state)
+                if getattr(z, '_comet_death', False) and (not getattr(z, '_comet_fx_done', False)):
+                    z._comet_fx_done = True
+                    if hasattr(game_state, 'comet_corpses'):
+                        body_size = max(int(z.rect.w), int(z.rect.h))
+                        game_state.comet_corpses.append(game.CometCorpse(z.rect.centerx, z.rect.centery, getattr(z, 'color', (255, 60, 60)), body_size))
+                total_drop = int(game.SPOILS_PER_KILL) + int(getattr(z, 'spoils', 0))
+                if total_drop > 0:
+                    game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
+                if getattr(z, 'is_boss', False):
+                    for _ in range(game.BOSS_HEAL_POTIONS):
+                        game_state.spawn_heal(z.rect.centerx, z.rect.centery, game.HEAL_POTION_AMOUNT)
+                elif random.random() < game.HEAL_DROP_CHANCE_ENEMY:
+                    game_state.spawn_heal(z.rect.centerx, z.rect.centery, game.HEAL_POTION_AMOUNT)
+                try:
+                    player.add_xp(int(getattr(z, 'spoils', 0)) * int(game.Z_SPOIL_XP_BONUS_PER))
+                except Exception:
+                    pass
+                game.transfer_xp_to_neighbors(z, enemies)
+                enemies.remove(z)
+        for es in list(enemy_shots):
+            es.update(dt, player, game_state)
+            if not es.alive:
+                enemy_shots.remove(es)
+        game.update_hit_flash_timer(player, dt)
+        for z in enemies:
+            game.update_hit_flash_timer(z, dt)
+        if player.hp <= 0:
+            game.clear_save()
+            action = await game.show_fail_screen(screen, last_frame or game.render_game(screen, game_state, player, enemies, bullets, enemy_shots))
+            if action == 'home':
+                game.clear_save()
+                game.flush_events()
+                return ('home', None, last_frame or screen.copy())
+            elif action == 'retry':
+                game.clear_save()
+                game.flush_events()
+                return ('restart', None, last_frame or screen.copy())
+        if game.USE_ISO:
+            last_frame = game.render_game_iso(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
+        else:
+            last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
+        if game.IS_WEB:
+            await asyncio.sleep(0)
+    return ('home', None, last_frame or screen.copy())
+
+async def app_main(game) -> None:
+    os.environ['SDL_VIDEO_CENTERED'] = '0'
+    os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0'
+    pygame.init()
+    info = pygame.display.Info()
+    if game.IS_WEB:
+        web_w, web_h = game.get_initial_web_window_size()
+        screen = pygame.display.set_mode((web_w, web_h), pygame.RESIZABLE)
+        game.VIEW_W, game.VIEW_H = screen.get_size()
+    else:
+        screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
+        game.VIEW_W, game.VIEW_H = (info.current_w, info.current_h)
+    pygame.display.set_caption(game.GAME_TITLE)
+    game.resize_world_to_view()
+    try:
+        game.play_intro_bgm()
+    except Exception as e:
+        print(f'[Audio] background music not started: {e}')
+    if not game.IS_WEB:
+        screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
+        pygame.display.set_caption(game.GAME_TITLE)
+        game.VIEW_W, game.VIEW_H = (info.current_w, info.current_h)
+    game.resize_world_to_view()
+    game.flush_events()
+    selection = await game.show_start_menu(screen)
+    if not selection:
+        sys.exit()
+    mode, save_data = selection
+    if mode == 'continue' and save_data:
+        if save_data:
+            game._load_meta_from_save(save_data)
+            game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
+            game.__dict__['_pending_shop'] = bool(save_data.get('pending_shop', False))
+            game.__dict__['_next_biome'] = save_data.get('biome')
+        else:
+            game.__dict__['_carry_player_state'] = None
+        if save_data.get('mode') == 'snapshot':
+            meta = save_data.get('meta', {})
+            game.current_level = int(meta.get('current_level', 0))
+            game.__dict__['_next_biome'] = save_data.get('biome')
+        else:
+            game.current_level = int(save_data.get('current_level', 0))
+    else:
+        game.clear_save()
+        game.reset_run_state()
+        game.current_level = 0
+        game.__dict__['_carry_player_state'] = None
+        game.__dict__['_pending_shop'] = False
+        game.__dict__.pop('_last_spoils', None)
+        game.__dict__.pop('_next_biome', None)
+        game.__dict__.pop('_last_biome', None)
+    START_IN_SHOP_FOR_TEST = False
+    if START_IN_SHOP_FOR_TEST:
+        game.__dict__['_pending_shop'] = True
+    while True:
+        if game.__dict__.get('_pending_shop', False):
+            game.META['spoils'] += int(game.__dict__.pop('_last_spoils', 0))
+            game.__dict__['_coins_at_shop_entry'] = int(game.META.get('spoils', 0))
+            action = game.show_shop_screen(screen)
+            game.__dict__['_pending_shop'] = False
+            if action in (None,):
+                game.__dict__['_pending_shop'] = False
+                game.current_level += 1
+                game.__dict__.pop('_coins_at_level_start', None)
+                game.__dict__.pop('_coins_at_shop_entry', None)
+                game.save_progress(game.current_level)
+            elif action == 'home':
+                game.save_progress(game.current_level, pending_shop=True)
+                game.flush_events()
+                selection = await game.show_start_menu(screen, skip_intro=True)
+                if not selection:
+                    sys.exit()
+                mode, save_data = selection
+                if mode == 'continue' and save_data:
+                    game._load_meta_from_save(save_data)
+                    game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
+                    game.__dict__['_pending_shop'] = bool(save_data.get('pending_shop', False))
+                    game.__dict__['_next_biome'] = save_data.get('biome')
+                    game.current_level = int(save_data.get('current_level', 0))
+                else:
+                    game.clear_save()
+                    game.reset_run_state()
+                    game.current_level = 0
+                    game.__dict__['_carry_player_state'] = None
+                    game.__dict__['_pending_shop'] = False
+                    game.__dict__.pop('_last_spoils', None)
+                    game.__dict__.pop('_next_biome', None)
+                    game.__dict__.pop('_last_biome', None)
+                    game.__dict__.pop('_last_biome', None)
+                    game.__dict__.pop('_next_biome', None)
+                continue
+            elif action == 'restart':
+                game.META['spoils'] = int(game.__dict__.get('_coins_at_level_start', game.META.get('spoils', 0)))
+                game.__dict__.pop('_last_spoils', None)
+                game.flush_events()
+                continue
+            elif action == 'exit':
+                game.save_progress(game.current_level, pending_shop=True)
+                pygame.quit()
+                sys.exit()
+        config = game.get_level_config(game.current_level)
+        chosen_enemy = 'basic'
+        if '_coins_at_level_start' not in game.__dict__:
+            game.__dict__['_coins_at_level_start'] = int(game.META.get('spoils', 0))
+        if game.__dict__.get('_menu_transition_frame') is None:
+            game.flush_events()
+        result, reward, bg = await game.main_run_level(config, chosen_enemy)
+        if result == 'restart':
+            game.META['spoils'] = int(game.__dict__.get('_coins_at_level_start', game.META.get('spoils', 0)))
+            game.META['run_items_spawned'] = int(game.__dict__.get('_run_items_spawned_start', game.META.get('run_items_spawned', 0)))
+            game.META['run_items_collected'] = int(game.__dict__.get('_run_items_collected_start', game.META.get('run_items_collected', 0)))
+            cb = game.__dict__.get('_consumable_baseline', {})
+            if isinstance(cb, dict):
+                game.META['carapace_shield_hp'] = int(cb.get('carapace_shield_hp', game.META.get('carapace_shield_hp', 0)))
+                game.META['wanted_poster_waves'] = int(cb.get('wanted_poster_waves', game.META.get('wanted_poster_waves', 0)))
+                game.META['wanted_active'] = bool(cb.get('wanted_active', False))
+            game.__dict__.pop('_items_counted_level', None)
+            game.__dict__.pop('_last_spoils', None)
+            game.flush_events()
+            continue
+        if result == 'home':
+            game.flush_events()
+            selection = await game.show_start_menu(screen, skip_intro=True)
+            if not selection:
+                sys.exit()
+            mode, save_data = selection
+            if mode == 'continue' and save_data:
+                if save_data:
+                    game._load_meta_from_save(save_data)
+                    game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
+                    game.__dict__['_next_biome'] = save_data.get('biome')
+                else:
+                    game.__dict__['_carry_player_state'] = None
+                if save_data.get('mode') == 'snapshot':
+                    meta = save_data.get('meta', {})
+                    game.current_level = int(meta.get('current_level', 0))
+                    game.__dict__['_next_biome'] = save_data.get('biome')
+                else:
+                    game.current_level = int(save_data.get('current_level', 0))
+                game.__dict__['_pending_shop'] = bool(save_data.get('pending_shop', False))
+            else:
+                game.clear_save()
+                game.reset_run_state()
+                game.current_level = 0
+                game.__dict__['_carry_player_state'] = None
+                game.__dict__['_pending_shop'] = False
+                game.__dict__.pop('_last_spoils', None)
+            continue
+        if result == 'exit':
+            pygame.quit()
+            sys.exit()
+        if result == 'fail':
+            game.clear_save()
+            action = await game.show_fail_screen(screen, bg)
+            game.flush_events()
+            if action == 'home':
+                game.__dict__['_carry_player_state'] = None
+                selection = await game.show_start_menu(screen, skip_intro=True)
+                if not selection:
+                    sys.exit()
+                mode, save_data = selection
+                game.clear_save()
+                game.reset_run_state()
+                game.current_level = 0
+                continue
+            else:
+                cb = game.__dict__.get('_consumable_baseline', {})
+                if isinstance(cb, dict):
+                    game.META['carapace_shield_hp'] = int(cb.get('carapace_shield_hp', game.META.get('carapace_shield_hp', 0)))
+                    game.META['wanted_poster_waves'] = int(cb.get('wanted_poster_waves', game.META.get('wanted_poster_waves', 0)))
+                    game.META['wanted_active'] = bool(cb.get('wanted_active', False))
+                continue
+        elif result == 'success':
+            game.META['spoils'] += int(game.__dict__.get('_last_spoils', 0))
+            game.__dict__['_last_spoils'] = 0
+            action = await game.show_success_screen(screen, bg, [])
+            if action == 'home':
+                game.flush_events()
+                selection = await game.show_start_menu(screen, skip_intro=True)
+                if not selection:
+                    sys.exit()
+                mode, save_data = selection
+                if mode == 'continue' and save_data:
+                    if save_data:
+                        game._load_meta_from_save(save_data)
+                        game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
+                        game.__dict__['_next_biome'] = save_data.get('biome')
+                    else:
+                        game.__dict__['_carry_player_state'] = None
+                    if save_data.get('mode') == 'snapshot':
+                        meta = save_data.get('meta', {})
+                        game.current_level = int(meta.get('current_level', 0))
+                    else:
+                        game.current_level = int(save_data.get('current_level', 0))
+                    game.__dict__['_pending_shop'] = bool(save_data.get('pending_shop', False))
+                else:
+                    game.clear_save()
+                    game.reset_run_state()
+                    game.current_level = 0
+                    game.__dict__['_carry_player_state'] = None
+                    game.__dict__['_pending_shop'] = False
+                    game.__dict__.pop('_last_spoils', None)
+                continue
+            if action in ('restart', 'retry'):
+                game.META['spoils'] = int(game.__dict__.get('_coins_at_level_start', game.META.get('spoils', 0)))
+                game.__dict__.pop('_last_spoils', None)
+                game.flush_events()
+                continue
+            game.__dict__['_coins_at_shop_entry'] = int(game.META.get('spoils', 0))
+            action = game.show_shop_screen(screen)
+            if action == 'home':
+                game.save_progress(game.current_level, pending_shop=True)
+                game.flush_events()
+                selection = await game.show_start_menu(screen, skip_intro=True)
+                if not selection:
+                    sys.exit()
+                mode, save_data = selection
+                if mode == 'continue' and save_data:
+                    if save_data:
+                        game._load_meta_from_save(save_data)
+                        game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
+                    else:
+                        game.__dict__['_carry_player_state'] = None
+                    if save_data.get('mode') == 'snapshot':
+                        meta = save_data.get('meta', {})
+                        game.current_level = int(meta.get('current_level', 0))
+                    else:
+                        game.current_level = int(save_data.get('current_level', 0))
+                    game.__dict__['_pending_shop'] = bool(save_data.get('pending_shop', False))
+                else:
+                    game.clear_save()
+                    game.reset_run_state()
+                    game.current_level = 0
+                    game.__dict__['_carry_player_state'] = None
+                    game.__dict__['_pending_shop'] = False
+                    game.__dict__.pop('_next_biome', None)
+                    game.__dict__.pop('_last_biome', None)
+                continue
+            elif action in ('restart', 'retry'):
+                game.META['spoils'] = int(game.__dict__.get('_coins_at_shop_entry', game.META.get('spoils', 0)))
+                game.META['run_items_spawned'] = int(game.__dict__.get('_run_items_spawned_start', game.META.get('run_items_spawned', 0)))
+                game.META['run_items_collected'] = int(game.__dict__.get('_run_items_collected_start', game.META.get('run_items_collected', 0)))
+                game.__dict__.pop('_items_counted_level', None)
+                game.__dict__.pop('_last_spoils', None)
+                continue
+            elif action == 'exit':
+                game.save_progress(game.current_level, pending_shop=True)
+                pygame.quit()
+                sys.exit()
+            else:
+                game.current_level += 1
+                game.__dict__.pop('_coins_at_level_start', None)
+                game.__dict__.pop('_coins_at_shop_entry', None)
+                game.save_progress(game.current_level)
+        else:
+            selection = await game.show_start_menu(screen, skip_intro=True)
+            if not selection:
+                sys.exit()
+            mode, save_data = selection
+            if mode == 'continue' and save_data:
+                if save_data:
+                    game._load_meta_from_save(save_data)
+                    game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
+                else:
+                    game.__dict__['_carry_player_state'] = None
+                if save_data.get('mode') == 'snapshot':
+                    meta = save_data.get('meta', {})
+                    if mode == 'continue' and save_data and (save_data.get('mode') == 'snapshot'):
+                        game.current_level = int(meta.get('current_level', 0))
+                else:
+                    game.current_level = int(save_data.get('current_level', 0))
+            else:
+                game.clear_save()
+                game.reset_run_state()
+                game.current_level = 0
+                game.__dict__['_carry_player_state'] = None
+                game.__dict__.pop('_next_biome', None)
+                game.__dict__.pop('_last_biome', None)
