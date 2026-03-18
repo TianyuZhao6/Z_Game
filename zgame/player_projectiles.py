@@ -131,6 +131,19 @@ def install(game):
                             dmg_per_tick, duration, max_stacks = game.dot_rounds_stats(dot_lvl, bullet_base)
                             game.apply_dot_rounds_stack(z, dmg_per_tick, duration, max_stacks)
                             game.spawn_dot_rounds_hit_vfx(game_state, cx, cy)
+                    if z.hp > 0:
+                        if getattr(self, 'source', 'player') == 'player':
+                            used_ricochet = False
+                            if try_ricochet(cx, cy):
+                                used_ricochet = True
+                            remaining_pierce = int(getattr(self, 'pierce_left', 0))
+                            if remaining_pierce > 0:
+                                self.pierce_left = remaining_pierce - 1
+                                break
+                            if used_ricochet:
+                                break
+                        self.alive = False
+                        return
                     if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
                         z._death_processed = True
                         game.increment_kill_count()
