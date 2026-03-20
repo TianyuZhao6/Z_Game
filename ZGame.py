@@ -44,6 +44,7 @@ from zgame import player_projectiles as player_projectiles_support
 from zgame import turrets as turrets_support
 from zgame import pickups as pickups_support
 from zgame import paint as paint_support
+from zgame import effects_runtime as effects_runtime_support
 from zgame import menu_flow as menu_flow_support
 from zgame import persistence as persistence_support
 from zgame import shop_support
@@ -3540,6 +3541,11 @@ def hex_points_flat(cx: float, cy: float, r: float) -> list[tuple[float, float]]
         pts.append((cx + r * math.cos(ang), cy + r * math.sin(ang)))
     return pts
 
+
+HexCell, HexTransition, NeuroParticle, CometCorpse, CometBlast, AegisPulseRing = effects_runtime_support.install(
+    _THIS_MODULE
+)
+
 # ==================== NEURO MUSIC VISUALIZATION ====================
 # Global Instance
 _neuro_viz = NeuroMusicVisualizer()
@@ -3547,18 +3553,6 @@ _neuro_viz_loader: threading.Thread | None = None
 _neuro_viz_loader_path: str | None = None
 
 # ==================== HEX TRANSITION SYSTEM (GEOMETRY SCALE) ====================
-
-class HexCell:
-    __slots__ = ("cx", "cy", "max_r", "trigger_delay", "current_scale", "points")
-
-    def __init__(self, cx, cy, r):
-        self.cx = float(cx)
-        self.cy = float(cy)
-        self.max_r = float(r)
-        self.trigger_delay = 0.0
-        self.current_scale = 0.0  # 0.0 = Invisible, 1.2 = Fully covering
-        self.points = hex_points_flat(self.cx, self.cy, self.max_r)
-
 def build_hex_grid(view_w: int, view_h: int, r: int = 50) -> list[HexCell]:
     # Slightly larger radius (50) for better performance on geometry calc
     size = float(r)
@@ -3586,152 +3580,6 @@ def build_hex_grid(view_w: int, view_h: int, r: int = 50) -> list[HexCell]:
             
             cells.append(HexCell(x, y, size))
     return cells
-
-class HexTransition:
-    def __init__(self, grid: list[HexCell]):
-        self.grid = grid
-        
-        # --- Visual Config ---
-        self.COLOR_FILL = (6, 10, 16)       # Deep Navy/Black background (darker)
-        self.COLOR_OUTLINE = (70, 230, 255)  # Cyan Neon aligned to homepage
-        self.OUTLINE_WIDTH = 2
-        
-        # --- Timing ---
-        self.duration_in = 0.25    # Grow time
-        self.duration_hold = 0.10  # Time to stay fully black
-        self.duration_out = 0.25   # Shrink time 
-       
-        # State
-        self.timer = 0.0
-        self.state = "IDLE"
-        self.midpoint_triggered = False
-
-    def _get_delay(self, cell):
-        # Randomize between vertical band and radial circle wipes for variety
-        if random.random() < 0.5:
-            # vertical banding: center row triggers first
-            cx, cy = VIEW_W // 2, VIEW_H // 2
-            dist = abs(cell.cy - cy)
-            max_dist = (VIEW_H / 2.0) or 1.0
-            norm_band = min(1.0, dist / max_dist)
-            return norm_band * 0.55 + random.random() * 0.06
-        else:
-            # radial wipe: center triggers first
-            cx, cy = VIEW_W // 2, VIEW_H // 2
-            dist = math.hypot(cell.cx - cx, cell.cy - cy)
-            max_dist = math.hypot(VIEW_W, VIEW_H) / 2.0
-            norm_dist = min(1.0, dist / max_dist)
-            return norm_dist * 0.55 + random.uniform(0, 0.08)
-
-    def start(self):
-        self.timer = 0.0
-        self.state = "CLOSING" # Growing hexes to cover screen
-        self.midpoint_triggered = False
-        
-        # Calculate delays
-        for cell in self.grid:
-            cell.trigger_delay = self._get_delay(cell)
-            cell.current_scale = 0.0
-
-    def is_active(self):
-        return self.state != "IDLE"
-
-    def should_swap_screens(self):
-        if self.state == "HOLDING" and not self.midpoint_triggered:
-            self.midpoint_triggered = True
-            return True
-        return False
-
-    def update(self, dt: float):
-        if self.state == "IDLE": return
-
-        self.timer += dt
-
-        # PHASE 1: GROW (Cover Screen)
-        if self.state == "CLOSING":
-            done_count = 0
-            for cell in self.grid:
-                start_t = cell.trigger_delay * 0.65
-                actual_t = (self.timer - start_t) / max(0.001, self.duration_in * 0.7)
-                t_clamped = max(0.0, min(1.0, actual_t))
-                ease = t_clamped * t_clamped * (3.0 - 2.0 * t_clamped)
-                cell.current_scale = min(1.0, ease)  # cap to avoid overlap
-                if cell.current_scale >= 0.995:
-                    done_count += 1
-            if done_count >= len(self.grid) or self.timer > self.duration_in + 0.4:
-                self.state = "HOLDING"
-                self.timer = 0.0
-
-        # PHASE 2: HOLD (Swap content behind)
-        elif self.state == "HOLDING":
-            # Force all to max scale to ensure black screen
-            for cell in self.grid: cell.current_scale = 1.2 
-            
-            if self.timer >= self.duration_hold:
-                self.state = "OPENING"
-                self.timer = 0.0
-
-        # PHASE 3: SHRINK (Reveal new screen)
-        elif self.state == "OPENING":
-            done_count = 0
-            for cell in self.grid:
-                start_t = cell.trigger_delay * 0.65
-                actual_t = (self.timer - start_t) / max(0.001, self.duration_out * 0.7)
-                t_clamped = max(0.0, min(1.0, actual_t))
-                ease = t_clamped * t_clamped * (3.0 - 2.0 * t_clamped)
-                cell.current_scale = max(0.0, 1.0 - ease)
-                if cell.current_scale <= 0.01:
-                    done_count += 1
-            if done_count >= len(self.grid) or self.timer > self.duration_out + 0.4:
-                self.state = "IDLE"
-
-    def draw(self, screen: pygame.Surface):
-        if self.state == "IDLE": return
-
-        # Standard flat-top hex angles
-        angles = [math.radians(a) for a in (0, 60, 120, 180, 240, 300)]
-        center_y = VIEW_H * 0.5
-        max_band = max(1.0, VIEW_H * 0.5)
-        overlay = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-        veil = pygame.Surface((VIEW_W, VIEW_H), pygame.SRCALPHA)
-        if self.state == "CLOSING":
-            cover_alpha = 230
-        elif self.state == "HOLDING":
-            cover_alpha = 255
-        else:  # OPENING
-            cover_alpha = int(200 * max(0.0, 1.0 - self.timer / max(0.001, self.duration_out)))
-        veil.fill((0, 0, 0, cover_alpha))
-        screen.blit(veil, (0, 0))
-
-        for cell in self.grid:
-            # OPTIMIZATION: Don't draw if invisible
-            if cell.current_scale <= 0.01: continue
-            cx, cy = cell.cx, cell.cy
-            # Fixed outline geometry (shared edges)
-            outline_points = cell.points
-            # Scaled fill geometry
-            draw_scale = max(0.0, min(1.0, cell.current_scale)) * 0.92
-            fill_points = []
-            for ang in angles:
-                px = cx + cell.max_r * math.cos(ang)
-                py = cy + cell.max_r * math.sin(ang)
-                fill_points.append((cx + (px - cx) * draw_scale, cy + (py - cy) * draw_scale))
-
-            # 修改点：高亮因子改为径向计算，中心亮四周暗
-            dist_center = math.hypot(cell.cx - VIEW_W // 2, cell.cy - VIEW_H // 2)
-            band_factor = 1.0 - min(1.0, dist_center / (VIEW_H * 0.6))
-
-            # 3. Draw Fill
-            # 稍微降低填充不透明度，让背景在动画早期稍微透一点点气
-            fill_alpha = int(max(0, min(255, 255 * max(0.6, draw_scale))))
-            pygame.draw.polygon(overlay, (*self.COLOR_FILL, fill_alpha), fill_points)
-            
-            # 4. Draw Outline
-            # 修改点：大幅降低描边透明度(220 -> 160)，防止小格子密集时过于刺眼
-            outline_base = 160 * (0.4 + 0.6 * band_factor)
-            outline_alpha = int(max(0, min(255, 220 * (0.5 + 0.5 * band_factor) * max(0.3, draw_scale))))
-            pygame.draw.polygon(overlay, (*self.COLOR_OUTLINE, outline_alpha), outline_points, self.OUTLINE_WIDTH)
-        screen.blit(overlay, (0, 0))
 
 # Global transition resources (lazy init)
 _hex_grid_cache: list[HexCell] | None = None
@@ -5163,84 +5011,6 @@ GroundSpike, CuringPaintFootprint, PaintTile = paint_support.install(_THIS_MODUL
 
 # ==================== NEW HIGH-FIDELITY COMET SYSTEM ====================
 
-class NeuroParticle:
-    """
-    A 3D-aware particle for the comet system. 
-    Tracks x,y (ground) and z (height) separately for proper Iso projection.
-    """
-    __slots__ = ('x', 'y', 'z', 'vx', 'vy', 'vz', 'life', 'life0', 'size', 'color', 'drag')
-
-    def __init__(self, x, y, z, vx, vy, vz, life, size, color, drag=0.0):
-        self.x, self.y, self.z = float(x), float(y), float(z)
-        self.vx, self.vy, self.vz = float(vx), float(vy), float(vz)
-        self.life, self.life0 = float(life), float(life)
-        self.size = float(size)
-        self.color = color
-        self.drag = drag
-
-    def update(self, dt: float) -> bool:
-        self.life -= dt
-        if self.life <= 0: return False
-        
-        # Physics
-        self.x += self.vx * dt
-        self.y += self.vy * dt
-        self.z += self.vz * dt
-        
-        # Gravity/Drag
-        if self.z > 0: self.vz -= 980.0 * dt # Heavy gravity
-        if self.z < 0: self.z = 0 # Floor bounce (optional, usually kill)
-        
-        if self.drag > 0:
-            self.vx *= (1.0 - self.drag * dt)
-            self.vy *= (1.0 - self.drag * dt)
-            
-        return True
-
-    def draw(self, screen, camx, camy):
-        # Calculate fade ratio
-        prog = self.life / self.life0
-        cur_size = int(self.size * prog)
-        if cur_size < 1: return
-
-        # ISO PROJECTION WITH Z-HEIGHT
-        # Convert world pixels -> grid coords
-        gx = self.x / CELL_SIZE
-        gy = (self.y - INFO_BAR_HEIGHT) / CELL_SIZE
-        # Project using the Z parameter
-        sx, sy = iso_world_to_screen(gx, gy, self.z, camx, camy)
-
-        # Draw Glow
-        # We assume GlowCache is available from your effects module
-        glow = GlowCache.get_glow_surf(cur_size, self.color)
-        screen.blit(glow, (sx - cur_size, sy - cur_size), special_flags=pygame.BLEND_ADD)
-
-
-class CometCorpse:
-    """Replaces the old corpse with a digital dissolution effect."""
-    def __init__(self, x, y, color, size):
-        self.particles = []
-        # Explode into digital cubes/pixels
-        for _ in range(15):
-            angle = random.uniform(0, 6.28)
-            speed = random.uniform(50, 180)
-            self.particles.append(NeuroParticle(
-                x, y, 10, # Start slightly off ground
-                math.cos(angle)*speed, math.sin(angle)*speed, random.uniform(100, 300),
-                life=random.uniform(0.4, 0.7),
-                size=random.uniform(4, 8),
-                color=color
-            ))
-
-    def update(self, dt):
-        self.particles = [p for p in self.particles if p.update(dt)]
-        return len(self.particles) > 0
-
-    def draw_iso(self, screen, camx, camy):
-        for p in self.particles:
-            p.draw(screen, camx, camy)
-
-
 _effect_sfx_cache: dict[str, pygame.mixer.Sound | bool] = {}
 
 
@@ -5294,190 +5064,6 @@ def _play_comet_sfx():
 def _play_teleport_sfx():
     """Play the teleport confirm SFX if present."""
     _play_effect_sfx("teleport.wav")
-
-
-class CometBlast:
-    """
-    The 'Q' Skill. 
-    Visually represents a high-energy neural packet arcing through the air.
-    """
-    def __init__(self, target: tuple[float, float], start: tuple[float, float],
-                 travel: float, on_impact=None, fx=None):
-        self.tx, self.ty = target # Ground target
-        self.sx, self.sy = start  # Ground start (virtual)
-        self.travel = max(0.1, float(travel))
-        self.elapsed = 0.0
-        self.state = "flight"
-        self._impact_cb = on_impact
-        self.fx = fx
-        
-        # Flight Physics
-        self.arc_height = 350.0 # Peak height in pixels
-        
-        # Visuals
-        self.particles = [] # Tail particles
-        self.impact_rings = [] # Expanding shockwaves on ground
-
-    @staticmethod
-    def _lerp(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
-        t = max(0.0, min(1.0, float(t)))
-        return tuple(int(aa + (bb - aa) * t) for aa, bb in zip(a, b))
-        
-    def get_current_pos_3d(self):
-        t = self.elapsed / self.travel
-        # Linear Ground movement
-        cx = self.sx + (self.tx - self.sx) * t
-        cy = self.sy + (self.ty - self.sy) * t
-        # Parabolic Z arc: sin(pi * t) * height
-        cz = math.sin(t * math.pi) * self.arc_height
-        return cx, cy, cz
-
-    def update(self, dt):
-        self.elapsed += dt
-        
-        if self.state == "flight":
-            cx, cy, cz = self.get_current_pos_3d()
-            
-            # Spawn Trail (High density for smooth look)
-            # We spawn multiple per frame to fill gaps
-            steps = 2
-            for i in range(steps):
-                # Interpolate slightly back in time to fill gaps
-                sub_t = dt * (i / steps)
-                # Jitter
-                jx = random.uniform(-5, 5)
-                jy = random.uniform(-5, 5)
-                jz = random.uniform(-5, 5)
-                
-                # Core (White/Cyan)
-                self.particles.append(NeuroParticle(
-                    cx + jx, cy + jy, cz + jz,
-                    0, 0, 0, # Stationary relative to world
-                    life=0.25, size=14, color=(200, 255, 255)
-                ))
-                # Outer Glow (Blue)
-                self.particles.append(NeuroParticle(
-                    cx + jx*2, cy + jy*2, cz + jz*2,
-                    random.uniform(-20,20), random.uniform(-20,20), random.uniform(-20,20),
-                    life=0.4, size=20, color=(0, 100, 255)
-                ))
-
-            if self.elapsed >= self.travel:
-                self._do_impact()
-
-        # Update particles
-        self.particles = [p for p in self.particles if p.update(dt)]
-        
-        # Update shockwaves
-        for r in self.impact_rings:
-            r['r'] += r['speed'] * dt
-            r['life'] -= dt
-        self.impact_rings = [r for r in self.impact_rings if r['life'] > 0]
-
-    def _do_impact(self):
-        self.state = "impact"
-        _play_comet_sfx()
-        if self._impact_cb: self._impact_cb()
-        
-        # 1. Ground Shockwaves (Purely visual rings)
-        self.impact_rings.append({'r': 10, 'speed': 600, 'life': 0.4, 'w': 6, 'col': (0, 255, 255)})
-        self.impact_rings.append({'r': 10, 'speed': 300, 'life': 0.6, 'w': 3, 'col': (0, 100, 255)})
-        
-        # 2. Vertical Energy Pillar (Particles shooting UP)
-        for _ in range(40):
-            self.particles.append(NeuroParticle(
-                self.tx, self.ty, 10,
-                random.uniform(-150, 150), random.uniform(-150, 150), random.uniform(200, 800), # High Z velocity
-                life=random.uniform(0.5, 1.0),
-                size=random.uniform(6, 16),
-                color=(150, 255, 255),
-                drag=1.5
-            ))
-            
-        # 3. Ground debris
-        for _ in range(30):
-            angle = random.uniform(0, 6.28)
-            speed = random.uniform(200, 500)
-            self.particles.append(NeuroParticle(
-                self.tx, self.ty, 5,
-                math.cos(angle)*speed, math.sin(angle)*speed, random.uniform(50, 200),
-                life=random.uniform(0.3, 0.6),
-                size=random.uniform(4, 10),
-                color=(0, 200, 255)
-            ))
-
-    def done(self) -> bool:
-        return self.state == "impact" and len(self.particles) == 0 and len(self.impact_rings) == 0
-
-    def draw(self, screen, camx, camy):
-        # 1. Draw Targeting Ring (Ground Level)
-        # Pulse alpha
-        pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() * 0.01)
-        
-        # Only draw target ring if still flying (comet color seed-of-life)
-        if self.state == "flight":
-            comet_col = (80, 210, 255)
-            t = pygame.time.get_ticks() * 0.001
-            rot = t * 0.6
-            orbit_r = BLAST_RADIUS * 0.5
-            draw_iso_ground_ellipse(screen, self.tx, self.ty, BLAST_RADIUS, comet_col, 110 + 70 * pulse,
-                                    camx, camy, fill=False, width=4)
-            draw_iso_ground_ellipse(screen, self.tx, self.ty, orbit_r, comet_col, 90, camx, camy,
-                                    fill=False, width=3)
-            for i in range(6):
-                ang = rot + math.tau * i / 6.0
-                ox = self.tx + math.cos(ang) * orbit_r
-                oy = self.ty + math.sin(ang) * orbit_r
-                draw_iso_ground_ellipse(screen, ox, oy, orbit_r, comet_col, 90, camx, camy, fill=False, width=3)
-
-        # 2. Draw Impact Shockwaves (Ground Level)
-        for r in self.impact_rings:
-            alpha = int(255 * (r['life'] / 0.5))
-            alpha = max(0, min(255, alpha))
-            seed_col = self._lerp((70, 210, 255), (255, 120, 60), 1.0)
-            col = r.get('col', seed_col)
-            if not isinstance(col, (tuple, list)) or len(col) < 3:
-                col = seed_col
-            col = tuple(max(0, min(255, int(c))) for c in col[:3])
-            draw_iso_ground_ellipse(screen, self.tx, self.ty, r.get('r', BLAST_RADIUS),
-                                    col, alpha, camx, camy, fill=False, width=int(max(1, r.get('w', 3))))
-
-        # 3. Draw Comet Head (If flying)
-        if self.state == "flight":
-            cx, cy, cz = self.get_current_pos_3d()
-            # Draw Head Glow
-            head_size = 40
-            gx = cx / CELL_SIZE
-            gy = (cy - INFO_BAR_HEIGHT) / CELL_SIZE
-            sx, sy = iso_world_to_screen(gx, gy, cz, camx, camy)
-            
-            glow = GlowCache.get_glow_surf(head_size, (200, 255, 255))
-            screen.blit(glow, (sx - head_size, sy - head_size), special_flags=pygame.BLEND_ADD)
-
-        # 4. Draw Particles (Trails, Explosion Debris)
-        # Z-sorting particles makes it look better, but standard painter's algo is fine for add-blend
-        for p in self.particles:
-            p.draw(screen, camx, camy)
-
-class AegisPulseRing:
-    """Lightweight visual token for recent Aegis Pulse waves."""
-    def __init__(self, x: float, y: float, r: float, delay: float, expand_time: float,
-                 fade_time: float, damage: int):
-        self.x = float(x)
-        self.y = float(y)
-        self.r = float(r)
-        self.delay = float(delay)
-        self.expand_time = float(expand_time)
-        self.fade_time = float(fade_time)
-        self.damage = int(damage)
-        self.hit_done = False
-        # store remaining life; total life includes delay so we can reuse the existing timer logic
-        self.t = float(delay + expand_time + fade_time)
-        self.life0 = float(self.t)
-        
-    @property
-    def age(self) -> float:
-        return float(self.life0 - self.t)
 
 
 EnemyShot, MistShot, DamageText = enemy_projectiles_support.install(_THIS_MODULE)
