@@ -154,7 +154,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
             pygame.draw.rect(screen, border_col, accent, border_radius=2)
             if is_hover:
                 title_s = font.render(it['name'], True, (235, 235, 235))
-                detail_line = game.detailed_prop_tooltip_text(it, cur_lvl)
+                detail_line = game.detailed_prop_tooltip_text(it, cur_lvl, meta)
                 desc_parts = [str(it.get('desc', '')).strip()]
                 if detail_line:
                     desc_parts.append(str(detail_line))

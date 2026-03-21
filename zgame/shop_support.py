@@ -259,7 +259,7 @@ def prop_level(game, item) -> int | None:
 
 
 def owned_live_text(game, item, level: int | None) -> str:
-    return game.detailed_prop_tooltip_text(item, level)
+    return game.detailed_prop_tooltip_text(item, level, _meta(game))
 
 
 def prop_max_level(item):

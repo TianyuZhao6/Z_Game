@@ -282,6 +282,7 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
     font_hp = mono_font(22)
     # ===== 计时器（居中） =====
     runtime = _runtime_state()
+    meta = _meta_state()
     tleft = float(time_left if time_left is not None else runtime.get("_time_left_runtime", LEVEL_TIME_LIMIT))
     tleft = max(0.0, tleft)
     mins = int(tleft // 60)
@@ -450,14 +451,14 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
     # ===== 右上角：物品 & 金币 =====
     hud_font = font_timer  # 统一字号
     # 物品（最右）
-    total_items = int(META.get("run_items_spawned", 0))
-    collected = int(META.get("run_items_collected", 0))
+    total_items = int(meta.get("run_items_spawned", 0))
+    collected = int(meta.get("run_items_collected", 0))
     icon_x, icon_y = VIEW_W - 120, 10
     pygame.draw.circle(screen, (255, 255, 0), (icon_x, icon_y + 8), 8)
     items_text = hud_font.render(f"{collected}", True, (255, 255, 255))
     screen.blit(items_text, (icon_x + 18, icon_y))
     # 金币（物品左侧）
-    spoils_total = int(META.get("spoils", 0)) + int(getattr(game_state, "spoils_gained", 0))
+    spoils_total = int(meta.get("spoils", 0)) + int(getattr(game_state, "spoils_gained", 0))
     coin_x, coin_y = VIEW_W - 220, 10
     pygame.draw.circle(screen, (255, 215, 80), (coin_x, coin_y + 8), 8)
     pygame.draw.circle(screen, (255, 245, 200), (coin_x, coin_y + 8), 8, 1)
@@ -2052,10 +2053,10 @@ PROP_PATH_TAGS = {
 }
 
 
-def prop_level_from_meta(prop_id: str, meta: dict | None = None) -> int | None:
-    """Canonical per-prop level read from META; keeps shop/pause/tooltips aligned."""
-    m = META if meta is None else meta
-    if not isinstance(m, dict):
+def prop_level_from_meta(prop_id: str, meta=None) -> int | None:
+    """Canonical per-prop level read from meta state; keeps shop/pause/tooltips aligned."""
+    m = _meta_state() if meta is None else meta
+    if m is None or not hasattr(m, "get"):
         return None
     iid = str(prop_id or "")
     if iid == "coin_magnet":
@@ -2146,10 +2147,12 @@ def prop_path_label(prop_id: str) -> str:
     return "/".join(names)
 
 
-def path_scores_from_meta(meta: dict | None = None) -> dict[str, int]:
+def path_scores_from_meta(meta=None) -> dict[str, int]:
     """Weighted path score by current prop levels; used for build clarity in pause/shop."""
     scores = {tag: 0 for tag in PATH_DISPLAY_ORDER}
-    m = META if meta is None else meta
+    m = _meta_state() if meta is None else meta
+    if m is None or not hasattr(m, "get"):
+        return scores
     for prop_id, tags in PROP_PATH_TAGS.items():
         lvl = prop_level_from_meta(prop_id, m)
         if lvl is None or lvl <= 0:
@@ -2159,7 +2162,7 @@ def path_scores_from_meta(meta: dict | None = None) -> dict[str, int]:
     return scores
 
 
-def path_focus_summary_lines(meta: dict | None = None, max_lines: int = 3) -> list[str]:
+def path_focus_summary_lines(meta=None, max_lines: int = 3) -> list[str]:
     scores = path_scores_from_meta(meta)
     order_index = {tag: idx for idx, tag in enumerate(PATH_DISPLAY_ORDER)}
     ranked = [(tag, sc) for tag, sc in scores.items() if sc > 0]
@@ -2178,42 +2181,48 @@ def path_focus_summary_lines(meta: dict | None = None, max_lines: int = 3) -> li
     return out
 
 
-def detailed_prop_tooltip_text(it, lvl: int | None):
+def detailed_prop_tooltip_text(it, lvl: int | None, meta=None):
     """More specific tooltip with path context and current->next preview."""
     if not isinstance(it, dict):
+        return None
+    m = _meta_state() if meta is None else meta
+    if m is None or not hasattr(m, "get"):
         return None
     iid = it.get("id")
     path_txt = prop_path_label(iid)
     cur_lvl = 0 if lvl is None else int(lvl)
     max_lvl = it.get("max_level")
     if iid == "shady_loan":
-        cur_lvl = max(cur_lvl, int(META.get("shady_loan_last_level", cur_lvl)))
+        cur_lvl = max(cur_lvl, int(m.get("shady_loan_last_level", cur_lvl)))
     if cur_lvl <= 0:
-        lv1 = owned_prop_tooltip_text(it, 1)
+        lv1 = owned_prop_tooltip_text(it, 1, m)
         if lv1:
             return _truncate_inline(f"[{path_txt}] Lv1: {lv1}")
         return f"[{path_txt}]"
-    now_txt = owned_prop_tooltip_text(it, cur_lvl)
+    now_txt = owned_prop_tooltip_text(it, cur_lvl, m)
     if not now_txt:
         return f"[{path_txt}]"
     next_txt = None
     can_level = max_lvl is None or cur_lvl < int(max_lvl)
     if can_level:
-        next_txt = owned_prop_tooltip_text(it, cur_lvl + 1)
+        next_txt = owned_prop_tooltip_text(it, cur_lvl + 1, m)
     if next_txt and next_txt != now_txt:
         return _truncate_inline(f"[{path_txt}] Now: {now_txt} | Next: {next_txt}")
     return _truncate_inline(f"[{path_txt}] {now_txt}")
 
 
-def owned_prop_tooltip_text(it, lvl: int | None):
+def owned_prop_tooltip_text(it, lvl: int | None, meta=None):
     iid = it.get("id") if isinstance(it, dict) else None
+    m = _meta_state() if meta is None else meta
+    if m is None or not hasattr(m, "get"):
+        return None
     lvl = 0 if lvl is None else int(lvl)
     if iid == "shady_loan":
-        lvl = max(lvl, int(META.get("shady_loan_last_level", lvl)))
+        lvl = max(lvl, int(m.get("shady_loan_last_level", lvl)))
     if lvl <= 0:
         return None
     if iid == "lockbox":
-        coins = max(0, int(META.get("spoils", 0)))
+        coins = max(0, int(m.get("spoils", 0)))
         pct = int(LOCKBOX_PROTECT_RATES[min(lvl - 1, len(LOCKBOX_PROTECT_RATES) - 1)] * 100)
         protected = lockbox_protected_min(coins, lvl)
         return f"{protected} coins restored (at {pct}%)"
@@ -2236,7 +2245,7 @@ def owned_prop_tooltip_text(it, lvl: int | None):
         chance = min(80, base + per * (lvl - 1))
         return f"{chance}% shrapnel on kill"
     if iid == "explosive_rounds":
-        bullet_base = int(META.get("base_dmg", BULLET_DAMAGE_ENEMY)) + int(META.get("dmg", 0))
+        bullet_base = int(m.get("base_dmg", BULLET_DAMAGE_ENEMY)) + int(m.get("dmg", 0))
         radius, dmg, boss_dmg = explosive_rounds_stats(lvl, bullet_base)
         r_tiles = radius / float(CELL_SIZE)
         return f"Explode {dmg}/{boss_dmg} dmg, r {r_tiles:.2f} tiles"
@@ -2276,13 +2285,13 @@ def owned_prop_tooltip_text(it, lvl: int | None):
         cap = GOLDEN_INTEREST_CAPS[min(lvl - 1, len(GOLDEN_INTEREST_CAPS) - 1)]
         return f"Interest {rate_pct}% (cap {cap})"
     if iid == "wanted_poster":
-        waves = int(META.get("wanted_poster_waves", 0))
-        status = "ready" if waves > 0 else ("armed" if META.get("wanted_active") else "spent")
+        waves = int(m.get("wanted_poster_waves", 0))
+        status = "ready" if waves > 0 else ("armed" if m.get("wanted_active") else "spent")
         return f"Bounty charges: {waves} ({status})"
     if iid == "shady_loan":
-        debt = max(0, int(META.get("shady_loan_remaining_debt", 0)))
-        waves = int(META.get("shady_loan_waves_remaining", 0))
-        status = META.get("shady_loan_status")
+        debt = max(0, int(m.get("shady_loan_remaining_debt", 0)))
+        waves = int(m.get("shady_loan_waves_remaining", 0))
+        status = m.get("shady_loan_status")
         if status == "defaulted":
             idx = min(max(lvl, 1), SHADY_LOAN_MAX_LEVEL) - 1
             pct = int(SHADY_LOAN_HP_PENALTIES[idx] * 100)
@@ -2293,14 +2302,14 @@ def owned_prop_tooltip_text(it, lvl: int | None):
             return "The loan settlement happens after this shop!"
         return f"Debt {debt}, {max(0, waves)} waves left (final clears remainder)"
     if iid == "coin_magnet":
-        radius = int(META.get("coin_magnet_radius", 0))
+        radius = int(m.get("coin_magnet_radius", 0))
         return f"Pickup radius +{radius}px"
     if iid == "auto_turret":
         return f"Auto-turret count {lvl}"
     if iid == "stationary_turret":
         return f"Stationary turrets {lvl}"
     if iid == "carapace":
-        hp = int(META.get("carapace_shield_hp", 0))
+        hp = int(m.get("carapace_shield_hp", 0))
         return f"Shield HP {hp}"
     return None
 
@@ -2546,7 +2555,7 @@ def shop_price(base_cost: int, level_idx: int, kind: str = "normal", prop_level:
     - 基于关卡指数/线性上调（reroll 恒定）
     - 同一关内，同一条目随拥有等级叠加涨价（SHOP_PRICE_STACK）
     """
-    discount_lvl = min(COUPON_MAX_LEVEL, int(META.get("coupon_level", 0)))
+    discount_lvl = min(COUPON_MAX_LEVEL, int(_meta_state().get("coupon_level", 0)))
     discount_mult = max(0.0, 1.0 - COUPON_DISCOUNT_PER * discount_lvl)
     lvl_owned = max(0, int(prop_level or 0))
     if kind == "reroll":
@@ -3253,6 +3262,7 @@ def apply_shady_loan_repayment() -> Optional[dict]:
 
 def show_shady_loan_popup(screen, outcome: dict) -> None:
     """Small modal summarizing Shady Loan repayment/default."""
+    meta = _meta_state()
     clock = pygame.time.Clock()
     title_font = pygame.font.SysFont(None, 50, bold=True)
     body_font = pygame.font.SysFont(None, 28)
@@ -3277,19 +3287,19 @@ def show_shady_loan_popup(screen, outcome: dict) -> None:
     elif outcome.get("cleared"):
         title_txt = "Shady Loan Repaid"
         lines.append(f"Loan fully repaid at Lv{outcome.get('level', 1)}.")
-        lines.append(f"Coins now: {outcome.get('coins_after', META.get('spoils', 0))}.")
+        lines.append(f"Coins now: {outcome.get('coins_after', meta.get('spoils', 0))}.")
     elif outcome.get("deferred"):
         title_txt = "Shady Loan"
         lines.append("Repayment starts next level. No coins taken this wave.")
         lines.append(f"Debt left: {outcome.get('debt_left', 0)} | Waves left: {outcome.get('waves_left', 0)}")
-        lines.append(f"Coins now: {outcome.get('coins_after', META.get('spoils', 0))}.")
+        lines.append(f"Coins now: {outcome.get('coins_after', meta.get('spoils', 0))}.")
     else:
         payment = outcome.get("actual_payment", 0)
         debt_left = outcome.get("debt_left", 0)
         waves_left = outcome.get("waves_left", 0)
         lines.append(f"Paid {payment} coins toward the loan.")
         lines.append(f"Debt left: {debt_left} | Waves left: {waves_left}")
-        lines.append(f"Coins now: {outcome.get('coins_after', META.get('spoils', 0))}.")
+        lines.append(f"Coins now: {outcome.get('coins_after', meta.get('spoils', 0))}.")
     while True:
         screen.blit(dim, (0, 0))
         pygame.draw.rect(screen, (24, 22, 28), panel, border_radius=14)

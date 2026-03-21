@@ -531,7 +531,7 @@ def show_pause_menu(game, screen, background_surf):
         if owned_rows:
             for row_rect, ent in owned_rows:
                 if row_rect.collidepoint((mx, my)):
-                    tooltip_txt = game.detailed_prop_tooltip_text(ent["itm"], ent["lvl"])
+                    tooltip_txt = game.detailed_prop_tooltip_text(ent["itm"], ent["lvl"], meta)
                     tooltip_pos = (row_rect.right + 10, row_rect.centery)
                     break
         if tooltip_txt:
