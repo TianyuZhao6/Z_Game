@@ -54,14 +54,24 @@ from zgame import screens as screens_support
 from zgame import shop_ui as shop_ui_support
 from zgame import pause_ui as pause_ui_support
 from zgame import app_flow as app_flow_support
+from zgame import runtime_state as runtime_state_support
 
 _THIS_MODULE = sys.modules[__name__]
 
 
+def _runtime_state():
+    return runtime_state_support.runtime(_THIS_MODULE)
+
+
+def _meta_state():
+    return runtime_state_support.meta(_THIS_MODULE)
+
+
 def _invalidate_view_caches() -> None:
-    globals()["_hex_bg_surface"] = None
-    globals()["_hex_grid_cache"] = None
-    globals()["_neuro_bg_surface"] = None
+    runtime = _runtime_state()
+    runtime["_hex_bg_surface"] = None
+    runtime["_hex_grid_cache"] = None
+    runtime["_neuro_bg_surface"] = None
 
 
 def _refresh_viewport(surface: pygame.Surface | None = None) -> pygame.Surface | None:
@@ -271,7 +281,8 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
     mono_small = mono_font(22)
     font_hp = mono_font(22)
     # ===== 计时器（居中） =====
-    tleft = float(time_left if time_left is not None else globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
+    runtime = _runtime_state()
+    tleft = float(time_left if time_left is not None else runtime.get("_time_left_runtime", LEVEL_TIME_LIMIT))
     tleft = max(0.0, tleft)
     mins = int(tleft // 60)
     secs = int(tleft % 60)
@@ -760,12 +771,13 @@ def ensure_passage_budget(obstacles: dict, grid_size: int, player_spawn: tuple, 
 # --- Domain/Biome helpers (one-level-only effects) ---
 def apply_domain_buffs_for_level(game_state, player):
     """
-    Read globals()['_next_biome'] and arm per-level flags/multipliers.
+    Read the queued runtime biome and arm per-level flags/multipliers.
     All effects are temporary for THIS level only.
     """
-    b = globals().get("_next_biome", None)
+    runtime = _runtime_state()
+    b = runtime.get("_next_biome", None)
     game_state.biome_active = b
-    globals()["_last_biome"] = b
+    runtime["_last_biome"] = b
     # Clear prior biome-only player speed buff (preserve other speed changes)
     prev_biome_mult = float(getattr(player, "_biome_speed_mult", 1.0))
     if abs(prev_biome_mult - 1.0) > 1e-4:
@@ -1803,7 +1815,9 @@ META = {
 
 
 def reset_run_state():
-    META.update({
+    runtime = _runtime_state()
+    meta = _meta_state()
+    meta.update({
         "spoils": 0,
         "base_dmg": BULLET_DAMAGE_ENEMY,
         "base_fire_cd": FIRE_COOLDOWN,
@@ -1849,19 +1863,21 @@ def reset_run_state():
         "run_items_spawned": 0,
         "run_items_collected": 0,
         "kill_count": 0,
-        "bindings": dict(META.get("bindings", DEFAULT_BINDINGS)),
+        "bindings": dict(meta.get("bindings", DEFAULT_BINDINGS)),
     })
-    globals()["_carry_player_state"] = None
-    globals()["_pending_shop"] = False
-    globals().pop("_last_spoils", None)
-    globals().pop("_coins_at_level_start", None)
-    globals().pop("_coins_at_shop_entry", None)
-    globals().pop("_shop_slot_ids_cache", None)
-    globals().pop("_shop_slots_cache", None)
-    globals().pop("_shop_reroll_id_cache", None)
-    globals().pop("_shop_reroll_cache", None)
-    globals().pop("_resume_shop_cache", None)
-    globals().pop("_intro_envelope", None)
+    runtime["_carry_player_state"] = None
+    runtime["_pending_shop"] = False
+    runtime.clear(
+        "_last_spoils",
+        "_coins_at_level_start",
+        "_coins_at_shop_entry",
+        "_shop_slot_ids_cache",
+        "_shop_slots_cache",
+        "_shop_reroll_id_cache",
+        "_shop_reroll_cache",
+        "_resume_shop_cache",
+        "_intro_envelope",
+    )
     _clear_level_start_baseline()
 
 
@@ -2693,6 +2709,7 @@ def _compute_scancode(keycode: int) -> int | None:
 
 
 def _refresh_scancodes():
+    meta = _meta_state()
     BINDING_SCANCODES.clear()
     for action, keycode in BINDINGS.items():
         sc = _compute_scancode(int(keycode))
@@ -2700,7 +2717,7 @@ def _refresh_scancodes():
             BINDING_SCANCODES[action] = sc
     WEB_INPUT.refresh_binding_aliases(BINDINGS)
     # mirror into META for persistence
-    META["bindings"] = {k: int(v) for k, v in BINDINGS.items()}
+    meta["bindings"] = {k: int(v) for k, v in BINDINGS.items()}
 
 
 _refresh_scancodes()
@@ -2727,13 +2744,14 @@ def action_key(action: str) -> int | None:
 def set_binding(action: str, keycode: int) -> None:
     """Update the live binding for an action."""
     if action in DEFAULT_BINDINGS and isinstance(keycode, int):
+        meta = _meta_state()
         BINDINGS[action] = keycode
         sc = _compute_scancode(keycode)
         if sc is not None:
             BINDING_SCANCODES[action] = sc
         elif action in BINDING_SCANCODES:
             BINDING_SCANCODES.pop(action, None)
-        META.setdefault("bindings", {})[action] = int(keycode)
+        meta.setdefault("bindings", {})[action] = int(keycode)
         WEB_INPUT.refresh_binding_aliases(BINDINGS)
 
 
@@ -2775,7 +2793,8 @@ def _bandit_death_notice(z, game_state):
         return
     z._bandit_notice_done = True
     # If a wanted poster is active, let the bounty banner take over.
-    wanted_active = bool(META.get("wanted_active", False) or getattr(game_state, "wanted_wave_active", False))
+    meta = _meta_state()
+    wanted_active = bool(meta.get("wanted_active", False) or getattr(game_state, "wanted_wave_active", False))
     if wanted_active:
         return
     stolen = int(getattr(z, "_stolen_total", 0))
@@ -2795,10 +2814,11 @@ def _bandit_death_notice(z, game_state):
 
 def increment_kill_count(amount: int = 1) -> None:
     """Track total enemy kills this run for scaling effects."""
+    meta = _meta_state()
     try:
-        META["kill_count"] = int(META.get("kill_count", 0)) + int(amount)
+        meta["kill_count"] = int(meta.get("kill_count", 0)) + int(amount)
     except Exception:
-        META["kill_count"] = int(amount)
+        meta["kill_count"] = int(amount)
 
 
 def is_action_event(event, action: str) -> bool:
@@ -2862,12 +2882,15 @@ def _load_shop_sprite(filename: str, max_size: tuple[int, int],
 
 
 def _clear_shop_cache():
-    globals().pop("_shop_slot_ids_cache", None)
-    globals().pop("_shop_slots_cache", None)
-    globals().pop("_shop_reroll_id_cache", None)
-    globals().pop("_shop_reroll_cache", None)
-    globals().pop("_resume_shop_cache", None)
-    globals().pop("_intro_envelope", None)
+    runtime = _runtime_state()
+    runtime.clear(
+        "_shop_slot_ids_cache",
+        "_shop_slots_cache",
+        "_shop_reroll_id_cache",
+        "_shop_reroll_cache",
+        "_resume_shop_cache",
+        "_intro_envelope",
+    )
 
 
 def _exportable_save_data() -> Optional[dict]:
@@ -2898,11 +2921,12 @@ def apply_golden_interest_payout() -> int:
     Apply Golden Interest on shop exit (start of next wave).
     Returns the coins gained so callers can surface feedback if desired.
     """
-    coins = int(META.get("spoils", 0))
-    level = int(META.get("golden_interest_level", 0))
+    meta = _meta_state()
+    coins = int(meta.get("spoils", 0))
+    level = int(meta.get("golden_interest_level", 0))
     gain = _golden_interest_gain(coins, level)
     if gain > 0:
-        META["spoils"] = coins + gain
+        meta["spoils"] = coins + gain
     return gain
 
 
@@ -3023,11 +3047,13 @@ def _shady_loan_level_idx(level: int) -> int:
 
 def purchase_shady_loan() -> dict:
     """Increment Shady Loan, grant upfront coins, and refresh repayment with stacking debt."""
-    prev_lvl = int(META.get("shady_loan_level", 0))
-    prev_debt = max(0, int(META.get("shady_loan_remaining_debt", 0)))
-    META["shady_loan_status"] = "active"
+    meta = _meta_state()
+    runtime = _runtime_state()
+    prev_lvl = int(meta.get("shady_loan_level", 0))
+    prev_debt = max(0, int(meta.get("shady_loan_remaining_debt", 0)))
+    meta["shady_loan_status"] = "active"
     # Grace current level so repayment starts next level, not immediately.
-    META["shady_loan_grace_level"] = int(globals().get("current_level", -1))
+    meta["shady_loan_grace_level"] = int(runtime.get("current_level", -1))
     # If the previous loan was fully repaid and we were at cap, restart at Lv1.
     if prev_lvl >= SHADY_LOAN_MAX_LEVEL and prev_debt <= 0:
         purchase_level = 1
@@ -3039,18 +3065,18 @@ def purchase_shady_loan() -> dict:
     instant = int(SHADY_LOAN_INSTANT_GOLD[idx])
     debt_add = int(SHADY_LOAN_BASE_DEBT[idx])
     new_debt = prev_debt + debt_add
-    new_waves = int(META.get("shady_loan_waves_remaining", 0)) + 1  # each purchase adds one wave
-    META["spoils"] = int(META.get("spoils", 0)) + instant
-    META["shady_loan_last_level"] = purchase_level
+    new_waves = int(meta.get("shady_loan_waves_remaining", 0)) + 1  # each purchase adds one wave
+    meta["spoils"] = int(meta.get("spoils", 0)) + instant
+    meta["shady_loan_last_level"] = purchase_level
     if prev_debt <= 0:
-        META["shady_loan_level"] = purchase_level
+        meta["shady_loan_level"] = purchase_level
     else:
-        META["shady_loan_level"] = max(prev_lvl, purchase_level)
-    META["shady_loan_waves_remaining"] = new_waves
-    META["shady_loan_remaining_debt"] = new_debt
-    META["shady_loan_defaulted"] = False
+        meta["shady_loan_level"] = max(prev_lvl, purchase_level)
+    meta["shady_loan_waves_remaining"] = new_waves
+    meta["shady_loan_remaining_debt"] = new_debt
+    meta["shady_loan_defaulted"] = False
     return {
-        "level": int(META["shady_loan_level"]),
+        "level": int(meta["shady_loan_level"]),
         "instant": instant,
         "waves": new_waves,
         "debt": new_debt,
@@ -3059,26 +3085,29 @@ def purchase_shady_loan() -> dict:
 
 def use_wanted_poster() -> dict:
     """Activate a 2-wave bounty window for bandit kills (consumable in shop)."""
-    waves = int(META.get("wanted_poster_waves", 0)) + WANTED_POSTER_WAVES
-    META["wanted_poster_waves"] = waves
-    META["wanted_active"] = False  # will arm on next level start
+    meta = _meta_state()
+    waves = int(meta.get("wanted_poster_waves", 0)) + WANTED_POSTER_WAVES
+    meta["wanted_poster_waves"] = waves
+    meta["wanted_active"] = False  # will arm on next level start
     return {"waves": waves}
 
 
 def apply_shady_loan_hp_penalty(penalty_ratio: float) -> int:
     """Apply the max HP cut when defaulting; returns the new max HP."""
-    base_hp = max(1, int(META.get("base_maxhp", PLAYER_MAX_HP)))
-    bonus_hp = max(0, int(META.get("maxhp", 0)))
+    meta = _meta_state()
+    runtime = _runtime_state()
+    base_hp = max(1, int(meta.get("base_maxhp", PLAYER_MAX_HP)))
+    bonus_hp = max(0, int(meta.get("maxhp", 0)))
     total_hp = base_hp + bonus_hp
     target = max(1, int(math.floor(total_hp * (1.0 - penalty_ratio))))
     new_bonus = min(bonus_hp, max(0, target - 1))
     new_base = max(1, target - new_bonus)
-    META["base_maxhp"] = new_base
-    META["maxhp"] = new_bonus
-    carry = globals().get("_carry_player_state")
+    meta["base_maxhp"] = new_base
+    meta["maxhp"] = new_bonus
+    carry = runtime.get("_carry_player_state")
     if isinstance(carry, dict):
         carry["hp"] = min(target, max(1, int(carry.get("hp", target))))
-    baseline = globals().get("_player_level_baseline")
+    baseline = runtime.get("_player_level_baseline")
     if isinstance(baseline, dict):
         baseline["hp"] = min(target, max(1, int(baseline.get("hp", target))))
         baseline["max_hp"] = min(target, max(1, int(baseline.get("max_hp", target))))
@@ -3090,13 +3119,15 @@ def apply_shady_loan_repayment() -> Optional[dict]:
     Resolve one wave of Shady Loan repayment. Returns a summary dict when work was done,
     or None if no active loan exists.
     """
-    level = int(META.get("shady_loan_level", 0))
-    debt_left = int(META.get("shady_loan_remaining_debt", 0))
-    waves_left = int(META.get("shady_loan_waves_remaining", 0))
-    coins_before = max(0, int(META.get("spoils", 0)))
-    current_level = int(globals().get("current_level", -1))
-    grace_level = int(META.get("shady_loan_grace_level", -1))
-    if META.get("shady_loan_status") == "active" and debt_left > 0 and current_level == grace_level:
+    meta = _meta_state()
+    runtime = _runtime_state()
+    level = int(meta.get("shady_loan_level", 0))
+    debt_left = int(meta.get("shady_loan_remaining_debt", 0))
+    waves_left = int(meta.get("shady_loan_waves_remaining", 0))
+    coins_before = max(0, int(meta.get("spoils", 0)))
+    current_level = int(runtime.get("current_level", -1))
+    grace_level = int(meta.get("shady_loan_grace_level", -1))
+    if meta.get("shady_loan_status") == "active" and debt_left > 0 and current_level == grace_level:
         return {
             "level": level,
             "raw_payment": 0,
@@ -3115,20 +3146,20 @@ def apply_shady_loan_repayment() -> Optional[dict]:
     if level <= 0:
         return None
     if debt_left <= 0:
-        META["shady_loan_waves_remaining"] = 0
+        meta["shady_loan_waves_remaining"] = 0
         return None
     idx = _shady_loan_level_idx(level)
     penalty_ratio = SHADY_LOAN_HP_PENALTIES[idx]
-    lockbox_lvl = int(META.get("lockbox_level", 0))
+    lockbox_lvl = int(meta.get("lockbox_level", 0))
     # Already overdue -> apply default immediately
     if waves_left <= 0:
         new_max = apply_shady_loan_hp_penalty(penalty_ratio)
-        META["shady_loan_remaining_debt"] = 0
-        META["shady_loan_waves_remaining"] = 0
-        META["shady_loan_defaulted"] = True
-        META["shady_loan_status"] = "defaulted"
-        META["shady_loan_last_level"] = level
-        META["shady_loan_level"] = 0
+        meta["shady_loan_remaining_debt"] = 0
+        meta["shady_loan_waves_remaining"] = 0
+        meta["shady_loan_defaulted"] = True
+        meta["shady_loan_status"] = "defaulted"
+        meta["shady_loan_last_level"] = level
+        meta["shady_loan_level"] = 0
         return {
             "level": level,
             "raw_payment": 0,
@@ -3146,27 +3177,27 @@ def apply_shady_loan_repayment() -> Optional[dict]:
     # Final wave: attempt to clear the entire remaining debt in one shot
     if waves_left <= 1:
         pay_all = clamp_coin_loss_with_lockbox(coins_before, min(debt_left, coins_before), lockbox_lvl)
-        META["spoils"] = coins_before - pay_all
-        coins_after = int(META.get("spoils", coins_before))
+        meta["spoils"] = coins_before - pay_all
+        coins_after = int(meta.get("spoils", coins_before))
         debt_left = max(0, debt_left - pay_all)
         waves_left = 0
         defaulted = False
         new_max_hp = None
         if debt_left > 0:
             defaulted = True
-            META["shady_loan_defaulted"] = True
-            META["shady_loan_status"] = "defaulted"
-            META["shady_loan_last_level"] = level
+            meta["shady_loan_defaulted"] = True
+            meta["shady_loan_status"] = "defaulted"
+            meta["shady_loan_last_level"] = level
             new_max_hp = apply_shady_loan_hp_penalty(penalty_ratio)
             debt_left = 0
-            coins_after = int(META.get("spoils", coins_after))
+            coins_after = int(meta.get("spoils", coins_after))
         else:
-            META["shady_loan_defaulted"] = False
-            META["shady_loan_status"] = "repaid"
-            META["shady_loan_last_level"] = level
-        META["shady_loan_level"] = 0
-        META["shady_loan_remaining_debt"] = debt_left
-        META["shady_loan_waves_remaining"] = waves_left
+            meta["shady_loan_defaulted"] = False
+            meta["shady_loan_status"] = "repaid"
+            meta["shady_loan_last_level"] = level
+        meta["shady_loan_level"] = 0
+        meta["shady_loan_remaining_debt"] = debt_left
+        meta["shady_loan_waves_remaining"] = waves_left
         return {
             "level": level,
             "raw_payment": pay_all,
@@ -3189,8 +3220,8 @@ def apply_shady_loan_repayment() -> Optional[dict]:
     actual_payment = min(capped_payment, coins_before, debt_left)
     actual_payment = clamp_coin_loss_with_lockbox(coins_before, actual_payment, lockbox_lvl)
     if actual_payment > 0:
-        META["spoils"] = coins_before - actual_payment
-    coins_after = int(META.get("spoils", coins_before))
+        meta["spoils"] = coins_before - actual_payment
+    coins_after = int(meta.get("spoils", coins_before))
     debt_left = max(0, debt_left - actual_payment)
     waves_left = max(0, waves_left - 1)
     defaulted = False
@@ -3198,12 +3229,12 @@ def apply_shady_loan_repayment() -> Optional[dict]:
     if debt_left <= 0:
         debt_left = 0
         waves_left = 0
-        META["shady_loan_defaulted"] = False
-        META["shady_loan_status"] = "repaid"
-        META["shady_loan_last_level"] = level
-        META["shady_loan_level"] = 0
-    META["shady_loan_remaining_debt"] = debt_left
-    META["shady_loan_waves_remaining"] = waves_left
+        meta["shady_loan_defaulted"] = False
+        meta["shady_loan_status"] = "repaid"
+        meta["shady_loan_last_level"] = level
+        meta["shady_loan_level"] = 0
+    meta["shady_loan_remaining_debt"] = debt_left
+    meta["shady_loan_waves_remaining"] = waves_left
     return {
         "level": level,
         "raw_payment": raw_payment,
@@ -4030,7 +4061,7 @@ def _draw_intro_scanlines(surface: pygame.Surface, t: float) -> None:
 def _neuro_outline_points(cx: int, cy: int) -> list[tuple[float, float]]:
     """Return the current NeuroViz polygon points, falling back to a circle if unavailable."""
     try:
-        if "_neuro_viz" in globals() and getattr(_neuro_viz, "bars", None):
+        if getattr(_neuro_viz, "bars", None):
             pts = []
             for bar in _neuro_viz.bars:
                 r = _neuro_viz.radius + bar.get("val", 0.0)
@@ -4065,7 +4096,7 @@ def draw_intro_waves(target: pygame.Surface, t: float):
     # Pull energy from the Neuro viz so the ripples breathe with the music
     energy = 0.0
     try:
-        if "_neuro_viz" in globals() and getattr(_neuro_viz, "bars", None):
+        if getattr(_neuro_viz, "bars", None):
             energy = sum(b.get("val", 0.0) for b in _neuro_viz.bars) / max(1, len(_neuro_viz.bars))
     except Exception:
         pass
@@ -4123,7 +4154,7 @@ def draw_neuro_waves(target: pygame.Surface, t: float):
     
     energy = 0.0
     try:
-        if "_neuro_viz" in globals() and getattr(_neuro_viz, "bars", None):
+        if getattr(_neuro_viz, "bars", None):
             energy = sum(b.get("val", 0.0) for b in _neuro_viz.bars) / max(1, len(_neuro_viz.bars))
     except Exception:
         pass
@@ -4394,7 +4425,8 @@ def _resume_bgm_if_needed(min_interval_s: float = 1.25) -> bool:
     global _last_bgm_resume_retry_s
     if _music_is_busy() or _current_music_pos_ms() is not None:
         return True
-    bgm = globals().get("_bgm")
+    runtime = _runtime_state()
+    bgm = runtime.get("_bgm")
     if bgm is None or not getattr(bgm, "_ready", False):
         return False
     now_s = pygame.time.get_ticks() / 1000.0
@@ -4701,34 +4733,35 @@ def show_pause_menu(screen, background_surf):
 
 def _apply_levelup_choice(player, key: str):
     """Apply the chosen buff immediately AND persist in META so it carries over."""
+    meta = _meta_state()
     if key == "dmg":
-        META["dmg"] = META.get("dmg", 0) + 1
+        meta["dmg"] = meta.get("dmg", 0) + 1
         player.bullet_damage += 1
     elif key == "firerate":
-        META["firerate_mult"] = float(META.get("firerate_mult", 1.0)) * 1.05
+        meta["firerate_mult"] = float(meta.get("firerate_mult", 1.0)) * 1.05
         player.fire_rate_mult *= 1.05
     elif key == "range":
-        base_range = clamp_player_range(META.get("base_range", PLAYER_RANGE_DEFAULT))
-        META["base_range"] = base_range  # sanitize any persisted value
-        new_mult = float(META.get("range_mult", 1.0)) * 1.10
+        base_range = clamp_player_range(meta.get("base_range", PLAYER_RANGE_DEFAULT))
+        meta["base_range"] = base_range  # sanitize any persisted value
+        new_mult = float(meta.get("range_mult", 1.0)) * 1.10
         max_mult = PLAYER_RANGE_MAX / max(1.0, base_range)
-        META["range_mult"] = min(new_mult, max_mult)
+        meta["range_mult"] = min(new_mult, max_mult)
         # player.range is base * mult (clamped to the hard cap)
         if player is not None:
             player.range_base = clamp_player_range(getattr(player, "range_base", base_range))
-            player.range = compute_player_range(player.range_base, META["range_mult"])
+            player.range = compute_player_range(player.range_base, meta["range_mult"])
     elif key == "speed":
-        META["speed_mult"] = float(META.get("speed_mult", 1.0)) * 1.05
-        base_spd = float(META.get("base_speed", 2.6))
+        meta["speed_mult"] = float(meta.get("speed_mult", 1.0)) * 1.05
+        base_spd = float(meta.get("base_speed", 2.6))
         # live-apply to player
         if player is not None:
-            player.speed = min(PLAYER_SPEED_CAP, max(1.0, base_spd * META["speed_mult"]))
+            player.speed = min(PLAYER_SPEED_CAP, max(1.0, base_spd * meta["speed_mult"]))
     elif key == "maxhp":
-        META["maxhp"] = int(META.get("maxhp", 0)) + 5
+        meta["maxhp"] = int(meta.get("maxhp", 0)) + 5
         player.max_hp += 5
         player.hp = min(player.max_hp, player.hp + 10)  # small heal like the mock
     elif key == "crit":
-        META["crit"] = min(0.75, float(META.get("crit", 0.0)) + 0.02)
+        meta["crit"] = min(0.75, float(meta.get("crit", 0.0)) + 0.02)
         if player is not None:
             player.crit_chance = min(0.75, float(getattr(player, "crit_chance", 0.0)) + 0.02)
 
@@ -4753,7 +4786,7 @@ def show_levelup_overlay(screen, background_surf, player):
     ]
     cards = random.sample(pool, k=min(4, len(pool)))
     # Apply stat caps: once at or above caps, stop offering those perks
-    speed_cap = globals().get("PLAYER_SPEED_CAP", None)
+    speed_cap = PLAYER_SPEED_CAP
     if speed_cap is not None and player is not None:
         try:
             cur_spd = float(getattr(player, "speed", 0.0))
@@ -4858,7 +4891,7 @@ def levelup_modal(screen, bg_surface, clock, time_left, player):
     key = show_levelup_overlay(screen, bg_surface, player)
     if key:
         _apply_levelup_choice(player, key)  # <-- APPLY the chosen buff to LIVE player + META
-    globals()["_time_left_runtime"] = time_left
+    _runtime_state()["_time_left_runtime"] = time_left
     clock.tick(60)  # reset dt baseline so gameplay doesn't jump after modal
     flush_events()
     return time_left
@@ -6741,7 +6774,7 @@ def play_focus_cinematic_iso(screen, clock,
 
     def _do_pan(cam_a: tuple[int, int], cam_b: tuple[int, int], dur: float):
         start = pygame.time.get_ticks()
-        frozen_time = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
+        frozen_time = float(_runtime_state().get("_time_left_runtime", LEVEL_TIME_LIMIT))
         while True:
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
@@ -6770,7 +6803,7 @@ def play_focus_cinematic_iso(screen, clock,
     # start → focus
     _do_pan(start_from, focus_cam, duration_each)
     # hold on focus
-    frozen_time = float(globals().get("_time_left_runtime", LEVEL_TIME_LIMIT))
+    frozen_time = float(_runtime_state().get("_time_left_runtime", LEVEL_TIME_LIMIT))
     hold_start = pygame.time.get_ticks()
     while (pygame.time.get_ticks() - hold_start) < int(hold_time * 1000):
         for ev in pygame.event.get():
@@ -6914,9 +6947,13 @@ def render_game_iso_web_lite(screen, game_state, player, enemies, bullets, enemy
             pygame.draw.circle(screen, getattr(p, "color", (110, 250, 170)), (cx, cy), body_r)
             pygame.draw.circle(screen, (12, 24, 40), (cx, cy), body_r, 2)
 
-    draw_ui_topbar(screen, game_state, player,
-                   time_left=globals().get("_time_left_runtime"),
-                   enemies=enemies)
+    draw_ui_topbar(
+        screen,
+        game_state,
+        player,
+        time_left=_runtime_state().get("_time_left_runtime"),
+        enemies=enemies,
+    )
     bosses = _find_all_bosses(enemies)
     if len(bosses) >= 2:
         draw_boss_hp_bars_twin(screen, bosses[:2])
@@ -7481,7 +7518,7 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
                 lvl_vis = max(1, min(lvl_vis, len(VULN_MARK_DURATIONS)))
                 dur_vis = VULN_MARK_DURATIONS[lvl_vis - 1]
                 rem_ratio = max(0.0, min(1.0, mark_t / max(0.001, dur_vis)))
-                phase = (globals().get("mark_pulse_time", 0.0) % MARK_PULSE_PERIOD) / MARK_PULSE_PERIOD
+                phase = (_runtime_state().get("mark_pulse_time", 0.0) % MARK_PULSE_PERIOD) / MARK_PULSE_PERIOD
                 pulse = 0.5 + 0.5 * math.sin(phase * math.tau)
                 scale = MARK_PULSE_MIN_SCALE + (MARK_PULSE_MAX_SCALE - MARK_PULSE_MIN_SCALE) * pulse
                 base_size = max(18, int(draw_size * 0.9))
@@ -7730,9 +7767,13 @@ def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, o
     # 5) 顶层 HUD（沿用你现有 HUD 代码即可）
     #    直接调用原 render_game 里“顶栏 HUD 的那段”（从画黑色 InfoBar 开始，到金币/物品文字结束）
     #    —— 为避免重复代码，可以把那段 HUD 抽成一个小函数，这里调用即可。
-    draw_ui_topbar(screen, game_state, player,
-                   time_left=globals().get("_time_left_runtime"),
-                   enemies=enemies)
+    draw_ui_topbar(
+        screen,
+        game_state,
+        player,
+        time_left=_runtime_state().get("_time_left_runtime"),
+        enemies=enemies,
+    )
     bosses = _find_all_bosses(enemies)
     if len(bosses) >= 2:
         draw_boss_hp_bars_twin(screen, bosses[:2])
@@ -7847,19 +7888,22 @@ class GameSound:
 
 def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms: int = 400):
     """Stop current BGM and play the first existing file in candidates."""
-    global _bgm, _neuro_viz, _neuro_viz_loader, _neuro_viz_loader_path
+    global _neuro_viz, _neuro_viz_loader, _neuro_viz_loader_path
+    runtime = _runtime_state()
     try:
-        if "_bgm" in globals() and getattr(_bgm, "stop", None):
+        bgm = runtime.get("_bgm")
+        if getattr(bgm, "stop", None):
             try:
-                _bgm.stop(fade_ms=fadeout_ms)
+                bgm.stop(fade_ms=fadeout_ms)
             except Exception:
                 pass
         expanded = _expand_audio_candidates(candidates)
         path = next((p for p in expanded if p and os.path.exists(p)), None)
         if not path:
             return False
-        _bgm = GameSound(music_path=path, volume=volume)
-        _bgm.playBackGroundMusic()
+        bgm = GameSound(music_path=path, volume=volume)
+        runtime["_bgm"] = bgm
+        bgm.playBackGroundMusic()
         
         # --- MODIFIED: Load into NeuroVisualizer instead of intro_envelope ---
         # Heavy librosa analysis can hitch the first frame; load it asynchronously.

@@ -75,6 +75,9 @@ class MetaProxy:
     def update(self, *args, **kwargs) -> None:
         self._game.META.update(*args, **kwargs)
 
+    def setdefault(self, key: str, default: Any = None) -> Any:
+        return self._game.META.setdefault(key, default)
+
     def items(self):
         return self._game.META.items()
 
