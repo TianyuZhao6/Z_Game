@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import random
+from zgame import runtime_state as rs
 
 
-def _state(game) -> dict:
-    return game.__dict__
+def _state(game):
+    return rs.runtime(game)
+
+
+def _meta(game):
+    return rs.meta(game)
 
 
 def build_shop_catalog(game):
-    meta = game.META
+    meta = _meta(game)
     catalog = [
         {
             "id": "coin_magnet",
@@ -218,7 +223,7 @@ def build_shop_catalog(game):
 
 def load_locked_ids(game) -> list[str]:
     state = _state(game)
-    meta = game.META
+    meta = _meta(game)
     saved_locked = meta.get("locked_shop_ids")
     if isinstance(saved_locked, list):
         seen = set()
@@ -246,11 +251,11 @@ def persist_locked_ids(game, locked_ids: list[str]) -> None:
         if isinstance(lock_id, str) and lock_id not in seen:
             seen.add(lock_id)
             ordered.append(lock_id)
-    game.META["locked_shop_ids"] = ordered
+    _meta(game)["locked_shop_ids"] = ordered
 
 
 def prop_level(game, item) -> int | None:
-    return game.prop_level_from_meta(item.get("id"), game.META)
+    return game.prop_level_from_meta(item.get("id"), _meta(game))
 
 
 def owned_live_text(game, item, level: int | None) -> str:
@@ -262,7 +267,7 @@ def prop_max_level(item):
 
 
 def prop_at_cap(game, item) -> bool:
-    meta = game.META
+    meta = _meta(game)
     if item.get("id") == "shady_loan":
         level = int(meta.get("shady_loan_level", 0))
         debt = int(meta.get("shady_loan_remaining_debt", 0))

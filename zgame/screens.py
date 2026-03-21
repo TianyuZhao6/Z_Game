@@ -4,10 +4,11 @@ import asyncio
 import sys
 
 import pygame
+from zgame import runtime_state as rs
 
 
 def _sync_bgm_volume(game, bgm_value: int) -> None:
-    bgm = game.__dict__.get("_bgm")
+    bgm = rs.runtime(game).get("_bgm")
     if bgm is not None and getattr(bgm, "set_volume", None):
         bgm.set_volume(float(bgm_value) / 100.0)
 

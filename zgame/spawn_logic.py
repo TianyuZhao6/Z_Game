@@ -3,10 +3,15 @@ from __future__ import annotations
 import random
 
 import pygame
+from zgame import runtime_state as rs
 
 
-def _state(game) -> dict:
-    return game.__dict__
+def _state(game):
+    return rs.runtime(game)
+
+
+def _meta(game):
+    return rs.meta(game)
 
 
 def is_boss_level(game, level_idx_zero_based: int) -> bool:
@@ -91,6 +96,7 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
     spawned = 0
     boss_done = False
     state = _state(game)
+    meta = _meta(game)
     try:
         level_idx = int(state.get("current_level", 0))
     except Exception:
@@ -108,13 +114,13 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
         cx = int(gx * game.CELL_SIZE + game.CELL_SIZE * 0.5)
         cy = int(gy * game.CELL_SIZE + game.CELL_SIZE * 0.5 + game.INFO_BAR_HEIGHT)
         bandit = game.make_coin_bandit((cx, cy), level_idx, wave_index, int(budget), player_dps=game.compute_player_dps(player))
-        lockbox_level = int(game.META.get("lockbox_level", 0))
+        lockbox_level = int(meta.get("lockbox_level", 0))
         if lockbox_level > 0:
-            baseline_coins = max(0, int(game.META.get("spoils", 0)) + int(getattr(game_state, "spoils_gained", 0)))
+            baseline_coins = max(0, int(meta.get("spoils", 0)) + int(getattr(game_state, "spoils_gained", 0)))
             bandit.lockbox_level = lockbox_level
             bandit.lockbox_baseline = baseline_coins
             bandit.lockbox_floor = game.lockbox_protected_min(baseline_coins, lockbox_level)
-        radar_level = int(game.META.get("bandit_radar_level", 0))
+        radar_level = int(meta.get("bandit_radar_level", 0))
         if radar_level > 0:
             bandit.radar_tagged = True
             bandit.radar_level = radar_level

@@ -4,8 +4,11 @@ import math
 import random
 from typing import Dict, List, Optional, Set, Tuple
 import pygame
+from zgame import runtime_state as rs
 
 def install(game):
+    meta = rs.meta(game)
+    runtime = rs.runtime(game)
 
     class GameState:
 
@@ -84,7 +87,7 @@ def install(game):
         """
             for s in self.spoils:
                 s.update(dt)
-            magnet_radius = int(game.META.get('coin_magnet_radius', 0) or 0)
+            magnet_radius = int(meta.get('coin_magnet_radius', 0) or 0)
             pull_radius = max(0, int(game.COIN_PICKUP_RADIUS_BASE + magnet_radius))
             if pull_radius <= 0:
                 return
@@ -112,7 +115,7 @@ def install(game):
                 if player_rect.colliderect(it.rect):
                     self.items.remove(it)
                     try:
-                        game.META['run_items_collected'] = int(game.META.get('run_items_collected', 0)) + 1
+                        meta['run_items_collected'] = int(meta.get('run_items_collected', 0)) + 1
                     except Exception:
                         pass
                     return True
@@ -146,17 +149,17 @@ def install(game):
             if amt <= 0:
                 return 0
             taken = 0
-            meta = game.__dict__.get('META', {})
+            meta_store = meta
             level_spoils = int(getattr(self, 'spoils_gained', 0))
             try:
-                bank = int(meta.get('spoils', 0))
+                bank = int(meta_store.get('spoils', 0))
             except Exception:
-                meta = {}
+                meta_store = {}
                 bank = 0
             coins_before = max(0, level_spoils + bank)
             lb_lvl = 0
             try:
-                lb_lvl = int(meta.get('lockbox_level', 0))
+                lb_lvl = int(meta_store.get('lockbox_level', 0))
             except Exception:
                 lb_lvl = 0
             amt = game.clamp_coin_loss_with_lockbox(coins_before, amt, lb_lvl)
@@ -165,9 +168,9 @@ def install(game):
             self.spoils_gained = g - d
             taken += d
             amt -= d
-            if amt > 0 and isinstance(meta, dict):
+            if amt > 0 and meta_store is not None:
                 rest = min(max(0, bank), amt)
-                meta['spoils'] = bank - rest
+                meta_store['spoils'] = bank - rest
                 taken += rest
             try:
                 self.level_coin_delta -= taken
@@ -268,7 +271,7 @@ def install(game):
 
         def player_paint_lifetime(self, level_override: int | None=None) -> float:
             if level_override is None:
-                lvl = int(game.META.get('curing_paint_level', 0))
+                lvl = int(meta.get('curing_paint_level', 0))
                 lvl += int(getattr(self, 'biome_curing_paint_bonus', 0))
             else:
                 lvl = int(level_override)
@@ -391,7 +394,7 @@ def install(game):
                 player._enemy_paint_dot_accum = 0.0
 
         def update_curing_paint(self, dt: float, player: 'Player', enemies: list) -> None:
-            lvl = int(game.META.get('curing_paint_level', 0))
+            lvl = int(meta.get('curing_paint_level', 0))
             lvl += int(getattr(self, 'biome_curing_paint_bonus', 0))
             if lvl > 0 and game.CURING_PAINT_LIFETIMES:
                 lvl = min(lvl, len(game.CURING_PAINT_LIFETIMES))
@@ -494,7 +497,7 @@ def install(game):
             bullet_base = int(getattr(player, 'bullet_damage', game.BULLET_DAMAGE_ENEMY))
             dmg_per_tick, _, _ = game.curing_paint_stats(lvl, bullet_base)
             base_dmg = float(dmg_per_tick) * float(ticks)
-            kill_bonus = game.curing_paint_kill_bonus(int(game.META.get('kill_count', 0)))
+            kill_bonus = game.curing_paint_kill_bonus(int(meta.get('kill_count', 0)))
             max_r = max(float(self._curing_paint_max_r), float(radius))
             for z in enemies:
                 if getattr(z, 'hp', 0) <= 0:
@@ -541,7 +544,7 @@ def install(game):
                     z._curing_paint_accum = accum
 
         def update_ground_spikes(self, dt: float, player: 'Player', enemies: list) -> None:
-            lvl = int(game.META.get('ground_spikes_level', 0))
+            lvl = int(meta.get('ground_spikes_level', 0))
             if lvl <= 0 or player is None:
                 if self.ground_spikes:
                     self.ground_spikes = []
@@ -554,7 +557,7 @@ def install(game):
                 self._ground_spike_t += dt
                 self._ground_spike_d += moved
                 if self._ground_spike_t >= game.GROUND_SPIKES_SPAWN_INTERVAL or self._ground_spike_d >= game.GROUND_SPIKES_SPAWN_DIST:
-                    bullet_base = int(getattr(player, 'bullet_damage', int(game.META.get('base_dmg', game.BULLET_DAMAGE_ENEMY)) + int(game.META.get('dmg', 0))))
+                    bullet_base = int(getattr(player, 'bullet_damage', int(meta.get('base_dmg', game.BULLET_DAMAGE_ENEMY)) + int(meta.get('dmg', 0))))
                     damage, lifetime, max_active = game.ground_spikes_stats(lvl, bullet_base)
                     if damage > 0.0 and lifetime > 0.0:
                         px, py = (player.rect.centerx, player.rect.centery)
@@ -641,12 +644,12 @@ def install(game):
                 if blocked > 0:
                     self.add_damage_text(player.rect.centerx, player.rect.top - 24, text, kind='shield')
                     player._bone_plating_glow = max(0.4, float(getattr(player, '_bone_plating_glow', 0.0)))
-            carapace_hp = int(game.META.get('carapace_shield_hp', 0))
+            carapace_hp = int(meta.get('carapace_shield_hp', 0))
             if dmg > 0 and carapace_hp > 0:
                 absorbed = min(dmg, carapace_hp)
                 dmg -= absorbed
                 carapace_hp -= absorbed
-                game.META['carapace_shield_hp'] = carapace_hp
+                meta['carapace_shield_hp'] = carapace_hp
                 player.carapace_hp = carapace_hp
                 self.add_damage_text(player.rect.centerx, player.rect.top - 10, 'Carapace', kind='shield')
             if dmg > 0:
@@ -870,14 +873,14 @@ def install(game):
                     b.vy += ty * steer
 
         def update_vulnerability_marks(self, enemies, dt: float):
-            lvl = int(game.META.get('vuln_mark_level', 0))
+            lvl = int(meta.get('vuln_mark_level', 0))
             if lvl <= 0:
                 for z in enemies:
                     if hasattr(z, '_vuln_mark_t'):
                         z._vuln_mark_t = 0.0
                 self._vuln_mark_cd = 0.0
                 return
-            game.__dict__['mark_pulse_time'] = game.__dict__.get('mark_pulse_time', 0.0) + dt
+            runtime['mark_pulse_time'] = float(runtime.get('mark_pulse_time', 0.0)) + dt
             interval, bonus, duration = game.mark_of_vulnerability_stats(lvl)
             for z in enemies:
                 t = float(getattr(z, '_vuln_mark_t', 0.0))
@@ -918,7 +921,7 @@ def install(game):
             self._vuln_mark_cd = cd
 
         def update_dot_rounds(self, enemies, dt: float) -> None:
-            lvl = int(game.META.get('dot_rounds_level', 0))
+            lvl = int(meta.get('dot_rounds_level', 0))
             if lvl <= 0:
                 for z in enemies:
                     if getattr(z, 'dot_rounds_stacks', None):

@@ -7,16 +7,27 @@ import sys
 from typing import Optional
 import pygame
 from zgame import shop_support
+from zgame import runtime_state as rs
+
+
+def _runtime(game):
+    return rs.runtime(game)
+
+
+def _meta(game):
+    return rs.meta(game)
 
 def show_shop_screen(game, screen) -> Optional[str]:
     """Spend META['spoils'] on small upgrades. ESC opens Pause; return action or None when closed."""
-    if not game.__dict__.get('_resume_shop_cache', False):
+    runtime = _runtime(game)
+    meta = _meta(game)
+    if not runtime.get('_resume_shop_cache', False):
         game._clear_shop_cache()
-    game.__dict__['_resume_shop_cache'] = False
+    runtime['_resume_shop_cache'] = False
     if not game.IS_WEB:
         game.play_combat_bgm()
-    game.__dict__['_coins_at_shop_entry'] = int(game.META.get('spoils', 0))
-    game.__dict__['_in_shop_ui'] = True
+    runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
+    runtime['_in_shop_ui'] = True
     try:
         clock = pygame.time.Clock()
         font = pygame.font.SysFont(None, 30)
@@ -34,7 +45,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
         stationary_turret_sprite = game._load_shop_sprite('prop-icon/Stationary Turret.png', (150, 110))
         catalog = shop_support.build_shop_catalog(game)
     finally:
-        game.__dict__.pop('_in_shop_ui', None)
+        runtime.pop('_in_shop_ui', None)
     locked_ids = shop_support.load_locked_ids(game)
 
     def _persist_locked_ids():
@@ -64,10 +75,10 @@ def show_shop_screen(game, screen) -> Optional[str]:
         return shop_support.split_offers(current)
 
     def _save_slots():
-        game.__dict__['_shop_slots_cache'] = copy.deepcopy(normal_slots)
-        game.__dict__['_shop_reroll_cache'] = copy.deepcopy(reroll_offer)
-    slots_cache = game.__dict__.get('_shop_slots_cache')
-    reroll_cache = game.__dict__.get('_shop_reroll_cache')
+        runtime['_shop_slots_cache'] = copy.deepcopy(normal_slots)
+        runtime['_shop_reroll_cache'] = copy.deepcopy(reroll_offer)
+    slots_cache = runtime.get('_shop_slots_cache')
+    reroll_cache = runtime.get('_shop_reroll_cache')
     if slots_cache is not None or reroll_cache is not None:
         normal_slots = copy.deepcopy(slots_cache) if slots_cache is not None else []
         reroll_offer = copy.deepcopy(reroll_cache)
@@ -88,7 +99,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
         mx, my = pygame.mouse.get_pos()
         title_surf = title_font.render('TRADER', True, (235, 235, 235))
         screen.blit(title_surf, title_surf.get_rect(center=(game.VIEW_W // 2, 80)))
-        money_surf = font.render(f'Coins: {game.META['spoils']}', True, (255, 230, 120))
+        money_surf = font.render(f"Coins: {meta['spoils']}", True, (255, 230, 120))
         screen.blit(money_surf, money_surf.get_rect(center=(game.VIEW_W // 2, 130)))
         now_ms = pygame.time.get_ticks()
         overlay_surf = None
@@ -96,9 +107,9 @@ def show_shop_screen(game, screen) -> Optional[str]:
         if lockbox_msg and now_ms < lockbox_msg_until:
             t = max(0.0, min(1.0, (lockbox_msg_until - now_ms) / float(lockbox_msg_life)))
             if lockbox_msg == 'lockbox':
-                lb_lvl = int(game.META.get('lockbox_level', 0))
+                lb_lvl = int(meta.get('lockbox_level', 0))
                 if lb_lvl > 0:
-                    protected = game.lockbox_protected_min(max(0, int(game.META.get('spoils', 0))), lb_lvl)
+                    protected = game.lockbox_protected_min(max(0, int(meta.get('spoils', 0))), lb_lvl)
                     msg_txt = f'{protected} coins restored'
                     overlay_surf = pygame.font.SysFont('Franklin Gothic Medium', 96).render(msg_txt, True, (255, 230, 160))
                     overlay_alpha = int(255 * t)
@@ -118,7 +129,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
             x += card_w + gap
             if it is None:
                 continue
-            level_idx = int(game.__dict__.get('current_level', 0))
+            level_idx = int(runtime.get('current_level', 0))
             cur_lvl = _prop_level(it)
             dyn_cost = game.shop_price(int(it['cost']), level_idx, kind='normal', prop_level=cur_lvl)
             max_lvl = _prop_max_level(it)
@@ -190,7 +201,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
                     sprite_center_y = (sprite_top + sprite_bottom) // 2
                     sprite_rect = stationary_turret_sprite.get_rect(center=(r.centerx, sprite_center_y))
                     screen.blit(stationary_turret_sprite, sprite_rect)
-                col = (255, 230, 120) if game.META['spoils'] >= dyn_cost else (160, 140, 120)
+                col = (255, 230, 120) if meta['spoils'] >= dyn_cost else (160, 140, 120)
                 price_txt = f'$ {dyn_cost}'
                 price_surf = font.render(price_txt, True, col)
                 screen.blit(price_surf, price_surf.get_rect(midbottom=(r.centerx, r.bottom - 10)))
@@ -223,9 +234,9 @@ def show_shop_screen(game, screen) -> Optional[str]:
         for itm in catalog:
             lvl = _prop_level(itm)
             if itm.get('id') == 'shady_loan':
-                status = game.META.get('shady_loan_status')
+                status = meta.get('shady_loan_status')
                 if status in ('repaid', 'defaulted') and (lvl is None or lvl <= 0):
-                    lvl = max(1, int(game.META.get('shady_loan_last_level', 1)))
+                    lvl = max(1, int(meta.get('shady_loan_last_level', 1)))
             max_lvl = _prop_max_level(itm)
             if lvl is not None and lvl > 0 and (itm.get('id') != 'reroll'):
                 owned.append({'itm': itm, 'lvl': lvl, 'max': max_lvl})
@@ -265,7 +276,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
                 y0 = base_y + row * line_h
                 name_color = (210, 210, 210)
                 lvl_color = (180, 230, 255)
-                if ent['itm'].get('id') == 'shady_loan' and game.META.get('shady_loan_status') == 'defaulted':
+                if ent['itm'].get('id') == 'shady_loan' and meta.get('shady_loan_status') == 'defaulted':
                     name_color = (200, 80, 80)
                     lvl_color = (220, 120, 120)
                 name_surf = font.render(name, True, name_color)
@@ -276,11 +287,11 @@ def show_shop_screen(game, screen) -> Optional[str]:
                 owned_rows.append((pygame.Rect(x0, y0, col_w, line_h), ent))
         reroll_rect = None
         if reroll_offer is not None:
-            level_idx = int(game.__dict__.get('current_level', 0))
+            level_idx = int(runtime.get('current_level', 0))
             reroll_dyn_cost = game.shop_price(int(reroll_offer['cost']), level_idx, kind='reroll')
             reroll_rect = pygame.Rect(0, 0, 220, 52)
             reroll_rect.center = (game.VIEW_W // 2, y + card_h + 70)
-            can_afford = game.META.get('spoils', 0) >= reroll_dyn_cost
+            can_afford = meta.get('spoils', 0) >= reroll_dyn_cost
             if not can_afford:
                 bg = SHOP_BOX_BG_DISABLED
                 border = SHOP_BOX_BORDER_DISABLED
@@ -348,7 +359,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
                     break
                 if choice == 'restart':
                     game.queue_menu_transition(screen.copy())
-                    game.__dict__['_restart_from_shop'] = True
+                    runtime['_restart_from_shop'] = True
                 if choice == 'home':
                     game.queue_menu_transition(screen.copy())
                 game.flush_events()
@@ -362,18 +373,18 @@ def show_shop_screen(game, screen) -> Optional[str]:
             if ev.type == pygame.MOUSEBUTTONDOWN:
                 if close.collidepoint(ev.pos):
                     game.flush_events()
-                    if int(game.META.get('golden_interest_level', 0)) > 0:
+                    if int(meta.get('golden_interest_level', 0)) > 0:
                         gain = game.apply_golden_interest_payout()
-                        game.show_golden_interest_popup(screen, gain, int(game.META.get('spoils', 0)))
+                        game.show_golden_interest_popup(screen, gain, int(meta.get('spoils', 0)))
                     loan_outcome = game.apply_shady_loan_repayment()
                     if loan_outcome:
                         game.show_shady_loan_popup(screen, loan_outcome)
                     chosen_biome = game.show_biome_picker_in_shop(screen)
                     if chosen_biome in ('__HOME__', '__RESTART__', '__EXIT__'):
                         if chosen_biome == '__RESTART__':
-                            game.__dict__['_restart_from_shop'] = True
+                            runtime['_restart_from_shop'] = True
                         return {'__HOME__': 'home', '__RESTART__': 'restart', '__EXIT__': 'exit'}[chosen_biome]
-                    game.__dict__['_next_biome'] = chosen_biome
+                    runtime['_next_biome'] = chosen_biome
                     game._clear_shop_cache()
                     return None
                 handled_lock = False
@@ -394,9 +405,9 @@ def show_shop_screen(game, screen) -> Optional[str]:
                     is_reroll = it.get('id') == 'reroll' or it.get('key') == 'reroll' or it.get('name') == 'Reroll Offers'
                     if not is_reroll and is_capped:
                         continue
-                    if r.collidepoint(ev.pos) and game.META['spoils'] >= dyn_cost:
-                        coins_before_buy = int(game.META.get('spoils', 0))
-                        game.META['spoils'] -= dyn_cost
+                    if r.collidepoint(ev.pos) and meta['spoils'] >= dyn_cost:
+                        coins_before_buy = int(meta.get('spoils', 0))
+                        meta['spoils'] -= dyn_cost
                         card_id = it.get('id')
                         if card_id and card_id in locked_ids:
                             locked_ids.remove(card_id)
@@ -404,8 +415,8 @@ def show_shop_screen(game, screen) -> Optional[str]:
                         if is_reroll or it.get('apply') == 'reroll':
                             offers = roll_offers()
                             normal_slots, reroll_offer = _split_offers(offers)
-                            game.__dict__['_shop_slot_ids_cache'] = [o.get('id') if o else None for o in normal_slots]
-                            game.__dict__['_shop_reroll_id_cache'] = reroll_offer.get('id') if reroll_offer else None
+                            runtime['_shop_slot_ids_cache'] = [o.get('id') if o else None for o in normal_slots]
+                            runtime['_shop_reroll_id_cache'] = reroll_offer.get('id') if reroll_offer else None
                             _save_slots()
                         else:
                             it['apply']()
@@ -418,12 +429,12 @@ def show_shop_screen(game, screen) -> Optional[str]:
                             if all((s is None for s in normal_slots)):
                                 offers = roll_offers()
                                 normal_slots, reroll_offer = _split_offers(offers)
-                                game.__dict__['_shop_slot_ids_cache'] = [o.get('id') if o else None for o in normal_slots]
-                                game.__dict__['_shop_reroll_id_cache'] = reroll_offer.get('id') if reroll_offer else None
+                                runtime['_shop_slot_ids_cache'] = [o.get('id') if o else None for o in normal_slots]
+                                runtime['_shop_reroll_id_cache'] = reroll_offer.get('id') if reroll_offer else None
                                 _save_slots()
                             else:
-                                game.__dict__['_shop_slot_ids_cache'] = [o.get('id') if o else None for o in normal_slots]
-                                game.__dict__['_shop_reroll_id_cache'] = reroll_offer.get('id') if reroll_offer else None
+                                runtime['_shop_slot_ids_cache'] = [o.get('id') if o else None for o in normal_slots]
+                                runtime['_shop_reroll_id_cache'] = reroll_offer.get('id') if reroll_offer else None
                                 _save_slots()
                 clock.tick(60)
 

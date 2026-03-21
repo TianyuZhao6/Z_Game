@@ -7,9 +7,12 @@ import random
 from typing import List, Tuple
 
 import pygame
+from zgame import runtime_state as rs
 
 
 def install(game):
+    meta = rs.meta(game)
+
     class AutoTurret:
         """
         Simple auto-turret that orbits near the player and fires weak bullets
@@ -113,8 +116,8 @@ def install(game):
             self.cd -= dt
             if self.cd > 0.0:
                 return
-            base_range = game.clamp_player_range(game.META.get("base_range", game.PLAYER_RANGE_DEFAULT))
-            player_range = game.compute_player_range(base_range, float(game.META.get("range_mult", 1.0)))
+            base_range = game.clamp_player_range(meta.get("base_range", game.PLAYER_RANGE_DEFAULT))
+            player_range = game.compute_player_range(base_range, float(meta.get("range_mult", 1.0)))
             total_range = game.clamp_player_range(player_range * self.range_mult)
             max_r2 = total_range * total_range
             best = None

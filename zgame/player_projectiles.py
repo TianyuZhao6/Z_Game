@@ -4,8 +4,10 @@ import math
 import random
 from typing import List
 import pygame
+from zgame import runtime_state as rs
 
 def install(game):
+    meta = rs.meta(game)
 
     class Bullet:
 
@@ -122,12 +124,12 @@ def install(game):
                         z._hit_flash = float(game.HIT_FLASH_DURATION)
                         z._flash_prev_hp = int(max(0, z.hp))
                     if getattr(self, 'source', 'player') == 'player':
-                        dot_lvl = int(game.META.get('dot_rounds_level', 0))
+                        dot_lvl = int(meta.get('dot_rounds_level', 0))
                         if dot_lvl > 0:
                             if player is not None:
                                 bullet_base = int(getattr(player, 'bullet_damage', base))
                             else:
-                                bullet_base = int(game.META.get('base_dmg', game.BULLET_DAMAGE_ENEMY)) + int(game.META.get('dmg', 0))
+                                bullet_base = int(meta.get('base_dmg', game.BULLET_DAMAGE_ENEMY)) + int(meta.get('dmg', 0))
                             dmg_per_tick, duration, max_stacks = game.dot_rounds_stats(dot_lvl, bullet_base)
                             game.apply_dot_rounds_stack(z, dmg_per_tick, duration, max_stacks)
                             game.spawn_dot_rounds_hit_vfx(game_state, cx, cy)
@@ -148,13 +150,13 @@ def install(game):
                         z._death_processed = True
                         game.increment_kill_count()
                         cx, cy = (z.rect.centerx, z.rect.centery)
-                        if int(game.META.get('explosive_rounds_level', 0)) > 0:
+                        if int(meta.get('explosive_rounds_level', 0)) > 0:
                             if getattr(z, 'is_boss', False):
                                 game_state.fx.spawn_explosion(cx, cy, (255, 100, 50), count=150)
                             else:
                                 game_state.fx.spawn_explosion(cx, cy, z.color, count=25)
                         game._bandit_death_notice(z, game_state)
-                        shrap_lvl = int(game.META.get('shrapnel_level', 0))
+                        shrap_lvl = int(meta.get('shrapnel_level', 0))
                         if shrap_lvl > 0 and hp_lost > 0 and (getattr(self, 'source', 'player') == 'player'):
                             base_chance = 0.25
                             per_level = 0.1
@@ -196,11 +198,11 @@ def install(game):
                                 game._bandit_death_notice(z, game_state)
                             if refund > 0:
                                 game_state.spawn_spoils(cx, cy, refund)
-                            if game.META.get('wanted_active', False):
+                            if meta.get('wanted_active', False):
                                 bounty = int(game.WANTED_POSTER_BOUNTY_BASE + stolen * 1.0)
-                                game.META['spoils'] = int(game.META.get('spoils', 0)) + bounty
-                                game.META['wanted_active'] = False
-                                game.META['wanted_poster_waves'] = 0
+                                meta['spoils'] = int(meta.get('spoils', 0)) + bounty
+                                meta['wanted_active'] = False
+                                meta['wanted_poster_waves'] = 0
                                 game_state.wanted_wave_active = False
                                 game_state.flash_banner(f'Bounty Claimed! +{bounty}', sec=1.0)
                                 game_state.add_damage_text(z.rect.centerx, z.rect.centery, f'+{bounty}', crit=True, kind='hp')

@@ -8,9 +8,15 @@ import sys
 from datetime import datetime
 from typing import Optional
 
+from zgame import runtime_state as rs
 
-def _state(game) -> dict:
-    return game.__dict__
+
+def _state(game):
+    return rs.runtime(game)
+
+
+def _meta(game):
+    return rs.meta(game)
 
 
 def web_storage(game):
@@ -117,23 +123,24 @@ def export_current_save(game) -> tuple[bool, str]:
 
 def save_progress(game, current_level: int, max_wave_reached: int | None = None, pending_shop: bool = False):
     state = _state(game)
-    meta_for_save = dict(game.META)
+    meta = _meta(game)
+    meta_for_save = meta.to_dict()
     try:
         if bool(pending_shop) or bool(state.get("_in_shop_ui", False)):
-            meta_for_save["spoils"] = int(game.META.get("spoils", 0))
+            meta_for_save["spoils"] = int(meta.get("spoils", 0))
         else:
             if int(state.get("_baseline_for_level", -999)) == int(current_level):
                 if "_coins_at_level_start" in state:
                     meta_for_save["spoils"] = int(state["_coins_at_level_start"])
                 items_base = state.get("_items_run_baseline", {})
                 try:
-                    base_spawn = int(items_base.get("spawned", state.get("_run_items_spawned_start", game.META.get("run_items_spawned", 0))))
+                    base_spawn = int(items_base.get("spawned", state.get("_run_items_spawned_start", meta.get("run_items_spawned", 0))))
                 except Exception:
-                    base_spawn = int(game.META.get("run_items_spawned", 0))
+                    base_spawn = int(meta.get("run_items_spawned", 0))
                 try:
-                    base_collect = int(items_base.get("collected", state.get("_run_items_collected_start", game.META.get("run_items_collected", 0))))
+                    base_collect = int(items_base.get("collected", state.get("_run_items_collected_start", meta.get("run_items_collected", 0))))
                 except Exception:
-                    base_collect = int(game.META.get("run_items_collected", 0))
+                    base_collect = int(meta.get("run_items_collected", 0))
                 meta_for_save["run_items_spawned"] = max(0, int(base_spawn))
                 meta_for_save["run_items_collected"] = max(0, int(base_collect))
     except Exception:
@@ -419,16 +426,17 @@ def clear_level_start_baseline(game) -> None:
 
 def capture_level_start_baseline(game, level_idx: int, player, game_state=None):
     state = _state(game)
+    meta = _meta(game)
     state["_baseline_for_level"] = int(level_idx)
     if state.get("_baseline_for_level", None) != level_idx or "_coins_at_level_start" not in state:
-        state["_coins_at_level_start"] = int(game.META.get("spoils", 0))
+        state["_coins_at_level_start"] = int(meta.get("spoils", 0))
     state["_player_level_baseline"] = {
         "level": int(getattr(player, "level", 1)),
         "xp": int(getattr(player, "xp", 0)),
         "xp_to_next": int(getattr(player, "xp_to_next", game.player_xp_required(1))),
-        "bullet_damage": int(getattr(player, "bullet_damage", game.META.get("base_dmg", 0) + game.META.get("dmg", 0))),
-        "max_hp": int(getattr(player, "max_hp", game.META.get("base_maxhp", 0) + game.META.get("maxhp", 0))),
-        "hp": int(getattr(player, "hp", game.META.get("base_maxhp", 0) + game.META.get("maxhp", 0))),
+        "bullet_damage": int(getattr(player, "bullet_damage", meta.get("base_dmg", 0) + meta.get("dmg", 0))),
+        "max_hp": int(getattr(player, "max_hp", meta.get("base_maxhp", 0) + meta.get("maxhp", 0))),
+        "hp": int(getattr(player, "hp", meta.get("base_maxhp", 0) + meta.get("maxhp", 0))),
         "biome": getattr(game_state, "biome_active", state.get("_next_biome")),
         "fire_rate_mult": float(getattr(player, "fire_rate_mult", 1.0)),
         "range": game.clamp_player_range(getattr(player, "range", game.PLAYER_RANGE_DEFAULT)),
@@ -437,22 +445,22 @@ def capture_level_start_baseline(game, level_idx: int, player, game_state=None):
         "crit_mult": float(getattr(player, "crit_mult", game.CRIT_MULT_BASE)),
         "speed": float(getattr(player, "speed", game.PLAYER_SPEED)),
         "meta_stats": {
-            "dmg": int(game.META.get("dmg", 0)),
-            "firerate_mult": float(game.META.get("firerate_mult", 1.0)),
-            "range_mult": float(game.META.get("range_mult", 1.0)),
-            "speed_mult": float(game.META.get("speed_mult", 1.0)),
-            "crit": float(game.META.get("crit", 0.0)),
-            "maxhp": int(game.META.get("maxhp", 0)),
+            "dmg": int(meta.get("dmg", 0)),
+            "firerate_mult": float(meta.get("firerate_mult", 1.0)),
+            "range_mult": float(meta.get("range_mult", 1.0)),
+            "speed_mult": float(meta.get("speed_mult", 1.0)),
+            "crit": float(meta.get("crit", 0.0)),
+            "maxhp": int(meta.get("maxhp", 0)),
         },
     }
     try:
-        base_spawn = int(state.get("_run_items_spawned_start", game.META.get("run_items_spawned", 0)))
+        base_spawn = int(state.get("_run_items_spawned_start", meta.get("run_items_spawned", 0)))
     except Exception:
-        base_spawn = int(game.META.get("run_items_spawned", 0))
+        base_spawn = int(meta.get("run_items_spawned", 0))
     try:
-        base_collect = int(state.get("_run_items_collected_start", game.META.get("run_items_collected", 0)))
+        base_collect = int(state.get("_run_items_collected_start", meta.get("run_items_collected", 0)))
     except Exception:
-        base_collect = int(game.META.get("run_items_collected", 0))
+        base_collect = int(meta.get("run_items_collected", 0))
     level_items = None
     if game_state is not None:
         try:
@@ -468,32 +476,33 @@ def capture_level_start_baseline(game, level_idx: int, player, game_state=None):
         "count_this_level": level_items,
     }
     state["_consumable_baseline"] = {
-        "carapace_shield_hp": int(game.META.get("carapace_shield_hp", 0)),
-        "wanted_poster_waves": int(game.META.get("wanted_poster_waves", 0)),
-        "wanted_active": bool(game.META.get("wanted_active", False)),
+        "carapace_shield_hp": int(meta.get("carapace_shield_hp", 0)),
+        "wanted_poster_waves": int(meta.get("wanted_poster_waves", 0)),
+        "wanted_active": bool(meta.get("wanted_active", False)),
     }
 
 
 def restore_level_start_baseline(game, level_idx: int, player, game_state):
     state = _state(game)
+    meta = _meta(game)
     if int(state.get("_baseline_for_level", -999999)) != int(level_idx):
         return
     state.pop("_restart_from_shop", None)
     if "_coins_at_level_start" in state:
-        game.META["spoils"] = int(state["_coins_at_level_start"])
+        meta["spoils"] = int(state["_coins_at_level_start"])
     elif "_coins_at_shop_entry" in state:
-        game.META["spoils"] = int(state["_coins_at_shop_entry"])
+        meta["spoils"] = int(state["_coins_at_shop_entry"])
     else:
-        game.META["spoils"] = 0
+        meta["spoils"] = 0
 
     items_base = state.get("_items_run_baseline", None)
     if isinstance(items_base, dict):
-        base_spawn = int(items_base.get("spawned", game.META.get("run_items_spawned", 0)))
-        base_collect = int(items_base.get("collected", game.META.get("run_items_collected", 0)))
+        base_spawn = int(items_base.get("spawned", meta.get("run_items_spawned", 0)))
+        base_collect = int(items_base.get("collected", meta.get("run_items_collected", 0)))
         level_items = items_base.get("count_this_level", None)
     else:
-        base_spawn = int(state.get("_run_items_spawned_start", game.META.get("run_items_spawned", 0)))
-        base_collect = int(state.get("_run_items_collected_start", game.META.get("run_items_collected", 0)))
+        base_spawn = int(state.get("_run_items_spawned_start", meta.get("run_items_spawned", 0)))
+        base_collect = int(state.get("_run_items_collected_start", meta.get("run_items_collected", 0)))
         level_items = None
     if level_items is None:
         try:
@@ -507,8 +516,8 @@ def restore_level_start_baseline(game, level_idx: int, player, game_state):
         level_items = int(level_items)
     except Exception:
         level_items = 0
-    game.META["run_items_spawned"] = max(0, int(base_spawn) + max(0, int(level_items)))
-    game.META["run_items_collected"] = max(0, int(base_collect))
+    meta["run_items_spawned"] = max(0, int(base_spawn) + max(0, int(level_items)))
+    meta["run_items_collected"] = max(0, int(base_collect))
     state["_run_items_spawned_start"] = int(base_spawn)
     state["_run_items_collected_start"] = int(base_collect)
     state["_items_counted_level"] = int(level_idx)
@@ -529,29 +538,29 @@ def restore_level_start_baseline(game, level_idx: int, player, game_state):
             try:
                 range_base = game.clamp_player_range(player_baseline.get("range_base", getattr(player, "range_base", game.PLAYER_RANGE_DEFAULT)))
                 range_val = game.clamp_player_range(player_baseline.get("range", range_base))
-                range_mult_est = range_val / range_base if range_base else game.META.get("range_mult", 1.0)
+                range_mult_est = range_val / range_base if range_base else meta.get("range_mult", 1.0)
             except Exception:
-                range_mult_est = game.META.get("range_mult", 1.0)
+                range_mult_est = meta.get("range_mult", 1.0)
             meta_stats = {
-                "dmg": int(game.META.get("dmg", 0)),
-                "firerate_mult": float(player_baseline.get("fire_rate_mult", game.META.get("firerate_mult", 1.0))),
-                "range_mult": float(game.META.get("range_mult", range_mult_est)),
-                "speed_mult": float(game.META.get("speed_mult", 1.0)),
-                "crit": float(game.META.get("crit", 0.0)),
-                "maxhp": int(game.META.get("maxhp", 0)),
+                "dmg": int(meta.get("dmg", 0)),
+                "firerate_mult": float(player_baseline.get("fire_rate_mult", meta.get("firerate_mult", 1.0))),
+                "range_mult": float(meta.get("range_mult", range_mult_est)),
+                "speed_mult": float(meta.get("speed_mult", 1.0)),
+                "crit": float(meta.get("crit", 0.0)),
+                "maxhp": int(meta.get("maxhp", 0)),
             }
         for key in ("dmg", "firerate_mult", "range_mult", "speed_mult", "crit", "maxhp"):
             if key in meta_stats:
-                game.META[key] = meta_stats[key]
+                meta[key] = meta_stats[key]
         player.level = int(player_baseline.get("level", 1))
         player.xp = int(player_baseline.get("xp", 0))
         player.xp_to_next = int(player_baseline.get("xp_to_next", game.player_xp_required(player.level)))
         player.bullet_damage = int(player_baseline.get("bullet_damage", player.bullet_damage))
         player.max_hp = int(player_baseline.get("max_hp", player.max_hp))
         player.hp = min(player.max_hp, int(player_baseline.get("hp", player.max_hp)))
-        player.fire_rate_mult = float(player_baseline.get("fire_rate_mult", game.META.get("firerate_mult", getattr(player, "fire_rate_mult", 1.0))))
+        player.fire_rate_mult = float(player_baseline.get("fire_rate_mult", meta.get("firerate_mult", getattr(player, "fire_rate_mult", 1.0))))
         player.range_base = game.clamp_player_range(player_baseline.get("range_base", getattr(player, "range_base", game.PLAYER_RANGE_DEFAULT)))
-        player.range = game.compute_player_range(player.range_base, float(game.META.get("range_mult", 1.0)))
+        player.range = game.compute_player_range(player.range_base, float(meta.get("range_mult", 1.0)))
         player.crit_chance = float(player_baseline.get("crit_chance", getattr(player, "crit_chance", game.CRIT_CHANCE_BASE)))
         player.crit_mult = float(player_baseline.get("crit_mult", getattr(player, "crit_mult", game.CRIT_MULT_BASE)))
         player.speed = float(player_baseline.get("speed", getattr(player, "speed", game.PLAYER_SPEED)))
@@ -563,14 +572,14 @@ def restore_level_start_baseline(game, level_idx: int, player, game_state):
     if isinstance(consumables, dict):
         if "carapace_shield_hp" in consumables:
             carapace_hp = max(0, int(consumables.get("carapace_shield_hp", 0)))
-            game.META["carapace_shield_hp"] = carapace_hp
+            meta["carapace_shield_hp"] = carapace_hp
             player.carapace_hp = carapace_hp
             player._hud_shield_vis = carapace_hp / float(max(1, player.max_hp)) if carapace_hp > 0 else 0.0
         if "wanted_poster_waves" in consumables:
-            game.META["wanted_poster_waves"] = max(0, int(consumables.get("wanted_poster_waves", 0)))
+            meta["wanted_poster_waves"] = max(0, int(consumables.get("wanted_poster_waves", 0)))
         if "wanted_active" in consumables:
-            game.META["wanted_active"] = bool(consumables.get("wanted_active", False))
-            game_state.wanted_wave_active = bool(game.META.get("wanted_active", False))
+            meta["wanted_active"] = bool(consumables.get("wanted_active", False))
+            game_state.wanted_wave_active = bool(meta.get("wanted_active", False))
 
 
 def has_save(game) -> bool:

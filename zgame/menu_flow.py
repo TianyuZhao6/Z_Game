@@ -4,10 +4,15 @@ import asyncio
 import sys
 
 import pygame
+from zgame import runtime_state as rs
 
 
-def _state(game) -> dict:
-    return game.__dict__
+def _state(game):
+    return rs.runtime(game)
+
+
+def _meta(game):
+    return rs.meta(game)
 
 
 async def run_neuro_intro(game, screen: pygame.Surface):
@@ -297,6 +302,7 @@ async def show_instruction_web(game, screen):
 def show_pause_menu(game, screen, background_surf):
     """Draw pause overlay with build info in the dimmed background, keeping buttons centered."""
     state = _state(game)
+    meta = _meta(game)
     dim = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
     dim.fill((4, 6, 10, 180))
     bg_scaled = pygame.transform.smoothscale(background_surf, (game.VIEW_W, game.VIEW_H))
@@ -312,13 +318,13 @@ def show_pause_menu(game, screen, background_surf):
     screen.blit(title, (left_margin, y_offset))
     y_offset += 40
     p = state.get("_pause_player_ref", None)
-    base_dmg = int(game.META.get("base_dmg", game.BULLET_DAMAGE_ENEMY))
-    base_cd = float(game.META.get("base_fire_cd", game.FIRE_COOLDOWN))
-    base_range = game.clamp_player_range(game.META.get("base_range", game.PLAYER_RANGE_DEFAULT))
-    base_speed = float(game.META.get("base_speed", game.PLAYER_SPEED))
-    base_hp = int(game.META.get("base_maxhp", game.PLAYER_MAX_HP))
-    base_crit = float(game.META.get("base_crit", game.CRIT_CHANCE_BASE))
-    cur_dmg = int(getattr(p, "bullet_damage", base_dmg + game.META.get("dmg", 0)))
+    base_dmg = int(meta.get("base_dmg", game.BULLET_DAMAGE_ENEMY))
+    base_cd = float(meta.get("base_fire_cd", game.FIRE_COOLDOWN))
+    base_range = game.clamp_player_range(meta.get("base_range", game.PLAYER_RANGE_DEFAULT))
+    base_speed = float(meta.get("base_speed", game.PLAYER_SPEED))
+    base_hp = int(meta.get("base_maxhp", game.PLAYER_MAX_HP))
+    base_crit = float(meta.get("base_crit", game.CRIT_CHANCE_BASE))
+    cur_dmg = int(getattr(p, "bullet_damage", base_dmg + meta.get("dmg", 0)))
     bonus_dmg = max(0, cur_dmg - base_dmg)
     dmg_text = font_tiny.render(
         f"Damage: {cur_dmg}  (Lv1 {base_dmg}, +{bonus_dmg} bonus)",
@@ -330,10 +336,10 @@ def show_pause_menu(game, screen, background_surf):
     if p:
         cur_cd = p.fire_cooldown()
     else:
-        cur_cd = max(game.MIN_FIRE_COOLDOWN, base_cd / max(1.0, float(game.META.get("firerate_mult", 1.0))))
+        cur_cd = max(game.MIN_FIRE_COOLDOWN, base_cd / max(1.0, float(meta.get("firerate_mult", 1.0))))
     cur_sps = 1.0 / cur_cd
     base_sps = 1.0 / max(game.MIN_FIRE_COOLDOWN, base_cd)
-    fr_mult = float(game.META.get("firerate_mult", 1.0))
+    fr_mult = float(meta.get("firerate_mult", 1.0))
     fr_text = font_tiny.render(
         f"Fire Rate: {fr_mult:.2f}x  ({cur_sps:.2f}/s, Lv1 {base_sps:.2f}/s)",
         True,
@@ -341,7 +347,7 @@ def show_pause_menu(game, screen, background_surf):
     )
     screen.blit(fr_text, (left_margin, y_offset))
     y_offset += 30
-    rng_mult = float(game.META.get("range_mult", 1.0))
+    rng_mult = float(meta.get("range_mult", 1.0))
     cur_range = game.clamp_player_range(getattr(p, "range", game.compute_player_range(base_range, rng_mult)))
     eff_rng_mult = cur_range / base_range if base_range else rng_mult
     rng_text = font_tiny.render(
@@ -351,7 +357,7 @@ def show_pause_menu(game, screen, background_surf):
     )
     screen.blit(rng_text, (left_margin, y_offset))
     y_offset += 30
-    spd_mult = float(game.META.get("speed_mult", 1.0))
+    spd_mult = float(meta.get("speed_mult", 1.0))
     cur_speed = float(base_speed * spd_mult)
     bonus_speed = cur_speed - base_speed
     spd_text = font_tiny.render(
@@ -361,7 +367,7 @@ def show_pause_menu(game, screen, background_surf):
     )
     screen.blit(spd_text, (left_margin, y_offset))
     y_offset += 30
-    cur_mhp = int(getattr(p, "max_hp", base_hp + game.META.get("maxhp", 0)))
+    cur_mhp = int(getattr(p, "max_hp", base_hp + meta.get("maxhp", 0)))
     bonus_hp = max(0, cur_mhp - base_hp)
     hp_text = font_tiny.render(
         f"Max HP: {cur_mhp}  (Lv1 {base_hp}, +{bonus_hp} bonus)",
@@ -370,7 +376,7 @@ def show_pause_menu(game, screen, background_surf):
     )
     screen.blit(hp_text, (left_margin, y_offset))
     y_offset += 30
-    cur_crit = float(getattr(p, "crit_chance", base_crit + game.META.get("crit", 0.0)))
+    cur_crit = float(getattr(p, "crit_chance", base_crit + meta.get("crit", 0.0)))
     bonus_crit = cur_crit - base_crit
     crit_text = font_tiny.render(
         f"Crit Chance: {int(cur_crit * 100)}%  (Lv1 {int(base_crit * 100)}%, +{int(bonus_crit * 100)}%)",
@@ -386,7 +392,7 @@ def show_pause_menu(game, screen, background_surf):
     path_title = font_tiny.render("Path Focus:", True, (180, 220, 255))
     screen.blit(path_title, (left_margin, y_offset))
     y_offset += 24
-    for line in game.path_focus_summary_lines(game.META, max_lines=3):
+    for line in game.path_focus_summary_lines(meta, max_lines=3):
         line_surf = font_tiny.render(f"- {line}", True, (170, 205, 230))
         screen.blit(line_surf, (left_margin, y_offset))
         y_offset += 22
@@ -423,9 +429,7 @@ def show_pause_menu(game, screen, background_surf):
                 "cost": 25,
                 "rarity": 3,
                 "max_level": 3,
-                "apply": lambda: game.META.update(
-                    vuln_mark_level=min(3, int(game.META.get("vuln_mark_level", 0)) + 1)
-                ),
+                "apply": lambda: meta.update(vuln_mark_level=min(3, int(meta.get("vuln_mark_level", 0)) + 1)),
             },
             {"id": "golden_interest", "name": "Golden Interest", "max_level": game.GOLDEN_INTEREST_MAX_LEVEL},
             {"id": "wanted_poster", "name": "Wanted Poster", "max_level": None},
@@ -445,7 +449,7 @@ def show_pause_menu(game, screen, background_surf):
         state["_shop_catalog_version"] = game.SHOP_CATALOG_VERSION
 
     def _pause_prop_level(item):
-        return game.prop_level_from_meta(item.get("id"), game.META)
+        return game.prop_level_from_meta(item.get("id"), meta)
 
     owned = []
     for item in catalog:

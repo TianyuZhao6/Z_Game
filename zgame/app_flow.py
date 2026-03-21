@@ -8,22 +8,25 @@ import random
 import sys
 from typing import Dict, List, Optional, Set, Tuple
 import pygame
+from zgame import runtime_state as rs
 
 async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
-    pygame.display.set_caption('Enemy Card Game – Level')
+    runtime = rs.runtime(game)
+    meta = rs.meta(game)
+    pygame.display.set_caption('Enemy Card Game 闂?Level')
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
     game_state = None
     wanted_active_for_level = False
-    level_idx = int(game.__dict__.get('current_level', 0))
+    level_idx = int(runtime.get('current_level', 0))
     if level_idx == 0:
-        game.META['run_items_spawned'] = 0
-        game.META['run_items_collected'] = 0
-    game.__dict__['_run_items_spawned_start'] = int(game.META.get('run_items_spawned', 0))
-    game.__dict__['_run_items_collected_start'] = int(game.META.get('run_items_collected', 0))
+        meta['run_items_spawned'] = 0
+        meta['run_items_collected'] = 0
+    runtime['_run_items_spawned_start'] = int(meta.get('run_items_spawned', 0))
+    runtime['_run_items_collected_start'] = int(meta.get('run_items_collected', 0))
     time_left = float(game.BOSS_TIME_LIMIT) if game.is_boss_level(level_idx) else float(game.LEVEL_TIME_LIMIT)
-    game.__dict__['_time_left_runtime'] = time_left
-    game.__dict__['_coins_at_level_start'] = int(game.META.get('spoils', 0))
+    runtime['_time_left_runtime'] = time_left
+    runtime['_coins_at_level_start'] = int(meta.get('spoils', 0))
     level_config = game._web_level_config(config)
     enemy_cap = game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP
     combat_bgm_started = game.IS_WEB
@@ -40,38 +43,38 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         game._draw_loading_screen(screen, 'INITIALIZING LEVEL', 'Building pathing and entity state')
         pygame.display.flip()
         await asyncio.sleep(0)
-    last_counted_level = game.__dict__.get('_items_counted_level')
+    last_counted_level = runtime.get('_items_counted_level')
     if last_counted_level != level_idx:
-        game.META['run_items_spawned'] = int(game.META.get('run_items_spawned', 0)) + len(items)
-        game.__dict__['_items_counted_level'] = level_idx
+        meta['run_items_spawned'] = int(meta.get('run_items_spawned', 0)) + len(items)
+        runtime['_items_counted_level'] = level_idx
     game.ensure_passage_budget(obstacles, game.GRID_SIZE, player_start)
     game_state = game.GameState(obstacles, items, main_item_list, decorations)
     game_state.spatial = spatial
     game_state.current_level = game.current_level
     game_state.bandit_spawned_this_level = False
-    wp = int(game.META.get('wanted_poster_waves', 0))
+    wp = int(meta.get('wanted_poster_waves', 0))
     if wp > 0:
-        game.META['wanted_poster_waves'] = max(0, wp - 1)
-        game.META['wanted_active'] = True
+        meta['wanted_poster_waves'] = max(0, wp - 1)
+        meta['wanted_active'] = True
         wanted_active_for_level = True
     else:
-        game.META['wanted_active'] = False
-    game_state.wanted_wave_active = bool(game.META.get('wanted_active', False))
+        meta['wanted_active'] = False
+    game_state.wanted_wave_active = bool(meta.get('wanted_active', False))
     level_idx = int(getattr(game_state, 'current_level', 0))
     time_left = float(game.BOSS_TIME_LIMIT) if game.is_boss_level(level_idx) else float(game.LEVEL_TIME_LIMIT)
-    game.__dict__['_time_left_runtime'] = time_left
+    runtime['_time_left_runtime'] = time_left
     player = game.Player(player_start, speed=game.PLAYER_SPEED)
     player.fire_cd = 0.0
-    game.apply_player_carry(player, game.__dict__.get('_carry_player_state'))
-    if int(game.__dict__.get('_baseline_for_level', -1)) == int(game.current_level):
-        baseline = game.__dict__.get('_player_level_baseline', None)
+    game.apply_player_carry(player, runtime.get('_carry_player_state'))
+    if int(runtime.get('_baseline_for_level', -1)) == int(game.current_level):
+        baseline = runtime.get('_player_level_baseline', None)
         if isinstance(baseline, dict) and baseline.get('biome') is not None:
-            game.__dict__['_next_biome'] = baseline.get('biome')
+            runtime['_next_biome'] = baseline.get('biome')
     game.apply_domain_buffs_for_level(game_state, player)
     if hasattr(player, 'on_level_start'):
         player.on_level_start()
-    game.__dict__['_next_biome'] = None
-    turret_level = int(game.META.get('auto_turret_level', 0))
+    runtime['_next_biome'] = None
+    turret_level = int(meta.get('auto_turret_level', 0))
     turrets: List[game.AutoTurret] = []
     if turret_level > 0:
         for i in range(turret_level):
@@ -79,7 +82,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             off_x = math.cos(angle) * game.AUTO_TURRET_OFFSET_RADIUS
             off_y = math.sin(angle) * game.AUTO_TURRET_OFFSET_RADIUS
             turrets.append(game.AutoTurret(player, (off_x, off_y)))
-    stationary_count = int(game.META.get('stationary_turret_count', 0))
+    stationary_count = int(meta.get('stationary_turret_count', 0))
     added_stationary = False
     if stationary_count > 0:
         for _ in range(stationary_count):
@@ -191,16 +194,16 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             return (None, None)
         kind, gp_or_none, obj, cx, cy, d2 = best
         return ((kind, gp_or_none, obj, cx, cy), d2 ** 0.5)
-    if int(game.__dict__.get('_baseline_for_level', -999)) == int(game.current_level) and '_consumable_baseline' not in game.__dict__:
-        game.__dict__['_consumable_baseline'] = {'carapace_shield_hp': int(game.META.get('carapace_shield_hp', 0)), 'wanted_poster_waves': int(game.META.get('wanted_poster_waves', 0)), 'wanted_active': bool(game.META.get('wanted_active', False))}
-    if int(game.__dict__.get('_baseline_for_level', -999)) != int(game.current_level):
+    if int(runtime.get('_baseline_for_level', -999)) == int(game.current_level) and '_consumable_baseline' not in runtime:
+        runtime['_consumable_baseline'] = {'carapace_shield_hp': int(meta.get('carapace_shield_hp', 0)), 'wanted_poster_waves': int(meta.get('wanted_poster_waves', 0)), 'wanted_active': bool(meta.get('wanted_active', False))}
+    if int(runtime.get('_baseline_for_level', -999)) != int(game.current_level):
         game._capture_level_start_baseline(game.current_level, player, game_state)
     else:
         game._restore_level_start_baseline(game.current_level, player, game_state)
     spawned = game.spawn_wave_with_budget(game_state, player, game.current_level, wave_index, enemies, enemy_cap)
     if spawned > 0:
         wave_index += 1
-        game.__dict__['_max_wave_reached'] = max(game.__dict__.get('_max_wave_reached', 0), wave_index)
+        runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
     player._hit_flash = 0.0
     player._flash_prev_hp = int(player.hp)
     for z in enemies:
@@ -251,7 +254,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 lbl = 'COIN BANDIT!' if tag == 'bandit' else None
                 game.play_focus_cinematic_iso(screen, clock, game_state, player, enemies, bullets, enemy_shots, pos, label=lbl, return_to_player=True)
         time_left -= dt
-        game.__dict__['_time_left_runtime'] = time_left
+        runtime['_time_left_runtime'] = time_left
         if time_left <= 0:
             game_result = 'success' if 'game_result' in locals() else 'success'
             running = False
@@ -262,7 +265,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 spawned = game.spawn_wave_with_budget(game_state, player, game.current_level, wave_index, enemies, enemy_cap)
                 if spawned > 0:
                     wave_index += 1
-                    game.__dict__['_max_wave_reached'] = max(game.__dict__.get('_max_wave_reached', 0), wave_index)
+                    runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
         for event in pygame.event.get():
             screen = game._handle_web_window_event(event) or screen
             game._sync_web_input_event(event)
@@ -292,9 +295,9 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                     return ('restart', config.get('reward', None), bg)
                 elif choice == 'home':
                     game.queue_menu_transition(pygame.display.get_surface().copy())
-                    game.__dict__['_carry_player_state'] = game.capture_player_carry(player)
+                    runtime['_carry_player_state'] = game.capture_player_carry(player)
                     game.save_progress(current_level=game.current_level, max_wave_reached=wave_index)
-                    game.__dict__['_skip_intro_once'] = True
+                    runtime['_skip_intro_once'] = True
                     return ('home', config.get('reward', None), bg)
                 elif choice == 'exit':
                     game.save_progress(current_level=game.current_level, max_wave_reached=wave_index)
@@ -484,18 +487,19 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         else:
             last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
         if game_result == 'success':
-            game.__dict__['_last_spoils'] = getattr(game_state, 'spoils_gained', 0)
-            game.__dict__['_carry_player_state'] = game.capture_player_carry(player)
+            runtime['_last_spoils'] = getattr(game_state, 'spoils_gained', 0)
+            runtime['_carry_player_state'] = game.capture_player_carry(player)
         if game.IS_WEB:
             await asyncio.sleep(0)
     return (game_result, config.get('reward', None), last_frame)
 
 async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], pygame.Surface]:
+    runtime = rs.runtime(game)
     """Resume a game from a snapshot in save_data; same return contract as main_run_level."""
     assert save_data.get('mode') == 'snapshot'
-    meta = save_data.get('meta', {})
+    saved_meta = save_data.get('meta', {})
     snap = save_data.get('snapshot', {})
-    level_idx = int(meta.get('current_level', game.current_level))
+    level_idx = int(saved_meta.get('current_level', game.current_level))
     obstacles: Dict[Tuple[int, int], game.Obstacle] = {}
     stationary_from_save: List[game.StationaryTurret] = []
     for o in snap.get('obstacles', []):
@@ -532,7 +536,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     player.bone_plating_hp = int(p.get('bone_plating_hp', 0))
     player._bone_plating_cd = float(p.get('bone_plating_cd', game.BONE_PLATING_GAIN_INTERVAL))
     player._bone_plating_glow = 0.0
-    player.aegis_pulse_level = int(meta.get('aegis_pulse_level', game.META.get('aegis_pulse_level', 0)))
+    player.aegis_pulse_level = int(saved_meta.get('aegis_pulse_level', 0))
     if player.aegis_pulse_level > 0:
         _, _, cd = game.aegis_pulse_stats(player.aegis_pulse_level, player.max_hp)
         player._aegis_pulse_cd = float(p.get('aegis_pulse_cd', cd))
@@ -542,7 +546,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         player.fire_cd = 0.0
     player._hit_flash = 0.0
     player._flash_prev_hp = int(player.hp)
-    turret_level = int(meta.get('auto_turret_level', game.META.get('auto_turret_level', 0)))
+    turret_level = int(saved_meta.get('auto_turret_level', 0))
     turrets: List[game.AutoTurret | game.StationaryTurret] = []
     if turret_level > 0:
         for i in range(turret_level):
@@ -551,7 +555,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             off_y = math.sin(angle) * game.AUTO_TURRET_OFFSET_RADIUS
             turrets.append(game.AutoTurret(player, (off_x, off_y)))
     turrets.extend(stationary_from_save)
-    stationary_count = int(meta.get('stationary_turret_count', 0))
+    stationary_count = int(saved_meta.get('stationary_turret_count', 0))
     added_stationary = False
     remaining = max(0, stationary_count - len(stationary_from_save))
     if remaining > 0:
@@ -594,12 +598,12 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         bullets.append(bobj)
     enemy_shots: List[game.EnemyShot] = []
     time_left = float(snap.get('time_left', game.LEVEL_TIME_LIMIT))
-    game.__dict__['_time_left_runtime'] = time_left
+    runtime['_time_left_runtime'] = time_left
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
     running = True
     last_frame = None
-    chosen_enemy_type = meta.get('chosen_enemy_type', 'basic')
+    chosen_enemy_type = saved_meta.get('chosen_enemy_type', 'basic')
     enemy_cap = game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP
     spawn_timer = 0.0
     wave_index = 0
@@ -671,7 +675,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     while running:
         dt = clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60) / 1000.0
         time_left -= dt
-        game.__dict__['_time_left_runtime'] = time_left
+        runtime['_time_left_runtime'] = time_left
         if time_left <= 0:
             chosen = await game.show_success_screen(screen, last_frame or game.render_game(screen, game_state, player, enemies, bullets, enemy_shots), reward_choices=[])
             return ('success', None, last_frame or screen.copy())
@@ -704,7 +708,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                     game.queue_menu_transition(pygame.display.get_surface().copy())
                     snap2 = game.capture_snapshot(game_state, player, enemies, level_idx, chosen_enemy_type, bullets)
                     game.save_snapshot(snap2)
-                    game.__dict__['_skip_intro_once'] = True
+                    runtime['_skip_intro_once'] = True
                     return ('home', None, bg)
                 elif choice == 'exit':
                     game.save_progress(current_level=level_idx, max_wave_reached=wave_index)
@@ -792,7 +796,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 spawned = game.spawn_wave_with_budget(game_state, player, level_idx, wave_index, enemies, enemy_cap)
                 if spawned > 0:
                     wave_index += 1
-                    game.__dict__['_max_wave_reached'] = max(game.__dict__.get('_max_wave_reached', 0), wave_index)
+                    runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
         player.hit_cd = max(0.0, player.hit_cd - dt)
         pgx = int(player.rect.centerx // game.CELL_SIZE)
         pgy = int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
@@ -877,6 +881,8 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     return ('home', None, last_frame or screen.copy())
 
 async def app_main(game) -> None:
+    runtime = rs.runtime(game)
+    meta = rs.meta(game)
     os.environ['SDL_VIDEO_CENTERED'] = '0'
     os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0'
     pygame.init()
@@ -907,40 +913,40 @@ async def app_main(game) -> None:
     if mode == 'continue' and save_data:
         if save_data:
             game._load_meta_from_save(save_data)
-            game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
-            game.__dict__['_pending_shop'] = bool(save_data.get('pending_shop', False))
-            game.__dict__['_next_biome'] = save_data.get('biome')
+            runtime['_carry_player_state'] = save_data.get('carry_player', None)
+            runtime['_pending_shop'] = bool(save_data.get('pending_shop', False))
+            runtime['_next_biome'] = save_data.get('biome')
         else:
-            game.__dict__['_carry_player_state'] = None
+            runtime['_carry_player_state'] = None
         if save_data.get('mode') == 'snapshot':
-            meta = save_data.get('meta', {})
-            game.current_level = int(meta.get('current_level', 0))
-            game.__dict__['_next_biome'] = save_data.get('biome')
+            saved_meta = save_data.get('meta', {})
+            game.current_level = int(saved_meta.get('current_level', 0))
+            runtime['_next_biome'] = save_data.get('biome')
         else:
             game.current_level = int(save_data.get('current_level', 0))
     else:
         game.clear_save()
         game.reset_run_state()
         game.current_level = 0
-        game.__dict__['_carry_player_state'] = None
-        game.__dict__['_pending_shop'] = False
-        game.__dict__.pop('_last_spoils', None)
-        game.__dict__.pop('_next_biome', None)
-        game.__dict__.pop('_last_biome', None)
+        runtime['_carry_player_state'] = None
+        runtime['_pending_shop'] = False
+        runtime.pop('_last_spoils', None)
+        runtime.pop('_next_biome', None)
+        runtime.pop('_last_biome', None)
     START_IN_SHOP_FOR_TEST = False
     if START_IN_SHOP_FOR_TEST:
-        game.__dict__['_pending_shop'] = True
+        runtime['_pending_shop'] = True
     while True:
-        if game.__dict__.get('_pending_shop', False):
-            game.META['spoils'] += int(game.__dict__.pop('_last_spoils', 0))
-            game.__dict__['_coins_at_shop_entry'] = int(game.META.get('spoils', 0))
+        if runtime.get('_pending_shop', False):
+            meta['spoils'] += int(runtime.pop('_last_spoils', 0))
+            runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
             action = game.show_shop_screen(screen)
-            game.__dict__['_pending_shop'] = False
+            runtime['_pending_shop'] = False
             if action in (None,):
-                game.__dict__['_pending_shop'] = False
+                runtime['_pending_shop'] = False
                 game.current_level += 1
-                game.__dict__.pop('_coins_at_level_start', None)
-                game.__dict__.pop('_coins_at_shop_entry', None)
+                runtime.pop('_coins_at_level_start', None)
+                runtime.pop('_coins_at_shop_entry', None)
                 game.save_progress(game.current_level)
             elif action == 'home':
                 game.save_progress(game.current_level, pending_shop=True)
@@ -951,25 +957,25 @@ async def app_main(game) -> None:
                 mode, save_data = selection
                 if mode == 'continue' and save_data:
                     game._load_meta_from_save(save_data)
-                    game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
-                    game.__dict__['_pending_shop'] = bool(save_data.get('pending_shop', False))
-                    game.__dict__['_next_biome'] = save_data.get('biome')
+                    runtime['_carry_player_state'] = save_data.get('carry_player', None)
+                    runtime['_pending_shop'] = bool(save_data.get('pending_shop', False))
+                    runtime['_next_biome'] = save_data.get('biome')
                     game.current_level = int(save_data.get('current_level', 0))
                 else:
                     game.clear_save()
                     game.reset_run_state()
                     game.current_level = 0
-                    game.__dict__['_carry_player_state'] = None
-                    game.__dict__['_pending_shop'] = False
-                    game.__dict__.pop('_last_spoils', None)
-                    game.__dict__.pop('_next_biome', None)
-                    game.__dict__.pop('_last_biome', None)
-                    game.__dict__.pop('_last_biome', None)
-                    game.__dict__.pop('_next_biome', None)
+                    runtime['_carry_player_state'] = None
+                    runtime['_pending_shop'] = False
+                    runtime.pop('_last_spoils', None)
+                    runtime.pop('_next_biome', None)
+                    runtime.pop('_last_biome', None)
+                    runtime.pop('_last_biome', None)
+                    runtime.pop('_next_biome', None)
                 continue
             elif action == 'restart':
-                game.META['spoils'] = int(game.__dict__.get('_coins_at_level_start', game.META.get('spoils', 0)))
-                game.__dict__.pop('_last_spoils', None)
+                meta['spoils'] = int(runtime.get('_coins_at_level_start', meta.get('spoils', 0)))
+                runtime.pop('_last_spoils', None)
                 game.flush_events()
                 continue
             elif action == 'exit':
@@ -978,22 +984,22 @@ async def app_main(game) -> None:
                 sys.exit()
         config = game.get_level_config(game.current_level)
         chosen_enemy = 'basic'
-        if '_coins_at_level_start' not in game.__dict__:
-            game.__dict__['_coins_at_level_start'] = int(game.META.get('spoils', 0))
-        if game.__dict__.get('_menu_transition_frame') is None:
+        if '_coins_at_level_start' not in runtime:
+            runtime['_coins_at_level_start'] = int(meta.get('spoils', 0))
+        if runtime.get('_menu_transition_frame') is None:
             game.flush_events()
         result, reward, bg = await game.main_run_level(config, chosen_enemy)
         if result == 'restart':
-            game.META['spoils'] = int(game.__dict__.get('_coins_at_level_start', game.META.get('spoils', 0)))
-            game.META['run_items_spawned'] = int(game.__dict__.get('_run_items_spawned_start', game.META.get('run_items_spawned', 0)))
-            game.META['run_items_collected'] = int(game.__dict__.get('_run_items_collected_start', game.META.get('run_items_collected', 0)))
-            cb = game.__dict__.get('_consumable_baseline', {})
+            meta['spoils'] = int(runtime.get('_coins_at_level_start', meta.get('spoils', 0)))
+            meta['run_items_spawned'] = int(runtime.get('_run_items_spawned_start', meta.get('run_items_spawned', 0)))
+            meta['run_items_collected'] = int(runtime.get('_run_items_collected_start', meta.get('run_items_collected', 0)))
+            cb = runtime.get('_consumable_baseline', {})
             if isinstance(cb, dict):
-                game.META['carapace_shield_hp'] = int(cb.get('carapace_shield_hp', game.META.get('carapace_shield_hp', 0)))
-                game.META['wanted_poster_waves'] = int(cb.get('wanted_poster_waves', game.META.get('wanted_poster_waves', 0)))
-                game.META['wanted_active'] = bool(cb.get('wanted_active', False))
-            game.__dict__.pop('_items_counted_level', None)
-            game.__dict__.pop('_last_spoils', None)
+                meta['carapace_shield_hp'] = int(cb.get('carapace_shield_hp', meta.get('carapace_shield_hp', 0)))
+                meta['wanted_poster_waves'] = int(cb.get('wanted_poster_waves', meta.get('wanted_poster_waves', 0)))
+                meta['wanted_active'] = bool(cb.get('wanted_active', False))
+            runtime.pop('_items_counted_level', None)
+            runtime.pop('_last_spoils', None)
             game.flush_events()
             continue
         if result == 'home':
@@ -1005,24 +1011,24 @@ async def app_main(game) -> None:
             if mode == 'continue' and save_data:
                 if save_data:
                     game._load_meta_from_save(save_data)
-                    game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
-                    game.__dict__['_next_biome'] = save_data.get('biome')
+                    runtime['_carry_player_state'] = save_data.get('carry_player', None)
+                    runtime['_next_biome'] = save_data.get('biome')
                 else:
-                    game.__dict__['_carry_player_state'] = None
+                    runtime['_carry_player_state'] = None
                 if save_data.get('mode') == 'snapshot':
-                    meta = save_data.get('meta', {})
-                    game.current_level = int(meta.get('current_level', 0))
-                    game.__dict__['_next_biome'] = save_data.get('biome')
+                    saved_meta = save_data.get('meta', {})
+                    game.current_level = int(saved_meta.get('current_level', 0))
+                    runtime['_next_biome'] = save_data.get('biome')
                 else:
                     game.current_level = int(save_data.get('current_level', 0))
-                game.__dict__['_pending_shop'] = bool(save_data.get('pending_shop', False))
+                runtime['_pending_shop'] = bool(save_data.get('pending_shop', False))
             else:
                 game.clear_save()
                 game.reset_run_state()
                 game.current_level = 0
-                game.__dict__['_carry_player_state'] = None
-                game.__dict__['_pending_shop'] = False
-                game.__dict__.pop('_last_spoils', None)
+                runtime['_carry_player_state'] = None
+                runtime['_pending_shop'] = False
+                runtime.pop('_last_spoils', None)
             continue
         if result == 'exit':
             pygame.quit()
@@ -1032,7 +1038,7 @@ async def app_main(game) -> None:
             action = await game.show_fail_screen(screen, bg)
             game.flush_events()
             if action == 'home':
-                game.__dict__['_carry_player_state'] = None
+                runtime['_carry_player_state'] = None
                 selection = await game.show_start_menu(screen, skip_intro=True)
                 if not selection:
                     sys.exit()
@@ -1042,15 +1048,15 @@ async def app_main(game) -> None:
                 game.current_level = 0
                 continue
             else:
-                cb = game.__dict__.get('_consumable_baseline', {})
+                cb = runtime.get('_consumable_baseline', {})
                 if isinstance(cb, dict):
-                    game.META['carapace_shield_hp'] = int(cb.get('carapace_shield_hp', game.META.get('carapace_shield_hp', 0)))
-                    game.META['wanted_poster_waves'] = int(cb.get('wanted_poster_waves', game.META.get('wanted_poster_waves', 0)))
-                    game.META['wanted_active'] = bool(cb.get('wanted_active', False))
+                    meta['carapace_shield_hp'] = int(cb.get('carapace_shield_hp', meta.get('carapace_shield_hp', 0)))
+                    meta['wanted_poster_waves'] = int(cb.get('wanted_poster_waves', meta.get('wanted_poster_waves', 0)))
+                    meta['wanted_active'] = bool(cb.get('wanted_active', False))
                 continue
         elif result == 'success':
-            game.META['spoils'] += int(game.__dict__.get('_last_spoils', 0))
-            game.__dict__['_last_spoils'] = 0
+            meta['spoils'] += int(runtime.get('_last_spoils', 0))
+            runtime['_last_spoils'] = 0
             action = await game.show_success_screen(screen, bg, [])
             if action == 'home':
                 game.flush_events()
@@ -1061,30 +1067,30 @@ async def app_main(game) -> None:
                 if mode == 'continue' and save_data:
                     if save_data:
                         game._load_meta_from_save(save_data)
-                        game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
-                        game.__dict__['_next_biome'] = save_data.get('biome')
+                        runtime['_carry_player_state'] = save_data.get('carry_player', None)
+                        runtime['_next_biome'] = save_data.get('biome')
                     else:
-                        game.__dict__['_carry_player_state'] = None
+                        runtime['_carry_player_state'] = None
                     if save_data.get('mode') == 'snapshot':
-                        meta = save_data.get('meta', {})
-                        game.current_level = int(meta.get('current_level', 0))
+                        saved_meta = save_data.get('meta', {})
+                        game.current_level = int(saved_meta.get('current_level', 0))
                     else:
                         game.current_level = int(save_data.get('current_level', 0))
-                    game.__dict__['_pending_shop'] = bool(save_data.get('pending_shop', False))
+                    runtime['_pending_shop'] = bool(save_data.get('pending_shop', False))
                 else:
                     game.clear_save()
                     game.reset_run_state()
                     game.current_level = 0
-                    game.__dict__['_carry_player_state'] = None
-                    game.__dict__['_pending_shop'] = False
-                    game.__dict__.pop('_last_spoils', None)
+                    runtime['_carry_player_state'] = None
+                    runtime['_pending_shop'] = False
+                    runtime.pop('_last_spoils', None)
                 continue
             if action in ('restart', 'retry'):
-                game.META['spoils'] = int(game.__dict__.get('_coins_at_level_start', game.META.get('spoils', 0)))
-                game.__dict__.pop('_last_spoils', None)
+                meta['spoils'] = int(runtime.get('_coins_at_level_start', meta.get('spoils', 0)))
+                runtime.pop('_last_spoils', None)
                 game.flush_events()
                 continue
-            game.__dict__['_coins_at_shop_entry'] = int(game.META.get('spoils', 0))
+            runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
             action = game.show_shop_screen(screen)
             if action == 'home':
                 game.save_progress(game.current_level, pending_shop=True)
@@ -1096,30 +1102,30 @@ async def app_main(game) -> None:
                 if mode == 'continue' and save_data:
                     if save_data:
                         game._load_meta_from_save(save_data)
-                        game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
+                        runtime['_carry_player_state'] = save_data.get('carry_player', None)
                     else:
-                        game.__dict__['_carry_player_state'] = None
+                        runtime['_carry_player_state'] = None
                     if save_data.get('mode') == 'snapshot':
-                        meta = save_data.get('meta', {})
-                        game.current_level = int(meta.get('current_level', 0))
+                        saved_meta = save_data.get('meta', {})
+                        game.current_level = int(saved_meta.get('current_level', 0))
                     else:
                         game.current_level = int(save_data.get('current_level', 0))
-                    game.__dict__['_pending_shop'] = bool(save_data.get('pending_shop', False))
+                    runtime['_pending_shop'] = bool(save_data.get('pending_shop', False))
                 else:
                     game.clear_save()
                     game.reset_run_state()
                     game.current_level = 0
-                    game.__dict__['_carry_player_state'] = None
-                    game.__dict__['_pending_shop'] = False
-                    game.__dict__.pop('_next_biome', None)
-                    game.__dict__.pop('_last_biome', None)
+                    runtime['_carry_player_state'] = None
+                    runtime['_pending_shop'] = False
+                    runtime.pop('_next_biome', None)
+                    runtime.pop('_last_biome', None)
                 continue
             elif action in ('restart', 'retry'):
-                game.META['spoils'] = int(game.__dict__.get('_coins_at_shop_entry', game.META.get('spoils', 0)))
-                game.META['run_items_spawned'] = int(game.__dict__.get('_run_items_spawned_start', game.META.get('run_items_spawned', 0)))
-                game.META['run_items_collected'] = int(game.__dict__.get('_run_items_collected_start', game.META.get('run_items_collected', 0)))
-                game.__dict__.pop('_items_counted_level', None)
-                game.__dict__.pop('_last_spoils', None)
+                meta['spoils'] = int(runtime.get('_coins_at_shop_entry', meta.get('spoils', 0)))
+                meta['run_items_spawned'] = int(runtime.get('_run_items_spawned_start', meta.get('run_items_spawned', 0)))
+                meta['run_items_collected'] = int(runtime.get('_run_items_collected_start', meta.get('run_items_collected', 0)))
+                runtime.pop('_items_counted_level', None)
+                runtime.pop('_last_spoils', None)
                 continue
             elif action == 'exit':
                 game.save_progress(game.current_level, pending_shop=True)
@@ -1127,8 +1133,8 @@ async def app_main(game) -> None:
                 sys.exit()
             else:
                 game.current_level += 1
-                game.__dict__.pop('_coins_at_level_start', None)
-                game.__dict__.pop('_coins_at_shop_entry', None)
+                runtime.pop('_coins_at_level_start', None)
+                runtime.pop('_coins_at_shop_entry', None)
                 game.save_progress(game.current_level)
         else:
             selection = await game.show_start_menu(screen, skip_intro=True)
@@ -1138,19 +1144,20 @@ async def app_main(game) -> None:
             if mode == 'continue' and save_data:
                 if save_data:
                     game._load_meta_from_save(save_data)
-                    game.__dict__['_carry_player_state'] = save_data.get('carry_player', None)
+                    runtime['_carry_player_state'] = save_data.get('carry_player', None)
                 else:
-                    game.__dict__['_carry_player_state'] = None
+                    runtime['_carry_player_state'] = None
                 if save_data.get('mode') == 'snapshot':
-                    meta = save_data.get('meta', {})
+                    saved_meta = save_data.get('meta', {})
                     if mode == 'continue' and save_data and (save_data.get('mode') == 'snapshot'):
-                        game.current_level = int(meta.get('current_level', 0))
+                        game.current_level = int(saved_meta.get('current_level', 0))
                 else:
                     game.current_level = int(save_data.get('current_level', 0))
             else:
                 game.clear_save()
                 game.reset_run_state()
                 game.current_level = 0
-                game.__dict__['_carry_player_state'] = None
-                game.__dict__.pop('_next_biome', None)
-                game.__dict__.pop('_last_biome', None)
+                runtime['_carry_player_state'] = None
+                runtime.pop('_next_biome', None)
+                runtime.pop('_last_biome', None)
+

@@ -1,4 +1,10 @@
-﻿Executive Summary
+﻿
+The visual/effect-side runtime classes have now been split into `zgame/effects_runtime.py`: HexCell, HexTransition, NeuroParticle, CometCorpse, CometBlast, and AegisPulseRing now install back into `ZGame.py` through the same support-module pattern used elsewhere.
+The extracted support modules now route runtime scratch state and META access through `zgame/runtime_state.py` instead of reaching straight into `game.__dict__` / `game.META`. The remaining globals()/META coupling is now concentrated mostly in `ZGame.py` itself plus a few intentional install bindings.
+Fixes still worth doing even without more splitting: clean the garbled docstring/comment text in zgame/enemy_subclasses.py, continue reducing globals() / META coupling inside `ZGame.py`, and add the same kind of runtime verifier we now have for bullets to EnemyShot, boss special attacks, and save/shop resume flow.
+If you want the next practical refactor, I would do
+===================================================================
+Executive Summary
 This document is the master working specification for Z Game's prop system, path identity, balance rules, UX readability, and release-readiness requirements.
 Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and production guidance.
 Current intent: keep prop data consistent, make builds easier to read in-game, and align the current version toward a more polished Steam-ready release.

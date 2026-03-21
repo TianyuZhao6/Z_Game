@@ -4,9 +4,12 @@ import math
 from typing import Dict, List, Optional, Tuple
 
 import pygame
+from zgame import runtime_state as rs
 
 
 def install(game):
+    meta = rs.meta(game)
+
     class Graph:
         def __init__(self):
             self.edges: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
@@ -82,7 +85,7 @@ def install(game):
                 0.0,
                 min(
                     0.95,
-                    float(game.META.get("base_crit", game.CRIT_CHANCE_BASE)) + float(game.META.get("crit", 0.0)),
+                    float(meta.get("base_crit", game.CRIT_CHANCE_BASE)) + float(meta.get("crit", 0.0)),
                 ),
             )
             self.crit_mult = float(game.CRIT_MULT_BASE)
@@ -97,37 +100,37 @@ def install(game):
             self.xp_to_next = game.player_xp_required(self.level)
             self.levelup_pending = 0
             self.xp_gain_mult = 1.0
-            self.bullet_damage = int(game.META.get("base_dmg", game.BULLET_DAMAGE_ENEMY)) + int(game.META.get("dmg", 0))
-            self.fire_rate_mult = float(game.META.get("firerate_mult", 1.0))
-            self.bullet_pierce = int(game.META.get("pierce_level", 0))
-            self.bullet_ricochet = int(game.META.get("ricochet_level", 0))
-            self.shrapnel_level = int(game.META.get("shrapnel_level", 0))
-            self.explosive_rounds_level = int(game.META.get("explosive_rounds_level", 0))
-            self.dot_rounds_level = int(game.META.get("dot_rounds_level", 0))
-            self.aegis_pulse_level = int(game.META.get("aegis_pulse_level", 0))
+            self.bullet_damage = int(meta.get("base_dmg", game.BULLET_DAMAGE_ENEMY)) + int(meta.get("dmg", 0))
+            self.fire_rate_mult = float(meta.get("firerate_mult", 1.0))
+            self.bullet_pierce = int(meta.get("pierce_level", 0))
+            self.bullet_ricochet = int(meta.get("ricochet_level", 0))
+            self.shrapnel_level = int(meta.get("shrapnel_level", 0))
+            self.explosive_rounds_level = int(meta.get("explosive_rounds_level", 0))
+            self.dot_rounds_level = int(meta.get("dot_rounds_level", 0))
+            self.aegis_pulse_level = int(meta.get("aegis_pulse_level", 0))
             if self.aegis_pulse_level > 0:
                 _, _, cd = game.aegis_pulse_stats(self.aegis_pulse_level, self.max_hp)
                 self._aegis_pulse_cd = float(cd)
             else:
                 self._aegis_pulse_cd = 0.0
-            self.range_base = game.clamp_player_range(game.META.get("base_range", game.PLAYER_RANGE_DEFAULT))
-            self.range = game.compute_player_range(self.range_base, game.META.get("range_mult", 1.0))
-            spd0 = float(game.META.get("base_speed", game.PLAYER_SPEED))
-            spd_mult = float(game.META.get("speed_mult", 1.0))
-            spd_add = float(game.META.get("speed", 0))
+            self.range_base = game.clamp_player_range(meta.get("base_range", game.PLAYER_RANGE_DEFAULT))
+            self.range = game.compute_player_range(self.range_base, meta.get("range_mult", 1.0))
+            spd0 = float(meta.get("base_speed", game.PLAYER_SPEED))
+            spd_mult = float(meta.get("speed_mult", 1.0))
+            spd_add = float(meta.get("speed", 0))
             self.speed = min(game.PLAYER_SPEED_CAP, max(1.0, spd0 * spd_mult + spd_add))
-            hp0 = int(game.META.get("base_maxhp", game.PLAYER_MAX_HP))
-            self.max_hp = hp0 + int(game.META.get("maxhp", 0))
+            hp0 = int(meta.get("base_maxhp", game.PLAYER_MAX_HP))
+            self.max_hp = hp0 + int(meta.get("maxhp", 0))
             self.hp = min(self.max_hp, self.max_hp)
             self._hit_flash = 0.0
             self._flash_prev_hp = int(self.hp)
             self.shield_hp = 0
             self.shield_max = 0
             self._hud_shield_vis = 0.0
-            self.carapace_hp = int(game.META.get("carapace_shield_hp", 0))
+            self.carapace_hp = int(meta.get("carapace_shield_hp", 0))
             if self.carapace_hp > 0:
                 self._hud_shield_vis = self.carapace_hp / float(max(1, self.max_hp))
-            self.bone_plating_level = int(game.META.get("bone_plating_level", 0))
+            self.bone_plating_level = int(meta.get("bone_plating_level", 0))
             self.bone_plating_hp = 0
             self._bone_plating_cd = float(game.BONE_PLATING_GAIN_INTERVAL)
             self._bone_plating_glow = 0.0
