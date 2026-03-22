@@ -22,12 +22,16 @@ def install(game):
         def update(self, dt: float, player: 'Player', game_state: 'GameState'):
             if not self.alive:
                 return
+            if hasattr(game, 'verify_enemy_shot_runtime') and (not game.verify_enemy_shot_runtime(self)):
+                return
             nx = self.x + self.vx * dt
             ny = self.y + self.vy * dt
             self.traveled += ((nx - self.x) ** 2 + (ny - self.y) ** 2) ** 0.5
             self.x, self.y = (nx, ny)
             if self.traveled >= self.max_dist:
                 self.alive = False
+                return
+            if hasattr(game, 'verify_enemy_shot_runtime') and (not game.verify_enemy_shot_runtime(self)):
                 return
             if getattr(game_state, 'biome_active', None) == 'Scorched Hell':
                 self.r = game.enemy_shot_radius_for_damage(int(self.dmg))
@@ -37,7 +41,7 @@ def install(game):
             r = pygame.Rect(int(self.x - _rr), int(self.y - _rr), _rr * 2, _rr * 2)
             for gp, ob in list(game_state.obstacles.items()):
                 if r.colliderect(ob.rect):
-                    dmg_block = int(game.__dict__.get('ENEMY_SHOT_DAMAGE_BLOCK', game.BULLET_DAMAGE_BLOCK))
+                    dmg_block = int(getattr(game, 'ENEMY_SHOT_DAMAGE_BLOCK', game.BULLET_DAMAGE_BLOCK))
                     if getattr(ob, 'is_main_block', False):
                         ob.health = (ob.health or 0) - dmg_block
                         if ob.health <= 0:

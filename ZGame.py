@@ -1882,8 +1882,11 @@ def reset_run_state():
     _clear_level_start_baseline()
 
 
-def _ensure_meta_defaults():
+def _ensure_meta_defaults(meta=None):
     """Fill in newly added META keys when loading older saves."""
+    m = _meta_state() if meta is None else meta
+    if m is None or not hasattr(m, "get"):
+        return
     defaults = {
         "vuln_mark_level": 0,
         "explosive_rounds_level": 0,
@@ -1894,8 +1897,8 @@ def _ensure_meta_defaults():
         "bindings": {},
     }
     for k, v in defaults.items():
-        if k not in META:
-            META[k] = v
+        if k not in m:
+            m[k] = dict(v) if isinstance(v, dict) else v
 
 
 def _load_meta_from_save(save_data: dict | None) -> None:
@@ -1904,10 +1907,437 @@ def _load_meta_from_save(save_data: dict | None) -> None:
         return
     meta_in = dict(save_data.get("meta", {}))
     sanitize_meta_range(meta_in)
+    _ensure_meta_defaults(meta_in)
     save_data["meta"] = meta_in
-    META.update(meta_in)
+    _meta_state().update(meta_in)
     _ensure_meta_defaults()
     _apply_meta_bindings(meta_in)
+
+
+def _finite_float(value, default: float = 0.0, *, min_value: float | None = None,
+                  max_value: float | None = None) -> float:
+    try:
+        out = float(value)
+    except Exception:
+        out = float(default)
+    if not math.isfinite(out):
+        out = float(default)
+    if min_value is not None:
+        out = max(float(min_value), out)
+    if max_value is not None:
+        out = min(float(max_value), out)
+    return float(out)
+
+
+def _finite_int(value, default: int = 0, *, min_value: int | None = None,
+                max_value: int | None = None) -> int:
+    out = _finite_float(
+        value,
+        float(default),
+        min_value=None if min_value is None else float(min_value),
+        max_value=None if max_value is None else float(max_value),
+    )
+    try:
+        out_i = int(round(out))
+    except Exception:
+        out_i = int(default)
+    if min_value is not None:
+        out_i = max(int(min_value), out_i)
+    if max_value is not None:
+        out_i = min(int(max_value), out_i)
+    return int(out_i)
+
+
+def _clean_string(value, default: str | None = None) -> str | None:
+    if value is None:
+        return default
+    try:
+        text = str(value).strip()
+    except Exception:
+        return default
+    return text or default
+
+
+def _clean_rgb(value, default: tuple[int, int, int]) -> tuple[int, int, int]:
+    if isinstance(value, (tuple, list)) and len(value) >= 3:
+        try:
+            return (
+                max(0, min(255, int(value[0]))),
+                max(0, min(255, int(value[1]))),
+                max(0, min(255, int(value[2]))),
+            )
+        except Exception:
+            pass
+    return default
+
+
+def _world_bounds_with_pad(pad: float = 0.0) -> tuple[float, float, float, float]:
+    world_w = float(max(WINDOW_SIZE, GRID_SIZE * CELL_SIZE))
+    world_h = float(INFO_BAR_HEIGHT + max(WINDOW_SIZE, GRID_SIZE * CELL_SIZE))
+    return (-pad, world_w + pad, INFO_BAR_HEIGHT - pad, world_h + pad)
+
+
+def _sanitize_carry_player_state(carry: dict | None) -> dict | None:
+    if not isinstance(carry, dict):
+        return None
+    return {
+        "level": _finite_int(carry.get("level", 1), 1, min_value=1, max_value=250),
+        "xp": _finite_int(carry.get("xp", 0), 0, min_value=0, max_value=50_000_000),
+        "hp": _finite_int(carry.get("hp", PLAYER_MAX_HP), PLAYER_MAX_HP, min_value=0, max_value=50_000),
+    }
+
+
+def _sanitize_snapshot_payload(snapshot: dict | None) -> dict:
+    snap = dict(snapshot) if isinstance(snapshot, dict) else {}
+    min_x, max_x, min_y, max_y = _world_bounds_with_pad(float(CELL_SIZE) * 2.0)
+    max_cells = max(1, int(GRID_SIZE) * int(GRID_SIZE))
+    max_enemies = max(8, int(ENEMY_CAP) * 3)
+    max_bullets = 512
+    player_in = snap.get("player", {})
+    player_in = dict(player_in) if isinstance(player_in, dict) else {}
+    snap["player"] = {
+        "x": _finite_float(player_in.get("x", 0.0), 0.0, min_value=min_x, max_value=max_x),
+        "y": _finite_float(player_in.get("y", 0.0), 0.0, min_value=min_y - INFO_BAR_HEIGHT, max_value=max_y),
+        "speed": _finite_int(player_in.get("speed", PLAYER_SPEED), PLAYER_SPEED, min_value=1, max_value=int(PLAYER_SPEED_CAP)),
+        "size": _finite_int(player_in.get("size", int(CELL_SIZE * 0.6)), int(CELL_SIZE * 0.6), min_value=8, max_value=int(CELL_SIZE * 2.5)),
+        "fire_cd": _finite_float(player_in.get("fire_cd", 0.0), 0.0, min_value=0.0, max_value=30.0),
+        "hp": _finite_int(player_in.get("hp", PLAYER_MAX_HP), PLAYER_MAX_HP, min_value=0, max_value=50_000),
+        "max_hp": _finite_int(player_in.get("max_hp", PLAYER_MAX_HP), PLAYER_MAX_HP, min_value=1, max_value=50_000),
+        "hit_cd": _finite_float(player_in.get("hit_cd", 0.0), 0.0, min_value=0.0, max_value=10.0),
+        "level": _finite_int(player_in.get("level", 1), 1, min_value=1, max_value=250),
+        "xp": _finite_int(player_in.get("xp", 0), 0, min_value=0, max_value=50_000_000),
+        "bone_plating_hp": _finite_int(player_in.get("bone_plating_hp", 0), 0, min_value=0, max_value=500),
+        "bone_plating_cd": _finite_float(player_in.get("bone_plating_cd", BONE_PLATING_GAIN_INTERVAL), BONE_PLATING_GAIN_INTERVAL, min_value=0.0, max_value=60.0),
+        "aegis_pulse_cd": _finite_float(player_in.get("aegis_pulse_cd", 0.0), 0.0, min_value=0.0, max_value=60.0),
+    }
+    clean_enemies = []
+    for enemy in list(snap.get("enemies", []))[:max_enemies]:
+        if not isinstance(enemy, dict):
+            continue
+        clean_enemies.append({
+            "x": _finite_float(enemy.get("x", 0.0), 0.0, min_value=min_x, max_value=max_x),
+            "y": _finite_float(enemy.get("y", 0.0), 0.0, min_value=min_y - INFO_BAR_HEIGHT, max_value=max_y),
+            "attack": _finite_int(enemy.get("attack", ENEMY_ATTACK), ENEMY_ATTACK, min_value=1, max_value=50_000),
+            "speed": _finite_int(enemy.get("speed", ENEMY_SPEED), ENEMY_SPEED, min_value=1, max_value=int(ENEMY_SPEED_MAX)),
+            "type": _clean_string(enemy.get("type"), "basic") or "basic",
+            "hp": _finite_int(enemy.get("hp", 30), 30, min_value=0, max_value=500_000),
+            "max_hp": _finite_int(enemy.get("max_hp", enemy.get("hp", 30)), int(enemy.get("hp", 30) if isinstance(enemy.get("hp", 30), (int, float)) else 30), min_value=1, max_value=500_000),
+            "spawn_elapsed": _finite_float(enemy.get("spawn_elapsed", 0.0), 0.0, min_value=0.0, max_value=60.0),
+            "attack_timer": _finite_float(enemy.get("attack_timer", 0.0), 0.0, min_value=0.0, max_value=60.0),
+        })
+    snap["enemies"] = clean_enemies
+    clean_obstacles = []
+    for obstacle in list(snap.get("obstacles", []))[:max_cells]:
+        if not isinstance(obstacle, dict):
+            continue
+        health_value = obstacle.get("health", None)
+        clean_obstacles.append({
+            "x": _finite_int(obstacle.get("x", 0), 0, min_value=0, max_value=max(0, GRID_SIZE - 1)),
+            "y": _finite_int(obstacle.get("y", 0), 0, min_value=0, max_value=max(0, GRID_SIZE - 1)),
+            "type": _clean_string(obstacle.get("type"), "Indestructible") or "Indestructible",
+            "health": None if health_value is None else _finite_int(health_value, MAIN_BLOCK_HEALTH, min_value=-500_000, max_value=500_000),
+            "main": bool(obstacle.get("main", False)),
+        })
+    snap["obstacles"] = clean_obstacles
+    clean_items = []
+    for item in list(snap.get("items", []))[:max_cells]:
+        if not isinstance(item, dict):
+            continue
+        clean_items.append({
+            "x": _finite_int(item.get("x", 0), 0, min_value=0, max_value=max(0, GRID_SIZE - 1)),
+            "y": _finite_int(item.get("y", 0), 0, min_value=0, max_value=max(0, GRID_SIZE - 1)),
+            "is_main": bool(item.get("is_main", False)),
+        })
+    snap["items"] = clean_items
+    clean_decorations = []
+    for deco in list(snap.get("decorations", []))[:max_cells]:
+        if not isinstance(deco, (tuple, list)) or len(deco) < 2:
+            continue
+        clean_decorations.append([
+            _finite_int(deco[0], 0, min_value=0, max_value=max(0, GRID_SIZE - 1)),
+            _finite_int(deco[1], 0, min_value=0, max_value=max(0, GRID_SIZE - 1)),
+        ])
+    snap["decorations"] = clean_decorations
+    clean_bullets = []
+    for bullet in list(snap.get("bullets", []))[:max_bullets]:
+        if not isinstance(bullet, dict):
+            continue
+        clean_bullets.append({
+            "x": _finite_float(bullet.get("x", 0.0), 0.0, min_value=min_x, max_value=max_x),
+            "y": _finite_float(bullet.get("y", 0.0), 0.0, min_value=min_y, max_value=max_y),
+            "vx": _finite_float(bullet.get("vx", 0.0), 0.0, min_value=-BULLET_SPEED * 4.0, max_value=BULLET_SPEED * 4.0),
+            "vy": _finite_float(bullet.get("vy", 0.0), 0.0, min_value=-BULLET_SPEED * 4.0, max_value=BULLET_SPEED * 4.0),
+            "traveled": _finite_float(bullet.get("traveled", 0.0), 0.0, min_value=0.0, max_value=PLAYER_RANGE_MAX * 2.0),
+        })
+    snap["bullets"] = clean_bullets
+    snap["time_left"] = _finite_float(
+        snap.get("time_left", LEVEL_TIME_LIMIT),
+        LEVEL_TIME_LIMIT,
+        min_value=0.0,
+        max_value=max(float(LEVEL_TIME_LIMIT), float(BOSS_TIME_LIMIT)) * 2.0,
+    )
+    return snap
+
+
+def _sanitize_resume_save_data(save_data: dict | None) -> dict | None:
+    if not isinstance(save_data, dict):
+        return None
+    data = copy.deepcopy(save_data)
+    mode = _clean_string(data.get("mode"), "meta") or "meta"
+    if mode not in ("meta", "snapshot"):
+        mode = "meta"
+    data["mode"] = mode
+    meta_in = data.get("meta", {})
+    meta_in = dict(meta_in) if isinstance(meta_in, dict) else {}
+    if mode == "snapshot":
+        meta_in["current_level"] = _finite_int(meta_in.get("current_level", 0), 0, min_value=0, max_value=9999)
+        meta_in["chosen_enemy_type"] = _clean_string(meta_in.get("chosen_enemy_type"), "basic") or "basic"
+    sanitize_meta_range(meta_in)
+    _ensure_meta_defaults(meta_in)
+    data["meta"] = meta_in
+    if mode == "meta":
+        data["current_level"] = _finite_int(data.get("current_level", 0), 0, min_value=0, max_value=9999)
+    data["pending_shop"] = bool(data.get("pending_shop", False))
+    data["carry_player"] = _sanitize_carry_player_state(data.get("carry_player"))
+    biome = _clean_string(data.get("biome"), None)
+    if biome is None and mode == "snapshot":
+        biome = _clean_string(meta_in.get("biome"), None)
+    if biome is None:
+        data.pop("biome", None)
+    else:
+        data["biome"] = biome
+        if mode == "snapshot":
+            meta_in["biome"] = biome
+    if mode == "snapshot":
+        data["snapshot"] = _sanitize_snapshot_payload(data.get("snapshot", {}))
+    else:
+        data.pop("snapshot", None)
+    shop_cache = data.get("shop_cache")
+    if isinstance(shop_cache, dict):
+        clean_cache = {}
+        slots = shop_cache.get("slots")
+        if isinstance(slots, list):
+            clean_cache["slots"] = [_clean_string(slot, None) for slot in slots[:8]]
+        reroll = _clean_string(shop_cache.get("reroll"), None)
+        if reroll is not None:
+            clean_cache["reroll"] = reroll
+        if clean_cache:
+            data["shop_cache"] = clean_cache
+        else:
+            data.pop("shop_cache", None)
+    else:
+        data.pop("shop_cache", None)
+    if not isinstance(data.get("baseline"), dict):
+        data.pop("baseline", None)
+    return data
+
+
+def _resume_level_from_save(save_data: dict | None) -> int:
+    data = _sanitize_resume_save_data(save_data)
+    if not data:
+        return 0
+    if data.get("mode") == "snapshot":
+        meta_in = data.get("meta", {})
+        return _finite_int(meta_in.get("current_level", 0), 0, min_value=0, max_value=9999)
+    return _finite_int(data.get("current_level", 0), 0, min_value=0, max_value=9999)
+
+
+def _apply_resume_save_data(save_data: dict | None) -> dict | None:
+    runtime = _runtime_state()
+    clean = _sanitize_resume_save_data(save_data)
+    if not clean:
+        runtime["_carry_player_state"] = None
+        runtime["_pending_shop"] = False
+        runtime.clear("_next_biome", "_resume_snapshot_data")
+        _THIS_MODULE.current_level = 0
+        return None
+    _load_meta_from_save(clean)
+    runtime["_carry_player_state"] = clean.get("carry_player", None)
+    runtime["_pending_shop"] = bool(clean.get("pending_shop", False))
+    runtime["_next_biome"] = clean.get("biome", None)
+    if clean.get("mode") == "snapshot":
+        runtime["_resume_snapshot_data"] = copy.deepcopy(clean)
+    else:
+        runtime.clear("_resume_snapshot_data")
+    _THIS_MODULE.current_level = _resume_level_from_save(clean)
+    return clean
+
+
+def _reset_active_run_state(*, clear_save_file: bool = False) -> None:
+    runtime = _runtime_state()
+    if clear_save_file:
+        clear_save()
+    reset_run_state()
+    _THIS_MODULE.current_level = 0
+    runtime["_carry_player_state"] = None
+    runtime["_pending_shop"] = False
+    runtime.clear("_last_spoils", "_next_biome", "_last_biome", "_resume_snapshot_data")
+
+
+def _verify_projectile_runtime_common(projectile, *, default_damage: int, default_range: float,
+                                      max_speed: float, radius_default: int,
+                                      radius_cap: int, color_default: tuple[int, int, int] | None = None,
+                                      radius_fn=None) -> bool:
+    if projectile is None:
+        return False
+    projectile.alive = bool(getattr(projectile, "alive", True))
+    if not projectile.alive:
+        return False
+    pad = float(max(CELL_SIZE * 4, 256))
+    min_x, max_x, min_y, max_y = _world_bounds_with_pad(pad)
+    x = _finite_float(getattr(projectile, "x", 0.0), 0.0)
+    y = _finite_float(getattr(projectile, "y", INFO_BAR_HEIGHT), INFO_BAR_HEIGHT)
+    if x < min_x or x > max_x or y < min_y or y > max_y:
+        projectile.alive = False
+        return False
+    vx = _finite_float(getattr(projectile, "vx", 0.0), 0.0)
+    vy = _finite_float(getattr(projectile, "vy", 0.0), 0.0)
+    if abs(vx) > max_speed or abs(vy) > max_speed:
+        projectile.alive = False
+        return False
+    if (vx * vx + vy * vy) <= 1e-6:
+        projectile.alive = False
+        return False
+    projectile.x = x
+    projectile.y = y
+    projectile.vx = vx
+    projectile.vy = vy
+    projectile.max_dist = _finite_float(getattr(projectile, "max_dist", default_range), default_range, min_value=1.0, max_value=max(default_range * 4.0, 1.0))
+    projectile.traveled = _finite_float(getattr(projectile, "traveled", 0.0), 0.0, min_value=0.0, max_value=projectile.max_dist * 2.0)
+    projectile.damage = _finite_int(
+        getattr(projectile, "damage", getattr(projectile, "dmg", default_damage)),
+        default_damage,
+        min_value=1,
+        max_value=500_000,
+    )
+    if hasattr(projectile, "dmg"):
+        projectile.dmg = int(projectile.damage)
+    if radius_fn is not None:
+        projectile.r = int(radius_fn(projectile.damage))
+    else:
+        projectile.r = _finite_int(getattr(projectile, "r", radius_default), radius_default, min_value=2, max_value=radius_cap)
+    if color_default is not None:
+        projectile.color = _clean_rgb(getattr(projectile, "color", color_default), color_default)
+    if projectile.traveled >= projectile.max_dist:
+        projectile.alive = False
+        return False
+    return True
+
+
+def verify_bullet_runtime(bullet, player=None) -> bool:
+    default_range = clamp_player_range(getattr(player, "range", getattr(bullet, "max_dist", PLAYER_RANGE_DEFAULT)))
+    ok = _verify_projectile_runtime_common(
+        bullet,
+        default_damage=BULLET_DAMAGE_ENEMY,
+        default_range=default_range,
+        max_speed=max(float(BULLET_SPEED) * 4.0, 1.0),
+        radius_default=BULLET_RADIUS,
+        radius_cap=BULLET_RADIUS_MAX,
+        radius_fn=bullet_radius_for_damage,
+    )
+    if not ok:
+        return False
+    bullet.source = _clean_string(getattr(bullet, "source", "player"), "player") or "player"
+    if hasattr(bullet, "pierce_left"):
+        bullet.pierce_left = _finite_int(getattr(bullet, "pierce_left", 0), 0, min_value=0, max_value=32)
+    if hasattr(bullet, "ricochet_left"):
+        bullet.ricochet_left = _finite_int(getattr(bullet, "ricochet_left", 0), 0, min_value=0, max_value=32)
+    return True
+
+
+def verify_enemy_shot_runtime(enemy_shot) -> bool:
+    base_speed = max(float(RANGED_PROJ_SPEED), float(MIST_RING_SPEED), 1.0)
+    return _verify_projectile_runtime_common(
+        enemy_shot,
+        default_damage=RANGED_PROJ_DAMAGE,
+        default_range=MAX_FIRE_RANGE,
+        max_speed=base_speed * 4.0,
+        radius_default=4,
+        radius_cap=max(8, int(CELL_SIZE * 0.4)),
+        color_default=(255, 120, 50),
+        radius_fn=None,
+    )
+
+
+def _sanitize_dash_runtime(enemy, *, dash_cd_default: float, dash_time_cap: float) -> None:
+    dash_state = _clean_string(getattr(enemy, "_dash_state", "idle"), "idle") or "idle"
+    if dash_state not in ("idle", "wind", "go"):
+        dash_state = "idle"
+    enemy._dash_state = dash_state
+    enemy._dash_cd = _finite_float(getattr(enemy, "_dash_cd", dash_cd_default), dash_cd_default, min_value=0.0, max_value=max(5.0, dash_cd_default * 6.0))
+    enemy._dash_t = _finite_float(getattr(enemy, "_dash_t", 0.0), 0.0, min_value=0.0, max_value=max(1.0, dash_time_cap))
+    enemy._dash_speed_hold = _finite_float(getattr(enemy, "_dash_speed_hold", getattr(enemy, "speed", ENEMY_SPEED)), getattr(enemy, "speed", ENEMY_SPEED), min_value=0.2, max_value=float(ENEMY_SPEED_MAX) * 4.0)
+    enemy._ghost_accum = _finite_float(getattr(enemy, "_ghost_accum", 0.0), 0.0, min_value=0.0, max_value=max(float(AFTERIMAGE_INTERVAL) * 4.0, 1.0))
+
+
+def verify_enemy_special_runtime(enemy) -> bool:
+    if enemy is None:
+        return False
+    enemy.no_clip_t = _finite_float(getattr(enemy, "no_clip_t", 0.0), 0.0, min_value=0.0, max_value=20.0)
+    ztype = _clean_string(getattr(enemy, "type", ""), "") or ""
+    if ztype in ("ranged", "spitter"):
+        enemy.ranged_cd = _finite_float(getattr(enemy, "ranged_cd", 0.0), 0.0, min_value=0.0, max_value=max(1.0, float(RANGED_COOLDOWN) * 4.0))
+    if ztype in ("suicide", "bomber"):
+        enemy.suicide_armed = bool(getattr(enemy, "suicide_armed", False))
+        fuse_value = getattr(enemy, "fuse", None)
+        if fuse_value is None and enemy.suicide_armed:
+            enemy.fuse = float(SUICIDE_FUSE)
+        elif fuse_value is None:
+            enemy.fuse = None
+        else:
+            enemy.fuse = _finite_float(fuse_value, float(SUICIDE_FUSE), min_value=0.0, max_value=max(2.0, float(SUICIDE_FUSE) * 4.0))
+    if ztype == "ravager":
+        _sanitize_dash_runtime(
+            enemy,
+            dash_cd_default=sum(RAVAGER_DASH_CD_RANGE) / 2.0,
+            dash_time_cap=max(float(RAVAGER_DASH_TIME), float(RAVAGER_DASH_WINDUP)) * 4.0,
+        )
+    if ztype == "boss_mem":
+        skill_last = getattr(enemy, "skill_last", {})
+        skill_last = dict(skill_last) if isinstance(skill_last, dict) else {}
+        enemy.skill_last = {
+            "dash": _finite_float(skill_last.get("dash", -99.0), -99.0, min_value=-999.0, max_value=999.0),
+            "vomit": _finite_float(skill_last.get("vomit", -99.0), -99.0, min_value=-999.0, max_value=999.0),
+            "summon": _finite_float(skill_last.get("summon", -99.0), -99.0, min_value=-999.0, max_value=999.0),
+            "ring": _finite_float(skill_last.get("ring", -99.0), -99.0, min_value=-999.0, max_value=999.0),
+        }
+        skill_phase = getattr(enemy, "skill_phase", None)
+        enemy.skill_phase = None if skill_phase is None else _clean_string(skill_phase, None)
+        enemy.skill_t = _finite_float(getattr(enemy, "skill_t", 0.0), 0.0, min_value=0.0, max_value=20.0)
+        enemy.spawn_delay = _finite_float(getattr(enemy, "spawn_delay", 0.6), 0.6, min_value=0.0, max_value=10.0)
+        enemy._enrage_cd_mult = _finite_float(getattr(enemy, "_enrage_cd_mult", 1.0), 1.0, min_value=0.2, max_value=2.0)
+        enemy.phase = _finite_int(getattr(enemy, "phase", 1), 1, min_value=1, max_value=3)
+        enemy._spit_cd = _finite_float(getattr(enemy, "_spit_cd", 0.0), 0.0, min_value=0.0, max_value=30.0)
+        enemy._split_cd = _finite_float(getattr(enemy, "_split_cd", 0.0), 0.0, min_value=0.0, max_value=30.0)
+        enemy._rain_next_pct = _finite_float(getattr(enemy, "_rain_next_pct", 0.4), 0.4, min_value=0.0, max_value=1.0)
+        enemy._charging = bool(getattr(enemy, "_charging", False))
+        _sanitize_dash_runtime(
+            enemy,
+            dash_cd_default=5.25,
+            dash_time_cap=max(float(BOSS_DASH_GO_TIME), float(BOSS_DASH_WINDUP)) * 4.0,
+        )
+    elif ztype == "boss_mist":
+        enemy.phase = _finite_int(getattr(enemy, "phase", 1), 1, min_value=1, max_value=3)
+        enemy.spawn_delay = _finite_float(getattr(enemy, "spawn_delay", 0.6), 0.6, min_value=0.0, max_value=10.0)
+        enemy._storm_cd = _finite_float(getattr(enemy, "_storm_cd", 2.0), 2.0, min_value=0.0, max_value=max(12.0, float(MIST_P2_STORM_CD) * 3.0))
+        enemy._blade_cd = _finite_float(getattr(enemy, "_blade_cd", 1.5), 1.5, min_value=0.0, max_value=max(8.0, float(MIST_P1_BLADE_CD) * 3.0))
+        enemy._blink_cd = _finite_float(getattr(enemy, "_blink_cd", float(MIST_BLINK_CD)), float(MIST_BLINK_CD), min_value=0.0, max_value=max(8.0, float(MIST_BLINK_CD) * 3.0))
+        enemy._sonar_next = _finite_float(getattr(enemy, "_sonar_next", 1.0), 1.0, min_value=-1.0, max_value=1.0)
+        clone_ids = getattr(enemy, "_clone_ids", set())
+        if isinstance(clone_ids, (set, list, tuple)):
+            clean_ids = set()
+            for clone_id in list(clone_ids)[:16]:
+                try:
+                    clean_ids.add(int(clone_id))
+                except Exception:
+                    continue
+            enemy._clone_ids = clean_ids
+        else:
+            enemy._clone_ids = set()
+        enemy._ring_cd = _finite_float(getattr(enemy, "_ring_cd", float(MIST_RING_CD)), float(MIST_RING_CD), min_value=0.0, max_value=max(8.0, float(MIST_RING_CD) * 3.0))
+        enemy._ring_bursts_left = _finite_int(getattr(enemy, "_ring_bursts_left", 0), 0, min_value=0, max_value=max(1, int(MIST_RING_BURSTS)))
+        enemy._ring_burst_t = _finite_float(getattr(enemy, "_ring_burst_t", 0.0), 0.0, min_value=0.0, max_value=4.0)
+    return True
 
 
 def mark_of_vulnerability_stats(level: int) -> tuple[float, float, float]:
@@ -2446,8 +2876,9 @@ def spawn_curing_paint_spark_vfx(game_state: "GameState", x: float, y: float, in
     game_state.fx.particles.append(Particle(x + jx, y + jy, vx, vy, color, life, size))
 
 def trigger_explosive_rounds(player, game_state: "GameState", enemies,
-                             origin_pos: tuple[float, float], bullet_base: int | None = None) -> None:
-    lvl = int(META.get("explosive_rounds_level", 0))
+                             origin_pos: tuple[float, float], bullet_base: int | None = None, meta=None) -> None:
+    m = _meta_state() if meta is None else meta
+    lvl = int(m.get("explosive_rounds_level", 0)) if hasattr(m, "get") else 0
     if lvl <= 0 or player is None or game_state is None or enemies is None or origin_pos is None:
         return
     if bullet_base is None:
@@ -2511,23 +2942,27 @@ def trigger_explosive_rounds(player, game_state: "GameState", enemies,
                 queue.append((zx, zy))
 
 
-def _aegis_pulse_damage_for(level: int, player_max_hp: int | float | None) -> int:
+def _aegis_pulse_damage_for(level: int, player_max_hp: int | float | None, meta=None) -> int:
     """Damage scales off max HP using per-level ratios."""
     lvl = max(1, int(level))
     ratios = AEGIS_PULSE_DAMAGE_RATIOS
     ratio = ratios[min(lvl - 1, len(ratios) - 1)]
     base_hp = player_max_hp
+    m = _meta_state() if meta is None else meta
     if base_hp is None:
-        base_hp = int(META.get("base_maxhp", PLAYER_MAX_HP)) + int(META.get("maxhp", 0))
+        if hasattr(m, "get"):
+            base_hp = int(m.get("base_maxhp", PLAYER_MAX_HP)) + int(m.get("maxhp", 0))
+        else:
+            base_hp = int(PLAYER_MAX_HP)
     base_hp = max(1, int(base_hp))
     return max(1, int(round(base_hp * ratio)))
 
 
-def aegis_pulse_stats(level: int, player_max_hp: int | float | None = None) -> tuple[int, int, float]:
+def aegis_pulse_stats(level: int, player_max_hp: int | float | None = None, meta=None) -> tuple[int, int, float]:
     """Return (radius_px, damage, cooldown_s) for the given Aegis Pulse level."""
     lvl = max(1, int(level))
     radius = AEGIS_PULSE_BASE_RADIUS + AEGIS_PULSE_RADIUS_PER_LEVEL * (lvl - 1)
-    damage = _aegis_pulse_damage_for(lvl, player_max_hp)
+    damage = _aegis_pulse_damage_for(lvl, player_max_hp, meta=meta)
     cooldown = max(0.3, AEGIS_PULSE_BASE_COOLDOWN - AEGIS_PULSE_COOLDOWN_DELTA * (lvl - 1))
     return radius, damage, cooldown
 
@@ -3417,13 +3852,15 @@ def iso_equalized_step(dx: float, dy: float, speed: float) -> tuple[float, float
     return dx * scale, dy * scale
 
 
-def bullet_radius_for_damage(dmg: int) -> int:
+def bullet_radius_for_damage(dmg: int, meta=None) -> int:
     """
     Sub-linear growth by damage percentage, with a smooth cap.
     Base damage -> BULLET_RADIUS. As damage rises, the bonus eases in and
     asymptotically approaches BULLET_RADIUS_MAX.
     """
-    base = float(META.get("base_dmg", BULLET_DAMAGE_ENEMY)) or 1.0
+    m = _meta_state() if meta is None else meta
+    base = float(m.get("base_dmg", BULLET_DAMAGE_ENEMY)) if hasattr(m, "get") else float(BULLET_DAMAGE_ENEMY)
+    base = base or 1.0
     ratio = max(0.0, float(dmg) / base)
     if ratio <= 1.0:
         r = BULLET_RADIUS
@@ -3588,10 +4025,39 @@ HexCell, HexTransition, NeuroParticle, CometCorpse, CometBlast, AegisPulseRing =
 )
 
 # ==================== NEURO MUSIC VISUALIZATION ====================
-# Global Instance
+# Keep a module attribute alias for compatibility with support modules like zgame/menu_flow.py.
 _neuro_viz = NeuroMusicVisualizer()
-_neuro_viz_loader: threading.Thread | None = None
-_neuro_viz_loader_path: str | None = None
+_runtime_state()["_neuro_viz"] = _neuro_viz
+_runtime_state()["_neuro_viz_loader"] = None
+_runtime_state()["_neuro_viz_loader_path"] = None
+
+
+def _get_neuro_viz() -> NeuroMusicVisualizer:
+    runtime = _runtime_state()
+    viz = runtime.get("_neuro_viz")
+    if not isinstance(viz, NeuroMusicVisualizer):
+        viz = _THIS_MODULE.__dict__.get("_neuro_viz")
+        if not isinstance(viz, NeuroMusicVisualizer):
+            viz = NeuroMusicVisualizer()
+        runtime["_neuro_viz"] = viz
+        _THIS_MODULE.__dict__["_neuro_viz"] = viz
+    return viz
+
+
+def _get_neuro_viz_loader() -> threading.Thread | None:
+    return _runtime_state().get("_neuro_viz_loader")
+
+
+def _set_neuro_viz_loader(loader: threading.Thread | None) -> None:
+    _runtime_state()["_neuro_viz_loader"] = loader
+
+
+def _get_neuro_viz_loader_path() -> str | None:
+    return _runtime_state().get("_neuro_viz_loader_path")
+
+
+def _set_neuro_viz_loader_path(path: str | None) -> None:
+    _runtime_state()["_neuro_viz_loader_path"] = path
 
 # ==================== HEX TRANSITION SYSTEM (GEOMETRY SCALE) ====================
 def build_hex_grid(view_w: int, view_h: int, r: int = 50) -> list[HexCell]:
@@ -3743,20 +4209,21 @@ def play_hex_transition(screen: pygame.Surface, from_surface: pygame.Surface, to
     flush_events()
 
 
-def compute_player_dps(p: "Player" | None) -> float:
+def compute_player_dps(p: "Player" | None, meta=None) -> float:
     # TODO
     # Add visual effect for bandit (growing circle around bandit)
     # Add same hint display for bosses (optional)
     # Add a exeution CG like scenefor bosses(slow time, whole scene become red in backgrounf and black in figures)
+    m = _meta_state() if meta is None else meta
     if p is None:
         # 兜底：用 META 粗估
-        base_dmg = BULLET_DAMAGE_ENEMY + float(META.get("dmg", 0))
+        base_dmg = BULLET_DAMAGE_ENEMY + (float(m.get("dmg", 0)) if hasattr(m, "get") else 0.0)
         # 使用玩家默认冷却推导攻速
-        dummy = 1.0 / max(1e-6, FIRE_COOLDOWN / max(0.1, float(META.get("firerate_mult", 1.0))))
-        cc = float(META.get("crit", 0.0))
+        dummy = 1.0 / max(1e-6, FIRE_COOLDOWN / max(0.1, float(m.get("firerate_mult", 1.0)) if hasattr(m, "get") else 1.0))
+        cc = float(m.get("crit", 0.0)) if hasattr(m, "get") else 0.0
         cm = float(CRIT_MULT_BASE)
         return base_dmg * dummy * (1.0 + max(0.0, min(1.0, cc)) * (cm - 1.0))
-    dmg = float(getattr(p, "bullet_damage", BULLET_DAMAGE_ENEMY + META.get("dmg", 0)))
+    dmg = float(getattr(p, "bullet_damage", BULLET_DAMAGE_ENEMY + (m.get("dmg", 0) if hasattr(m, "get") else 0)))
     sps = 1.0 / max(1e-6, p.fire_cooldown())  # 用 Player 的实际冷却（含攻速加成）
     cc = max(0.0, min(1.0, float(getattr(p, "crit_chance", 0.0))))
     cm = float(getattr(p, "crit_mult", CRIT_MULT_BASE))
@@ -4070,11 +4537,12 @@ def _draw_intro_scanlines(surface: pygame.Surface, t: float) -> None:
 
 def _neuro_outline_points(cx: int, cy: int) -> list[tuple[float, float]]:
     """Return the current NeuroViz polygon points, falling back to a circle if unavailable."""
+    viz = _get_neuro_viz()
     try:
-        if getattr(_neuro_viz, "bars", None):
+        if getattr(viz, "bars", None):
             pts = []
-            for bar in _neuro_viz.bars:
-                r = _neuro_viz.radius + bar.get("val", 0.0)
+            for bar in viz.bars:
+                r = viz.radius + bar.get("val", 0.0)
                 rad = math.radians(bar.get("angle", 0.0) - 90)
                 pts.append((cx + math.cos(rad) * r, cy + math.sin(rad) * r))
             if len(pts) >= 3:
@@ -4105,9 +4573,10 @@ def draw_intro_waves(target: pygame.Surface, t: float):
     
     # Pull energy from the Neuro viz so the ripples breathe with the music
     energy = 0.0
+    viz = _get_neuro_viz()
     try:
-        if getattr(_neuro_viz, "bars", None):
-            energy = sum(b.get("val", 0.0) for b in _neuro_viz.bars) / max(1, len(_neuro_viz.bars))
+        if getattr(viz, "bars", None):
+            energy = sum(b.get("val", 0.0) for b in viz.bars) / max(1, len(viz.bars))
     except Exception:
         pass
     energy_norm = max(0.0, min(1.0, energy / 70.0))
@@ -4163,16 +4632,17 @@ def draw_neuro_waves(target: pygame.Surface, t: float):
     loop_window = max_age + wave_period  # wrap time so waves never end
     
     energy = 0.0
+    viz = _get_neuro_viz()
     try:
-        if getattr(_neuro_viz, "bars", None):
-            energy = sum(b.get("val", 0.0) for b in _neuro_viz.bars) / max(1, len(_neuro_viz.bars))
+        if getattr(viz, "bars", None):
+            energy = sum(b.get("val", 0.0) for b in viz.bars) / max(1, len(viz.bars))
     except Exception:
         pass
     energy_norm = max(0.0, min(1.0, energy / 70.0))
     
     base_alpha = 140 + int(80 * energy_norm)
     base_thickness = 2 + int(2 * energy_norm)
-    col_base = tuple(int(c) for c in getattr(_neuro_viz, "poly_color", (70, 230, 255)))
+    col_base = tuple(int(c) for c in getattr(viz, "poly_color", (70, 230, 255)))
     
     for i in range(active_ripples):
         age = (t + i * wave_period) % loop_window  # phase-offset so waves exist at t=0
@@ -7898,8 +8368,8 @@ class GameSound:
 
 def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms: int = 400):
     """Stop current BGM and play the first existing file in candidates."""
-    global _neuro_viz, _neuro_viz_loader, _neuro_viz_loader_path
     runtime = _runtime_state()
+    viz = _get_neuro_viz()
     try:
         bgm = runtime.get("_bgm")
         if getattr(bgm, "stop", None):
@@ -7918,26 +8388,28 @@ def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms:
         # --- MODIFIED: Load into NeuroVisualizer instead of intro_envelope ---
         # Heavy librosa analysis can hitch the first frame; load it asynchronously.
         def _kickoff_load(p: str):
-            global _neuro_viz_loader, _neuro_viz_loader_path
-            if not _neuro_viz:
+            if not viz:
                 return
             if IS_WEB:
                 try:
-                    _neuro_viz.load_music(p)
+                    viz.load_music(p)
                 except Exception as e:
                     print(f"[AudioAnalyzer] web fallback load failed for {p}: {e}")
                 return
             # Avoid duplicate loaders on the same path
-            if _neuro_viz_loader and _neuro_viz_loader.is_alive() and _neuro_viz_loader_path == p:
+            loader = _get_neuro_viz_loader()
+            loader_path = _get_neuro_viz_loader_path()
+            if loader and loader.is_alive() and loader_path == p:
                 return
             def _worker():
                 try:
-                    _neuro_viz.load_music(p)
+                    viz.load_music(p)
                 except Exception as e:
                     print(f"[AudioAnalyzer] async load failed for {p}: {e}")
-            _neuro_viz_loader_path = p
-            _neuro_viz_loader = threading.Thread(target=_worker, daemon=True)
-            _neuro_viz_loader.start()
+            _set_neuro_viz_loader_path(p)
+            loader = threading.Thread(target=_worker, daemon=True)
+            _set_neuro_viz_loader(loader)
+            loader.start()
         
         _kickoff_load(path)
             

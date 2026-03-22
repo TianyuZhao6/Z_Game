@@ -10,6 +10,32 @@ from typing import Dict, List, Optional, Set, Tuple
 import pygame
 from zgame import runtime_state as rs
 
+
+def _append_verified_bullet(game, bullets, bullet, player=None) -> None:
+    if bullet is None:
+        return
+    if hasattr(game, "verify_bullet_runtime") and (not game.verify_bullet_runtime(bullet, player)):
+        return
+    bullets.append(bullet)
+
+
+def _flush_pending_bullets(game, bullets, game_state, player=None) -> None:
+    pending = getattr(game_state, "pending_bullets", None)
+    if not pending:
+        return
+    for bullet in list(pending):
+        if hasattr(game, "verify_bullet_runtime") and (not game.verify_bullet_runtime(bullet, player)):
+            continue
+        bullets.append(bullet)
+    pending.clear()
+
+
+def _sanitize_enemy_shots(game, enemy_shots) -> None:
+    if not hasattr(game, "verify_enemy_shot_runtime"):
+        return
+    enemy_shots[:] = [shot for shot in enemy_shots if game.verify_enemy_shot_runtime(shot)]
+
+
 async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
     runtime = rs.runtime(game)
     meta = rs.meta(game)
@@ -396,7 +422,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             b = game.Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage)
             b.pierce_left = int(getattr(player, 'bullet_pierce', 0))
             b.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
-            bullets.append(b)
+            _append_verified_bullet(game, bullets, b, player)
             player.fire_cd += player.fire_cooldown()
         for t in getattr(game_state, 'turrets', []):
             t.update(dt, game_state, enemies, bullets)
@@ -404,13 +430,17 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             game_state.spatial_query_radius = max(game.CELL_SIZE, int(game.clamp_player_range(getattr(player, 'range', game.PLAYER_RANGE_DEFAULT)) or game.PLAYER_RANGE_DEFAULT))
             game_state.spatial.rebuild(enemies)
         for b in list(bullets):
+            if hasattr(game, 'verify_bullet_runtime') and (not game.verify_bullet_runtime(b, player)):
+                try:
+                    bullets.remove(b)
+                except ValueError:
+                    pass
+                continue
             b.update(dt, game_state, enemies, player)
-            if not b.alive:
+            if (not getattr(b, 'alive', False)) or (hasattr(game, 'verify_bullet_runtime') and (not game.verify_bullet_runtime(b, player))):
                 bullets.remove(b)
         player.hit_cd = max(0.0, player.hit_cd - dt)
-        if getattr(game_state, 'pending_bullets', None):
-            bullets.extend(game_state.pending_bullets)
-            game_state.pending_bullets.clear()
+        _flush_pending_bullets(game, bullets, game_state, player)
         for enemy in list(enemies):
             enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
             if player.hit_cd <= 0.0 and game.circle_touch(enemy, player):
@@ -431,7 +461,11 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         if not game.IS_WEB:
             game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
+            if hasattr(game, 'verify_enemy_special_runtime'):
+                game.verify_enemy_special_runtime(z)
             z.update_special(dt, player, enemies, enemy_shots, game_state)
+            if hasattr(game, 'verify_enemy_special_runtime'):
+                game.verify_enemy_special_runtime(z)
             if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
                 z._death_processed = True
                 game.increment_kill_count()
@@ -459,9 +493,10 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                         pass
                 game.transfer_xp_to_neighbors(z, enemies)
                 enemies.remove(z)
+        _sanitize_enemy_shots(game, enemy_shots)
         for es in list(enemy_shots):
             es.update(dt, player, game_state)
-            if not es.alive:
+            if (not getattr(es, 'alive', False)) or (hasattr(game, 'verify_enemy_shot_runtime') and (not game.verify_enemy_shot_runtime(es))):
                 enemy_shots.remove(es)
         game.update_hit_flash_timer(player, dt)
         for z in enemies:
@@ -496,7 +531,12 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
 async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], pygame.Surface]:
     runtime = rs.runtime(game)
     """Resume a game from a snapshot in save_data; same return contract as main_run_level."""
-    assert save_data.get('mode') == 'snapshot'
+    if hasattr(game, '_sanitize_resume_save_data'):
+        save_data = game._sanitize_resume_save_data(save_data)
+    if not isinstance(save_data, dict) or save_data.get('mode') != 'snapshot':
+        raise ValueError('run_from_snapshot requires validated snapshot save data')
+    if hasattr(game, '_load_meta_from_save'):
+        game._load_meta_from_save(save_data)
     saved_meta = save_data.get('meta', {})
     snap = save_data.get('snapshot', {})
     level_idx = int(saved_meta.get('current_level', game.current_level))
@@ -595,7 +635,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         bobj.traveled = float(b.get('traveled', 0.0))
         bobj.pierce_left = int(getattr(player, 'bullet_pierce', 0))
         bobj.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
-        bullets.append(bobj)
+        _append_verified_bullet(game, bullets, bobj, player)
     enemy_shots: List[game.EnemyShot] = []
     time_left = float(snap.get('time_left', game.LEVEL_TIME_LIMIT))
     runtime['_time_left_runtime'] = time_left
@@ -781,14 +821,21 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             b = game.Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage)
             b.pierce_left = int(getattr(player, 'bullet_pierce', 0))
             b.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
-            bullets.append(b)
+            _append_verified_bullet(game, bullets, b, player)
             player.fire_cd += player.fire_cooldown()
         for t in getattr(game_state, 'turrets', []):
             t.update(dt, game_state, enemies, bullets)
         for b in list(bullets):
+            if hasattr(game, 'verify_bullet_runtime') and (not game.verify_bullet_runtime(b, player)):
+                try:
+                    bullets.remove(b)
+                except ValueError:
+                    pass
+                continue
             b.update(dt, game_state, enemies, player)
-            if not b.alive:
+            if (not getattr(b, 'alive', False)) or (hasattr(game, 'verify_bullet_runtime') and (not game.verify_bullet_runtime(b, player))):
                 bullets.remove(b)
+        _flush_pending_bullets(game, bullets, game_state, player)
         spawn_timer += dt
         if spawn_timer >= game.SPAWN_INTERVAL:
             spawn_timer = 0.0
@@ -830,7 +877,11 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         if not game.IS_WEB:
             game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
+            if hasattr(game, 'verify_enemy_special_runtime'):
+                game.verify_enemy_special_runtime(z)
             z.update_special(dt, player, enemies, enemy_shots, game_state)
+            if hasattr(game, 'verify_enemy_special_runtime'):
+                game.verify_enemy_special_runtime(z)
             if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
                 z._death_processed = True
                 game.increment_kill_count()
@@ -854,9 +905,10 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                     pass
                 game.transfer_xp_to_neighbors(z, enemies)
                 enemies.remove(z)
+        _sanitize_enemy_shots(game, enemy_shots)
         for es in list(enemy_shots):
             es.update(dt, player, game_state)
-            if not es.alive:
+            if (not getattr(es, 'alive', False)) or (hasattr(game, 'verify_enemy_shot_runtime') and (not game.verify_enemy_shot_runtime(es))):
                 enemy_shots.remove(es)
         game.update_hit_flash_timer(player, dt)
         for z in enemies:
@@ -906,33 +958,18 @@ async def app_main(game) -> None:
         game.VIEW_W, game.VIEW_H = (info.current_w, info.current_h)
     game.resize_world_to_view()
     game.flush_events()
+
+    def apply_menu_selection(selection_data):
+        if not selection_data:
+            sys.exit()
+        mode_in, save_in = selection_data
+        if mode_in == 'continue' and save_in:
+            return game._apply_resume_save_data(save_in)
+        game._reset_active_run_state(clear_save_file=True)
+        return None
+
     selection = await game.show_start_menu(screen)
-    if not selection:
-        sys.exit()
-    mode, save_data = selection
-    if mode == 'continue' and save_data:
-        if save_data:
-            game._load_meta_from_save(save_data)
-            runtime['_carry_player_state'] = save_data.get('carry_player', None)
-            runtime['_pending_shop'] = bool(save_data.get('pending_shop', False))
-            runtime['_next_biome'] = save_data.get('biome')
-        else:
-            runtime['_carry_player_state'] = None
-        if save_data.get('mode') == 'snapshot':
-            saved_meta = save_data.get('meta', {})
-            game.current_level = int(saved_meta.get('current_level', 0))
-            runtime['_next_biome'] = save_data.get('biome')
-        else:
-            game.current_level = int(save_data.get('current_level', 0))
-    else:
-        game.clear_save()
-        game.reset_run_state()
-        game.current_level = 0
-        runtime['_carry_player_state'] = None
-        runtime['_pending_shop'] = False
-        runtime.pop('_last_spoils', None)
-        runtime.pop('_next_biome', None)
-        runtime.pop('_last_biome', None)
+    apply_menu_selection(selection)
     START_IN_SHOP_FOR_TEST = False
     if START_IN_SHOP_FOR_TEST:
         runtime['_pending_shop'] = True
@@ -952,26 +989,7 @@ async def app_main(game) -> None:
                 game.save_progress(game.current_level, pending_shop=True)
                 game.flush_events()
                 selection = await game.show_start_menu(screen, skip_intro=True)
-                if not selection:
-                    sys.exit()
-                mode, save_data = selection
-                if mode == 'continue' and save_data:
-                    game._load_meta_from_save(save_data)
-                    runtime['_carry_player_state'] = save_data.get('carry_player', None)
-                    runtime['_pending_shop'] = bool(save_data.get('pending_shop', False))
-                    runtime['_next_biome'] = save_data.get('biome')
-                    game.current_level = int(save_data.get('current_level', 0))
-                else:
-                    game.clear_save()
-                    game.reset_run_state()
-                    game.current_level = 0
-                    runtime['_carry_player_state'] = None
-                    runtime['_pending_shop'] = False
-                    runtime.pop('_last_spoils', None)
-                    runtime.pop('_next_biome', None)
-                    runtime.pop('_last_biome', None)
-                    runtime.pop('_last_biome', None)
-                    runtime.pop('_next_biome', None)
+                apply_menu_selection(selection)
                 continue
             elif action == 'restart':
                 meta['spoils'] = int(runtime.get('_coins_at_level_start', meta.get('spoils', 0)))
@@ -982,13 +1000,19 @@ async def app_main(game) -> None:
                 game.save_progress(game.current_level, pending_shop=True)
                 pygame.quit()
                 sys.exit()
-        config = game.get_level_config(game.current_level)
-        chosen_enemy = 'basic'
-        if '_coins_at_level_start' not in runtime:
-            runtime['_coins_at_level_start'] = int(meta.get('spoils', 0))
-        if runtime.get('_menu_transition_frame') is None:
-            game.flush_events()
-        result, reward, bg = await game.main_run_level(config, chosen_enemy)
+        resume_snapshot = runtime.pop('_resume_snapshot_data', None)
+        if resume_snapshot:
+            if runtime.get('_menu_transition_frame') is None:
+                game.flush_events()
+            result, reward, bg = await game.run_from_snapshot(resume_snapshot)
+        else:
+            config = game.get_level_config(game.current_level)
+            chosen_enemy = 'basic'
+            if '_coins_at_level_start' not in runtime:
+                runtime['_coins_at_level_start'] = int(meta.get('spoils', 0))
+            if runtime.get('_menu_transition_frame') is None:
+                game.flush_events()
+            result, reward, bg = await game.main_run_level(config, chosen_enemy)
         if result == 'restart':
             meta['spoils'] = int(runtime.get('_coins_at_level_start', meta.get('spoils', 0)))
             meta['run_items_spawned'] = int(runtime.get('_run_items_spawned_start', meta.get('run_items_spawned', 0)))
@@ -1005,30 +1029,7 @@ async def app_main(game) -> None:
         if result == 'home':
             game.flush_events()
             selection = await game.show_start_menu(screen, skip_intro=True)
-            if not selection:
-                sys.exit()
-            mode, save_data = selection
-            if mode == 'continue' and save_data:
-                if save_data:
-                    game._load_meta_from_save(save_data)
-                    runtime['_carry_player_state'] = save_data.get('carry_player', None)
-                    runtime['_next_biome'] = save_data.get('biome')
-                else:
-                    runtime['_carry_player_state'] = None
-                if save_data.get('mode') == 'snapshot':
-                    saved_meta = save_data.get('meta', {})
-                    game.current_level = int(saved_meta.get('current_level', 0))
-                    runtime['_next_biome'] = save_data.get('biome')
-                else:
-                    game.current_level = int(save_data.get('current_level', 0))
-                runtime['_pending_shop'] = bool(save_data.get('pending_shop', False))
-            else:
-                game.clear_save()
-                game.reset_run_state()
-                game.current_level = 0
-                runtime['_carry_player_state'] = None
-                runtime['_pending_shop'] = False
-                runtime.pop('_last_spoils', None)
+            apply_menu_selection(selection)
             continue
         if result == 'exit':
             pygame.quit()
@@ -1038,14 +1039,8 @@ async def app_main(game) -> None:
             action = await game.show_fail_screen(screen, bg)
             game.flush_events()
             if action == 'home':
-                runtime['_carry_player_state'] = None
                 selection = await game.show_start_menu(screen, skip_intro=True)
-                if not selection:
-                    sys.exit()
-                mode, save_data = selection
-                game.clear_save()
-                game.reset_run_state()
-                game.current_level = 0
+                apply_menu_selection(selection)
                 continue
             else:
                 cb = runtime.get('_consumable_baseline', {})
@@ -1061,29 +1056,7 @@ async def app_main(game) -> None:
             if action == 'home':
                 game.flush_events()
                 selection = await game.show_start_menu(screen, skip_intro=True)
-                if not selection:
-                    sys.exit()
-                mode, save_data = selection
-                if mode == 'continue' and save_data:
-                    if save_data:
-                        game._load_meta_from_save(save_data)
-                        runtime['_carry_player_state'] = save_data.get('carry_player', None)
-                        runtime['_next_biome'] = save_data.get('biome')
-                    else:
-                        runtime['_carry_player_state'] = None
-                    if save_data.get('mode') == 'snapshot':
-                        saved_meta = save_data.get('meta', {})
-                        game.current_level = int(saved_meta.get('current_level', 0))
-                    else:
-                        game.current_level = int(save_data.get('current_level', 0))
-                    runtime['_pending_shop'] = bool(save_data.get('pending_shop', False))
-                else:
-                    game.clear_save()
-                    game.reset_run_state()
-                    game.current_level = 0
-                    runtime['_carry_player_state'] = None
-                    runtime['_pending_shop'] = False
-                    runtime.pop('_last_spoils', None)
+                apply_menu_selection(selection)
                 continue
             if action in ('restart', 'retry'):
                 meta['spoils'] = int(runtime.get('_coins_at_level_start', meta.get('spoils', 0)))
@@ -1096,29 +1069,7 @@ async def app_main(game) -> None:
                 game.save_progress(game.current_level, pending_shop=True)
                 game.flush_events()
                 selection = await game.show_start_menu(screen, skip_intro=True)
-                if not selection:
-                    sys.exit()
-                mode, save_data = selection
-                if mode == 'continue' and save_data:
-                    if save_data:
-                        game._load_meta_from_save(save_data)
-                        runtime['_carry_player_state'] = save_data.get('carry_player', None)
-                    else:
-                        runtime['_carry_player_state'] = None
-                    if save_data.get('mode') == 'snapshot':
-                        saved_meta = save_data.get('meta', {})
-                        game.current_level = int(saved_meta.get('current_level', 0))
-                    else:
-                        game.current_level = int(save_data.get('current_level', 0))
-                    runtime['_pending_shop'] = bool(save_data.get('pending_shop', False))
-                else:
-                    game.clear_save()
-                    game.reset_run_state()
-                    game.current_level = 0
-                    runtime['_carry_player_state'] = None
-                    runtime['_pending_shop'] = False
-                    runtime.pop('_next_biome', None)
-                    runtime.pop('_last_biome', None)
+                apply_menu_selection(selection)
                 continue
             elif action in ('restart', 'retry'):
                 meta['spoils'] = int(runtime.get('_coins_at_shop_entry', meta.get('spoils', 0)))
@@ -1138,26 +1089,5 @@ async def app_main(game) -> None:
                 game.save_progress(game.current_level)
         else:
             selection = await game.show_start_menu(screen, skip_intro=True)
-            if not selection:
-                sys.exit()
-            mode, save_data = selection
-            if mode == 'continue' and save_data:
-                if save_data:
-                    game._load_meta_from_save(save_data)
-                    runtime['_carry_player_state'] = save_data.get('carry_player', None)
-                else:
-                    runtime['_carry_player_state'] = None
-                if save_data.get('mode') == 'snapshot':
-                    saved_meta = save_data.get('meta', {})
-                    if mode == 'continue' and save_data and (save_data.get('mode') == 'snapshot'):
-                        game.current_level = int(saved_meta.get('current_level', 0))
-                else:
-                    game.current_level = int(save_data.get('current_level', 0))
-            else:
-                game.clear_save()
-                game.reset_run_state()
-                game.current_level = 0
-                runtime['_carry_player_state'] = None
-                runtime.pop('_next_biome', None)
-                runtime.pop('_last_biome', None)
+            apply_menu_selection(selection)
 

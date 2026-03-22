@@ -26,12 +26,16 @@ def install(game):
         def update(self, dt: float, game_state: 'GameState', enemies: List['Enemy'], player: 'Player'=None):
             if not self.alive:
                 return
+            if hasattr(game, "verify_bullet_runtime") and (not game.verify_bullet_runtime(self, player)):
+                return
             nx = self.x + self.vx * dt
             ny = self.y + self.vy * dt
             self.traveled += ((nx - self.x) ** 2 + (ny - self.y) ** 2) ** 0.5
             self.x, self.y = (nx, ny)
             if self.traveled >= self.max_dist:
                 self.alive = False
+                return
+            if hasattr(game, "verify_bullet_runtime") and (not game.verify_bullet_runtime(self, player)):
                 return
             _rr = int(getattr(self, 'r', game.BULLET_RADIUS))
             r = pygame.Rect(int(self.x - _rr), int(self.y - _rr), _rr * 2, _rr * 2)

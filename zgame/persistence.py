@@ -19,6 +19,18 @@ def _meta(game):
     return rs.meta(game)
 
 
+def _sanitize_loaded_save(game, data: Optional[dict]) -> Optional[dict]:
+    if not isinstance(data, dict):
+        return None
+    if hasattr(game, "_sanitize_resume_save_data"):
+        try:
+            return game._sanitize_resume_save_data(data)
+        except Exception as exc:
+            print(f"[Save] Save sanitizer failed: {exc}", file=sys.stderr)
+            return None
+    return data
+
+
 def web_storage(game):
     if not game.IS_WEB:
         return None
@@ -299,11 +311,18 @@ def load_save(game) -> Optional[dict]:
     if game.IS_WEB:
         cached = state.get("_web_save_cache")
         if isinstance(cached, dict):
-            return copy.deepcopy(cached)
+            clean_cached = _sanitize_loaded_save(game, cached)
+            if isinstance(clean_cached, dict):
+                state["_web_save_cache"] = copy.deepcopy(clean_cached)
+                return copy.deepcopy(clean_cached)
+            state.pop("_web_save_cache", None)
+            return None
         loaded = load_web_save(game)
         if isinstance(loaded, dict):
-            state["_web_save_cache"] = copy.deepcopy(loaded)
-            return copy.deepcopy(loaded)
+            clean_loaded = _sanitize_loaded_save(game, loaded)
+            if isinstance(clean_loaded, dict):
+                state["_web_save_cache"] = copy.deepcopy(clean_loaded)
+                return copy.deepcopy(clean_loaded)
         return None
     try:
         if not os.path.exists(game.SAVE_FILE):
@@ -333,6 +352,9 @@ def load_save(game) -> Optional[dict]:
             data["meta"].setdefault("current_level", 0)
             data["meta"].setdefault("chosen_enemy_type", "basic")
             data.setdefault("snapshot", {})
+        data = _sanitize_loaded_save(game, data)
+        if not isinstance(data, dict):
+            return None
 
         try:
             baseline = data.get("baseline")
