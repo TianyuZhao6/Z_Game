@@ -15,6 +15,10 @@ def _meta(game):
     return rs.meta(game)
 
 
+def _viz(game):
+    return game._get_neuro_viz()
+
+
 async def run_neuro_intro(game, screen: pygame.Surface):
     """Show one-time minimal intro (background + link prompt)."""
     clock = pygame.time.Clock()
@@ -48,6 +52,7 @@ async def run_neuro_intro(game, screen: pygame.Surface):
 def render_start_menu_surface(game, saved_exists: bool):
     """Static snapshot of the Neuro Console menu (used for transitions)."""
     surf = game.ensure_neuro_background().copy()
+    viz = _viz(game)
     wave_t = 0.0
     game.draw_neuro_waves(surf, wave_t)
     header_font = game._get_sekuya_font(26)
@@ -70,7 +75,7 @@ def render_start_menu_surface(game, saved_exists: bool):
     game.draw_neuro_button(surf, rects["instruction"], "INSTRUCTION", btn_font, hovered=False, disabled=False, t=wave_t)
     game.draw_neuro_button(surf, rects["settings"], "SETTINGS", btn_font, hovered=False, disabled=False, t=wave_t)
     game.draw_neuro_button(surf, rects["exit"], "EXIT", btn_font, hovered=False, disabled=False, t=wave_t)
-    game._neuro_viz.draw(surf, surf.get_width() // 2, int(surf.get_height() * 0.52))
+    viz.draw(surf, surf.get_width() // 2, int(surf.get_height() * 0.52))
     game.draw_neuro_info_column(surf, info_font, wave_t, saved_exists)
     return surf
 
@@ -78,6 +83,7 @@ def render_start_menu_surface(game, saved_exists: bool):
 async def show_start_menu(game, screen, *, skip_intro: bool = False):
     """Return ('new', None) or ('continue', save_data) based on the player's choice."""
     state = _state(game)
+    viz = _viz(game)
     game.flush_events()
     intro_flag = state.pop("_skip_intro_once", False)
     if not skip_intro and not intro_flag:
@@ -105,9 +111,9 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
 
         pos_ms = game._current_music_pos_ms()
         if pos_ms is not None:
-            game._neuro_viz.update(dt, pos_ms / 1000.0)
+            viz.update(dt, pos_ms / 1000.0)
         else:
-            game._neuro_viz.update(dt, t)
+            viz.update(dt, t)
 
         saved_exists = game.has_save()
         base_rects = game.neuro_menu_layout(include_continue=saved_exists)
@@ -121,7 +127,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
                 break
         screen.blit(game.ensure_neuro_background(), (0, 0))
         game.draw_neuro_waves(screen, t)
-        game._neuro_viz.draw(screen, game.VIEW_W // 2, int(game.VIEW_H * 0.52))
+        viz.draw(screen, game.VIEW_W // 2, int(game.VIEW_H * 0.52))
 
         game.draw_neuro_home_header(screen, header_font)
         drawn_rects = {}

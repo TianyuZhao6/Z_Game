@@ -4025,9 +4025,7 @@ HexCell, HexTransition, NeuroParticle, CometCorpse, CometBlast, AegisPulseRing =
 )
 
 # ==================== NEURO MUSIC VISUALIZATION ====================
-# Keep a module attribute alias for compatibility with support modules like zgame/menu_flow.py.
-_neuro_viz = NeuroMusicVisualizer()
-_runtime_state()["_neuro_viz"] = _neuro_viz
+_runtime_state()["_neuro_viz"] = NeuroMusicVisualizer()
 _runtime_state()["_neuro_viz_loader"] = None
 _runtime_state()["_neuro_viz_loader_path"] = None
 
@@ -4036,11 +4034,8 @@ def _get_neuro_viz() -> NeuroMusicVisualizer:
     runtime = _runtime_state()
     viz = runtime.get("_neuro_viz")
     if not isinstance(viz, NeuroMusicVisualizer):
-        viz = _THIS_MODULE.__dict__.get("_neuro_viz")
-        if not isinstance(viz, NeuroMusicVisualizer):
-            viz = NeuroMusicVisualizer()
+        viz = NeuroMusicVisualizer()
         runtime["_neuro_viz"] = viz
-        _THIS_MODULE.__dict__["_neuro_viz"] = viz
     return viz
 
 
