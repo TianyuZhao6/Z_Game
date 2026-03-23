@@ -44,6 +44,7 @@ from zgame import player_projectiles as player_projectiles_support
 from zgame import turrets as turrets_support
 from zgame import pickups as pickups_support
 from zgame import paint as paint_support
+from zgame import world_runtime as world_runtime_support
 from zgame import effects_runtime as effects_runtime_support
 from zgame import menu_flow as menu_flow_support
 from zgame import persistence as persistence_support
@@ -54,6 +55,7 @@ from zgame import screens as screens_support
 from zgame import shop_ui as shop_ui_support
 from zgame import pause_ui as pause_ui_support
 from zgame import app_flow as app_flow_support
+from zgame import audio_runtime as audio_runtime_support
 from zgame import runtime_state as runtime_state_support
 
 _THIS_MODULE = sys.modules[__name__]
@@ -244,7 +246,7 @@ def circle_touch(a, b, extra=0.0) -> bool:
     ra = getattr(a, "radius", a.size * 0.5)
     rb = getattr(b, "radius", b.size * 0.5)
     r = ra + rb + float(extra)
-    dx = ax - bx;
+    dx = ax - bx
     dy = ay - by
     return (dx * dx + dy * dy) <= (r * r)
 
@@ -5511,6 +5513,7 @@ MemoryDevourerBoss, MistClone, MistweaverBoss = enemy_subclasses_support.install
 Bullet = player_projectiles_support.install(_THIS_MODULE)
 AutoTurret, StationaryTurret, StationaryTurretObstacle = turrets_support.install(_THIS_MODULE)
 Spoil, HealPickup = pickups_support.install(_THIS_MODULE)
+SpatialHash, TornadoEntity = world_runtime_support.install(_THIS_MODULE)
 
 
 AcidPool, TelegraphCircle = hazards_support.install(_THIS_MODULE)
@@ -5575,6 +5578,7 @@ def _play_teleport_sfx():
 
 
 EnemyShot, MistShot, DamageText = enemy_projectiles_support.install(_THIS_MODULE)
+GameSound = audio_runtime_support.install(_THIS_MODULE)
 
 
 # ==================== 算法函数 ====================
@@ -6828,35 +6832,6 @@ def build_flow_field(grid_size, obstacles, goal_xy, pad=0):
     return dist, next_step
 
 
-# ==================== 新增游戏状态类 ====================
-class SpatialHash:
-    def __init__(self, cell=64):
-        self.cell = int(cell)
-        self.buckets = {}
-
-    def _key(self, x, y):
-        return (int(x) // self.cell, int(y) // self.cell)
-
-    def rebuild(self, enemies):
-        self.buckets.clear()
-        for z in enemies:
-            k = self._key(z.rect.centerx, z.rect.centery)
-            self.buckets.setdefault(k, []).append(z)
-
-    def query_circle(self, x, y, r):
-        cx, cy = self._key(x, y)
-        out = []
-        rr = r + max(16, CELL_SIZE // 2)
-        for gx in (cx - 1, cx, cx + 1):
-            for gy in (cy - 1, cy, cy + 1):
-                for z in self.buckets.get((gx, gy), []):
-                    dx = z.rect.centerx - x
-                    dy = z.rect.centery - y
-                    if dx * dx + dy * dy <= rr * rr:
-                        out.append(z)
-        return out
-
-
 def crush_blocks_in_rect(sweep_rect: pygame.Rect, game_state) -> int:
     """Remove ANY obstacle cell whose rect intersects sweep_rect. Return removed count."""
     removed = 0
@@ -6871,304 +6846,6 @@ def crush_blocks_in_rect(sweep_rect: pygame.Rect, game_state) -> int:
             if hasattr(game_state, "mark_nav_dirty"): game_state.mark_nav_dirty()
             removed += 1
     return removed
-
-
-class TornadoEntity:
-    def __init__(self, x, y, r=HURRICANE_START_RADIUS):
-        self.x = float(x)
-        self.y = float(y)
-        self.r = float(r)
-        self.t = random.uniform(0, 100) # Animation phase
-        self.spin_dir = random.choice([-1.0, 1.0]) # Random rotation direction
-        ang = random.uniform(0, math.tau)
-        self.move_speed = random.uniform(16.0, 40.0)  # slight speed boost for drifting
-        self.vx = math.cos(ang) * self.move_speed
-        self.vy = math.sin(ang) * self.move_speed
-        self._bound_margin = HURRICANE_MAX_RADIUS * 1.2
-
-        # Initialize Wind Particles (Debris + Wind Streaks)
-        self._base_particles = 35
-        self._extra_particles = 30  # only affects visuals (outer wind gets busier as it grows)
-        self.particles = [self._make_particle() for _ in range(self._base_particles)]
-        # Swoosh arcs that randomly appear in the outer influence ring (purely visual)
-        self._ring_swooshes = [self._make_swoosh() for _ in range(9)]
-
-    def _make_particle(self):
-        return {
-            "type": "wind" if random.random() < 0.7 else "debris",
-            "ang": random.uniform(0, math.tau),
-            "h": random.uniform(0.05, 1.2), # Height ratio
-            "dist": random.uniform(0.6, 1.6), # Distance from funnel center (1.0+ sits in the influence ring)
-            "speed": random.uniform(3.0, 6.0),
-            "len": random.uniform(0.15, 0.45),
-            "color": random.choice(WIND_PARTICLE_COLORS)
-        }
-
-    def _make_swoosh(self):
-        swoosh_colors = [
-            (200, 240, 255),  # white
-            (160, 210, 230),  # grey-blue
-            (120, 210, 255),  # cyan
-        ]
-        return {
-            "ang": random.uniform(0, math.tau),
-            "rad_ratio": random.uniform(0.3, 1.05),   # placement anywhere inside the influence ring
-            "len_ratio": random.uniform(0.12, 0.20),  # shorter max length (half previous max)
-            "thick": random.randint(2, 4),
-            "alpha": random.randint(140, 210),
-            "color": random.choice(swoosh_colors),
-            "t": 0.0,
-            "ttl": random.uniform(0.7, 1.3),
-        }
-
-    def update(self, dt):
-        # Grow to max radius
-        self.r = min(HURRICANE_MAX_RADIUS, self.r + HURRICANE_GROWTH_RATE * dt)
-        self.t += dt * 5.0 # Animation speed
-
-        # Cosmetics only: scale wind particle count with the influence ring size
-        target = int(self._base_particles + self._extra_particles * min(1.0, self.r / HURRICANE_MAX_RADIUS))
-        while len(self.particles) < target:
-            self.particles.append(self._make_particle())
-        if len(self.particles) > target:
-            self.particles = self.particles[:target]
-
-        # Slow drift across the map; bounce off bounds to stay inside
-        map_w = GRID_SIZE * CELL_SIZE
-        map_h = GRID_SIZE * CELL_SIZE
-        min_x = self._bound_margin
-        max_x = map_w - self._bound_margin
-        min_y = INFO_BAR_HEIGHT + self._bound_margin
-        max_y = INFO_BAR_HEIGHT + map_h - self._bound_margin
-        self.x += self.vx * dt
-        self.y += self.vy * dt
-        if self.x < min_x or self.x > max_x:
-            self.x = max(min_x, min(self.x, max_x))
-            self.vx *= -1
-        if self.y < min_y or self.y > max_y:
-            self.y = max(min_y, min(self.y, max_y))
-            self.vy *= -1
-
-        # Update particles (orbiting)
-        vis_dir = -self.spin_dir  # visuals swirl opposite if physics feels reversed
-        spin_growth = min(1.0, self.r / HURRICANE_MAX_RADIUS)
-        vis_spin_scale = 0.6 + 0.9 * spin_growth  # start slower, speed up as it grows
-        for p in self.particles:
-            # Physics: Spin faster near the bottom (conservation of angular momentum feel)
-            spin = p['speed'] * (1.8 - min(1.0, p['h']))
-            p['ang'] += spin * dt * vis_dir * vis_spin_scale
-
-        # Update ring swooshes (outer influence band streaks)
-        for s in list(self._ring_swooshes):
-            s["t"] += dt
-            if s["t"] >= s["ttl"]:
-                self._ring_swooshes.remove(s)
-        while len(self._ring_swooshes) < 9:
-            self._ring_swooshes.append(self._make_swoosh())
-
-    def apply_vortex_physics(self, ent, dt, resist_scale=1.0):
-        """
-        Calculates spiral flow: Objects orbit FAST while slowly drifting inward.
-        Returns tuple (dx, dy) to be applied to the entity.
-        """
-        # Vector from entity to tornado center
-        ecx, ecy = ent.rect.centerx, ent.rect.centery
-        dx = self.x - ecx
-        dy = self.y - ecy
-        dist = math.hypot(dx, dy)
-        
-        # Range check (Influence radius)
-        effect_radius = self.r * HURRICANE_RANGE_MULT
-        if dist <= 10.0 or dist > effect_radius:
-            return 0.0, 0.0
-
-        # Normalized direction vectors
-        nx, ny = dx / dist, dy / dist   # Normal (Toward center)
-        tx, ty = -ny, nx                # Tangent (Orbit direction)
-        
-        # Flip tangent if tornado spins clockwise
-        if self.spin_dir < 0:
-            tx, ty = -tx, -ty
-
-        # --- Flow Logic ---
-        # 1. Suction Strength (increases as you get closer, but drops at the very eye)
-        suction_mult = min(1.0, dist / 60.0) 
-        radial_force = HURRICANE_PULL_STRENGTH * suction_mult
-        
-        # 2. Orbital Strength (stronger near center)
-        rot_mult = 1.0 + (1.0 - min(1.0, dist / effect_radius)) * 2.0
-        tangential_force = HURRICANE_VORTEX_POWER * rot_mult
-
-        # Combine forces
-        vx = (nx * radial_force) + (tx * tangential_force)
-        vy = (ny * radial_force) + (ty * tangential_force)
-
-        # Apply ISO perspective flattening to Y axis (2.0 ratio)
-        vy *= 0.5 
-
-        return vx * dt * resist_scale, vy * dt * resist_scale
-
-    def draw(self, screen, camx, camy):
-        """Draws the Neuro-styled tornado with glitch effects and wind streaks."""
-        # Base screen coordinates
-        cx, cy = iso_world_to_screen(self.x / CELL_SIZE, (self.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
-
-        vis_dir = -self.spin_dir  # visuals follow the perceived rotation direction
-        spin_growth = min(1.0, self.r / HURRICANE_MAX_RADIUS)
-        vis_spin_scale = 0.6 + 0.9 * spin_growth
-        base_w = self.r * 1.6
-
-        # Influence ring: ground glow + cyan rim to highlight the affected zone
-        effect_radius = self.r * HURRICANE_RANGE_MULT
-        rx_zone, ry_zone = iso_circle_radii_screen(effect_radius)
-        zone = pygame.Surface((rx_zone * 2, ry_zone * 2), pygame.SRCALPHA)
-        pygame.draw.ellipse(zone, (40, 60, 80, 50), zone.get_rect())  # subtle ground fill
-        pygame.draw.ellipse(zone, (120, 220, 255, 110), zone.get_rect(), width=3)  # cyan rim
-
-        # Rotating ground streaks follow the hurricane spin direction
-        streaks = 8
-        for i in range(streaks):
-            ang = self.t * 0.6 * vis_spin_scale * vis_dir + i * (math.tau / streaks)
-            px = rx_zone + math.cos(ang) * rx_zone * 0.82
-            py = ry_zone + math.sin(ang) * ry_zone * 0.82
-            tx = -math.sin(ang) * 10 * vis_dir
-            ty = math.cos(ang) * 6 * vis_dir
-            pygame.draw.line(zone, (140, 220, 255, 140), (px - tx, py - ty), (px + tx, py + ty), 2)
-
-        # Brighter swoosh arcs randomly scattered in the influence ring
-        for s in self._ring_swooshes:
-            fade = max(0.0, 1.0 - (s["t"] / max(0.001, s["ttl"])))
-            if fade <= 0:
-                continue
-            arc_ang = s["ang"] + math.pi + self.t * 0.35 * vis_dir  # reversed arc direction
-            r_ratio = s["rad_ratio"]
-            arc_len = rx_zone * s["len_ratio"]
-            x0 = rx_zone + math.cos(arc_ang) * rx_zone * r_ratio
-            y0 = ry_zone + math.sin(arc_ang) * ry_zone * r_ratio
-            tx = -math.sin(arc_ang) * arc_len * vis_dir
-            ty = math.cos(arc_ang) * arc_len * 0.55 * vis_dir
-
-            # Quadratic bezier-like curve, tapered ends (thin) with thicker mid
-            start = (x0 - tx * 0.5, y0 - ty * 0.5)
-            end = (x0 + tx * 0.5, y0 + ty * 0.5)
-            curve_mag = arc_len * 0.25
-            cx_mid = x0 + (-ty) * 0.2 + math.cos(arc_ang) * 4
-            cy_mid = y0 + (tx) * 0.2 + math.sin(arc_ang) * 2
-
-            steps = 12
-            col = s["color"]
-            alpha = int(s["alpha"] * fade)
-            for j in range(steps):
-                t = j / (steps - 1)
-                # Quadratic interpolation
-                ax = (1 - t) * start[0] + t * cx_mid
-                ay = (1 - t) * start[1] + t * cy_mid
-                bx = (1 - t) * cx_mid + t * end[0]
-                by = (1 - t) * cy_mid + t * end[1]
-                px = (1 - t) * ax + t * bx
-                py = (1 - t) * ay + t * by
-
-                # Thickness taper: thin at ends, thickest at center
-                taper = 1.0 - abs(t * 2 - 1)
-                radius = max(1, int(s["thick"] * (0.5 + 0.8 * taper)))
-                pygame.draw.circle(zone, (*col, alpha), (px, py), radius)
-
-        screen.blit(zone, (cx - rx_zone, cy - ry_zone))
-
-        # --- 1. Draw Funnel Layers (Bottom to Top) ---
-        for i in range(TORNADO_LAYER_COUNT):
-            ratio = i / float(TORNADO_LAYER_COUNT) # 0.0 (bottom) -> 1.0 (top)
-
-            # Non-linear width: Wide top, narrow base
-            width = base_w * (0.25 + 0.8 * (ratio ** 1.8))
-            
-            # "Neuro" Glitch Effect: Occasional horizontal offset
-            glitch_x = 0
-            if random.random() < 0.05: 
-                glitch_x = random.randint(-4, 4)
-
-            # Wobble animation (Sine wave that moves up)
-            wobble = math.sin(self.t + ratio * 4.0) * (15 * ratio)
-            
-            draw_x = cx + wobble + glitch_x
-            draw_y = cy - (ratio * TORNADO_FUNNEL_HEIGHT)
-            
-            # Iso projection for ellipse
-            rx, ry = iso_circle_radii_screen(width * 0.5)
-            
-            # Color Gradient: Dark Blue (Edge) -> Light Blue (Center) -> Alpha Fade
-            alpha = 170 if i < TORNADO_LAYER_COUNT - 1 else 90
-            color = (
-                int(TORNADO_EDGE_COLOR[0] + (TORNADO_CORE_COLOR[0] - TORNADO_EDGE_COLOR[0]) * ratio),
-                int(TORNADO_EDGE_COLOR[1] + (TORNADO_CORE_COLOR[1] - TORNADO_EDGE_COLOR[1]) * ratio),
-                int(TORNADO_EDGE_COLOR[2] + (TORNADO_CORE_COLOR[2] - TORNADO_EDGE_COLOR[2]) * ratio),
-            )
-
-            s = pygame.Surface((rx*2, ry*2), pygame.SRCALPHA)
-            pygame.draw.ellipse(s, (*color, alpha), s.get_rect())
-
-            # Add a cyan rim to highlight each slice and fill space between layers
-            pygame.draw.ellipse(s, (120, 220, 255, int(alpha * 0.9)), s.get_rect(), width=2)
-
-            screen.blit(s, (draw_x - rx, draw_y - ry))
-
-        # Cyan contour rings to emphasize internal layers
-        for r_ratio in (0.2, 0.45, 0.7, 0.9):
-            width = base_w * (0.25 + 0.75 * (r_ratio ** 1.5))
-            rx, ry = iso_circle_radii_screen(width * 0.5)
-            y = cy - (r_ratio * TORNADO_FUNNEL_HEIGHT)
-            pulse = 0.7 + 0.3 * math.sin(self.t * 0.8 + r_ratio * 4.0)
-            pygame.draw.ellipse(
-                screen,
-                (140, 230, 255, int(80 * pulse)),
-                pygame.Rect(cx - rx, y - ry, rx * 2, ry * 2),
-                width=2,
-            )
-
-        # --- 2. Draw Wind Particles (Debris & Streaks) ---
-        for p in self.particles:
-            # Calculate particle screen position
-            h_px = p['h'] * TORNADO_FUNNEL_HEIGHT
-            # Width at this height
-            w_at_h = base_w * (0.25 + 0.8 * (p['h'] ** 1.8)) * p['dist']
-            
-            # Orbit math
-            px_off = math.cos(p['ang']) * (w_at_h * 0.5)
-            py_off = math.sin(p['ang']) * (w_at_h * 0.25) # Flattened Y
-            
-            wobble_at_h = math.sin(self.t + p['h'] * 4.0) * (15 * p['h'])
-            
-            px = cx + wobble_at_h + px_off
-            py = cy - h_px + py_off
-            
-            # Z-Sort: Darker/smaller if "behind" the tornado
-            is_behind = math.sin(p['ang']) < 0
-
-            if p['type'] == 'wind':
-                # Draw "Wind Streaks" (Curved, multi-point swoosh)
-                size_scale = 1.0 + 0.6 * min(1.0, self.r / HURRICANE_MAX_RADIUS)
-                length = 12 * size_scale * (0.6 + 0.4 * p.get("len", 0.25))
-                # Calculate tail based on rotation direction
-                dir_ang = p['ang'] + math.pi/2 * vis_dir
-                tail_x = px - math.cos(dir_ang) * length
-                tail_y = py - math.sin(dir_ang) * (length * 0.5)
-                mid_x = (px + tail_x) * 0.5
-                mid_y = (py + tail_y) * 0.5
-                # Bend outward slightly for a tapered curve
-                bend = 6 * size_scale
-                bx = mid_x + math.cos(dir_ang + math.pi/2) * bend
-                by = mid_y + math.sin(dir_ang + math.pi/2) * (bend * 0.6)
-
-                col = p['color']
-                alpha = 90 if is_behind else 230
-                pygame.draw.lines(screen, (*col, alpha), False, [(px, py), (bx, by), (tail_x, tail_y)], 2)
-
-            else:
-                # Draw Debris (Rocks)
-                col = (40, 50, 60) if is_behind else (200, 220, 230)
-                size = 2 if is_behind else 4
-                pygame.draw.circle(screen, col, (int(px), int(py)), size)
-
 GameState = game_state_support.install(_THIS_MODULE)
 
 
@@ -8278,88 +7955,6 @@ def render_game(screen: pygame.Surface, game_state, player: Player, enemies: Lis
         obstacles=game_state.obstacles,
         override_cam=override_cam
     )
-
-
-# ==================== GAMESOUND ====================
-class GameSound:
-    """
-    Background BGM loader/controller.
-    It probes several likely paths so ZGAME.wav is found regardless of where ZGame.py runs from.
-    """
-
-    def __init__(self, music_path: str = None, volume: float = 0.6):
-        self.volume = max(0.0, min(1.0, float(volume)))
-        self._ready = False
-        candidates = [
-            *_asset_candidates("music", "Intro_V0.wav"),
-            *_asset_candidates("music", "ZGAME.wav"),
-        ]
-        if music_path:
-            candidates.insert(0, music_path)
-        candidates = _expand_audio_candidates(candidates)
-        self.music_path = _first_existing_path(candidates)
-        if not self.music_path:
-            print("[Audio] ZGAME.wav not found in expected locations.")
-            return
-        # --- init mixer (make sure it's initialized even if pygame.init() already ran) ---
-        try:
-            if not pygame.mixer.get_init():
-                # pre_init only helps if called before pygame.init(); guard anyway
-                pygame.mixer.pre_init(44100, -16, 2, 512)
-                pygame.mixer.init(44100, -16, 2, 512)
-        except Exception as e:
-            print(f"[Audio] mixer init failed: {e}")
-            return
-        # --- load file ---
-        try:
-            pygame.mixer.music.load(self.music_path)
-            pygame.mixer.music.set_volume(self.volume)
-            self._ready = True
-            print(f"[Audio] Loaded BGM: {self.music_path}")
-        except Exception as e:
-            print(f"[Audio] load music failed: {e} (path tried: {self.music_path})")
-
-    def playBackGroundMusic(self, loops: int = -1, fade_ms: int = 500):
-        """loops=-1 means infinite loop"""
-        if not self._ready:
-            return
-        try:
-            pygame.mixer.music.play(loops=loops, fade_ms=fade_ms)
-        except Exception as e:
-            print(f"[Audio] play failed: {e}")
-
-    def stop(self, fade_ms: int = 300):
-        if not self._ready: return
-        try:
-            if fade_ms > 0:
-                pygame.mixer.music.fadeout(fade_ms)
-            else:
-                pygame.mixer.music.stop()
-        except Exception as e:
-            print(f"[Audio] stop failed: {e}")
-
-    def pause(self):
-        if self._ready:
-            try:
-                pygame.mixer.music.pause()
-            except Exception as e:
-                print(f"[Audio] pause failed: {e}")
-
-    def resume(self):
-        if self._ready:
-            try:
-                pygame.mixer.music.unpause()
-            except Exception as e:
-                print(f"[Audio] resume failed: {e}")
-
-    def set_volume(self, volume: float):
-        self.volume = max(0.0, min(1.0, float(volume)))
-        if self._ready:
-            try:
-                pygame.mixer.music.set_volume(self.volume)
-            except Exception as e:
-                print(f"[Audio] set_volume failed: {e}")
-
 
 def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms: int = 400):
     """Stop current BGM and play the first existing file in candidates."""
