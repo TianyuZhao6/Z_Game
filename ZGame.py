@@ -11,7 +11,6 @@ import copy
 import hashlib
 import colorsys
 from effects import *
-from queue import PriorityQueue
 from collections import deque
 from typing import Dict, List, Set, Tuple, Optional
 
@@ -45,6 +44,7 @@ from zgame import turrets as turrets_support
 from zgame import pickups as pickups_support
 from zgame import paint as paint_support
 from zgame import world_runtime as world_runtime_support
+from zgame import worldgen_pathing as worldgen_pathing_support
 from zgame import effects_runtime as effects_runtime_support
 from zgame import menu_flow as menu_flow_support
 from zgame import persistence as persistence_support
@@ -706,70 +706,6 @@ def draw_boss_hp_bars_twin(screen, bosses):
 
 def pause_game_modal(screen, bg_surface, clock, time_left, player):
     return pause_ui_support.pause_game_modal(_THIS_MODULE, screen, bg_surface, clock, time_left, player)
-
-
-def _expanded_block_mask(obstacles: dict, grid_size: int, radius_px: int) -> list:
-    """返回经过半径外扩后的阻挡掩码（True=不可走）"""
-    # 把像素半径近似成网格曼哈顿半径：半格≈CELL_SIZE*0.5
-    radius_cells = max(1, int(math.ceil(radius_px / (CELL_SIZE * 0.5))))
-    mask = [[False] * grid_size for _ in range(grid_size)]
-    # 原始脚印
-    for (gx, gy) in obstacles.keys():
-        mask[gy][gx] = True
-    # 曼哈顿外扩
-    if radius_cells > 0:
-        base = [row[:] for row in mask]
-        for y in range(grid_size):
-            for x in range(grid_size):
-                if not base[y][x]:
-                    continue
-                for dy in range(-radius_cells, radius_cells + 1):
-                    for dx in range(-radius_cells, radius_cells + 1):
-                        if abs(dx) + abs(dy) <= radius_cells:
-                            nx, ny = x + dx, y + dy
-                            if 0 <= nx < grid_size and 0 <= ny < grid_size:
-                                mask[ny][nx] = True
-    return mask
-
-
-def _reachable_to_edge(start: tuple, mask: list) -> bool:
-    """只在 mask 为 False 的格子上走，看能否走到外环"""
-    n = len(mask)
-    sx, sy = start
-    if not (0 <= sx < n and 0 <= sy < n) or mask[sy][sx]:
-        return False
-    q = deque([(sx, sy)])
-    seen = {(sx, sy)}
-    while q:
-        x, y = q.popleft()
-        if x == 0 or y == 0 or x == n - 1 or y == n - 1:
-            return True
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < n and 0 <= ny < n and not mask[ny][nx] and (nx, ny) not in seen:
-                seen.add((nx, ny));
-                q.append((nx, ny))
-    return False
-
-
-def ensure_passage_budget(obstacles: dict, grid_size: int, player_spawn: tuple, tries: int = 8):
-    """
-    若玩家出生点到外环不可达：随机移除 1-2 个可破坏障碍（最多 tries 次），保证可走。
-    注意：只改 obstacles 这个 dict，不改其它东西。
-    """
-    # 预先收集可破坏障碍坐标
-    destructibles = [pos for pos, ob in obstacles.items() if getattr(ob, "type", "") == "Destructible"]
-    for _ in range(tries):
-        mask = _expanded_block_mask(obstacles, grid_size, NAV_CLEAR_RADIUS)
-        if _reachable_to_edge(player_spawn, mask):
-            return  # OK
-        if not destructibles:
-            break
-        # 随机挖一个试试（你也可以在这里用更聪明的挑选策略）
-        pos = random.choice(destructibles)
-        destructibles.remove(pos)
-        obstacles.pop(pos, None)
-
 
 # --- Domain/Biome helpers (one-level-only effects) ---
 def apply_domain_buffs_for_level(game_state, player):
@@ -3887,111 +3823,6 @@ def enemy_shot_radius_for_damage(dmg: int,
     r = base_radius + int((cap - base_radius) * (1.0 - math.exp(-k * dmg)))
     return max(base_radius, min(cap, r))
 
-
-def collide_and_slide_circle(entity, obstacles_iter, dx, dy):
-    """
-    以“圆心 + Minkowski 外扩”的方式，做【扫掠式】轴分离碰撞：
-    - X 轴先扫：用线段(cx0 → cx1)与每个扩张矩形的左右边做一次1D相交测试，命中则把终点夹到边界；
-    - Y 轴再扫：同理对上下边；
-    这样即便步长较大/从角上斜切也不会穿过去。
-    """
-    entity._hit_ob = None
-    if getattr(entity, "can_crush_all_blocks", False) and not hasattr(entity, "_crush_queue"):
-        entity._crush_queue = []
-    r = getattr(entity, "radius", max(8, CELL_SIZE // 3))
-    size = entity.size
-    # 起点（圆心，世界像素）
-    cx0 = entity.x + size * 0.5
-    cy0 = entity.y + size * 0.5 + INFO_BAR_HEIGHT
-    # ---------- X 轴扫掠 ----------
-    cx1 = cx0 + dx
-    hit_x = None
-    # 向右：找所有满足 cy0 ∈ [top, bottom] 且 线段跨过 left 的矩形，取最靠近的边
-    if dx > 0:
-        min_left = None
-        for ob in obstacles_iter:
-            if getattr(ob, "nonblocking", False):
-                continue
-            exp = ob.rect.inflate(r * 2, r * 2)
-            if exp.top <= cy0 <= exp.bottom and cx0 <= exp.left <= cx1:
-                if (min_left is None) or (exp.left < min_left[0]):
-                    min_left = (exp.left, ob)
-        if min_left:
-            cx1 = min_left[0]
-            hit_x = min_left[1]
-            if getattr(entity, "can_crush_all_blocks", False):
-                entity._crush_queue.append(hit_x)
-    # 向左：对 right 边做相同处理
-    elif dx < 0:
-        max_right = None
-        for ob in obstacles_iter:
-            if getattr(ob, "nonblocking", False):
-                continue
-            exp = ob.rect.inflate(r * 2, r * 2)
-            if exp.top <= cy0 <= exp.bottom and cx1 <= exp.right <= cx0:
-                if (max_right is None) or (exp.right > max_right[0]):
-                    max_right = (exp.right, ob)
-        if max_right:
-            cx1 = max_right[0]
-            hit_x = max_right[1]
-            if getattr(entity, "can_crush_all_blocks", False):
-                entity._crush_queue.append(hit_x)
-    if hit_x is not None:
-        entity._hit_ob = hit_x
-    x_min, y_min, x_max, y_max = play_bounds_for_circle(r)
-    cx1 = max(x_min, min(cx1, x_max))
-    entity.x = cx1 - size * 0.5  # 应用X位移（已夹到边界）
-    # 更新圆心（X 已经改变）
-    cx0 = entity.x + size * 0.5
-    cy0 = entity.y + size * 0.5 + INFO_BAR_HEIGHT
-    # ---------- Y 轴扫掠 ----------
-    cy1 = cy0 + dy
-    hit_y = None
-    if dy > 0:
-        min_top = None
-        for ob in obstacles_iter:
-            if getattr(ob, "nonblocking", False):
-                continue
-            exp = ob.rect.inflate(r * 2, r * 2)
-            if exp.left <= cx0 <= exp.right and cy0 <= exp.top <= cy1:
-                if (min_top is None) or (exp.top < min_top[0]):
-                    min_top = (exp.top, ob)
-        if min_top:
-            cy1 = min_top[0]
-            hit_y = min_top[1]
-            if getattr(entity, "can_crush_all_blocks", False):
-                try:
-                    entity._crush_queue.append(hit_y)
-                except Exception:
-                    pass
-    elif dy < 0:
-        max_bottom = None
-        for ob in obstacles_iter:
-            if getattr(ob, "nonblocking", False):
-                continue
-            exp = ob.rect.inflate(r * 2, r * 2)
-            if exp.left <= cx0 <= exp.right and cy1 <= exp.bottom <= cy0:
-                if (max_bottom is None) or (exp.bottom > max_bottom[0]):
-                    max_bottom = (exp.bottom, ob)
-        if max_bottom:
-            cy1 = max_bottom[0]
-            hit_y = max_bottom[1]
-            if getattr(entity, "can_crush_all_blocks", False):
-                try:
-                    entity._crush_queue.append(hit_y)
-                except Exception:
-                    pass
-    if hit_y is not None:
-        entity._hit_ob = hit_y
-    x_min, y_min, x_max, y_max = play_bounds_for_circle(r)
-    cy1 = max(y_min, min(cy1, y_max))
-    # 应用Y位移（注意把 INFO_BAR_HEIGHT 减回去）
-    entity.y = cy1 - size * 0.5 - INFO_BAR_HEIGHT
-    # 同步 AABB（仅用于渲染/命中盒）
-    entity.rect.x = int(entity.x)
-    entity.rect.y = int(entity.y) + INFO_BAR_HEIGHT
-
-
 # === NEW: 等距相机偏移（基于玩家像素中心 → 网格中心 → 屏幕等距投影） ===
 def calculate_iso_camera(player_x_px: float, player_y_px: float) -> tuple[int, int]:
     px_grid = player_x_px / CELL_SIZE
@@ -5589,8 +5420,21 @@ def sign(v): return 1 if v > 0 else (-1 if v < 0 else 0)
 def chase_step(ux: float, uy: float, speed: float):
     return iso_equalized_step(ux, uy, speed) if USE_ISO else (ux * speed, uy * speed)
 
-
-def heuristic(a, b): return abs(a[0] - b[0]) + abs(a[1] - b[1])
+(
+    _expanded_block_mask,
+    _reachable_to_edge,
+    ensure_passage_budget,
+    collide_and_slide_circle,
+    heuristic,
+    a_star_search,
+    is_not_edge,
+    get_level_config,
+    reconstruct_path,
+    generate_game_entities,
+    build_graph,
+    build_flow_field,
+    crush_blocks_in_rect,
+) = worldgen_pathing_support.install(_THIS_MODULE)
 
 
 def resize_world_to_view():
@@ -6617,235 +6461,6 @@ def _find_twin_partner(z, enemies):
                 break
     return partner
 
-
-def a_star_search(graph: Graph, start: Tuple[int, int], goal: Tuple[int, int],
-                  obstacles: Dict[Tuple[int, int], Obstacle]):
-    frontier = PriorityQueue()
-    frontier.put((0, start))
-    came_from = {start: None}
-    cost_so_far = {start: 0}
-    while not frontier.empty():
-        _, current = frontier.get()
-        if current == goal: break
-        for neighbor in graph.neighbors(current):
-            new_cost = cost_so_far[current] + graph.cost(current, neighbor)
-            if neighbor in obstacles:
-                obstacle = obstacles[neighbor]
-                if obstacle.type == "Indestructible":
-                    continue
-                elif obstacle.type == "Destructible":
-                    k_factor = (math.ceil(obstacle.health / ENEMY_ATTACK)) * 0.1
-                    new_cost = cost_so_far[current] + 1 + k_factor
-            if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
-                cost_so_far[neighbor] = new_cost
-                priority = new_cost + heuristic(goal, neighbor)
-                frontier.put((priority, neighbor))
-                # came_from[current] = current if current not in came_from else came_from[current]
-                came_from[neighbor] = current
-    return came_from, cost_so_far
-
-
-def is_not_edge(pos, grid_size):
-    x, y = pos
-    return 1 <= x < grid_size - 1 and 1 <= y < grid_size - 1
-
-
-def get_level_config(level: int) -> dict:
-    if level < len(LEVELS):
-        return LEVELS[level]
-    return {
-        "obstacle_count": 20 + level,
-        "item_count": 5,
-        "enemy_count": min(5, 1 + level // 3),
-        "block_hp": int(10 * 1.2 ** (level - len(LEVELS) + 1)),
-        "enemy_types": ["basic", "strong", "fire"][level % 3:],
-    }
-
-
-def reconstruct_path(came_from: Dict, start: Tuple[int, int], goal: Tuple[int, int]) -> List[Tuple[int, int]]:
-    if goal not in came_from: return [start]
-    path = []
-    current = goal
-    while current != start:
-        path.append(current)
-        current = came_from[current]
-    path.append(start)
-    path.reverse()
-    return path
-
-
-# ==================== 游戏初始化函数 ====================
-def generate_game_entities(grid_size: int, obstacle_count: int, item_count: int, enemy_count: int, main_block_hp: int,
-                           level_idx: int = 0):
-    """
-    Generate entities with map-fill: obstacle clusters, ample items, and non-blocking decorations.
-    Main block removed — all items are collectible when touched.
-    """
-    all_positions = [(x, y) for x in range(grid_size) for y in range(grid_size)]
-    corners = [(0, 0), (0, grid_size - 1), (grid_size - 1, 0), (grid_size - 1, grid_size - 1)]
-    forbidden = set(corners)
-
-    def pick_valid_positions(min_distance: int, count: int):
-        empty = [p for p in all_positions if p not in forbidden]
-        while True:
-            picks = random.sample(empty, count + 1)
-            player_pos, enemies = picks[0], picks[1:]
-            if all(abs(player_pos[0] - z[0]) + abs(player_pos[1] - z[1]) >= min_distance for z in enemies):
-                return player_pos, enemies
-
-    # center spawn if possible
-    center_pos = (grid_size // 2, grid_size // 2)
-    if center_pos not in forbidden:
-        player_pos = center_pos
-        far_candidates = [p for p in all_positions if
-                          p not in forbidden and (abs(p[0] - center_pos[0]) + abs(p[1] - center_pos[1]) >= 6)]
-        enemy_pos_list = random.sample(far_candidates, enemy_count)
-    else:
-        player_pos, enemy_pos_list = pick_valid_positions(min_distance=5, count=enemy_count)
-    forbidden |= {player_pos}
-    forbidden |= set(enemy_pos_list)
-    # Keep a small ring around the player completely free of obstacles
-    SAFE_RADIUS = 1  # 1 tile in each direction = 3x3 area
-    px, py = player_pos
-    for dx in range(-SAFE_RADIUS, SAFE_RADIUS + 1):
-        for dy in range(-SAFE_RADIUS, SAFE_RADIUS + 1):
-            nx, ny = px + dx, py + dy
-            if 0 <= nx < grid_size and 0 <= ny < grid_size:
-                forbidden.add((nx, ny))
-    # --- obstacle fill with clusters (NO pre-placed main block now) ---
-    obstacles: Dict[Tuple[int, int], Obstacle] = {}
-    area = grid_size * grid_size
-    target_obstacles = max(obstacle_count, int(area * OBSTACLE_DENSITY))
-    rest_needed = target_obstacles
-    base_candidates = [p for p in all_positions if p not in forbidden]
-    random.shuffle(base_candidates)
-    placed = 0
-    # cluster seeds
-    cluster_seeds = base_candidates[:max(1, rest_needed // 6)]
-    for seed in cluster_seeds:
-        if placed >= rest_needed: break
-        cluster_size = random.randint(3, 6)
-        wave = [seed]
-        visited = set()
-        while wave and placed < rest_needed and len(visited) < cluster_size:
-            cur = wave.pop()
-            if cur in visited or cur in obstacles or cur in forbidden: continue
-            visited.add(cur)
-            typ = "Indestructible" if random.random() < 0.65 else "Destructible"
-            hp = OBSTACLE_HEALTH if typ == "Destructible" else None
-            obstacles[cur] = Obstacle(cur[0], cur[1], typ, health=hp)
-            placed += 1
-            x, y = cur
-            neigh = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
-            random.shuffle(neigh)
-            for nb in neigh:
-                if 0 <= nb[0] < grid_size and 0 <= nb[1] < grid_size and nb not in visited:
-                    wave.append(nb)
-    # if still short, scatter
-    if placed < rest_needed:
-        more = [p for p in base_candidates if p not in obstacles]
-        random.shuffle(more)
-        for pos in more[:(rest_needed - placed)]:
-            typ = "Indestructible" if random.random() < 0.5 else "Destructible"
-            hp = OBSTACLE_HEALTH if typ == "Destructible" else None
-            obstacles[pos] = Obstacle(pos[0], pos[1], typ, health=hp)
-    forbidden |= set(obstacles.keys())
-    # --- items (all are normal) ---
-    item_target = random.randint(9, 19)
-    item_candidates = [p for p in all_positions if p not in forbidden]
-    items = [Item(x, y, is_main=False) for (x, y) in
-             random.sample(item_candidates, min(len(item_candidates), item_target))]
-    # --- decorations ---
-    decor_target = int(area * DECOR_DENSITY)
-    decor_candidates = [p for p in all_positions if p not in forbidden]
-    random.shuffle(decor_candidates)
-    decorations = decor_candidates[:decor_target]
-    # keep return shape the same: last “main_item_list” is now empty list
-    return obstacles, items, player_pos, enemy_pos_list, [], decorations
-
-
-def build_graph(grid_size: int, obstacles: Dict[Tuple[int, int], Obstacle]) -> Graph:
-    graph = Graph()
-    for x in range(grid_size):
-        for y in range(grid_size):
-            current_pos = (x, y)
-            if current_pos in obstacles and obstacles[current_pos].type == "Indestructible": continue
-            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                neighbor_pos = (x + dx, y + dy)
-                if not (0 <= neighbor_pos[0] < grid_size and 0 <= neighbor_pos[1] < grid_size): continue
-                if neighbor_pos in obstacles and obstacles[neighbor_pos].type == "Indestructible": continue
-                weight = 1
-                if neighbor_pos in obstacles and obstacles[neighbor_pos].type == "Destructible":
-                    weight = 10
-                graph.add_edge(current_pos, neighbor_pos, weight)
-    return graph
-
-
-# --- Simple grid Dijkstra from goal -> all cells (shared flow field) ---
-def build_flow_field(grid_size, obstacles, goal_xy, pad=0):
-    INF = 10 ** 9
-    goal_x, goal_y = goal_xy
-    # Precompute a padded "blocked" set (Indestructible + MainBlock only)
-    hard = {(gx, gy) for (gx, gy), ob in obstacles.items()
-            if getattr(ob, "type", "") in ("Indestructible", "MainBlock")}
-    blocked = set(hard)
-    if pad > 0:
-        for gx, gy in list(hard):
-            for dx in range(-pad, pad + 1):
-                for dy in range(-pad, pad + 1):
-                    nx, ny = gx + dx, gy + dy
-                    if 0 <= nx < grid_size and 0 <= ny < grid_size:
-                        blocked.add((nx, ny))
-
-    def cell_cost(x, y):
-        if (x, y) in blocked:
-            return INF
-        ob = obstacles.get((x, y))
-        # Destructible: passable but slightly expensive, keeps paths from grazing edges
-        if ob and getattr(ob, "type", "") == "Destructible":
-            return 4
-        return 1
-
-    # Dijkstra from goal (your existing logic, but skip blocked cells)
-    dist = [[INF] * grid_size for _ in range(grid_size)]
-    next_step = [[None] * grid_size for _ in range(grid_size)]
-    pq = []
-    if 0 <= goal_x < grid_size and 0 <= goal_y < grid_size and cell_cost(goal_x, goal_y) < INF:
-        dist[goal_x][goal_y] = 0
-        heapq.heappush(pq, (0, goal_x, goal_y))
-    while pq:
-        d, x, y = heapq.heappop(pq)
-        if d != dist[x][y]:
-            continue
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            nx, ny = x + dx, y + dy
-            if not (0 <= nx < grid_size and 0 <= ny < grid_size):
-                continue
-            c = cell_cost(nx, ny)
-            if c >= INF:
-                continue
-            nd = d + c
-            if nd < dist[nx][ny]:
-                dist[nx][ny] = nd
-                next_step[nx][ny] = (x, y)
-                heapq.heappush(pq, (nd, nx, ny))
-    return dist, next_step
-
-
-def crush_blocks_in_rect(sweep_rect: pygame.Rect, game_state) -> int:
-    """Remove ANY obstacle cell whose rect intersects sweep_rect. Return removed count."""
-    removed = 0
-    if not hasattr(game_state, "obstacles") or not game_state.obstacles:
-        return 0
-    # 遍历拷贝，安全删除
-    for gp, ob in list(game_state.obstacles.items()):
-        if sweep_rect.colliderect(ob.rect):
-            # 无视类型，直接移除（包含 Indestructible / MainBlock）
-            # 如需震屏/音效/粒子，在这里加
-            del game_state.obstacles[gp]
-            if hasattr(game_state, "mark_nav_dirty"): game_state.mark_nav_dirty()
-            removed += 1
-    return removed
 GameState = game_state_support.install(_THIS_MODULE)
 
 
