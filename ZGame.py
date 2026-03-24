@@ -4184,13 +4184,13 @@ def play_hex_transition(screen: pygame.Surface, from_surface: pygame.Surface, to
         dt = clock.tick(60) / 1000.0
         
         # Handle events to prevent OS thinking the app froze
-        pygame.event.pump() 
+        pygame.event.pump()
         
         trans.update(dt)
         
         # The Midpoint Swap:
         # Check if the transition has reached the point where we switch backgrounds
-        if trans.should_swap_screens(): 
+        if trans.should_swap_screens():
             current_bg = to_surface
             
         # Draw Sequence
