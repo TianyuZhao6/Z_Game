@@ -154,11 +154,10 @@ def show_shop_screen(game, screen) -> Optional[str]:
             pygame.draw.rect(screen, border_col, accent, border_radius=2)
             if is_hover:
                 title_s = font.render(it['name'], True, (235, 235, 235))
-                detail_line = game.detailed_prop_tooltip_text(it, cur_lvl, meta)
-                desc_parts = [str(it.get('desc', '')).strip()]
-                if detail_line:
-                    desc_parts.append(str(detail_line))
-                words = ' '.join([p for p in desc_parts if p]).split()
+                desc_text = str(it.get('desc', '')).strip()
+                if not desc_text:
+                    desc_text = str(game.detailed_prop_tooltip_text(it, cur_lvl, meta) or '').strip()
+                words = desc_text.split()
                 lines_wrap = []
                 if words:
                     max_w = r.width - 28
@@ -211,7 +210,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
                     cx = r.left + 14 + j * (dot_r * 2 + 6)
                     cy = r.bottom - 18
                     pygame.draw.circle(screen, (180, 160, 220), (cx, cy), dot_r)
-            if max_lvl is not None and cur_lvl is not None:
+            if (not is_hover) and max_lvl is not None and cur_lvl is not None:
                 lvl_text = f'{cur_lvl}/{max_lvl}'
                 lvl_color = (180, 230, 255) if not is_capped else (140, 150, 160)
                 lvl_surf = font.render(lvl_text, True, lvl_color)
