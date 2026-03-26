@@ -17,6 +17,19 @@ from typing import Dict, List, Set, Tuple, Optional
 from zgame.audio_analysis import NeuroMusicVisualizer
 from zgame.browser import (
     IS_WEB,
+    WEB_DEMO,
+    WEB_DEMO_BOSS_TIME_LIMIT,
+    WEB_DEMO_DISABLE_CONTINUE,
+    WEB_DEMO_LEVEL_LIMIT,
+    WEB_DEMO_LEVEL_TIME_LIMIT,
+    WEB_DEMO_RENDER_BULLET_CAP,
+    WEB_DEMO_RENDER_ENEMY_CAP,
+    WEB_DEMO_RENDER_ENEMY_SHOT_CAP,
+    WEB_DEMO_RENDER_PICKUP_CAP,
+    WEB_DEMO_RENDER_TURRET_CAP,
+    WEB_DEMO_SCENE_BIOMES,
+    WEB_DEMO_SHOP_PROP_IDS,
+    WEB_DEMO_SKIP_INTRO,
     WEB_ENEMY_CAP,
     WEB_FLOW_REFRESH_INTERVAL,
     WEB_INPUT,
@@ -4597,9 +4610,12 @@ def _web_level_config(config: dict) -> dict:
     if not IS_WEB:
         return config
     web_cfg = dict(config)
-    web_cfg["obstacle_count"] = min(int(web_cfg.get("obstacle_count", 0)), 10)
-    web_cfg["item_count"] = min(int(web_cfg.get("item_count", 0)), 2)
-    web_cfg["enemy_count"] = min(int(web_cfg.get("enemy_count", 0)), 1)
+    obstacle_cap = 8 if WEB_DEMO else 10
+    item_cap = 2 if WEB_DEMO else 2
+    enemy_seed_cap = 1 if WEB_DEMO else 1
+    web_cfg["obstacle_count"] = min(int(web_cfg.get("obstacle_count", 0)), obstacle_cap)
+    web_cfg["item_count"] = min(int(web_cfg.get("item_count", 0)), item_cap)
+    web_cfg["enemy_count"] = min(int(web_cfg.get("enemy_count", 0)), enemy_seed_cap)
     return web_cfg
 
 

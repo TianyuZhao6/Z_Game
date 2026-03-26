@@ -183,6 +183,12 @@ def install(game):
 
     def render_game_iso_web_lite(screen, game_state, player, enemies, bullets, enemy_shots, obstacles,
                                  override_cam: tuple[int, int] | None = None) -> pygame.Surface:
+        demo_mode = bool(getattr(game, "WEB_DEMO", False))
+        pickup_cap = int(getattr(game, "WEB_DEMO_RENDER_PICKUP_CAP", 0)) if demo_mode else 0
+        turret_cap = int(getattr(game, "WEB_DEMO_RENDER_TURRET_CAP", 0)) if demo_mode else 0
+        enemy_cap = int(getattr(game, "WEB_DEMO_RENDER_ENEMY_CAP", 0)) if demo_mode else 0
+        bullet_cap = int(getattr(game, "WEB_DEMO_RENDER_BULLET_CAP", 0)) if demo_mode else 0
+        enemy_shot_cap = int(getattr(game, "WEB_DEMO_RENDER_ENEMY_SHOT_CAP", 0)) if demo_mode else 0
         px_grid = (player.x + player.size / 2) / CELL_SIZE
         py_grid = (player.y + player.size / 2) / CELL_SIZE
         if override_cam is not None:
@@ -218,24 +224,39 @@ def install(game):
             top_pts = iso_tile_points(gx, gy, camx, camy)
             drawables.append(("wall", top_pts[2][1], {"gx": gx, "gy": gy, "color": base_col}))
 
-        for s in getattr(game_state, "spoils", []):
+        spoils = list(getattr(game_state, "spoils", []))
+        if pickup_cap > 0:
+            spoils = spoils[:pickup_cap]
+        for s in spoils:
             wx, wy = s.base_x / CELL_SIZE, (s.base_y - s.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             drawables.append(("coin", sy, {"cx": sx, "cy": sy, "r": s.r}))
-        for h in getattr(game_state, "heals", []):
+        heals = list(getattr(game_state, "heals", []))
+        if pickup_cap > 0:
+            heals = heals[:pickup_cap]
+        for h in heals:
             wx, wy = h.base_x / CELL_SIZE, (h.base_y - h.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             drawables.append(("heal", sy, {"cx": sx, "cy": sy, "r": h.r}))
-        for it in getattr(game_state, "items", []):
+        items = list(getattr(game_state, "items", []))
+        if pickup_cap > 0:
+            items = items[:pickup_cap]
+        for it in items:
             wx = it.center[0] / CELL_SIZE
             wy = (it.center[1] - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             drawables.append(("item", sy, {"cx": sx, "cy": sy, "r": it.radius, "main": it.is_main}))
-        for t in getattr(game_state, "turrets", []):
+        turrets = list(getattr(game_state, "turrets", []))
+        if turret_cap > 0:
+            turrets = turrets[:turret_cap]
+        for t in turrets:
             wx, wy = t.x / CELL_SIZE, (t.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             drawables.append(("turret", sy, {"cx": sx, "cy": sy, "obj": t}))
-        for z in enemies:
+        web_enemies = list(enemies)
+        if enemy_cap > 0:
+            web_enemies = web_enemies[:enemy_cap]
+        for z in web_enemies:
             wx = z.rect.centerx / CELL_SIZE
             wy = (z.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
@@ -244,7 +265,10 @@ def install(game):
         wy = (player.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
         psx, psy = iso_world_to_screen(wx, wy, 0, camx, camy)
         drawables.append(("player", psy, {"cx": psx, "cy": psy, "p": player}))
-        for b in bullets or []:
+        web_bullets = list(bullets or [])
+        if bullet_cap > 0:
+            web_bullets = web_bullets[:bullet_cap]
+        for b in web_bullets:
             wx, wy = b.x / CELL_SIZE, (b.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             drawables.append(("bullet", sy, {
@@ -253,7 +277,10 @@ def install(game):
                 "r": int(getattr(b, "r", BULLET_RADIUS)),
                 "src": getattr(b, "source", "player"),
             }))
-        for es in enemy_shots or []:
+        web_enemy_shots = list(enemy_shots or [])
+        if enemy_shot_cap > 0:
+            web_enemy_shots = web_enemy_shots[:enemy_shot_cap]
+        for es in web_enemy_shots:
             wx, wy = es.x / CELL_SIZE, (es.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             drawables.append(("eshot", sy, {

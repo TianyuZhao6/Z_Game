@@ -36,6 +36,28 @@ def _sanitize_enemy_shots(game, enemy_shots) -> None:
     enemy_shots[:] = [shot for shot in enemy_shots if game.verify_enemy_shot_runtime(shot)]
 
 
+def _demo_level_limit(game) -> int:
+    if not getattr(game, "WEB_DEMO", False):
+        return 0
+    try:
+        return max(0, int(getattr(game, "WEB_DEMO_LEVEL_LIMIT", 0)))
+    except Exception:
+        return 0
+
+
+def _demo_complete_for_level(game, level_idx: int) -> bool:
+    limit = _demo_level_limit(game)
+    return limit > 0 and int(level_idx) >= (limit - 1)
+
+
+def _effective_level_time_limit(game, level_idx: int) -> float:
+    base_limit = float(game.BOSS_TIME_LIMIT) if game.is_boss_level(level_idx) else float(game.LEVEL_TIME_LIMIT)
+    if not getattr(game, "WEB_DEMO", False):
+        return base_limit
+    demo_limit = float(game.WEB_DEMO_BOSS_TIME_LIMIT) if game.is_boss_level(level_idx) else float(game.WEB_DEMO_LEVEL_TIME_LIMIT)
+    return min(base_limit, demo_limit)
+
+
 async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
     runtime = rs.runtime(game)
     meta = rs.meta(game)
@@ -50,7 +72,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         meta['run_items_collected'] = 0
     runtime['_run_items_spawned_start'] = int(meta.get('run_items_spawned', 0))
     runtime['_run_items_collected_start'] = int(meta.get('run_items_collected', 0))
-    time_left = float(game.BOSS_TIME_LIMIT) if game.is_boss_level(level_idx) else float(game.LEVEL_TIME_LIMIT)
+    time_left = _effective_level_time_limit(game, level_idx)
     runtime['_time_left_runtime'] = time_left
     runtime['_coins_at_level_start'] = int(meta.get('spoils', 0))
     level_config = game._web_level_config(config)
@@ -87,7 +109,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         meta['wanted_active'] = False
     game_state.wanted_wave_active = bool(meta.get('wanted_active', False))
     level_idx = int(getattr(game_state, 'current_level', 0))
-    time_left = float(game.BOSS_TIME_LIMIT) if game.is_boss_level(level_idx) else float(game.LEVEL_TIME_LIMIT)
+    time_left = _effective_level_time_limit(game, level_idx)
     runtime['_time_left_runtime'] = time_left
     player = game.Player(player_start, speed=game.PLAYER_SPEED)
     player.fire_cd = 0.0
@@ -637,7 +659,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         bobj.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
         _append_verified_bullet(game, bullets, bobj, player)
     enemy_shots: List[game.EnemyShot] = []
-    time_left = float(snap.get('time_left', game.LEVEL_TIME_LIMIT))
+    time_left = min(float(snap.get('time_left', _effective_level_time_limit(game, level_idx))), _effective_level_time_limit(game, level_idx))
     runtime['_time_left_runtime'] = time_left
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
@@ -968,12 +990,17 @@ async def app_main(game) -> None:
         game._reset_active_run_state(clear_save_file=True)
         return None
 
-    selection = await game.show_start_menu(screen)
+    selection = await game.show_start_menu(screen, skip_intro=bool(getattr(game, 'WEB_DEMO_SKIP_INTRO', False)))
     apply_menu_selection(selection)
     START_IN_SHOP_FOR_TEST = False
     if START_IN_SHOP_FOR_TEST:
         runtime['_pending_shop'] = True
     while True:
+        if _demo_level_limit(game) and int(game.current_level) >= _demo_level_limit(game):
+            game._reset_active_run_state(clear_save_file=True)
+            selection = await game.show_start_menu(screen, skip_intro=True)
+            apply_menu_selection(selection)
+            continue
         if runtime.get('_pending_shop', False):
             meta['spoils'] += int(runtime.pop('_last_spoils', 0))
             runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
@@ -1062,6 +1089,12 @@ async def app_main(game) -> None:
                 meta['spoils'] = int(runtime.get('_coins_at_level_start', meta.get('spoils', 0)))
                 runtime.pop('_last_spoils', None)
                 game.flush_events()
+                continue
+            if _demo_complete_for_level(game, game.current_level):
+                game._reset_active_run_state(clear_save_file=True)
+                game.flush_events()
+                selection = await game.show_start_menu(screen, skip_intro=True)
+                apply_menu_selection(selection)
                 continue
             runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
             action = game.show_shop_screen(screen)

@@ -12,6 +12,19 @@ def _meta(game):
     return rs.meta(game)
 
 
+def _filter_demo_catalog(game, catalog):
+    if not getattr(game, "WEB_DEMO", False):
+        return catalog
+    allowed_ids = set(getattr(game, "WEB_DEMO_SHOP_PROP_IDS", ()))
+    if not allowed_ids:
+        return catalog
+    filtered = [
+        card for card in catalog
+        if card.get("id") == "reroll" or card.get("id") in allowed_ids
+    ]
+    return filtered or catalog
+
+
 def build_shop_catalog(game):
     meta = _meta(game)
     catalog = [
@@ -217,6 +230,7 @@ def build_shop_catalog(game):
             "apply": "reroll",
         },
     ]
+    catalog = _filter_demo_catalog(game, catalog)
     _state(game)["_pause_shop_catalog"] = catalog
     return catalog
 

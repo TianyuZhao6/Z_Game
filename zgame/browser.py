@@ -10,6 +10,32 @@ WEB_WINDOW_SIZE = (960, 540)
 WEB_TARGET_FPS = 30
 WEB_FLOW_REFRESH_INTERVAL = 0.60
 WEB_ENEMY_CAP = 10
+WEB_DEMO = IS_WEB
+WEB_DEMO_SKIP_INTRO = True
+WEB_DEMO_DISABLE_CONTINUE = True
+WEB_DEMO_LEVEL_LIMIT = 2
+WEB_DEMO_LEVEL_TIME_LIMIT = 40.0
+WEB_DEMO_BOSS_TIME_LIMIT = 45.0
+WEB_DEMO_SCENE_BIOMES = ("Domain of Wind", "Misty Forest")
+WEB_DEMO_SHOP_PROP_IDS = frozenset({
+    "coin_magnet",
+    "carapace",
+    "aegis_pulse",
+    "auto_turret",
+    "piercing_rounds",
+    "ricochet_scope",
+    "explosive_rounds",
+    "dot_rounds",
+    "curing_paint",
+    "ground_spikes",
+    "mark_vulnerability",
+    "stationary_turret",
+})
+WEB_DEMO_RENDER_PICKUP_CAP = 8
+WEB_DEMO_RENDER_TURRET_CAP = 4
+WEB_DEMO_RENDER_ENEMY_CAP = 8
+WEB_DEMO_RENDER_BULLET_CAP = 28
+WEB_DEMO_RENDER_ENEMY_SHOT_CAP = 18
 
 
 def _normalize_web_key_name(name: str | None) -> str:
@@ -162,4 +188,3 @@ def get_initial_web_window_size() -> tuple[int, int]:
     if w <= 0 or h <= 0:
         return WEB_WINDOW_SIZE
     return max(800, w), max(450, h)
-

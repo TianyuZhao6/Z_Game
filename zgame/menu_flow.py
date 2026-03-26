@@ -51,6 +51,7 @@ async def run_neuro_intro(game, screen: pygame.Surface):
 
 def render_start_menu_surface(game, saved_exists: bool):
     """Static snapshot of the Neuro Console menu (used for transitions)."""
+    can_continue = bool(saved_exists and not getattr(game, "WEB_DEMO_DISABLE_CONTINUE", False))
     surf = game.ensure_neuro_background().copy()
     viz = _viz(game)
     wave_t = 0.0
@@ -59,10 +60,13 @@ def render_start_menu_surface(game, saved_exists: bool):
     btn_font = pygame.font.SysFont(None, 30)
     info_font = pygame.font.SysFont("Consolas", 18)
     game.draw_neuro_home_header(surf, header_font)
-    rects = game.neuro_menu_layout(include_continue=saved_exists)
-    start_label = "START NEW" if saved_exists else "START"
+    rects = game.neuro_menu_layout(include_continue=can_continue)
+    if getattr(game, "WEB_DEMO", False):
+        start_label = "START DEMO"
+    else:
+        start_label = "START NEW" if can_continue else "START"
     game.draw_neuro_button(surf, rects["start"], start_label, btn_font, hovered=False, disabled=False, t=wave_t)
-    if saved_exists:
+    if can_continue:
         game.draw_neuro_button(
             surf,
             rects["continue"],
@@ -76,7 +80,7 @@ def render_start_menu_surface(game, saved_exists: bool):
     game.draw_neuro_button(surf, rects["settings"], "SETTINGS", btn_font, hovered=False, disabled=False, t=wave_t)
     game.draw_neuro_button(surf, rects["exit"], "EXIT", btn_font, hovered=False, disabled=False, t=wave_t)
     viz.draw(surf, surf.get_width() // 2, int(surf.get_height() * 0.52))
-    game.draw_neuro_info_column(surf, info_font, wave_t, saved_exists)
+    game.draw_neuro_info_column(surf, info_font, wave_t, can_continue)
     return surf
 
 
@@ -86,6 +90,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
     viz = _viz(game)
     game.flush_events()
     intro_flag = state.pop("_skip_intro_once", False)
+    skip_intro = bool(skip_intro or getattr(game, "WEB_DEMO_SKIP_INTRO", False))
     if not skip_intro and not intro_flag:
         await run_neuro_intro(game, screen)
     try:
@@ -116,7 +121,8 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
             viz.update(dt, t)
 
         saved_exists = game.has_save()
-        base_rects = game.neuro_menu_layout(include_continue=saved_exists)
+        can_continue = bool(saved_exists and not getattr(game, "WEB_DEMO_DISABLE_CONTINUE", False))
+        base_rects = game.neuro_menu_layout(include_continue=can_continue)
         mouse_pos = pygame.mouse.get_pos()
         hover_id = None
         for ident, rect in base_rects.items():
@@ -131,7 +137,10 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
 
         game.draw_neuro_home_header(screen, header_font)
         drawn_rects = {}
-        start_label = "START NEW" if saved_exists else "START"
+        if getattr(game, "WEB_DEMO", False):
+            start_label = "START DEMO"
+        else:
+            start_label = "START NEW" if can_continue else "START"
         drawn_rects["start"] = game.draw_neuro_button(
             screen,
             base_rects["start"],
@@ -141,7 +150,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
             disabled=False,
             t=t,
         )
-        if saved_exists:
+        if can_continue:
             drawn_rects["continue"] = game.draw_neuro_button(
                 screen,
                 base_rects["continue"],
@@ -178,7 +187,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
             disabled=False,
             t=t,
         )
-        game.draw_neuro_info_column(screen, info_font, t, saved_exists)
+        game.draw_neuro_info_column(screen, info_font, t, can_continue)
         game.run_pending_menu_transition(screen)
         pygame.display.flip()
         for event in pygame.event.get():
@@ -196,7 +205,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
                     game.flush_events()
                     return ("new", None)
                 cont_rect = drawn_rects.get("continue")
-                if cont_rect and saved_exists and cont_rect.collidepoint(event.pos):
+                if cont_rect and can_continue and cont_rect.collidepoint(event.pos):
                     data = game.load_save()
                     if data:
                         game.queue_menu_transition(screen.copy())
