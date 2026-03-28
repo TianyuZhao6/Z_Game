@@ -4,6 +4,7 @@ import asyncio
 import sys
 
 import pygame
+from zgame.browser import is_web_interaction_event
 from zgame import runtime_state as rs
 
 
@@ -261,6 +262,8 @@ def show_instruction(game, screen):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if game.IS_WEB and is_web_interaction_event(event):
+                game._resume_bgm_if_needed(min_interval_s=0.0)
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 from_surf = screen.copy()
                 to_surf = render_start_menu_surface(game, game.has_save())
@@ -301,6 +304,8 @@ async def show_instruction_web(game, screen):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if game.IS_WEB and is_web_interaction_event(event):
+                game._resume_bgm_if_needed(min_interval_s=0.0)
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 from_surf = screen.copy()
                 to_surf = render_start_menu_surface(game, game.has_save())
@@ -564,6 +569,8 @@ def show_pause_menu(game, screen, background_surf):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if game.IS_WEB and is_web_interaction_event(event):
+                game._resume_bgm_if_needed(min_interval_s=0.0)
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 game.flush_events()
                 return "continue"

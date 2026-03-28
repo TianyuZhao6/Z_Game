@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sys
 from typing import Callable, Mapping, Optional
 
@@ -8,6 +9,7 @@ import pygame
 IS_WEB = sys.platform == "emscripten"
 WEB_WINDOW_SIZE = (960, 540)
 WEB_TARGET_FPS = 30
+WEB_MAX_FRAME_DT = 0.05
 WEB_FLOW_REFRESH_INTERVAL = 0.60
 WEB_ENEMY_CAP = 10
 WEB_DEMO = IS_WEB
@@ -36,6 +38,24 @@ WEB_DEMO_RENDER_TURRET_CAP = 4
 WEB_DEMO_RENDER_ENEMY_CAP = 8
 WEB_DEMO_RENDER_BULLET_CAP = 28
 WEB_DEMO_RENDER_ENEMY_SHOT_CAP = 18
+
+
+def clamp_web_dt(dt_s: float, *, max_dt: float = WEB_MAX_FRAME_DT) -> float:
+    try:
+        dt = float(dt_s)
+    except Exception:
+        return 0.0
+    if (not math.isfinite(dt)) or dt <= 0.0:
+        return 0.0
+    return min(dt, float(max_dt))
+
+
+def is_web_interaction_event(event) -> bool:
+    event_type = getattr(event, "type", None)
+    if event_type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+        return True
+    finger_down = getattr(pygame, "FINGERDOWN", None)
+    return finger_down is not None and event_type == finger_down
 
 
 def _normalize_web_key_name(name: str | None) -> str:

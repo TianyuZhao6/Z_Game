@@ -6,6 +6,7 @@ import random
 import sys
 from typing import Optional
 import pygame
+from zgame.browser import is_web_interaction_event
 from zgame import shop_support
 from zgame import runtime_state as rs
 
@@ -350,6 +351,8 @@ def show_shop_screen(game, screen) -> Optional[str]:
             if ev.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if game.IS_WEB and is_web_interaction_event(ev):
+                game._resume_bgm_if_needed(min_interval_s=0.0)
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 bg = screen.copy()
                 choice = game.pause_from_overlay(screen, bg)
@@ -502,6 +505,8 @@ def show_biome_picker_in_shop(game, screen) -> str:
             if ev.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if game.IS_WEB and is_web_interaction_event(ev):
+                game._resume_bgm_if_needed(min_interval_s=0.0)
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 bg = screen.copy()
                 pick = game.pause_from_overlay(screen, bg)

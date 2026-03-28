@@ -4,6 +4,7 @@ import asyncio
 import sys
 
 import pygame
+from zgame.browser import is_web_interaction_event
 from zgame import runtime_state as rs
 
 
@@ -82,6 +83,8 @@ async def show_settings_popup_web(game, screen, background_surf):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if game.IS_WEB and is_web_interaction_event(event):
+                game._resume_bgm_if_needed(min_interval_s=0.0)
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 game.FX_VOLUME = fx_val
                 game.BGM_VOLUME = bgm_val
@@ -133,6 +136,8 @@ async def show_fail_screen(game, screen, background_surf):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if game.IS_WEB and is_web_interaction_event(event):
+                game._resume_bgm_if_needed(min_interval_s=0.0)
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 bg = pygame.display.get_surface().copy()
                 pick = game.pause_from_overlay(screen, bg)
@@ -200,6 +205,8 @@ async def show_success_screen(game, screen, background_surf, reward_choices):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if game.IS_WEB and is_web_interaction_event(event):
+                game._resume_bgm_if_needed(min_interval_s=0.0)
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 bg = pygame.display.get_surface().copy()
                 pick = game.pause_from_overlay(screen, bg)
@@ -387,6 +394,8 @@ def show_settings_popup(game, screen, background_surf):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if game.IS_WEB and is_web_interaction_event(event):
+                game._resume_bgm_if_needed(min_interval_s=0.0)
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and waiting_action:
                 waiting_action = None
                 continue

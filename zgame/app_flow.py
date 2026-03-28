@@ -8,6 +8,7 @@ import random
 import sys
 from typing import Dict, List, Optional, Set, Tuple
 import pygame
+from zgame.browser import clamp_web_dt, is_web_interaction_event
 from zgame import runtime_state as rs
 
 
@@ -34,6 +35,24 @@ def _sanitize_enemy_shots(game, enemy_shots) -> None:
     if not hasattr(game, "verify_enemy_shot_runtime"):
         return
     enemy_shots[:] = [shot for shot in enemy_shots if game.verify_enemy_shot_runtime(shot)]
+
+
+def _frame_dt(game, clock: pygame.time.Clock) -> float:
+    dt = clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60) / 1000.0
+    if not game.IS_WEB:
+        return dt
+    # Browser tabs can resume with a very large frame delta; clamp that so
+    # movement, timers, and spawn logic do not fast-forward in one frame.
+    return clamp_web_dt(dt)
+
+
+def _resume_web_audio_on_event(game, event) -> None:
+    if (not getattr(game, "IS_WEB", False)) or (not is_web_interaction_event(event)):
+        return
+    try:
+        game._resume_bgm_if_needed(min_interval_s=0.0)
+    except Exception:
+        pass
 
 
 def _demo_level_limit(game) -> int:
@@ -263,12 +282,13 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60)
     entry_freeze = 0.4
     while running:
-        dt = clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60) / 1000.0
+        dt = _frame_dt(game, clock)
         if entry_freeze > 0:
             entry_freeze = max(0.0, entry_freeze - dt)
             for event in pygame.event.get():
                 screen = game._handle_web_window_event(event) or screen
                 game._sync_web_input_event(event)
+                _resume_web_audio_on_event(game, event)
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
@@ -317,6 +337,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         for event in pygame.event.get():
             screen = game._handle_web_window_event(event) or screen
             game._sync_web_input_event(event)
+            _resume_web_audio_on_event(game, event)
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -735,7 +756,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         z._hit_flash = 0.0
         z._flash_prev_hp = int(getattr(z, 'hp', 0))
     while running:
-        dt = clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60) / 1000.0
+        dt = _frame_dt(game, clock)
         time_left -= dt
         runtime['_time_left_runtime'] = time_left
         if time_left <= 0:
@@ -744,6 +765,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         for event in pygame.event.get():
             screen = game._handle_web_window_event(event) or screen
             game._sync_web_input_event(event)
+            _resume_web_audio_on_event(game, event)
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
