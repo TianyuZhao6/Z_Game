@@ -186,8 +186,9 @@ def install(game):
             _do_pan(focus_cam, player_cam, duration_each)
         flush_events()
 
-    def render_game_iso_web_lite(screen, game_state, player, enemies, bullets, enemy_shots, obstacles,
+    def render_game_iso_web_lite(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=None,
                                  override_cam: tuple[int, int] | None = None) -> pygame.Surface:
+        obstacles = obstacles if obstacles is not None else getattr(game_state, "obstacles", {})
         demo_mode = bool(getattr(game, "WEB_DEMO", False))
         pickup_cap = int(getattr(game, "WEB_DEMO_RENDER_PICKUP_CAP", 0)) if demo_mode else 0
         turret_cap = int(getattr(game, "WEB_DEMO_RENDER_TURRET_CAP", 0)) if demo_mode else 0
@@ -352,8 +353,9 @@ def install(game):
         pygame.display.flip()
         return screen.copy()
 
-    def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles,
+    def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=None,
                         override_cam: tuple[int, int] | None = None):
+        obstacles = obstacles if obstacles is not None else getattr(game_state, "obstacles", {})
         if IS_WEB and getattr(game, "WEB_USE_LITE_RENDER", False):
             return render_game_iso_web_lite(
                 screen, game_state, player, enemies, bullets, enemy_shots, obstacles,

@@ -6,6 +6,10 @@ from typing import Dict, List, Optional, Tuple
 import pygame
 
 def install(game):
+    def _meta():
+        if hasattr(game, "_meta_state"):
+            return game._meta_state()
+        return game.META
 
     class AfterImageGhost:
 
@@ -1040,11 +1044,12 @@ def install(game):
                 self._steal_accum += float(getattr(self, 'steal_per_sec', game.BANDIT_STEAL_RATE_MIN)) * dt
                 steal_units = int(self._steal_accum)
                 if steal_units >= 1 and game_state is not None:
+                    meta = _meta()
                     self._steal_accum -= steal_units
                     lvl = int(getattr(game_state, 'spoils_gained', 0))
-                    bank = int(META.get('spoils', 0))
+                    bank = int(meta.get('spoils', 0))
                     total_avail = max(0, lvl + bank)
-                    lb_lvl = int(getattr(self, 'lockbox_level', META.get('lockbox_level', 0)))
+                    lb_lvl = int(getattr(self, 'lockbox_level', meta.get('lockbox_level', 0)))
                     lock_floor = 0
                     if lb_lvl > 0:
                         lock_floor = int(getattr(self, 'lockbox_floor', 0))
@@ -1063,7 +1068,7 @@ def install(game):
                             game_state.spoils_gained = lvl - take_lvl
                         rest = got - take_lvl
                         if rest:
-                            META['spoils'] = max(0, bank - rest)
+                            meta['spoils'] = max(0, bank - rest)
                         self._stolen_total = int(getattr(self, '_stolen_total', 0)) + got
                         game_state._bandit_stolen = int(getattr(game_state, '_bandit_stolen', 0)) + got
                         cx, cy = (self.rect.centerx, self.rect.centery)

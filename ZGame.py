@@ -2053,7 +2053,7 @@ def _sanitize_resume_save_data(save_data: dict | None) -> dict | None:
         return None
     data = copy.deepcopy(save_data)
     mode = _clean_string(data.get("mode"), "meta") or "meta"
-    if mode not in ("meta", "snapshot"):
+    if mode not in ("meta", "progress", "snapshot"):
         mode = "meta"
     data["mode"] = mode
     meta_in = data.get("meta", {})
@@ -2064,7 +2064,7 @@ def _sanitize_resume_save_data(save_data: dict | None) -> dict | None:
     sanitize_meta_range(meta_in)
     _ensure_meta_defaults(meta_in)
     data["meta"] = meta_in
-    if mode == "meta":
+    if mode in ("meta", "progress"):
         data["current_level"] = _finite_int(data.get("current_level", 0), 0, min_value=0, max_value=9999)
     data["pending_shop"] = bool(data.get("pending_shop", False))
     data["carry_player"] = _sanitize_carry_player_state(data.get("carry_player"))
@@ -2101,19 +2101,57 @@ def _sanitize_resume_save_data(save_data: dict | None) -> dict | None:
     return data
 
 
+def _checkpoint_resume_save_data(save_data: dict | None) -> dict | None:
+    clean = _sanitize_resume_save_data(save_data)
+    if not clean:
+        return None
+    if clean.get("mode") != "snapshot":
+        return clean
+    meta_in = dict(clean.get("meta", {}))
+    snapshot = clean.get("snapshot", {})
+    player_snap = snapshot.get("player", {}) if isinstance(snapshot, dict) else {}
+    carry = clean.get("carry_player")
+    if carry is None and isinstance(player_snap, dict):
+        carry = _sanitize_carry_player_state({
+            "level": player_snap.get("level", 1),
+            "xp": player_snap.get("xp", 0),
+            "hp": min(
+                _finite_int(player_snap.get("hp", PLAYER_MAX_HP), PLAYER_MAX_HP, min_value=0, max_value=50_000),
+                _finite_int(player_snap.get("max_hp", PLAYER_MAX_HP), PLAYER_MAX_HP, min_value=1, max_value=50_000),
+            ),
+        })
+    out = {
+        "mode": "progress",
+        "current_level": _finite_int(meta_in.get("current_level", clean.get("current_level", 0)), 0, min_value=0, max_value=9999),
+        "meta": meta_in,
+        "carry_player": carry,
+        "pending_shop": bool(clean.get("pending_shop", False)),
+    }
+    biome = clean.get("biome", meta_in.get("biome", None))
+    if biome is not None:
+        out["biome"] = biome
+    baseline = clean.get("baseline")
+    if isinstance(baseline, dict):
+        out["baseline"] = copy.deepcopy(baseline)
+    shop_cache = clean.get("shop_cache")
+    if isinstance(shop_cache, dict):
+        out["shop_cache"] = copy.deepcopy(shop_cache)
+    max_wave_reached = clean.get("max_wave_reached", None)
+    if max_wave_reached is not None:
+        out["max_wave_reached"] = _finite_int(max_wave_reached, 0, min_value=0, max_value=9999)
+    return out
+
+
 def _resume_level_from_save(save_data: dict | None) -> int:
-    data = _sanitize_resume_save_data(save_data)
+    data = _checkpoint_resume_save_data(save_data)
     if not data:
         return 0
-    if data.get("mode") == "snapshot":
-        meta_in = data.get("meta", {})
-        return _finite_int(meta_in.get("current_level", 0), 0, min_value=0, max_value=9999)
     return _finite_int(data.get("current_level", 0), 0, min_value=0, max_value=9999)
 
 
 def _apply_resume_save_data(save_data: dict | None) -> dict | None:
     runtime = _runtime_state()
-    clean = _sanitize_resume_save_data(save_data)
+    clean = _checkpoint_resume_save_data(save_data)
     if not clean:
         runtime["_carry_player_state"] = None
         runtime["_pending_shop"] = False
@@ -2124,10 +2162,7 @@ def _apply_resume_save_data(save_data: dict | None) -> dict | None:
     runtime["_carry_player_state"] = clean.get("carry_player", None)
     runtime["_pending_shop"] = bool(clean.get("pending_shop", False))
     runtime["_next_biome"] = clean.get("biome", None)
-    if clean.get("mode") == "snapshot":
-        runtime["_resume_snapshot_data"] = copy.deepcopy(clean)
-    else:
-        runtime.clear("_resume_snapshot_data")
+    runtime.clear("_resume_snapshot_data")
     _THIS_MODULE.current_level = _resume_level_from_save(clean)
     return clean
 

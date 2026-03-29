@@ -78,8 +78,8 @@ def _web_snapshot_autosave(game, runtime, game_state, player, enemies, current_l
     if (not force) and interval > 0.0 and (now_s - last_s) < interval:
         return
     try:
-        snap = game.capture_snapshot(game_state, player, enemies, current_level, chosen_enemy_type, bullets)
-        game.save_snapshot(snap)
+        runtime["_carry_player_state"] = game.capture_player_carry(player)
+        game.save_progress(current_level, max_wave_reached=runtime.get("_max_wave_reached", None))
         runtime["_last_web_autosave_s"] = now_s
     except Exception:
         pass
@@ -130,15 +130,8 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     if not game.IS_WEB:
         game.play_combat_bgm()
         combat_bgm_started = True
-        game._draw_loading_screen(screen, 'INITIALIZING LEVEL', 'Generating arena and loading gameplay state')
-        pygame.display.flip()
-        await asyncio.sleep(0)
     spatial = game.SpatialHash(game.SPATIAL_CELL)
     obstacles, items, player_start, enemy_starts, main_item_list, decorations = game.generate_game_entities(grid_size=game.GRID_SIZE, obstacle_count=level_config['obstacle_count'], item_count=level_config['item_count'], enemy_count=level_config['enemy_count'], main_block_hp=level_config['block_hp'], level_idx=level_idx)
-    if not game.IS_WEB:
-        game._draw_loading_screen(screen, 'INITIALIZING LEVEL', 'Building pathing and entity state')
-        pygame.display.flip()
-        await asyncio.sleep(0)
     last_counted_level = runtime.get('_items_counted_level')
     if last_counted_level != level_idx:
         meta['run_items_spawned'] = int(meta.get('run_items_spawned', 0)) + len(items)
@@ -409,13 +402,12 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 elif choice == 'home':
                     game.queue_menu_transition(pygame.display.get_surface().copy())
                     runtime['_carry_player_state'] = game.capture_player_carry(player)
-                    snap = game.capture_snapshot(game_state, player, enemies, game.current_level, chosen_enemy_type, bullets)
-                    game.save_snapshot(snap)
+                    game.save_progress(game.current_level, max_wave_reached=runtime.get('_max_wave_reached', None))
                     runtime['_skip_intro_once'] = True
                     return ('home', config.get('reward', None), bg)
                 elif choice == 'exit':
-                    snap = game.capture_snapshot(game_state, player, enemies, game.current_level, chosen_enemy_type, bullets)
-                    game.save_snapshot(snap)
+                    runtime['_carry_player_state'] = game.capture_player_carry(player)
+                    game.save_progress(game.current_level, max_wave_reached=runtime.get('_max_wave_reached', None))
                     return ('exit', config.get('reward', None), bg)
             if game.is_action_event(event, 'blast'):
                 if getattr(player, 'blast_cd', 0.0) <= 0.0:
@@ -857,13 +849,13 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                     return ('restart', None, bg)
                 elif choice == 'home':
                     game.queue_menu_transition(pygame.display.get_surface().copy())
-                    snap2 = game.capture_snapshot(game_state, player, enemies, level_idx, chosen_enemy_type, bullets)
-                    game.save_snapshot(snap2)
+                    runtime['_carry_player_state'] = game.capture_player_carry(player)
+                    game.save_progress(level_idx, max_wave_reached=runtime.get('_max_wave_reached', None))
                     runtime['_skip_intro_once'] = True
                     return ('home', None, bg)
                 elif choice == 'exit':
-                    snap2 = game.capture_snapshot(game_state, player, enemies, level_idx, chosen_enemy_type, bullets)
-                    game.save_snapshot(snap2)
+                    runtime['_carry_player_state'] = game.capture_player_carry(player)
+                    game.save_progress(level_idx, max_wave_reached=runtime.get('_max_wave_reached', None))
                     return ('exit', None, bg)
             if game.is_action_event(event, 'blast'):
                 if getattr(player, 'blast_cd', 0.0) <= 0.0:
@@ -1040,7 +1032,15 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 game.flush_events()
                 return ('restart', None, last_frame or screen.copy())
         if game.USE_ISO:
-            last_frame = game.render_game_iso(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
+            last_frame = game.render_game_iso(
+                pygame.display.get_surface(),
+                game_state,
+                player,
+                enemies,
+                bullets,
+                enemy_shots,
+                obstacles=game_state.obstacles,
+            )
         else:
             last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
         _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets)
