@@ -7,14 +7,31 @@ from typing import Callable, Mapping, Optional
 import pygame
 
 IS_WEB = sys.platform == "emscripten"
+
+
+def _detect_web_demo() -> bool:
+    if not IS_WEB:
+        return False
+    try:
+        import platform as web_platform
+
+        window = getattr(web_platform, "window", None)
+        location = getattr(window, "location", None) if window else None
+        search = str(getattr(location, "search", "") or "").lower()
+        hash_part = str(getattr(location, "hash", "") or "").lower()
+        marker = f"{search}&{hash_part}"
+        return any(token in marker for token in ("demo=1", "web_demo=1", "mode=demo", "#demo"))
+    except Exception:
+        return False
 WEB_WINDOW_SIZE = (960, 540)
 WEB_TARGET_FPS = 30
 WEB_MAX_FRAME_DT = 0.05
+WEB_AUTOSAVE_INTERVAL = 1.5
 WEB_FLOW_REFRESH_INTERVAL = 0.60
 WEB_ENEMY_CAP = 10
-WEB_DEMO = IS_WEB
-WEB_DEMO_SKIP_INTRO = True
-WEB_DEMO_DISABLE_CONTINUE = True
+WEB_DEMO = _detect_web_demo()
+WEB_DEMO_SKIP_INTRO = WEB_DEMO
+WEB_DEMO_DISABLE_CONTINUE = WEB_DEMO
 WEB_DEMO_LEVEL_LIMIT = 2
 WEB_DEMO_LEVEL_TIME_LIMIT = 40.0
 WEB_DEMO_BOSS_TIME_LIMIT = 45.0
@@ -38,6 +55,15 @@ WEB_DEMO_RENDER_TURRET_CAP = 4
 WEB_DEMO_RENDER_ENEMY_CAP = 8
 WEB_DEMO_RENDER_BULLET_CAP = 28
 WEB_DEMO_RENDER_ENEMY_SHOT_CAP = 18
+WEB_USE_LITE_RENDER = WEB_DEMO
+WEB_ENABLE_ENEMY_PAINT = not WEB_DEMO
+WEB_ENABLE_VULNERABILITY_MARKS = not WEB_DEMO
+WEB_ENABLE_HURRICANES = not WEB_DEMO
+WEB_ENABLE_DAMAGE_TEXTS = not WEB_DEMO
+WEB_ENABLE_AEGIS_PULSES = not WEB_DEMO
+WEB_ENABLE_GROUND_SPIKES = not WEB_DEMO
+WEB_ENABLE_CURING_PAINT = not WEB_DEMO
+WEB_ENABLE_DOT_ROUNDS = not WEB_DEMO
 
 
 def clamp_web_dt(dt_s: float, *, max_dt: float = WEB_MAX_FRAME_DT) -> float:

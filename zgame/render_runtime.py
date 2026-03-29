@@ -21,6 +21,11 @@ def install(game):
     def _runtime():
         return rs.runtime(game)
 
+    def _web_feature_enabled(flag_name: str) -> bool:
+        if not getattr(game, "IS_WEB", False):
+            return True
+        return bool(getattr(game, flag_name, False))
+
     def draw_settings_gear(screen, x, y):
         """Draw a simple gear icon at (x,y) top-left; returns its rect."""
         rect = pygame.Rect(x, y, 32, 24)
@@ -349,7 +354,7 @@ def install(game):
 
     def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles,
                         override_cam: tuple[int, int] | None = None):
-        if IS_WEB:
+        if IS_WEB and getattr(game, "WEB_USE_LITE_RENDER", False):
             return render_game_iso_web_lite(
                 screen, game_state, player, enemies, bullets, enemy_shots, obstacles,
                 override_cam=override_cam
@@ -378,14 +383,13 @@ def install(game):
         for gx in range(gx_min, gx_max + 1):
             for gy in range(gy_min, gy_max + 1):
                 draw_iso_tile(screen, gx, gy, grid_col, camx, camy, border=1)
-        if not IS_WEB:
-            for t in getattr(game_state, "telegraphs", []):
-                draw_iso_ground_ellipse(
-                    screen, t.x, t.y, t.r,
-                    color=t.color, alpha=180,
-                    camx=camx, camy=camy,
-                    fill=False, width=3
-                )
+        for t in getattr(game_state, "telegraphs", []):
+            draw_iso_ground_ellipse(
+                screen, t.x, t.y, t.r,
+                color=t.color, alpha=180,
+                camx=camx, camy=camy,
+                fill=False, width=3
+            )
         if getattr(player, "targeting_skill", None):
             skill = player.targeting_skill
             origin = getattr(player, "skill_target_origin", None)
@@ -404,7 +408,7 @@ def install(game):
             else:
                 draw_iso_ground_ellipse(screen, tx, ty, max(20, player.size), col, 80 if valid else 50, camx, camy, fill=False, width=4)
 
-        if not IS_WEB:
+        if _web_feature_enabled("WEB_ENABLE_HURRICANES"):
             for h in getattr(game_state, "hurricanes", []):
                 pulse = 0.6 + 0.4 * math.sin(pygame.time.get_ticks() * 0.008)
                 alpha = int(40 + 60 * pulse)
@@ -420,7 +424,7 @@ def install(game):
                     hx, hy = float(h.get("x", 0)), float(h.get("y", 0))
                     draw_iso_ground_ellipse(screen, hx, hy, 40, (100, 100, 100), 200, camx, camy)
 
-        if not IS_WEB:
+        if _web_feature_enabled("WEB_ENABLE_AEGIS_PULSES"):
             for p in getattr(game_state, "aegis_pulses", []):
                 age = max(0.0, float(getattr(p, "age", 0.0)))
                 delay = max(0.0, float(getattr(p, "delay", 0.0)))
@@ -442,14 +446,13 @@ def install(game):
                     fill_alpha=int(AEGIS_PULSE_FILL_ALPHA * fade),
                     width=2
                 )
-        if not IS_WEB:
-            for a in getattr(game_state, "acids", []):
-                draw_iso_ground_ellipse(
-                    screen, a.x, a.y, a.r,
-                    color=(60, 200, 90), alpha=110,
-                    camx=camx, camy=camy,
-                    fill=True
-                )
+        for a in getattr(game_state, "acids", []):
+            draw_iso_ground_ellipse(
+                screen, a.x, a.y, a.r,
+                color=(60, 200, 90), alpha=110,
+                camx=camx, camy=camy,
+                fill=True
+            )
         player_rect = getattr(player, "rect", None)
         enemy_rects = [getattr(z, "rect", None) for z in enemies if getattr(z, "rect", None)]
         if not IS_WEB:
@@ -464,7 +467,7 @@ def install(game):
                     if enemy_rects and any(ghost_rect.colliderect(er) for er in enemy_rects if er):
                         continue
                 g.draw_iso(screen, camx, camy)
-        if (not IS_WEB) and hasattr(game_state, "draw_paint_iso"):
+        if _web_feature_enabled("WEB_ENABLE_ENEMY_PAINT") and hasattr(game_state, "draw_paint_iso"):
             game_state.draw_paint_iso(screen, camx, camy)
         drawables = []
         for (gx, gy), ob in game_state.obstacles.items():
@@ -1025,7 +1028,7 @@ def install(game):
                             (cx - 3, cy)
                         ]
                         pygame.draw.polygon(screen, BONE_PLATING_COLOR, sparkle, width=1)
-        if not IS_WEB:
+        if _web_feature_enabled("WEB_ENABLE_DAMAGE_TEXTS"):
             for d in getattr(game_state, "dmg_texts", []):
                 wx = d.x / CELL_SIZE
                 wy = (d.y - INFO_BAR_HEIGHT) / CELL_SIZE
@@ -1050,9 +1053,9 @@ def install(game):
                 screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
         _draw_skill_overlay(screen, player, camx, camy)
         game_state.draw_hazards_iso(screen, camx, camy)
-        if (not IS_WEB) and hasattr(game_state, "draw_comet_blasts"):
+        if hasattr(game_state, "draw_comet_blasts"):
             game_state.draw_comet_blasts(screen, camx, camy)
-        if (not IS_WEB) and hasattr(game_state, "draw_comet_corpses"):
+        if hasattr(game_state, "draw_comet_corpses"):
             game_state.draw_comet_corpses(screen, camx, camy)
         if (not IS_WEB) and getattr(game_state, "fog_enabled", False):
             game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)

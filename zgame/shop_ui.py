@@ -25,8 +25,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
     if not runtime.get('_resume_shop_cache', False):
         game._clear_shop_cache()
     runtime['_resume_shop_cache'] = False
-    if not game.IS_WEB:
-        game.play_combat_bgm()
+    game.play_combat_bgm()
     runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
     runtime['_in_shop_ui'] = True
     try:

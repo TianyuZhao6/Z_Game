@@ -55,6 +55,36 @@ def _resume_web_audio_on_event(game, event) -> None:
         pass
 
 
+def _web_feature_enabled(game, flag_name: str) -> bool:
+    if not getattr(game, "IS_WEB", False):
+        return True
+    return bool(getattr(game, flag_name, False))
+
+
+def _combat_bgm_selected(game) -> bool:
+    runtime = rs.runtime(game)
+    bgm = runtime.get("_bgm")
+    path = str(getattr(bgm, "music_path", "") or "").lower()
+    return any(token in path for token in ("zgame.wav", "zgame.ogg"))
+
+
+def _web_snapshot_autosave(game, runtime, game_state, player, enemies, current_level: int, chosen_enemy_type: str,
+                           bullets=None, *, force: bool = False) -> None:
+    if not getattr(game, "IS_WEB", False):
+        return
+    interval = float(getattr(game, "WEB_AUTOSAVE_INTERVAL", 0.0) or 0.0)
+    now_s = pygame.time.get_ticks() / 1000.0
+    last_s = float(runtime.get("_last_web_autosave_s", -999.0))
+    if (not force) and interval > 0.0 and (now_s - last_s) < interval:
+        return
+    try:
+        snap = game.capture_snapshot(game_state, player, enemies, current_level, chosen_enemy_type, bullets)
+        game.save_snapshot(snap)
+        runtime["_last_web_autosave_s"] = now_s
+    except Exception:
+        pass
+
+
 def _demo_level_limit(game) -> int:
     if not getattr(game, "WEB_DEMO", False):
         return 0
@@ -96,11 +126,10 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     runtime['_coins_at_level_start'] = int(meta.get('spoils', 0))
     level_config = game._web_level_config(config)
     enemy_cap = game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP
-    combat_bgm_started = game.IS_WEB
-    if combat_bgm_started:
-        if not game.IS_WEB:
-            game.play_combat_bgm()
-    elif not game.IS_WEB:
+    combat_bgm_started = _combat_bgm_selected(game)
+    if not game.IS_WEB:
+        game.play_combat_bgm()
+        combat_bgm_started = True
         game._draw_loading_screen(screen, 'INITIALIZING LEVEL', 'Generating arena and loading gameplay state')
         pygame.display.flip()
         await asyncio.sleep(0)
@@ -276,6 +305,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     for z in enemies:
         z._hit_flash = 0.0
         z._flash_prev_hp = int(getattr(z, 'hp', 0))
+    _web_snapshot_autosave(game, runtime, game_state, player, enemies, game.current_level, chosen_enemy_type, bullets, force=True)
     running = True
     game_result = None
     last_frame = None
@@ -289,6 +319,13 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 screen = game._handle_web_window_event(event) or screen
                 game._sync_web_input_event(event)
                 _resume_web_audio_on_event(game, event)
+                if getattr(event, "type", None) in {
+                    getattr(pygame, "WINDOWFOCUSLOST", None),
+                    getattr(pygame, "WINDOWLEAVE", None),
+                }:
+                    _web_snapshot_autosave(
+                        game, runtime, game_state, player, enemies, game.current_level, chosen_enemy_type, bullets, force=True
+                    )
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
@@ -301,7 +338,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                     await asyncio.sleep(0)
                     game.play_combat_bgm()
                     combat_bgm_started = True
-                    game._resume_bgm_if_needed(min_interval_s=0.0)
+                game._resume_bgm_if_needed(min_interval_s=0.0)
                 await asyncio.sleep(0)
             continue
         pf = getattr(game_state, 'pending_focus', None)
@@ -338,6 +375,13 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             screen = game._handle_web_window_event(event) or screen
             game._sync_web_input_event(event)
             _resume_web_audio_on_event(game, event)
+            if getattr(event, "type", None) in {
+                getattr(pygame, "WINDOWFOCUSLOST", None),
+                getattr(pygame, "WINDOWLEAVE", None),
+            }:
+                _web_snapshot_autosave(
+                    game, runtime, game_state, player, enemies, game.current_level, chosen_enemy_type, bullets, force=True
+                )
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -365,11 +409,13 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 elif choice == 'home':
                     game.queue_menu_transition(pygame.display.get_surface().copy())
                     runtime['_carry_player_state'] = game.capture_player_carry(player)
-                    game.save_progress(current_level=game.current_level, max_wave_reached=wave_index)
+                    snap = game.capture_snapshot(game_state, player, enemies, game.current_level, chosen_enemy_type, bullets)
+                    game.save_snapshot(snap)
                     runtime['_skip_intro_once'] = True
                     return ('home', config.get('reward', None), bg)
                 elif choice == 'exit':
-                    game.save_progress(current_level=game.current_level, max_wave_reached=wave_index)
+                    snap = game.capture_snapshot(game_state, player, enemies, game.current_level, chosen_enemy_type, bullets)
+                    game.save_snapshot(snap)
                     return ('exit', config.get('reward', None), bg)
             if game.is_action_event(event, 'blast'):
                 if getattr(player, 'blast_cd', 0.0) <= 0.0:
@@ -410,9 +456,11 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         player.slow_t = max(0.0, getattr(player, 'slow_t', 0.0) - dt)
         game_state.update_telegraphs(dt)
         game_state.update_acids(dt, player)
-        if not game.IS_WEB:
+        if _web_feature_enabled(game, 'WEB_ENABLE_ENEMY_PAINT'):
             game_state.update_enemy_paint(dt, player)
+        if _web_feature_enabled(game, 'WEB_ENABLE_VULNERABILITY_MARKS'):
             game_state.update_vulnerability_marks(enemies, dt)
+        if _web_feature_enabled(game, 'WEB_ENABLE_HURRICANES'):
             game_state.update_hurricanes(dt, player, enemies, bullets, enemy_shots)
         player.move(keys, game_state.obstacles, dt)
         game_state.fx.update(dt)
@@ -429,8 +477,9 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             z._gold_glow_t = max(0.0, getattr(z, '_gold_glow_t', 0.0) - dt)
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
-        if not game.IS_WEB:
+        if _web_feature_enabled(game, 'WEB_ENABLE_DAMAGE_TEXTS'):
             game_state.update_damage_texts(dt)
+        if _web_feature_enabled(game, 'WEB_ENABLE_AEGIS_PULSES'):
             game_state.update_aegis_pulses(dt, player, enemies)
         game_state.collect_heals(player)
         player.update_bone_plating(dt)
@@ -498,10 +547,11 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                     game_result = 'fail'
                     running = False
                     break
-        if not game.IS_WEB:
+        if _web_feature_enabled(game, 'WEB_ENABLE_GROUND_SPIKES'):
             game_state.update_ground_spikes(dt, player, enemies)
+        if _web_feature_enabled(game, 'WEB_ENABLE_CURING_PAINT'):
             game_state.update_curing_paint(dt, player, enemies)
-        if not game.IS_WEB:
+        if _web_feature_enabled(game, 'WEB_ENABLE_DOT_ROUNDS'):
             game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
             if hasattr(game, 'verify_enemy_special_runtime'):
@@ -567,6 +617,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         if game_result == 'success':
             runtime['_last_spoils'] = getattr(game_state, 'spoils_gained', 0)
             runtime['_carry_player_state'] = game.capture_player_carry(player)
+        _web_snapshot_autosave(game, runtime, game_state, player, enemies, game.current_level, chosen_enemy_type, bullets)
         if game.IS_WEB:
             await asyncio.sleep(0)
     return (game_result, config.get('reward', None), last_frame)
@@ -688,6 +739,10 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     last_frame = None
     chosen_enemy_type = saved_meta.get('chosen_enemy_type', 'basic')
     enemy_cap = game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP
+    combat_bgm_started = _combat_bgm_selected(game)
+    if not game.IS_WEB:
+        game.play_combat_bgm()
+        combat_bgm_started = True
     spawn_timer = 0.0
     wave_index = 0
 
@@ -755,8 +810,15 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     for z in enemies:
         z._hit_flash = 0.0
         z._flash_prev_hp = int(getattr(z, 'hp', 0))
+    _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets, force=True)
     while running:
         dt = _frame_dt(game, clock)
+        if game.IS_WEB and (not combat_bgm_started):
+            await asyncio.sleep(0)
+            game.play_combat_bgm()
+            combat_bgm_started = True
+        if game.IS_WEB:
+            game._resume_bgm_if_needed(min_interval_s=0.0)
         time_left -= dt
         runtime['_time_left_runtime'] = time_left
         if time_left <= 0:
@@ -766,6 +828,11 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             screen = game._handle_web_window_event(event) or screen
             game._sync_web_input_event(event)
             _resume_web_audio_on_event(game, event)
+            if getattr(event, "type", None) in {
+                getattr(pygame, "WINDOWFOCUSLOST", None),
+                getattr(pygame, "WINDOWLEAVE", None),
+            }:
+                _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets, force=True)
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -795,7 +862,8 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                     runtime['_skip_intro_once'] = True
                     return ('home', None, bg)
                 elif choice == 'exit':
-                    game.save_progress(current_level=level_idx, max_wave_reached=wave_index)
+                    snap2 = game.capture_snapshot(game_state, player, enemies, level_idx, chosen_enemy_type, bullets)
+                    game.save_snapshot(snap2)
                     return ('exit', None, bg)
             if game.is_action_event(event, 'blast'):
                 if getattr(player, 'blast_cd', 0.0) <= 0.0:
@@ -833,8 +901,9 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         player.slow_t = max(0.0, getattr(player, 'slow_t', 0.0) - dt)
         game_state.update_telegraphs(dt)
         game_state.update_acids(dt, player)
-        if not game.IS_WEB:
+        if _web_feature_enabled(game, 'WEB_ENABLE_ENEMY_PAINT'):
             game_state.update_enemy_paint(dt, player)
+        if _web_feature_enabled(game, 'WEB_ENABLE_VULNERABILITY_MARKS'):
             game_state.update_vulnerability_marks(enemies, dt)
         player.move(keys, game_state.obstacles, dt)
         game_state.fx.update(dt)
@@ -844,8 +913,9 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         game_state.update_spoils(dt, player)
         game_state.collect_spoils(player.rect)
         game_state.update_heals(dt)
-        if not game.IS_WEB:
+        if _web_feature_enabled(game, 'WEB_ENABLE_DAMAGE_TEXTS'):
             game_state.update_damage_texts(dt)
+        if _web_feature_enabled(game, 'WEB_ENABLE_AEGIS_PULSES'):
             game_state.update_aegis_pulses(dt, player, enemies)
         game_state.collect_heals(player)
         game.tick_aegis_pulse(player, game_state, enemies, dt)
@@ -915,10 +985,11 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                         game.clear_save()
                         game.flush_events()
                         return ('restart', None, last_frame or screen.copy())
-        if not game.IS_WEB:
+        if _web_feature_enabled(game, 'WEB_ENABLE_GROUND_SPIKES'):
             game_state.update_ground_spikes(dt, player, enemies)
+        if _web_feature_enabled(game, 'WEB_ENABLE_CURING_PAINT'):
             game_state.update_curing_paint(dt, player, enemies)
-        if not game.IS_WEB:
+        if _web_feature_enabled(game, 'WEB_ENABLE_DOT_ROUNDS'):
             game_state.update_dot_rounds(enemies, dt)
         for z in list(enemies):
             if hasattr(game, 'verify_enemy_special_runtime'):
@@ -972,6 +1043,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             last_frame = game.render_game_iso(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
         else:
             last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
+        _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets)
         if game.IS_WEB:
             await asyncio.sleep(0)
     return ('home', None, last_frame or screen.copy())
@@ -1026,6 +1098,7 @@ async def app_main(game) -> None:
         if runtime.get('_pending_shop', False):
             meta['spoils'] += int(runtime.pop('_last_spoils', 0))
             runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
+            game.save_progress(game.current_level, pending_shop=True)
             action = game.show_shop_screen(screen)
             runtime['_pending_shop'] = False
             if action in (None,):
@@ -1103,6 +1176,7 @@ async def app_main(game) -> None:
             runtime['_last_spoils'] = 0
             action = await game.show_success_screen(screen, bg, [])
             if action == 'home':
+                game.save_progress(game.current_level, pending_shop=True)
                 game.flush_events()
                 selection = await game.show_start_menu(screen, skip_intro=True)
                 apply_menu_selection(selection)
@@ -1119,6 +1193,7 @@ async def app_main(game) -> None:
                 apply_menu_selection(selection)
                 continue
             runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
+            game.save_progress(game.current_level, pending_shop=True)
             action = game.show_shop_screen(screen)
             if action == 'home':
                 game.save_progress(game.current_level, pending_shop=True)

@@ -200,6 +200,12 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if drawn_rects["start"].collidepoint(event.pos):
+                    if game.IS_WEB:
+                        try:
+                            game.play_combat_bgm()
+                            game._resume_bgm_if_needed(min_interval_s=0.0)
+                        except Exception:
+                            pass
                     game.clear_save()
                     game.reset_run_state()
                     game.queue_menu_transition(screen.copy())
@@ -209,6 +215,12 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
                 if cont_rect and can_continue and cont_rect.collidepoint(event.pos):
                     data = game.load_save()
                     if data:
+                        if game.IS_WEB:
+                            try:
+                                game.play_combat_bgm()
+                                game._resume_bgm_if_needed(min_interval_s=0.0)
+                            except Exception:
+                                pass
                         game.queue_menu_transition(screen.copy())
                         game.flush_events()
                         return ("continue", data)

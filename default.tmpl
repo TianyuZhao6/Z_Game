@@ -1,19 +1,5 @@
 ﻿<html lang="en-us"><script src="https://pygame-web.github.io/cdn/0.9.3/pythons.js" type=module id="site" data-python="python3.12" data-LINES=42 data-COLUMNS=132 data-os="vtx,snd,gui" async defer>#<!--
 
-print("""
-Loading z_game from z_game.apk
-    Pygbag Version : 0.9.3
-    Template Version : 0.9.3
-    Python  : 3.12
-    CDN URL : https://pygame-web.github.io/cdn/0.9.3/
-    Screen  : 1280x720
-    Title   : z_game
-    Folder  : z_game
-    Authors : pgw
-    SPDX-License-Identifier: cookiecutter.spdx
-
-""")
-
 import sys
 import asyncio
 import platform
@@ -100,9 +86,7 @@ async def custom_site():
         platform.window.canvas.focus()
     except Exception:
         pass
-    print("default.tmpl: done")
-
-    shell.interactive()
+    pass
 
 asyncio.run( custom_site() )
 
@@ -148,7 +132,7 @@ asyncio.run( custom_site() )
 // this dict is available under PyConfig.config from __main__
 
 config = {
-    xtermjs : "1" ,
+    xtermjs : "0" ,
     _sdl2 : "canvas",
     user_canvas : 1,
     user_canvas_managed : 0,
@@ -156,7 +140,7 @@ config = {
     ume_block : 0,
     can_close : 0,
     archive : "z_game",
-    gui_debug : 2,
+    gui_debug : 0,
     cdn : "https://pygame-web.github.io/cdn/0.9.3/",
     autorun : 1,
     PYBUILD : "3.12",
@@ -354,7 +338,7 @@ function show_infobox() {
 
 <body>
 
-    <div id="transfer" align=center>
+    <div id="transfer" align=center hidden style="display:none">
 <!--        <div class="spinner" id='spinner'></div> -->
         <div class="emscripten" id="status">Downloading...</div>
         <div class="emscripten">
@@ -376,7 +360,7 @@ height="720px"
     oncontextmenu="event.preventDefault()" tabindex=1 hidden>
     </canvas>
 
-    <div id="infobox">Loading, please wait ...</div>
+    <div id="infobox" hidden style="display:none">Loading, please wait ...</div>
 
     <div id=html></div>
 
