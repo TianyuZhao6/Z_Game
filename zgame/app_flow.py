@@ -85,6 +85,30 @@ def _web_snapshot_autosave(game, runtime, game_state, player, enemies, current_l
         pass
 
 
+async def _yield_web_boot_frame(game, screen, runtime=None, *, fill_black: bool = True, count: int = 1) -> None:
+    if not getattr(game, "IS_WEB", False):
+        return
+    runtime = runtime or rs.runtime(game)
+    loops = max(1, int(count))
+    for _ in range(loops):
+        if fill_black:
+            screen.fill((0, 0, 0))
+        if runtime.get("_menu_transition_frame") is not None or runtime.get("_web_hex_transition_state") is not None:
+            game.run_pending_menu_transition(screen)
+        pygame.display.flip()
+        await asyncio.sleep(0)
+
+
+async def _show_web_boot_surface(game, screen, runtime=None, *, count: int = 1) -> None:
+    if not getattr(game, "IS_WEB", False):
+        return
+    try:
+        screen.blit(game.ensure_hex_background(), (0, 0))
+    except Exception:
+        screen.fill((0, 0, 0))
+    await _yield_web_boot_frame(game, screen, runtime, fill_black=False, count=count)
+
+
 def _demo_level_limit(game) -> int:
     if not getattr(game, "WEB_DEMO", False):
         return 0
@@ -113,6 +137,8 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     pygame.display.set_caption('Enemy Card Game 闂?Level')
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
+    if game.IS_WEB and runtime.get("_menu_transition_frame") is not None:
+        await _show_web_boot_surface(game, screen, runtime, count=6)
     game_state = None
     wanted_active_for_level = False
     level_idx = int(runtime.get('current_level', 0))
@@ -130,14 +156,18 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     if not game.IS_WEB:
         game.play_combat_bgm()
         combat_bgm_started = True
+    else:
+        await _show_web_boot_surface(game, screen, runtime, count=2)
     spatial = game.SpatialHash(game.SPATIAL_CELL)
     obstacles, items, player_start, enemy_starts, main_item_list, decorations = game.generate_game_entities(grid_size=game.GRID_SIZE, obstacle_count=level_config['obstacle_count'], item_count=level_config['item_count'], enemy_count=level_config['enemy_count'], main_block_hp=level_config['block_hp'], level_idx=level_idx)
+    await _show_web_boot_surface(game, screen, runtime, count=2)
     last_counted_level = runtime.get('_items_counted_level')
     if last_counted_level != level_idx:
         meta['run_items_spawned'] = int(meta.get('run_items_spawned', 0)) + len(items)
         runtime['_items_counted_level'] = level_idx
     game.ensure_passage_budget(obstacles, game.GRID_SIZE, player_start)
     game_state = game.GameState(obstacles, items, main_item_list, decorations)
+    await _show_web_boot_surface(game, screen, runtime, count=2)
     game_state.spatial = spatial
     game_state.current_level = game.current_level
     game_state.bandit_spawned_this_level = False
@@ -293,6 +323,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     if spawned > 0:
         wave_index += 1
         runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
+    await _show_web_boot_surface(game, screen, runtime, count=2)
     player._hit_flash = 0.0
     player._flash_prev_hp = int(player.hp)
     for z in enemies:
@@ -325,7 +356,16 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             game.update_hit_flash_timer(player, dt)
             for z in enemies:
                 game.update_hit_flash_timer(z, dt)
-            last_frame = game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=game_state.obstacles)
+            last_frame = game.render_game_iso(
+                screen,
+                game_state,
+                player,
+                enemies,
+                bullets,
+                enemy_shots,
+                obstacles=game_state.obstacles,
+                copy_frame=False,
+            )
             if game.IS_WEB:
                 if not combat_bgm_started:
                     await asyncio.sleep(0)
@@ -494,7 +534,16 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             bg = last_frame or game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles)
             time_left = game.levelup_modal(screen, bg, clock, time_left, player)
             player.levelup_pending -= 1
-            last_frame = game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles)
+            last_frame = game.render_game_iso(
+                screen,
+                game_state,
+                player,
+                enemies,
+                bullets,
+                enemy_shots,
+                obstacles,
+                copy_frame=False,
+            )
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
         target, dist = find_target()
         if target and player.fire_cd <= 0 and (dist is None or dist <= player.range):
@@ -603,16 +652,33 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
             continue
         if game.USE_ISO:
-            last_frame = game.render_game_iso(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots, obstacles)
+            last_frame = game.render_game_iso(
+                pygame.display.get_surface(),
+                game_state,
+                player,
+                enemies,
+                bullets,
+                enemy_shots,
+                obstacles,
+                copy_frame=False,
+            )
         else:
-            last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
+            last_frame = game.render_game(
+                pygame.display.get_surface(),
+                game_state,
+                player,
+                enemies,
+                bullets,
+                enemy_shots,
+                copy_frame=False,
+            )
         if game_result == 'success':
             runtime['_last_spoils'] = getattr(game_state, 'spoils_gained', 0)
             runtime['_carry_player_state'] = game.capture_player_carry(player)
         _web_snapshot_autosave(game, runtime, game_state, player, enemies, game.current_level, chosen_enemy_type, bullets)
         if game.IS_WEB:
             await asyncio.sleep(0)
-    return (game_result, config.get('reward', None), last_frame)
+    return (game_result, config.get('reward', None), last_frame or screen.copy())
 
 async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], pygame.Surface]:
     runtime = rs.runtime(game)
@@ -727,6 +793,8 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     runtime['_time_left_runtime'] = time_left
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
+    if game.IS_WEB and runtime.get("_menu_transition_frame") is not None:
+        await _show_web_boot_surface(game, screen, runtime, count=6)
     running = True
     last_frame = None
     chosen_enemy_type = saved_meta.get('chosen_enemy_type', 'basic')
@@ -1040,9 +1108,18 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 bullets,
                 enemy_shots,
                 obstacles=game_state.obstacles,
+                copy_frame=False,
             )
         else:
-            last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
+            last_frame = game.render_game(
+                pygame.display.get_surface(),
+                game_state,
+                player,
+                enemies,
+                bullets,
+                enemy_shots,
+                copy_frame=False,
+            )
         _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets)
         if game.IS_WEB:
             await asyncio.sleep(0)

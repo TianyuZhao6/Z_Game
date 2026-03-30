@@ -187,7 +187,8 @@ def install(game):
         flush_events()
 
     def render_game_iso_web_lite(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=None,
-                                 override_cam: tuple[int, int] | None = None) -> pygame.Surface:
+                                 override_cam: tuple[int, int] | None = None,
+                                 copy_frame: bool = True) -> pygame.Surface | None:
         obstacles = obstacles if obstacles is not None else getattr(game_state, "obstacles", {})
         demo_mode = bool(getattr(game, "WEB_DEMO", False))
         pickup_cap = int(getattr(game, "WEB_DEMO_RENDER_PICKUP_CAP", 0)) if demo_mode else 0
@@ -351,15 +352,17 @@ def install(game):
             draw_boss_hp_bar(screen, bosses[0])
         run_pending_menu_transition(screen)
         pygame.display.flip()
-        return screen.copy()
+        return screen.copy() if copy_frame else None
 
     def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=None,
-                        override_cam: tuple[int, int] | None = None):
+                        override_cam: tuple[int, int] | None = None,
+                        copy_frame: bool = True):
         obstacles = obstacles if obstacles is not None else getattr(game_state, "obstacles", {})
         if IS_WEB and getattr(game, "WEB_USE_LITE_RENDER", False):
             return render_game_iso_web_lite(
                 screen, game_state, player, enemies, bullets, enemy_shots, obstacles,
-                override_cam=override_cam
+                override_cam=override_cam,
+                copy_frame=copy_frame,
             )
         px_grid = (player.x + player.size / 2) / CELL_SIZE
         py_grid = (player.y + player.size / 2) / CELL_SIZE
@@ -1102,12 +1105,13 @@ def install(game):
             draw_boss_hp_bar(screen, bosses[0])
         run_pending_menu_transition(screen)
         pygame.display.flip()
-        return screen.copy()
+        return screen.copy() if copy_frame else None
 
     def render_game(screen: pygame.Surface, game_state, player: Player, enemies: List[Enemy],
                     bullets: Optional[List['Bullet']] = None,
                     enemy_shots: Optional[List[EnemyShot]] = None,
-                    override_cam: tuple[int, int] | None = None) -> pygame.Surface:
+                    override_cam: tuple[int, int] | None = None,
+                    copy_frame: bool = True) -> pygame.Surface | None:
         """
         Legacy top-down renderer.
         We now use the isometric renderer for everything, but keep this wrapper
@@ -1120,7 +1124,8 @@ def install(game):
         return render_game_iso(
             screen, game_state, player, enemies, bullets, enemy_shots,
             obstacles=game_state.obstacles,
-            override_cam=override_cam
+            override_cam=override_cam,
+            copy_frame=copy_frame,
         )
 
     game.__dict__.update({

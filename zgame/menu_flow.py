@@ -310,6 +310,7 @@ async def show_instruction_web(game, screen):
             body_font=body_font,
             btn_font=btn_font,
         )
+        game.run_pending_menu_transition(screen)
         pygame.display.flip()
         for event in pygame.event.get():
             screen = game._handle_web_window_event(event) or screen

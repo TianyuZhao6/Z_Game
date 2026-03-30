@@ -141,21 +141,57 @@ def install(game):
 
     def queue_menu_transition(frame: pygame.Surface):
         """Cache a menu frame so the next scene can transition from it."""
-        _runtime()["_menu_transition_frame"] = frame
+        runtime = _runtime()
+        runtime["_menu_transition_frame"] = frame
+        runtime["_web_hex_transition_state"] = None
 
     def run_pending_menu_transition(screen: pygame.Surface):
         """Play a queued menu transition onto the already-rendered screen frame."""
         runtime = _runtime()
         from_surf = runtime.get("_menu_transition_frame")
+        if game.IS_WEB:
+            web_state = runtime.get("_web_hex_transition_state")
+            if from_surf is None and not web_state:
+                return
+            now_ms = pygame.time.get_ticks()
+            if web_state is None:
+                trans = ensure_hex_transition()
+                trans.start()
+                web_state = {
+                    "transition": trans,
+                    "from_surface": from_surf,
+                    "current_bg": from_surf,
+                    "to_surface": screen.copy(),
+                    "last_tick_ms": now_ms,
+                }
+                runtime["_web_hex_transition_state"] = web_state
+            else:
+                web_state["to_surface"] = screen.copy()
+            trans = web_state.get("transition")
+            if trans is None:
+                runtime["_menu_transition_frame"] = None
+                runtime["_web_hex_transition_state"] = None
+                return
+            last_tick_ms = int(web_state.get("last_tick_ms", now_ms))
+            dt = max(0.0, min(0.05, (now_ms - last_tick_ms) / 1000.0))
+            web_state["last_tick_ms"] = now_ms
+            trans.update(dt)
+            if trans.should_swap_screens():
+                web_state["current_bg"] = web_state.get("to_surface")
+            elif getattr(trans, "midpoint_triggered", False):
+                web_state["current_bg"] = web_state.get("to_surface")
+            current_bg = web_state.get("current_bg")
+            if current_bg is not None:
+                screen.blit(current_bg, (0, 0))
+            trans.draw(screen)
+            if not trans.is_active():
+                runtime["_menu_transition_frame"] = None
+                runtime["_web_hex_transition_state"] = None
+                game.flush_events()
+            return
         if from_surf is None:
             return
         to_surf = screen.copy()
-        if game.IS_WEB:
-            screen.blit(to_surf, (0, 0))
-            pygame.display.flip()
-            runtime["_menu_transition_frame"] = None
-            game.flush_events()
-            return
         play_hex_transition(screen, from_surf, to_surf, direction="down")
         runtime["_menu_transition_frame"] = None
 
@@ -168,10 +204,13 @@ def install(game):
         """
         del direction
         if game.IS_WEB:
+            runtime = _runtime()
+            runtime["_menu_transition_frame"] = from_surface.copy() if from_surface is not None else None
+            runtime["_web_hex_transition_state"] = None
             if to_surface is not None:
                 screen.blit(to_surface, (0, 0))
+            run_pending_menu_transition(screen)
             pygame.display.flip()
-            game.flush_events()
             return
         trans = ensure_hex_transition()
         trans.start()
