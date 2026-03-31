@@ -130,12 +130,13 @@ def install(game):
         enemy_count: int,
         main_block_hp: int,
         level_idx: int = 0,
+        use_density: bool = True,
     ):
         """
         Generate entities with map-fill: obstacle clusters, ample items, and
         non-blocking decorations. Main block remains removed.
         """
-        del item_count, main_block_hp, level_idx
+        del main_block_hp, level_idx
         all_positions = [(x, y) for x in range(grid_size) for y in range(grid_size)]
         corners = [(0, 0), (0, grid_size - 1), (grid_size - 1, 0), (grid_size - 1, grid_size - 1)]
         forbidden = set(corners)
@@ -172,7 +173,11 @@ def install(game):
 
         obstacles = {}
         area = grid_size * grid_size
-        target_obstacles = max(obstacle_count, int(area * game.OBSTACLE_DENSITY))
+        requested_obstacles = max(0, int(obstacle_count))
+        if use_density:
+            target_obstacles = max(requested_obstacles, int(area * game.OBSTACLE_DENSITY))
+        else:
+            target_obstacles = requested_obstacles
         rest_needed = target_obstacles
         base_candidates = [p for p in all_positions if p not in forbidden]
         random.shuffle(base_candidates)
@@ -210,14 +215,21 @@ def install(game):
                 obstacles[pos] = game.Obstacle(pos[0], pos[1], typ, health=hp)
 
         forbidden |= set(obstacles.keys())
-        item_target = random.randint(9, 19)
+        requested_items = max(0, int(item_count))
+        if use_density:
+            item_target = random.randint(9, 19)
+        else:
+            item_target = requested_items
         item_candidates = [p for p in all_positions if p not in forbidden]
         items = [
             game.Item(x, y, is_main=False)
             for (x, y) in random.sample(item_candidates, min(len(item_candidates), item_target))
         ]
 
-        decor_target = int(area * game.DECOR_DENSITY)
+        if use_density:
+            decor_target = int(area * game.DECOR_DENSITY)
+        else:
+            decor_target = max(0, min(len(all_positions), max(0, target_obstacles // 2)))
         decor_candidates = [p for p in all_positions if p not in forbidden]
         random.shuffle(decor_candidates)
         decorations = decor_candidates[:decor_target]

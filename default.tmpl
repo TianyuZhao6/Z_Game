@@ -188,6 +188,9 @@ function applyCanvasFullscreen() {
 }
 
 function focusCanvas() {
+    try { window.focus(); } catch (e) {}
+    try { document.body.focus({ preventScroll: true }); }
+    catch (e) { try { document.body.focus(); } catch (_) {} }
     try { canvas.focus({ preventScroll: true }); }
     catch (e) { try { canvas.focus(); } catch (_) {} }
 }
@@ -227,6 +230,10 @@ function show_infobox() {
             margin: 0;
             overflow: hidden;
             background: #000;
+            overscroll-behavior: none;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         #transfer,
@@ -282,6 +289,10 @@ function show_infobox() {
             bottom: 0;
             left: 0;
             right: 0;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            outline: none;
         }
 
         body {
@@ -450,9 +461,18 @@ frameborder="1"
         applyCanvasFullscreen();
         focusCanvas();
     });
+    window.addEventListener("focus", focusCanvas);
+    window.addEventListener("click", focusCanvas, true);
+    window.addEventListener("keydown", focusCanvas, true);
+    window.addEventListener("keyup", focusCanvas, true);
     window.addEventListener("pointerdown", focusCanvas, { passive: true });
     window.addEventListener("mousedown", focusCanvas);
     window.addEventListener("touchstart", focusCanvas, { passive: true });
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) {
+            focusCanvas();
+        }
+    });
 
     function custom_prerun(){
         // no python main and no (MEMFS + VFS) yet.

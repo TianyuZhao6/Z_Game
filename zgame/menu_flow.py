@@ -42,9 +42,18 @@ async def run_neuro_intro(game, screen: pygame.Surface):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            if game.IS_WEB and is_web_interaction_event(event):
+                try:
+                    game._resume_bgm_if_needed(min_interval_s=0.0)
+                except Exception:
+                    pass
+                game.flush_events()
+                return
             if event.type == pygame.KEYDOWN:
+                game.flush_events()
                 return
             if event.type == pygame.MOUSEBUTTONDOWN:
+                game.flush_events()
                 return
         if game.IS_WEB:
             await asyncio.sleep(0)
@@ -91,20 +100,24 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
     viz = _viz(game)
     game.flush_events()
     intro_flag = state.pop("_skip_intro_once", False)
-    skip_intro = bool(skip_intro or getattr(game, "WEB_DEMO_SKIP_INTRO", False))
+    # Web builds have been prone to stalling around the intro->menu handoff,
+    # especially when browser audio policies defer mixer readiness.
+    # Skip the intro on web so the first interactive frame is the actual menu.
+    skip_intro = bool(skip_intro or getattr(game, "WEB_DEMO_SKIP_INTRO", False) or game.IS_WEB)
     if not skip_intro and not intro_flag:
         await run_neuro_intro(game, screen)
-    try:
-        bgm = state.get("_bgm")
-        cur = getattr(bgm, "music_path", "") if bgm is not None else ""
-        cur_lower = cur.lower()
-        if "intro_v0.wav" not in cur_lower and "intro_v0.ogg" not in cur_lower:
-            game.play_intro_bgm()
-    except Exception:
+    if not game.IS_WEB:
         try:
-            game.play_intro_bgm()
+            bgm = state.get("_bgm")
+            cur = getattr(bgm, "music_path", "") if bgm is not None else ""
+            cur_lower = cur.lower()
+            if "intro_v0.wav" not in cur_lower and "intro_v0.ogg" not in cur_lower:
+                game.play_intro_bgm()
         except Exception:
-            pass
+            try:
+                game.play_intro_bgm()
+            except Exception:
+                pass
     game._resume_bgm_if_needed(min_interval_s=0.0)
     clock = pygame.time.Clock()
     header_font = game._get_sekuya_font(22)
@@ -200,12 +213,6 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if drawn_rects["start"].collidepoint(event.pos):
-                    if game.IS_WEB:
-                        try:
-                            game.play_combat_bgm()
-                            game._resume_bgm_if_needed(min_interval_s=0.0)
-                        except Exception:
-                            pass
                     game.clear_save()
                     game.reset_run_state()
                     game.queue_menu_transition(screen.copy())
@@ -215,12 +222,6 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
                 if cont_rect and can_continue and cont_rect.collidepoint(event.pos):
                     data = game.load_save()
                     if data:
-                        if game.IS_WEB:
-                            try:
-                                game.play_combat_bgm()
-                                game._resume_bgm_if_needed(min_interval_s=0.0)
-                            except Exception:
-                                pass
                         game.queue_menu_transition(screen.copy())
                         game.flush_events()
                         return ("continue", data)

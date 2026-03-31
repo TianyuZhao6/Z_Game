@@ -109,6 +109,34 @@ async def _show_web_boot_surface(game, screen, runtime=None, *, count: int = 1) 
     await _yield_web_boot_frame(game, screen, runtime, fill_black=False, count=count)
 
 
+async def _preload_web_gameplay_assets(game, screen, runtime=None) -> None:
+    if not getattr(game, "IS_WEB", False):
+        return
+    runtime = runtime or rs.runtime(game)
+    if runtime.get("_web_gameplay_assets_ready", False):
+        return
+    base_size = int(game.CELL_SIZE * 0.6)
+    player_target = (
+        int(base_size * 2.0 * game.PLAYER_SPRITE_SCALE),
+        int(base_size * 2.4 * game.PLAYER_SPRITE_SCALE),
+    )
+    enemy_types = ("basic", "fast", "tank", "strong", "ranged", "buffer", "shielder")
+    boot_tasks = [
+        lambda: game._load_shop_sprite("characters/player/sheets/player.png", player_target, allow_upscale=False),
+        *(lambda zt=zt: game._enemy_sprite(zt, base_size) for zt in enemy_types),
+        lambda: game._enemy_sprite("ravager", max(base_size * 2, base_size)),
+        *(lambda d=direction: game._auto_turret_sprite(d) for direction in ("left", "right", "up", "down")),
+        lambda: game.get_stationary_turret_assets(),
+    ]
+    for load in boot_tasks:
+        try:
+            load()
+        except Exception:
+            pass
+        await _show_web_boot_surface(game, screen, runtime, count=1)
+    runtime["_web_gameplay_assets_ready"] = True
+
+
 def _demo_level_limit(game) -> int:
     if not getattr(game, "WEB_DEMO", False):
         return 0
@@ -139,6 +167,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     clock = pygame.time.Clock()
     if game.IS_WEB and runtime.get("_menu_transition_frame") is not None:
         await _show_web_boot_surface(game, screen, runtime, count=6)
+    await _preload_web_gameplay_assets(game, screen, runtime)
     game_state = None
     wanted_active_for_level = False
     level_idx = int(runtime.get('current_level', 0))
@@ -159,7 +188,15 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     else:
         await _show_web_boot_surface(game, screen, runtime, count=2)
     spatial = game.SpatialHash(game.SPATIAL_CELL)
-    obstacles, items, player_start, enemy_starts, main_item_list, decorations = game.generate_game_entities(grid_size=game.GRID_SIZE, obstacle_count=level_config['obstacle_count'], item_count=level_config['item_count'], enemy_count=level_config['enemy_count'], main_block_hp=level_config['block_hp'], level_idx=level_idx)
+    obstacles, items, player_start, enemy_starts, main_item_list, decorations = game.generate_game_entities(
+        grid_size=game.GRID_SIZE,
+        obstacle_count=level_config['obstacle_count'],
+        item_count=level_config['item_count'],
+        enemy_count=level_config['enemy_count'],
+        main_block_hp=level_config['block_hp'],
+        level_idx=level_idx,
+        use_density=not bool(getattr(game, "IS_WEB", False)),
+    )
     await _show_web_boot_surface(game, screen, runtime, count=2)
     last_counted_level = runtime.get('_items_counted_level')
     if last_counted_level != level_idx:
@@ -227,6 +264,8 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     enemy_shots: List[game.EnemyShot] = []
     spawn_timer = 0.0
     wave_index = 0
+    spatial_rebuild_t = 0.0
+    spatial_enemy_count = -1
 
     def player_center():
         return (player.x + player.size / 2, player.y + player.size / 2 + game.INFO_BAR_HEIGHT)
@@ -561,7 +600,12 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             t.update(dt, game_state, enemies, bullets)
         if getattr(game_state, 'spatial', None):
             game_state.spatial_query_radius = max(game.CELL_SIZE, int(game.clamp_player_range(getattr(player, 'range', game.PLAYER_RANGE_DEFAULT)) or game.PLAYER_RANGE_DEFAULT))
-            game_state.spatial.rebuild(enemies)
+            if (not game.IS_WEB) or spatial_rebuild_t <= 0.0 or spatial_enemy_count != len(enemies):
+                game_state.spatial.rebuild(enemies)
+                spatial_rebuild_t = float(getattr(game, "WEB_SPATIAL_REFRESH_INTERVAL", 0.12))
+                spatial_enemy_count = len(enemies)
+            else:
+                spatial_rebuild_t = max(0.0, spatial_rebuild_t - dt)
         for b in list(bullets):
             if hasattr(game, 'verify_bullet_runtime') and (not game.verify_bullet_runtime(b, player)):
                 try:
@@ -795,6 +839,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     clock = pygame.time.Clock()
     if game.IS_WEB and runtime.get("_menu_transition_frame") is not None:
         await _show_web_boot_surface(game, screen, runtime, count=6)
+    await _preload_web_gameplay_assets(game, screen, runtime)
     running = True
     last_frame = None
     chosen_enemy_type = saved_meta.get('chosen_enemy_type', 'basic')
@@ -1141,10 +1186,11 @@ async def app_main(game) -> None:
         game.VIEW_W, game.VIEW_H = (info.current_w, info.current_h)
     pygame.display.set_caption(game.GAME_TITLE)
     game.resize_world_to_view()
-    try:
-        game.play_intro_bgm()
-    except Exception as e:
-        print(f'[Audio] background music not started: {e}')
+    if not game.IS_WEB:
+        try:
+            game.play_intro_bgm()
+        except Exception as e:
+            print(f'[Audio] background music not started: {e}')
     if not game.IS_WEB:
         screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
         pygame.display.set_caption(game.GAME_TITLE)
