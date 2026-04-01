@@ -24,12 +24,14 @@ def _detect_web_demo() -> bool:
     except Exception:
         return False
 WEB_WINDOW_SIZE = (960, 540)
-WEB_TARGET_FPS = 30
+WEB_TARGET_FPS = 24
 WEB_MAX_FRAME_DT = 0.05
-WEB_AUTOSAVE_INTERVAL = 1.5
-WEB_FLOW_REFRESH_INTERVAL = 0.60
+WEB_AUTOSAVE_INTERVAL = 0.0
+WEB_FLOW_REFRESH_INTERVAL = 0.90
 WEB_SPATIAL_REFRESH_INTERVAL = 0.12
 WEB_ENEMY_CAP = 10
+WEB_MAX_RENDER_WIDTH = 854
+WEB_MAX_RENDER_HEIGHT = 480
 WEB_DEMO = _detect_web_demo()
 WEB_DEMO_SKIP_INTRO = WEB_DEMO
 WEB_DEMO_DISABLE_CONTINUE = WEB_DEMO
@@ -56,7 +58,7 @@ WEB_DEMO_RENDER_TURRET_CAP = 4
 WEB_DEMO_RENDER_ENEMY_CAP = 8
 WEB_DEMO_RENDER_BULLET_CAP = 28
 WEB_DEMO_RENDER_ENEMY_SHOT_CAP = 18
-WEB_USE_LITE_RENDER = WEB_DEMO
+WEB_USE_LITE_RENDER = True
 WEB_ENABLE_ENEMY_PAINT = not WEB_DEMO
 WEB_ENABLE_VULNERABILITY_MARKS = not WEB_DEMO
 WEB_ENABLE_HURRICANES = not WEB_DEMO
@@ -83,6 +85,34 @@ def is_web_interaction_event(event) -> bool:
         return True
     finger_down = getattr(pygame, "FINGERDOWN", None)
     return finger_down is not None and event_type == finger_down
+
+
+def is_escape_event(event) -> bool:
+    if getattr(event, "type", None) != pygame.KEYDOWN:
+        return False
+    try:
+        if int(getattr(event, "key", -1)) == int(pygame.K_ESCAPE):
+            return True
+    except Exception:
+        pass
+    try:
+        aliases = WEB_INPUT._aliases_for_event(event)
+    except Exception:
+        aliases = set()
+    return bool({"esc", "escape"} & set(aliases))
+
+
+def cap_web_surface_size(width: int, height: int) -> tuple[int, int]:
+    width = max(640, int(width or WEB_WINDOW_SIZE[0]))
+    height = max(360, int(height or WEB_WINDOW_SIZE[1]))
+    scale = min(
+        1.0,
+        float(WEB_MAX_RENDER_WIDTH) / float(max(1, width)),
+        float(WEB_MAX_RENDER_HEIGHT) / float(max(1, height)),
+    )
+    if scale >= 0.999:
+        return width, height
+    return max(640, int(round(width * scale))), max(360, int(round(height * scale)))
 
 
 def _normalize_web_key_name(name: str | None) -> str:
@@ -195,7 +225,6 @@ class WebInputState:
             else:
                 focus_lost_types = {
                     getattr(pygame, "WINDOWFOCUSLOST", None),
-                    getattr(pygame, "WINDOWLEAVE", None),
                 }
                 if event.type in focus_lost_types:
                     self.clear()
@@ -223,7 +252,7 @@ def get_initial_web_window_size() -> tuple[int, int]:
             w = int(getattr(win, "innerWidth", 0) or 0)
             h = int(getattr(win, "innerHeight", 0) or 0)
             if w > 0 and h > 0:
-                return max(640, w), max(360, h)
+                return cap_web_surface_size(max(640, w), max(360, h))
         except Exception:
             pass
     try:
@@ -234,4 +263,4 @@ def get_initial_web_window_size() -> tuple[int, int]:
         w = h = 0
     if w <= 0 or h <= 0:
         return WEB_WINDOW_SIZE
-    return max(800, w), max(450, h)
+    return cap_web_surface_size(max(800, w), max(450, h))

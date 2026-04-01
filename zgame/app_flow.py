@@ -8,7 +8,7 @@ import random
 import sys
 from typing import Dict, List, Optional, Set, Tuple
 import pygame
-from zgame.browser import clamp_web_dt, is_web_interaction_event
+from zgame.browser import clamp_web_dt, is_escape_event, is_web_interaction_event
 from zgame import runtime_state as rs
 
 
@@ -64,6 +64,8 @@ def _web_feature_enabled(game, flag_name: str) -> bool:
 def _combat_bgm_selected(game) -> bool:
     runtime = rs.runtime(game)
     bgm = runtime.get("_bgm")
+    if getattr(game, "IS_WEB", False) and bgm is not None and getattr(bgm, "_ready", False):
+        return True
     path = str(getattr(bgm, "music_path", "") or "").lower()
     return any(token in path for token in ("zgame.wav", "zgame.ogg"))
 
@@ -73,6 +75,8 @@ def _web_snapshot_autosave(game, runtime, game_state, player, enemies, current_l
     if not getattr(game, "IS_WEB", False):
         return
     interval = float(getattr(game, "WEB_AUTOSAVE_INTERVAL", 0.0) or 0.0)
+    if (not force) and interval <= 0.0:
+        return
     now_s = pygame.time.get_ticks() / 1000.0
     last_s = float(runtime.get("_last_web_autosave_s", -999.0))
     if (not force) and interval > 0.0 and (now_s - last_s) < interval:
@@ -93,8 +97,6 @@ async def _yield_web_boot_frame(game, screen, runtime=None, *, fill_black: bool 
     for _ in range(loops):
         if fill_black:
             screen.fill((0, 0, 0))
-        if runtime.get("_menu_transition_frame") is not None or runtime.get("_web_hex_transition_state") is not None:
-            game.run_pending_menu_transition(screen)
         pygame.display.flip()
         await asyncio.sleep(0)
 
@@ -166,7 +168,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
     if game.IS_WEB and runtime.get("_menu_transition_frame") is not None:
-        await _show_web_boot_surface(game, screen, runtime, count=6)
+        await asyncio.sleep(0)
     await _preload_web_gameplay_assets(game, screen, runtime)
     game_state = None
     wanted_active_for_level = False
@@ -186,7 +188,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         game.play_combat_bgm()
         combat_bgm_started = True
     else:
-        await _show_web_boot_surface(game, screen, runtime, count=2)
+        await asyncio.sleep(0)
     spatial = game.SpatialHash(game.SPATIAL_CELL)
     obstacles, items, player_start, enemy_starts, main_item_list, decorations = game.generate_game_entities(
         grid_size=game.GRID_SIZE,
@@ -197,14 +199,16 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         level_idx=level_idx,
         use_density=not bool(getattr(game, "IS_WEB", False)),
     )
-    await _show_web_boot_surface(game, screen, runtime, count=2)
+    if game.IS_WEB:
+        await asyncio.sleep(0)
     last_counted_level = runtime.get('_items_counted_level')
     if last_counted_level != level_idx:
         meta['run_items_spawned'] = int(meta.get('run_items_spawned', 0)) + len(items)
         runtime['_items_counted_level'] = level_idx
     game.ensure_passage_budget(obstacles, game.GRID_SIZE, player_start)
     game_state = game.GameState(obstacles, items, main_item_list, decorations)
-    await _show_web_boot_surface(game, screen, runtime, count=2)
+    if game.IS_WEB:
+        await asyncio.sleep(0)
     game_state.spatial = spatial
     game_state.current_level = game.current_level
     game_state.bandit_spawned_this_level = False
@@ -266,6 +270,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     wave_index = 0
     spatial_rebuild_t = 0.0
     spatial_enemy_count = -1
+    combat_bgm_delay = 0.75 if game.IS_WEB else 0.0
 
     def player_center():
         return (player.x + player.size / 2, player.y + player.size / 2 + game.INFO_BAR_HEIGHT)
@@ -362,7 +367,8 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     if spawned > 0:
         wave_index += 1
         runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
-    await _show_web_boot_surface(game, screen, runtime, count=2)
+    if game.IS_WEB:
+        await asyncio.sleep(0)
     player._hit_flash = 0.0
     player._flash_prev_hp = int(player.hp)
     for z in enemies:
@@ -384,7 +390,6 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 _resume_web_audio_on_event(game, event)
                 if getattr(event, "type", None) in {
                     getattr(pygame, "WINDOWFOCUSLOST", None),
-                    getattr(pygame, "WINDOWLEAVE", None),
                 }:
                     _web_snapshot_autosave(
                         game, runtime, game_state, player, enemies, game.current_level, chosen_enemy_type, bullets, force=True
@@ -406,13 +411,14 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 copy_frame=False,
             )
             if game.IS_WEB:
-                if not combat_bgm_started:
-                    await asyncio.sleep(0)
-                    game.play_combat_bgm()
-                    combat_bgm_started = True
                 game._resume_bgm_if_needed(min_interval_s=0.0)
                 await asyncio.sleep(0)
             continue
+        if game.IS_WEB and (not combat_bgm_started):
+            combat_bgm_delay = max(0.0, combat_bgm_delay - dt)
+            if combat_bgm_delay <= 0.0:
+                game.play_combat_bgm()
+                combat_bgm_started = True
         pf = getattr(game_state, 'pending_focus', None)
         if pf:
             fkind, (fx, fy) = pf
@@ -449,7 +455,6 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             _resume_web_audio_on_event(game, event)
             if getattr(event, "type", None) in {
                 getattr(pygame, "WINDOWFOCUSLOST", None),
-                getattr(pygame, "WINDOWLEAVE", None),
             }:
                 _web_snapshot_autosave(
                     game, runtime, game_state, player, enemies, game.current_level, chosen_enemy_type, bullets, force=True
@@ -467,10 +472,10 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 player.targeting_skill = None
                 player.skill_target_origin = None
                 continue
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, 'targeting_skill', None):
+            if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
                 continue
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if is_escape_event(event):
                 bg = last_frame or game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=game_state.obstacles)
                 choice, time_left = game.pause_game_modal(screen, bg, clock, time_left, player)
                 if choice == 'continue':
@@ -519,7 +524,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                         player.skill_flash['teleport'] = 0.35
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, 'targeting_skill', None):
+            if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
         if getattr(player, 'targeting_skill', None):
             game._update_skill_target(player, game_state)
@@ -838,7 +843,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
     if game.IS_WEB and runtime.get("_menu_transition_frame") is not None:
-        await _show_web_boot_surface(game, screen, runtime, count=6)
+        await asyncio.sleep(0)
     await _preload_web_gameplay_assets(game, screen, runtime)
     running = True
     last_frame = None
@@ -850,6 +855,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         combat_bgm_started = True
     spawn_timer = 0.0
     wave_index = 0
+    combat_bgm_delay = 0.75 if game.IS_WEB else 0.0
 
     def player_center():
         return (player.x + player.size / 2, player.y + player.size / 2 + game.INFO_BAR_HEIGHT)
@@ -919,9 +925,10 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     while running:
         dt = _frame_dt(game, clock)
         if game.IS_WEB and (not combat_bgm_started):
-            await asyncio.sleep(0)
-            game.play_combat_bgm()
-            combat_bgm_started = True
+            combat_bgm_delay = max(0.0, combat_bgm_delay - dt)
+            if combat_bgm_delay <= 0.0:
+                game.play_combat_bgm()
+                combat_bgm_started = True
         if game.IS_WEB:
             game._resume_bgm_if_needed(min_interval_s=0.0)
         time_left -= dt
@@ -935,7 +942,6 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             _resume_web_audio_on_event(game, event)
             if getattr(event, "type", None) in {
                 getattr(pygame, "WINDOWFOCUSLOST", None),
-                getattr(pygame, "WINDOWLEAVE", None),
             }:
                 _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets, force=True)
             if event.type == pygame.QUIT:
@@ -949,10 +955,10 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             if game.is_action_event(event, 'teleport') and getattr(player, 'targeting_skill', None) == 'teleport':
                 player.targeting_skill = None
                 continue
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, 'targeting_skill', None):
+            if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
                 continue
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if is_escape_event(event):
                 bg = last_frame or game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=game_state.obstacles)
                 choice, time_left = game.pause_game_modal(screen, bg, clock, time_left, player)
                 if choice == 'continue':
@@ -998,7 +1004,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                         player.skill_flash['teleport'] = 0.35
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and getattr(player, 'targeting_skill', None):
+            if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
         if getattr(player, 'targeting_skill', None):
             game._update_skill_target(player, game_state)
@@ -1186,11 +1192,10 @@ async def app_main(game) -> None:
         game.VIEW_W, game.VIEW_H = (info.current_w, info.current_h)
     pygame.display.set_caption(game.GAME_TITLE)
     game.resize_world_to_view()
-    if not game.IS_WEB:
-        try:
-            game.play_intro_bgm()
-        except Exception as e:
-            print(f'[Audio] background music not started: {e}')
+    try:
+        game.play_intro_bgm()
+    except Exception as e:
+        print(f'[Audio] background music not started: {e}')
     if not game.IS_WEB:
         screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
         pygame.display.set_caption(game.GAME_TITLE)

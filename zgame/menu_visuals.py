@@ -157,16 +157,15 @@ def install(game):
             if web_state is None:
                 trans = ensure_hex_transition()
                 trans.start()
+                trans.duration_in = min(float(getattr(trans, "duration_in", 0.25)), 0.16)
+                trans.duration_hold = min(float(getattr(trans, "duration_hold", 0.10)), 0.04)
+                trans.duration_out = min(float(getattr(trans, "duration_out", 0.25)), 0.18)
                 web_state = {
                     "transition": trans,
                     "from_surface": from_surf,
-                    "current_bg": from_surf,
-                    "to_surface": screen.copy(),
                     "last_tick_ms": now_ms,
                 }
                 runtime["_web_hex_transition_state"] = web_state
-            else:
-                web_state["to_surface"] = screen.copy()
             trans = web_state.get("transition")
             if trans is None:
                 runtime["_menu_transition_frame"] = None
@@ -176,12 +175,9 @@ def install(game):
             dt = max(0.0, min(0.05, (now_ms - last_tick_ms) / 1000.0))
             web_state["last_tick_ms"] = now_ms
             trans.update(dt)
-            if trans.should_swap_screens():
-                web_state["current_bg"] = web_state.get("to_surface")
-            elif getattr(trans, "midpoint_triggered", False):
-                web_state["current_bg"] = web_state.get("to_surface")
-            current_bg = web_state.get("current_bg")
-            if current_bg is not None:
+            trans.should_swap_screens()
+            current_bg = web_state.get("from_surface")
+            if current_bg is not None and not getattr(trans, "midpoint_triggered", False):
                 screen.blit(current_bg, (0, 0))
             trans.draw(screen)
             if not trans.is_active():

@@ -4,7 +4,7 @@ import asyncio
 import sys
 
 import pygame
-from zgame.browser import is_web_interaction_event
+from zgame.browser import is_escape_event, is_web_interaction_event
 from zgame import runtime_state as rs
 
 
@@ -18,6 +18,38 @@ def _meta(game):
 
 def _viz(game):
     return game._get_neuro_viz()
+
+
+def _prime_web_gameplay_assets_step(game):
+    if not getattr(game, "IS_WEB", False):
+        return
+    state = _state(game)
+    if state.get("_web_gameplay_assets_ready", False):
+        return
+    base_size = int(game.CELL_SIZE * 0.6)
+    player_target = (
+        int(base_size * 2.0 * game.PLAYER_SPRITE_SCALE),
+        int(base_size * 2.4 * game.PLAYER_SPRITE_SCALE),
+    )
+    tasks = [
+        lambda: game._load_shop_sprite("characters/player/sheets/player.png", player_target, allow_upscale=False),
+        *(lambda zt=zt: game._enemy_sprite(zt, base_size) for zt in ("basic", "fast", "tank", "strong", "ranged", "buffer", "shielder")),
+        lambda: game._enemy_sprite("ravager", max(base_size * 2, base_size)),
+        *(lambda d=direction: game._auto_turret_sprite(d) for direction in ("left", "right", "up", "down")),
+        lambda: game.get_stationary_turret_assets(),
+    ]
+    idx = int(state.get("_web_gameplay_asset_cursor", 0))
+    if idx >= len(tasks):
+        state["_web_gameplay_assets_ready"] = True
+        return
+    try:
+        tasks[idx]()
+    except Exception:
+        pass
+    idx += 1
+    state["_web_gameplay_asset_cursor"] = idx
+    if idx >= len(tasks):
+        state["_web_gameplay_assets_ready"] = True
 
 
 async def run_neuro_intro(game, screen: pygame.Surface):
@@ -37,6 +69,7 @@ async def run_neuro_intro(game, screen: pygame.Surface):
         game._draw_intro_scanlines(screen, t)
         game.draw_neuro_title_intro(screen, title_font, prompt_font, t)
         pygame.display.flip()
+        _prime_web_gameplay_assets_step(game)
         for event in pygame.event.get():
             screen = game._handle_web_window_event(event) or screen
             if event.type == pygame.QUIT:
@@ -100,10 +133,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
     viz = _viz(game)
     game.flush_events()
     intro_flag = state.pop("_skip_intro_once", False)
-    # Web builds have been prone to stalling around the intro->menu handoff,
-    # especially when browser audio policies defer mixer readiness.
-    # Skip the intro on web so the first interactive frame is the actual menu.
-    skip_intro = bool(skip_intro or getattr(game, "WEB_DEMO_SKIP_INTRO", False) or game.IS_WEB)
+    skip_intro = bool(skip_intro or getattr(game, "WEB_DEMO_SKIP_INTRO", False))
     if not skip_intro and not intro_flag:
         await run_neuro_intro(game, screen)
     if not game.IS_WEB:
@@ -204,6 +234,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
         game.draw_neuro_info_column(screen, info_font, t, can_continue)
         game.run_pending_menu_transition(screen)
         pygame.display.flip()
+        _prime_web_gameplay_assets_step(game)
         for event in pygame.event.get():
             screen = game._handle_web_window_event(event) or screen
             if event.type == pygame.QUIT:
@@ -277,7 +308,7 @@ def show_instruction(game, screen):
                 sys.exit()
             if game.IS_WEB and is_web_interaction_event(event):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if is_escape_event(event):
                 from_surf = screen.copy()
                 to_surf = render_start_menu_surface(game, game.has_save())
                 game.play_hex_transition(screen, from_surf, to_surf, direction="up")
@@ -320,7 +351,7 @@ async def show_instruction_web(game, screen):
                 sys.exit()
             if game.IS_WEB and is_web_interaction_event(event):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if is_escape_event(event):
                 from_surf = screen.copy()
                 to_surf = render_start_menu_surface(game, game.has_save())
                 game.play_hex_transition(screen, from_surf, to_surf, direction="up")
@@ -585,7 +616,7 @@ def show_pause_menu(game, screen, background_surf):
                 sys.exit()
             if game.IS_WEB and is_web_interaction_event(event):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if is_escape_event(event):
                 game.flush_events()
                 return "continue"
             if event.type == pygame.MOUSEBUTTONDOWN:

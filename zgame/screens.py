@@ -4,7 +4,7 @@ import asyncio
 import sys
 
 import pygame
-from zgame.browser import is_web_interaction_event
+from zgame.browser import is_escape_event, is_web_interaction_event
 from zgame import runtime_state as rs
 
 
@@ -85,7 +85,7 @@ async def show_settings_popup_web(game, screen, background_surf):
                 sys.exit()
             if game.IS_WEB and is_web_interaction_event(event):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if is_escape_event(event):
                 game.FX_VOLUME = fx_val
                 game.BGM_VOLUME = bgm_val
                 _sync_bgm_volume(game, bgm_val)
@@ -138,7 +138,7 @@ async def show_fail_screen(game, screen, background_surf):
                 sys.exit()
             if game.IS_WEB and is_web_interaction_event(event):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if is_escape_event(event):
                 bg = pygame.display.get_surface().copy()
                 pick = game.pause_from_overlay(screen, bg)
                 if pick == "continue":
@@ -207,7 +207,7 @@ async def show_success_screen(game, screen, background_surf, reward_choices):
                 sys.exit()
             if game.IS_WEB and is_web_interaction_event(event):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if is_escape_event(event):
                 bg = pygame.display.get_surface().copy()
                 pick = game.pause_from_overlay(screen, bg)
                 if pick == "continue":
@@ -396,10 +396,10 @@ def show_settings_popup(game, screen, background_surf):
                 sys.exit()
             if game.IS_WEB and is_web_interaction_event(event):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE and waiting_action:
+            if is_escape_event(event) and waiting_action:
                 waiting_action = None
                 continue
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if is_escape_event(event):
                 game.FX_VOLUME = fx_val
                 game.BGM_VOLUME = bgm_val
                 _sync_bgm_volume(game, bgm_val)
@@ -461,7 +461,7 @@ def show_settings_popup(game, screen, background_surf):
 
             elif page == "controls":
                 if waiting_action and event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
+                    if is_escape_event(event):
                         waiting_action = None
                     else:
                         game.set_binding(waiting_action, event.key)

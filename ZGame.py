@@ -46,7 +46,9 @@ from zgame.browser import (
     WEB_TARGET_FPS,
     WEB_USE_LITE_RENDER,
     WEB_WINDOW_SIZE,
+    cap_web_surface_size,
     get_initial_web_window_size,
+    is_escape_event,
 )
 from zgame.paths import (
     BASE_DIR,
@@ -128,6 +130,7 @@ def _handle_web_window_event(event) -> pygame.Surface | None:
         return pygame.display.get_surface()
     width = max(640, int(getattr(event, "w", 0) or VIEW_W or WEB_WINDOW_SIZE[0]))
     height = max(360, int(getattr(event, "h", 0) or VIEW_H or WEB_WINDOW_SIZE[1]))
+    width, height = cap_web_surface_size(width, height)
     surface = pygame.display.set_mode((width, height), pygame.RESIZABLE)
     _refresh_viewport(surface)
     _invalidate_view_caches()
@@ -4656,9 +4659,9 @@ def _web_level_config(config: dict) -> dict:
     if not IS_WEB:
         return config
     web_cfg = dict(config)
-    obstacle_cap = 8 if WEB_DEMO else 10
-    item_cap = 2 if WEB_DEMO else 2
-    enemy_seed_cap = 1 if WEB_DEMO else 1
+    obstacle_cap = 8 if WEB_DEMO else 16
+    item_cap = 2 if WEB_DEMO else 4
+    enemy_seed_cap = 1 if WEB_DEMO else 2
     web_cfg["obstacle_count"] = min(int(web_cfg.get("obstacle_count", 0)), obstacle_cap)
     web_cfg["item_count"] = min(int(web_cfg.get("item_count", 0)), item_cap)
     web_cfg["enemy_count"] = min(int(web_cfg.get("enemy_count", 0)), enemy_seed_cap)
@@ -5395,7 +5398,6 @@ def _diminish_growth(level: int, per_level: float) -> float:
 
 
 # ---- Per-run carry-over of player's growth between levels ----
-# ---- Per-run carry-over of player's growth between levels ----
 def capture_player_carry(player) -> dict:
     """Carry only progression: level and leftover XP. HP is NOT carried across levels."""
     return {
@@ -5757,10 +5759,20 @@ def play_intro_bgm():
 
 def play_combat_bgm():
     """Play the main combat/shop track (ZGAME.wav)."""
+    if IS_WEB:
+        runtime = _runtime_state()
+        bgm = runtime.get("_bgm")
+        if bgm is not None and getattr(bgm, "_ready", False):
+            try:
+                bgm.set_volume(BGM_VOLUME / 100.0)
+                bgm.playBackGroundMusic(loops=-1, fade_ms=0)
+            except Exception:
+                pass
+            return True
     combat_candidates = [
         *_asset_candidates("music", "ZGAME.wav"),
     ]
-    _play_bgm_candidates(combat_candidates, volume=BGM_VOLUME / 100.0)
+    return _play_bgm_candidates(combat_candidates, volume=BGM_VOLUME / 100.0)
 
 
 # ==================== 游戏主循环 ====================
