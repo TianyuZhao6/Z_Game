@@ -378,10 +378,12 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     running = True
     game_result = None
     last_frame = None
+    render_cooldown = 0.0
     clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60)
     entry_freeze = 0.4
     while running:
         dt = _frame_dt(game, clock)
+        render_cooldown = max(0.0, render_cooldown - dt)
         if entry_freeze > 0:
             entry_freeze = max(0.0, entry_freeze - dt)
             for event in pygame.event.get():
@@ -400,16 +402,18 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             game.update_hit_flash_timer(player, dt)
             for z in enemies:
                 game.update_hit_flash_timer(z, dt)
-            last_frame = game.render_game_iso(
-                screen,
-                game_state,
-                player,
-                enemies,
-                bullets,
-                enemy_shots,
-                obstacles=game_state.obstacles,
-                copy_frame=False,
-            )
+            if (not game.IS_WEB) or render_cooldown <= 0.0 or last_frame is None:
+                last_frame = game.render_game_iso(
+                    screen,
+                    game_state,
+                    player,
+                    enemies,
+                    bullets,
+                    enemy_shots,
+                    obstacles=game_state.obstacles,
+                    copy_frame=False,
+                )
+                render_cooldown = float(getattr(game, "WEB_RENDER_INTERVAL", 0.0) or 0.0)
             if game.IS_WEB:
                 game._resume_bgm_if_needed(min_interval_s=0.0)
                 await asyncio.sleep(0)
@@ -623,8 +627,9 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 bullets.remove(b)
         player.hit_cd = max(0.0, player.hit_cd - dt)
         _flush_pending_bullets(game, bullets, game_state, player)
+        obstacle_values = tuple(game_state.obstacles.values())
         for enemy in list(enemies):
-            enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
+            enemy.move_and_attack(player, obstacle_values, game_state, dt=dt)
             if player.hit_cd <= 0.0 and game.circle_touch(enemy, player):
                 mult = getattr(game_state, 'biome_enemy_contact_mult', 1.0)
                 base_mult = getattr(enemy, 'contact_damage_mult', 1.0)
@@ -700,27 +705,30 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             else:
                 last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
             continue
-        if game.USE_ISO:
-            last_frame = game.render_game_iso(
-                pygame.display.get_surface(),
-                game_state,
-                player,
-                enemies,
-                bullets,
-                enemy_shots,
-                obstacles,
-                copy_frame=False,
-            )
-        else:
-            last_frame = game.render_game(
-                pygame.display.get_surface(),
-                game_state,
-                player,
-                enemies,
-                bullets,
-                enemy_shots,
-                copy_frame=False,
-            )
+        should_render = (not game.IS_WEB) or render_cooldown <= 0.0 or last_frame is None
+        if should_render:
+            if game.USE_ISO:
+                last_frame = game.render_game_iso(
+                    pygame.display.get_surface(),
+                    game_state,
+                    player,
+                    enemies,
+                    bullets,
+                    enemy_shots,
+                    obstacles,
+                    copy_frame=False,
+                )
+            else:
+                last_frame = game.render_game(
+                    pygame.display.get_surface(),
+                    game_state,
+                    player,
+                    enemies,
+                    bullets,
+                    enemy_shots,
+                    copy_frame=False,
+                )
+            render_cooldown = float(getattr(game, "WEB_RENDER_INTERVAL", 0.0) or 0.0)
         if game_result == 'success':
             runtime['_last_spoils'] = getattr(game_state, 'spoils_gained', 0)
             runtime['_carry_player_state'] = game.capture_player_carry(player)
@@ -922,8 +930,10 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         z._hit_flash = 0.0
         z._flash_prev_hp = int(getattr(z, 'hp', 0))
     _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets, force=True)
+    render_cooldown = 0.0
     while running:
         dt = _frame_dt(game, clock)
+        render_cooldown = max(0.0, render_cooldown - dt)
         if game.IS_WEB and (not combat_bgm_started):
             combat_bgm_delay = max(0.0, combat_bgm_delay - dt)
             if combat_bgm_delay <= 0.0:
@@ -1073,8 +1083,9 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         pgx = int(player.rect.centerx // game.CELL_SIZE)
         pgy = int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
         game_state.refresh_flow_field((pgx, pgy), dt)
+        obstacle_values = tuple(game_state.obstacles.values())
         for enemy in list(enemies):
-            enemy.move_and_attack(player, list(game_state.obstacles.values()), game_state, dt=dt)
+            enemy.move_and_attack(player, obstacle_values, game_state, dt=dt)
             if player.hit_cd <= 0.0 and game.circle_touch(enemy, player):
                 mult = getattr(game_state, 'biome_enemy_contact_mult', 1.0)
                 base_mult = getattr(enemy, 'contact_damage_mult', 1.0)
@@ -1150,27 +1161,30 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 game.clear_save()
                 game.flush_events()
                 return ('restart', None, last_frame or screen.copy())
-        if game.USE_ISO:
-            last_frame = game.render_game_iso(
-                pygame.display.get_surface(),
-                game_state,
-                player,
-                enemies,
-                bullets,
-                enemy_shots,
-                obstacles=game_state.obstacles,
-                copy_frame=False,
-            )
-        else:
-            last_frame = game.render_game(
-                pygame.display.get_surface(),
-                game_state,
-                player,
-                enemies,
-                bullets,
-                enemy_shots,
-                copy_frame=False,
-            )
+        should_render = (not game.IS_WEB) or render_cooldown <= 0.0 or last_frame is None
+        if should_render:
+            if game.USE_ISO:
+                last_frame = game.render_game_iso(
+                    pygame.display.get_surface(),
+                    game_state,
+                    player,
+                    enemies,
+                    bullets,
+                    enemy_shots,
+                    obstacles=game_state.obstacles,
+                    copy_frame=False,
+                )
+            else:
+                last_frame = game.render_game(
+                    pygame.display.get_surface(),
+                    game_state,
+                    player,
+                    enemies,
+                    bullets,
+                    enemy_shots,
+                    copy_frame=False,
+                )
+            render_cooldown = float(getattr(game, "WEB_RENDER_INTERVAL", 0.0) or 0.0)
         _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets)
         if game.IS_WEB:
             await asyncio.sleep(0)

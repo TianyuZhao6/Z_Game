@@ -201,8 +201,10 @@ def install(game):
         if override_cam is not None:
             camx, camy = override_cam
         else:
-            camx, camy = calculate_iso_camera(player.x + player.size * 0.5,
-                                              player.y + player.size * 0.5 + INFO_BAR_HEIGHT)
+            camx, camy = calculate_iso_camera(
+                player.x + player.size * 0.5,
+                player.y + player.size * 0.5 + INFO_BAR_HEIGHT,
+            )
         if hasattr(game_state, "camera_shake_offset"):
             dx, dy = game_state.camera_shake_offset()
             camx += dx
@@ -218,130 +220,112 @@ def install(game):
         if getattr(player, "targeting_skill", None):
             _draw_skill_overlay(screen, player, camx, camy)
 
-        drawables = []
         for (gx, gy), ob in obstacles.items():
             if not (gx_min <= gx <= gx_max and gy_min <= gy <= gy_max):
                 continue
-            if getattr(ob, "type", "") in ("Lantern", "StationaryTurret"):
+            ob_type = getattr(ob, "type", "")
+            if ob_type in ("Lantern", "StationaryTurret"):
                 continue
-            base_col = (120, 120, 120) if getattr(ob, "type", "") == "Indestructible" else (200, 80, 80)
-            if getattr(ob, "type", "") == "Destructible" and getattr(ob, "health", None) is not None:
-                t = max(0.4, min(1.0, ob.health / float(max(1, OBSTACLE_HEALTH))))
-                base_col = (int(200 * t), int(80 * t), int(80 * t))
-            top_pts = iso_tile_points(gx, gy, camx, camy)
-            drawables.append(("wall", top_pts[2][1], {"gx": gx, "gy": gy, "color": base_col}))
+            if ob_type == "Indestructible":
+                base_col = (120, 120, 120)
+            else:
+                base_col = (200, 80, 80)
+                if ob_type == "Destructible" and getattr(ob, "health", None) is not None:
+                    t = max(0.4, min(1.0, ob.health / float(max(1, OBSTACLE_HEALTH))))
+                    base_col = (int(200 * t), int(80 * t), int(80 * t))
+            draw_iso_tile(screen, gx, gy, base_col, camx, camy, border=0)
 
-        spoils = list(getattr(game_state, "spoils", []))
+        spoils = getattr(game_state, "spoils", ())
         if pickup_cap > 0:
             spoils = spoils[:pickup_cap]
         for s in spoils:
-            wx, wy = s.base_x / CELL_SIZE, (s.base_y - s.h - INFO_BAR_HEIGHT) / CELL_SIZE
+            wx = s.base_x / CELL_SIZE
+            wy = (s.base_y - s.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-            drawables.append(("coin", sy, {"cx": sx, "cy": sy, "r": s.r}))
-        heals = list(getattr(game_state, "heals", []))
+            pygame.draw.circle(screen, (255, 215, 80), (int(sx), int(sy)), int(s.r))
+
+        heals = getattr(game_state, "heals", ())
         if pickup_cap > 0:
             heals = heals[:pickup_cap]
         for h in heals:
-            wx, wy = h.base_x / CELL_SIZE, (h.base_y - h.h - INFO_BAR_HEIGHT) / CELL_SIZE
+            wx = h.base_x / CELL_SIZE
+            wy = (h.base_y - h.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-            drawables.append(("heal", sy, {"cx": sx, "cy": sy, "r": h.r}))
-        items = list(getattr(game_state, "items", []))
+            pygame.draw.circle(screen, (225, 225, 225), (int(sx), int(sy)), int(h.r))
+
+        items = getattr(game_state, "items", ())
         if pickup_cap > 0:
             items = items[:pickup_cap]
         for it in items:
             wx = it.center[0] / CELL_SIZE
             wy = (it.center[1] - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-            drawables.append(("item", sy, {"cx": sx, "cy": sy, "r": it.radius, "main": it.is_main}))
-        turrets = list(getattr(game_state, "turrets", []))
+            col = (255, 224, 0) if getattr(it, "is_main", False) else (240, 210, 90)
+            pygame.draw.circle(screen, col, (int(sx), int(sy)), int(it.radius))
+
+        player_size = int(CELL_SIZE * 0.6)
+        player_sprite = _load_shop_sprite(
+            "characters/player/sheets/player.png",
+            (
+                int(player_size * 2.0 * PLAYER_SPRITE_SCALE),
+                int(player_size * 2.4 * PLAYER_SPRITE_SCALE),
+            ),
+            allow_upscale=False,
+        )
+        stationary_sprite, _, _ = get_stationary_turret_assets()
+
+        actors = []
+        turrets = getattr(game_state, "turrets", ())
         if turret_cap > 0:
             turrets = turrets[:turret_cap]
-        for t in turrets:
-            wx, wy = t.x / CELL_SIZE, (t.y - INFO_BAR_HEIGHT) / CELL_SIZE
+        for turret in turrets:
+            wx = turret.x / CELL_SIZE
+            wy = (turret.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-            drawables.append(("turret", sy, {"cx": sx, "cy": sy, "obj": t}))
-        web_enemies = list(enemies)
-        if enemy_cap > 0:
-            web_enemies = web_enemies[:enemy_cap]
-        for z in web_enemies:
-            wx = z.rect.centerx / CELL_SIZE
-            wy = (z.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
+            actors.append((sy, "turret", turret, sx, sy))
+
+        web_enemies = enemies[:enemy_cap] if enemy_cap > 0 else enemies
+        for enemy in web_enemies:
+            wx = enemy.rect.centerx / CELL_SIZE
+            wy = (enemy.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-            drawables.append(("enemy", sy, {"cx": sx, "cy": sy, "z": z}))
+            actors.append((sy, "enemy", enemy, sx, sy))
+
         wx = player.rect.centerx / CELL_SIZE
         wy = (player.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
         psx, psy = iso_world_to_screen(wx, wy, 0, camx, camy)
-        drawables.append(("player", psy, {"cx": psx, "cy": psy, "p": player}))
-        web_bullets = list(bullets or [])
-        if bullet_cap > 0:
-            web_bullets = web_bullets[:bullet_cap]
-        for b in web_bullets:
-            wx, wy = b.x / CELL_SIZE, (b.y - INFO_BAR_HEIGHT) / CELL_SIZE
-            sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-            drawables.append(("bullet", sy, {
-                "cx": sx,
-                "cy": sy,
-                "r": int(getattr(b, "r", BULLET_RADIUS)),
-                "src": getattr(b, "source", "player"),
-            }))
-        web_enemy_shots = list(enemy_shots or [])
-        if enemy_shot_cap > 0:
-            web_enemy_shots = web_enemy_shots[:enemy_shot_cap]
-        for es in web_enemy_shots:
-            wx, wy = es.x / CELL_SIZE, (es.y - INFO_BAR_HEIGHT) / CELL_SIZE
-            sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-            drawables.append(("eshot", sy, {
-                "cx": sx,
-                "cy": sy,
-                "r": int(getattr(es, "r", BULLET_RADIUS)),
-                "col": getattr(es, "color", (255, 120, 50)),
-            }))
+        actors.append((psy, "player", player, psx, psy))
+        actors.sort(key=lambda item: item[0])
 
-        drawables.sort(key=lambda x: x[1])
-        for kind, _, data in drawables:
-            if kind == "wall":
-                draw_iso_tile(screen, data["gx"], data["gy"], data["color"], camx, camy, border=0)
-            elif kind == "coin":
-                pygame.draw.circle(screen, (255, 215, 80), (int(data["cx"]), int(data["cy"])), int(data["r"]))
-            elif kind == "heal":
-                pygame.draw.circle(screen, (225, 225, 225), (int(data["cx"]), int(data["cy"])), int(data["r"]))
-            elif kind == "item":
-                col = (255, 224, 0) if data.get("main", False) else (240, 210, 90)
-                pygame.draw.circle(screen, col, (int(data["cx"]), int(data["cy"])), int(data["r"]))
-            elif kind == "turret":
-                obj = data.get("obj")
-                cx = int(data["cx"])
-                cy = int(data["cy"])
+        for _, kind, obj, sx, sy in actors:
+            cx = int(sx)
+            cy = int(sy)
+            if kind == "turret":
                 if isinstance(obj, StationaryTurret):
-                    sprite, _, _ = get_stationary_turret_assets()
-                    if sprite:
-                        rect = sprite.get_rect(midbottom=(cx, cy))
-                        screen.blit(sprite, rect)
+                    if stationary_sprite:
+                        rect = stationary_sprite.get_rect(midbottom=(cx, cy))
+                        screen.blit(stationary_sprite, rect)
                     else:
                         pygame.draw.circle(screen, (80, 180, 255), (cx, cy - 6), max(7, CELL_SIZE // 5))
                 elif isinstance(obj, AutoTurret):
                     owner = getattr(obj, "owner", None)
                     dir_key = None
                     facing = getattr(owner, "facing", None)
-                    if facing:
-                        if facing in ("E", "SE", "NE"):
-                            dir_key = "right"
-                        elif facing in ("W", "SW", "NW"):
-                            dir_key = "left"
-                        elif facing in ("N",):
-                            dir_key = "up"
-                        elif facing in ("S",):
-                            dir_key = "down"
+                    if facing in ("E", "SE", "NE"):
+                        dir_key = "right"
+                    elif facing in ("W", "SW", "NW"):
+                        dir_key = "left"
+                    elif facing == "N":
+                        dir_key = "up"
+                    elif facing == "S":
+                        dir_key = "down"
                     if dir_key is None:
                         if owner and hasattr(owner, "rect"):
                             ox, oy = owner.rect.center
                             dx, dy = cx - ox, cy - oy
                         else:
                             dx = dy = 0
-                        if abs(dx) >= abs(dy):
-                            dir_key = "right" if dx >= 0 else "left"
-                        else:
-                            dir_key = "down" if dy >= 0 else "up"
+                        dir_key = ("right" if dx >= 0 else "left") if abs(dx) >= abs(dy) else ("down" if dy >= 0 else "up")
                     sprite = _auto_turret_sprite(dir_key)
                     if sprite:
                         rect = sprite.get_rect(midbottom=(cx, cy))
@@ -350,56 +334,58 @@ def install(game):
                         pygame.draw.circle(screen, (80, 180, 255), (cx, cy - 6), max(7, CELL_SIZE // 5))
                 else:
                     pygame.draw.circle(screen, (80, 180, 255), (cx, cy - 6), max(7, CELL_SIZE // 5))
-            elif kind == "bullet":
-                col = (0, 255, 255) if data.get("src") == "turret" else (120, 204, 121)
-                pygame.draw.circle(screen, col, (int(data["cx"]), int(data["cy"])), max(2, int(data["r"])))
-            elif kind == "eshot":
-                pygame.draw.circle(screen, data.get("col", (255, 120, 50)),
-                                   (int(data["cx"]), int(data["cy"])), max(2, int(data["r"])))
             elif kind == "enemy":
-                z = data["z"]
-                cx = int(data["cx"])
-                cy = int(data["cy"] - max(10, int(getattr(z, "size", CELL_SIZE * 0.6) * 0.45)))
-                draw_size = max(int(CELL_SIZE * 0.6), int(getattr(z, "rect", pygame.Rect(0, 0, CELL_SIZE, CELL_SIZE)).w))
-                if getattr(z, "is_boss", False) or getattr(z, "type", "") == "ravager":
-                    draw_size = max(draw_size * 2, int(getattr(z, "rect", pygame.Rect(0, 0, CELL_SIZE, CELL_SIZE)).w * 2))
-                enemy_sprite = _enemy_sprite(getattr(z, "type", ""), draw_size)
+                draw_size = max(int(CELL_SIZE * 0.6), int(getattr(obj, "rect", pygame.Rect(0, 0, CELL_SIZE, CELL_SIZE)).w))
+                if getattr(obj, "is_boss", False) or getattr(obj, "type", "") == "ravager":
+                    draw_size = max(draw_size * 2, int(getattr(obj, "rect", pygame.Rect(0, 0, CELL_SIZE, CELL_SIZE)).w * 2))
+                enemy_sprite = _enemy_sprite(getattr(obj, "type", ""), draw_size)
                 if enemy_sprite:
-                    rect = enemy_sprite.get_rect(midbottom=(cx, int(data["cy"])))
+                    rect = enemy_sprite.get_rect(midbottom=(cx, cy))
                     screen.blit(enemy_sprite, rect)
                     body_r = max(8, int(draw_size * 0.18))
                     hp_anchor_y = rect.top
                 else:
-                    body_r = max(8, int(getattr(z, "size", CELL_SIZE * 0.6) * 0.34))
-                    pygame.draw.circle(screen, getattr(z, "color", (220, 90, 90)), (cx, cy), body_r)
-                    pygame.draw.circle(screen, (16, 26, 40), (cx, cy), body_r, 2)
-                    hp_anchor_y = cy - body_r
-                hp = max(0, int(getattr(z, "hp", 0)))
-                hp_max = max(1, int(getattr(z, "max_hp", hp or 1)))
+                    body_r = max(8, int(getattr(obj, "size", CELL_SIZE * 0.6) * 0.34))
+                    body_y = int(cy - max(10, int(getattr(obj, "size", CELL_SIZE * 0.6) * 0.45)))
+                    pygame.draw.circle(screen, getattr(obj, "color", (220, 90, 90)), (cx, body_y), body_r)
+                    pygame.draw.circle(screen, (16, 26, 40), (cx, body_y), body_r, 2)
+                    hp_anchor_y = body_y - body_r
+                hp = max(0, int(getattr(obj, "hp", 0)))
+                hp_max = max(1, int(getattr(obj, "max_hp", hp or 1)))
                 if hp < hp_max:
                     bar_w = max(18, body_r * 2)
                     top = hp_anchor_y - 10
                     pygame.draw.rect(screen, (24, 34, 48), (cx - bar_w // 2, top, bar_w, 4))
                     pygame.draw.rect(screen, (90, 220, 120), (cx - bar_w // 2, top, int(bar_w * hp / hp_max), 4))
-            elif kind == "player":
-                p = data["p"]
-                cx = int(data["cx"])
-                player_size = int(CELL_SIZE * 0.6)
-                sprite_w = int(player_size * 2.0 * PLAYER_SPRITE_SCALE)
-                sprite_h = int(player_size * 2.4 * PLAYER_SPRITE_SCALE)
-                player_sprite = _load_shop_sprite(
-                    "characters/player/sheets/player.png",
-                    (sprite_w, sprite_h),
-                    allow_upscale=False,
-                )
+            else:
                 if player_sprite:
-                    rect = player_sprite.get_rect(midbottom=(cx, int(data["cy"])))
+                    rect = player_sprite.get_rect(midbottom=(cx, cy))
                     screen.blit(player_sprite, rect)
                 else:
-                    cy = int(data["cy"] - max(10, int(getattr(p, "size", CELL_SIZE * 0.6) * 0.45)))
-                    body_r = max(9, int(getattr(p, "size", CELL_SIZE * 0.6) * 0.36))
-                    pygame.draw.circle(screen, getattr(p, "color", (110, 250, 170)), (cx, cy), body_r)
-                    pygame.draw.circle(screen, (12, 24, 40), (cx, cy), body_r, 2)
+                    body_y = int(cy - max(10, int(getattr(obj, "size", CELL_SIZE * 0.6) * 0.45)))
+                    body_r = max(9, int(getattr(obj, "size", CELL_SIZE * 0.6) * 0.36))
+                    pygame.draw.circle(screen, getattr(obj, "color", (110, 250, 170)), (cx, body_y), body_r)
+                    pygame.draw.circle(screen, (12, 24, 40), (cx, body_y), body_r, 2)
+
+        web_bullets = bullets[:bullet_cap] if (bullet_cap > 0 and bullets) else (bullets or ())
+        for bullet in web_bullets:
+            wx = bullet.x / CELL_SIZE
+            wy = (bullet.y - INFO_BAR_HEIGHT) / CELL_SIZE
+            sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            col = (0, 255, 255) if getattr(bullet, "source", "player") == "turret" else (120, 204, 121)
+            pygame.draw.circle(screen, col, (int(sx), int(sy)), max(2, int(getattr(bullet, "r", BULLET_RADIUS))))
+
+        web_enemy_shots = enemy_shots[:enemy_shot_cap] if (enemy_shot_cap > 0 and enemy_shots) else (enemy_shots or ())
+        for shot in web_enemy_shots:
+            wx = shot.x / CELL_SIZE
+            wy = (shot.y - INFO_BAR_HEIGHT) / CELL_SIZE
+            sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            pygame.draw.circle(
+                screen,
+                getattr(shot, "color", (255, 120, 50)),
+                (int(sx), int(sy)),
+                max(2, int(getattr(shot, "r", BULLET_RADIUS))),
+            )
 
         draw_ui_topbar(
             screen,
