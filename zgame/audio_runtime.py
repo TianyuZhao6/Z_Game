@@ -28,8 +28,16 @@ def install(game):
                 return
             try:
                 if not pygame.mixer.get_init():
-                    pygame.mixer.pre_init(44100, -16, 2, 512)
-                    pygame.mixer.init(44100, -16, 2, 512)
+                    if getattr(game, "IS_WEB", False):
+                        # Browser audio is more stable with a larger buffer and
+                        # lower sample rate than the desktop defaults.
+                        mix_freq = 22050
+                        mix_buffer = 2048
+                    else:
+                        mix_freq = 44100
+                        mix_buffer = 512
+                    pygame.mixer.pre_init(mix_freq, -16, 2, mix_buffer)
+                    pygame.mixer.init(mix_freq, -16, 2, mix_buffer)
             except Exception as e:
                 print(f"[Audio] mixer init failed: {e}")
                 return

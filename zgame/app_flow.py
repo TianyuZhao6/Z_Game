@@ -379,11 +379,19 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     game_result = None
     last_frame = None
     render_cooldown = 0.0
+    web_transition_guard_t = 0.65 if game.IS_WEB else 0.0
     clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60)
     entry_freeze = 0.4
     while running:
         dt = _frame_dt(game, clock)
         render_cooldown = max(0.0, render_cooldown - dt)
+        if web_transition_guard_t > 0.0:
+            web_transition_guard_t = max(0.0, web_transition_guard_t - dt)
+            if web_transition_guard_t <= 0.0 and (
+                runtime.get("_web_hex_transition_state") is not None
+                or runtime.get("_menu_transition_frame") is not None
+            ):
+                game.clear_menu_transition_state()
         if entry_freeze > 0:
             entry_freeze = max(0.0, entry_freeze - dt)
             for event in pygame.event.get():
@@ -415,7 +423,6 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 )
                 render_cooldown = float(getattr(game, "WEB_RENDER_INTERVAL", 0.0) or 0.0)
             if game.IS_WEB:
-                game._resume_bgm_if_needed(min_interval_s=0.0)
                 await asyncio.sleep(0)
             continue
         if game.IS_WEB and (not combat_bgm_started):
@@ -931,16 +938,22 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         z._flash_prev_hp = int(getattr(z, 'hp', 0))
     _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets, force=True)
     render_cooldown = 0.0
+    web_transition_guard_t = 0.65 if game.IS_WEB else 0.0
     while running:
         dt = _frame_dt(game, clock)
         render_cooldown = max(0.0, render_cooldown - dt)
+        if web_transition_guard_t > 0.0:
+            web_transition_guard_t = max(0.0, web_transition_guard_t - dt)
+            if web_transition_guard_t <= 0.0 and (
+                runtime.get("_web_hex_transition_state") is not None
+                or runtime.get("_menu_transition_frame") is not None
+            ):
+                game.clear_menu_transition_state()
         if game.IS_WEB and (not combat_bgm_started):
             combat_bgm_delay = max(0.0, combat_bgm_delay - dt)
             if combat_bgm_delay <= 0.0:
                 game.play_combat_bgm()
                 combat_bgm_started = True
-        if game.IS_WEB:
-            game._resume_bgm_if_needed(min_interval_s=0.0)
         time_left -= dt
         runtime['_time_left_runtime'] = time_left
         if time_left <= 0:

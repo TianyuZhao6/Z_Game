@@ -750,34 +750,32 @@ def install(game):
                 self._stuck_t = getattr(self, '_stuck_t', 0.0) + dt
             else:
                 self._stuck_t = 0.0
-            dist2 = (self.rect.centerx - int(target_cx)) ** 2 + (self.rect.centery - int(target_cy)) ** 2
-            prev_d2 = getattr(self, '_prev_d2', float('inf'))
-            no_progress = dist2 > prev_d2 - 1.0
-            self._prev_d2 = dist2
-            if blocked and moved2 < min_move2 or (no_progress and moved2 < min_move2):
-                self._stuck_t = getattr(self, '_stuck_t', 0.0) + dt
-            else:
-                self._stuck_t = 0.0
             if self._stuck_t > 0.25 and self._avoid_t <= 0.0 and (blocked or no_progress):
                 self._avoid_t = random.uniform(0.25, 0.45)
                 self._avoid_side = random.choice((-1, 1))
             if self._stuck_t > 0.7 and self._avoid_t <= 0.0 and (self._path_step >= len(self._path)):
-                start = (gx, gy)
-                if self._focus_block:
-                    gp = getattr(self._focus_block, 'grid_pos', None)
-                    if gp is None:
-                        cx2, cy2 = (self._focus_block.rect.centerx, self._focus_block.rect.centery)
-                        goal = (int(cx2 // game.CELL_SIZE), int((cy2 - game.INFO_BAR_HEIGHT) // game.CELL_SIZE))
-                    else:
-                        goal = gp
-                else:
-                    goal = (int(player.rect.centerx // game.CELL_SIZE), int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE))
-                graph = game.build_graph(game.GRID_SIZE, game_state.obstacles)
-                came, _ = game.a_star_search(graph, start, goal, game_state.obstacles)
-                path = game.reconstruct_path(came, start, goal)
-                if len(path) > 1:
-                    self._path = path[1:7]
+                if game.IS_WEB and not getattr(game, "WEB_ENABLE_ASTAR_RECOVERY", False):
+                    self._avoid_t = max(float(getattr(self, '_avoid_t', 0.0)), random.uniform(0.45, 0.70))
+                    self._avoid_side = random.choice((-1, 1))
+                    self._path = []
                     self._path_step = 0
+                else:
+                    start = (gx, gy)
+                    if self._focus_block:
+                        gp = getattr(self._focus_block, 'grid_pos', None)
+                        if gp is None:
+                            cx2, cy2 = (self._focus_block.rect.centerx, self._focus_block.rect.centery)
+                            goal = (int(cx2 // game.CELL_SIZE), int((cy2 - game.INFO_BAR_HEIGHT) // game.CELL_SIZE))
+                        else:
+                            goal = gp
+                    else:
+                        goal = (int(player.rect.centerx // game.CELL_SIZE), int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE))
+                    graph = game.build_graph(game.GRID_SIZE, game_state.obstacles)
+                    came, _ = game.a_star_search(graph, start, goal, game_state.obstacles)
+                    path = game.reconstruct_path(came, start, goal)
+                    if len(path) > 1:
+                        self._path = path[1:7]
+                        self._path_step = 0
                 self._stuck_t = 0.0
             if self._focus_block and (self._focus_block.health is not None and self._focus_block.health <= 0):
                 self._focus_block = None

@@ -21,6 +21,7 @@ from zgame.browser import (
     WEB_AUTOSAVE_INTERVAL,
     WEB_DEMO_BOSS_TIME_LIMIT,
     WEB_ENABLE_AEGIS_PULSES,
+    WEB_ENABLE_ASTAR_RECOVERY,
     WEB_ENABLE_CURING_PAINT,
     WEB_ENABLE_DAMAGE_TEXTS,
     WEB_ENABLE_DOT_ROUNDS,
@@ -182,16 +183,38 @@ def pause_from_overlay(screen, bg_surface):
 
 
 # --- Font helper ---
+_MONO_FONT_CACHE: dict[int, "pygame.font.Font"] = {}
+_SYS_FONT_CACHE: dict[tuple[str | None, int, bool], "pygame.font.Font"] = {}
+
+
+def cached_sys_font(size: int, *, name: str | None = None, bold: bool = False) -> "pygame.font.Font":
+    key = (name, int(size), bool(bold))
+    font = _SYS_FONT_CACHE.get(key)
+    if font is not None:
+        return font
+    font = pygame.font.SysFont(name, size, bold=bold)
+    _SYS_FONT_CACHE[key] = font
+    return font
+
+
 def mono_font(size: int) -> "pygame.font.Font":
+    size = int(size)
+    cached = _MONO_FONT_CACHE.get(size)
+    if cached is not None:
+        return cached
     # Try common monospaced fonts; fall back safely
     candidates = ["Consolas", "Menlo", "DejaVu Sans Mono", "Courier New", "monospace"]
     try:
         name = pygame.font.match_font(candidates)
         if name:
-            return pygame.font.Font(name, size)
+            font = pygame.font.Font(name, size)
+            _MONO_FONT_CACHE[size] = font
+            return font
     except Exception:
         pass
-    return pygame.font.SysFont("monospace", size)
+    font = pygame.font.SysFont("monospace", size)
+    _MONO_FONT_CACHE[size] = font
+    return font
 
 
 def _draw_rect_perimeter_progress(surf: "pygame.Surface",
@@ -315,7 +338,7 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
     # 背板
     pygame.draw.rect(screen, (0, 0, 0), (0, 0, VIEW_W, INFO_BAR_HEIGHT))
     # 字体
-    font_timer = pygame.font.SysFont(None, 28)
+    font_timer = cached_sys_font(28)
     mono_small = mono_font(22)
     font_hp = mono_font(22)
     # ===== 计时器（居中） =====
@@ -428,8 +451,8 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
             pygame.draw.circle(glyph, palette["accent_dim"], (w // 2, h // 2), 10, 2)
         base.blit(glyph, (0, 0))
         # labels
-        lfont = pygame.font.SysFont("Consolas", 14, bold=True)
-        keyfont = pygame.font.SysFont("Consolas", 14, bold=True)
+        lfont = cached_sys_font(14, name="Consolas", bold=True)
+        keyfont = cached_sys_font(14, name="Consolas", bold=True)
         base.blit(lfont.render(label, True, palette["text"]), (8, h - 30))
         base.blit(keyfont.render(key_txt, True, palette["key"]), (8, h - 16))
         # cooldown overlay
@@ -673,11 +696,11 @@ def draw_boss_hp_bar(screen, boss):
         tx = bx + int(bar_w * t)
         pygame.draw.line(screen, (90, 90, 96), (tx, by), (tx, by + bar_h), 1)
     # 标题与数值
-    title_font = pygame.font.SysFont(None, 26, bold=True)
-    small_font = pygame.font.SysFont(None, 22)
+    title_font = cached_sys_font(26, bold=True)
+    small_font = cached_sys_font(22)
     title = title_font.render(str(name), True, (240, 240, 240))
     vals = small_font.render(f"{cur}/{mhp}", True, (235, 235, 235))
-    title_shadow = pygame.font.SysFont(None, 26, bold=True).render(str(name), True, (0, 0, 0))
+    title_shadow = cached_sys_font(26, bold=True).render(str(name), True, (0, 0, 0))
     screen.blit(title_shadow, title_shadow.get_rect(midbottom=(VIEW_W // 2 + 1, by - 3)))
     screen.blit(title, title.get_rect(midbottom=(VIEW_W // 2, by - 4)))
     screen.blit(vals, vals.get_rect(midleft=(bx + 8, by + bar_h + 4)))
@@ -697,7 +720,7 @@ def draw_boss_hp_bars_twin(screen, bosses):
     title_name = (getattr(a, "boss_name", None) or getattr(a, "_display_name", None)
                   or getattr(b, "boss_name", None) or getattr(b, "_display_name", None)
                   or "BOSS")
-    title_font = pygame.font.SysFont(None, 26, bold=True)
+    title_font = cached_sys_font(26, bold=True)
     title = title_font.render(str(title_name), True, (240, 240, 240))
     screen.blit(title, title.get_rect(midbottom=(VIEW_W // 2, by - 6)))
 
@@ -730,7 +753,7 @@ def draw_boss_hp_bars_twin(screen, bosses):
             tx = bx + int(bar_w * t)
             pygame.draw.line(screen, (90, 90, 96), (tx, y), (tx, y + bar_h), 1)
         # 右侧数值
-        small = pygame.font.SysFont(None, 20)
+        small = cached_sys_font(20)
         vals = small.render(f"{cur}/{mhp}", True, (235, 235, 235))
         screen.blit(vals, vals.get_rect(bottomright=(bx + bar_w - 6, y + bar_h + 16)))
 
@@ -3914,6 +3937,7 @@ HexCell, HexTransition, NeuroParticle, CometCorpse, CometBlast, AegisPulseRing =
     ensure_hex_transition,
     ensure_hex_background,
     queue_menu_transition,
+    clear_menu_transition_state,
     run_pending_menu_transition,
     play_hex_transition,
     neuro_instruction_layout,

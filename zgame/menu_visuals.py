@@ -145,6 +145,11 @@ def install(game):
         runtime["_menu_transition_frame"] = frame
         runtime["_web_hex_transition_state"] = None
 
+    def clear_menu_transition_state():
+        runtime = _runtime()
+        runtime["_menu_transition_frame"] = None
+        runtime["_web_hex_transition_state"] = None
+
     def run_pending_menu_transition(screen: pygame.Surface):
         """Play a queued menu transition onto the already-rendered screen frame."""
         runtime = _runtime()
@@ -818,6 +823,7 @@ def install(game):
         ensure_hex_transition,
         ensure_hex_background,
         queue_menu_transition,
+        clear_menu_transition_state,
         run_pending_menu_transition,
         play_hex_transition,
         neuro_instruction_layout,
