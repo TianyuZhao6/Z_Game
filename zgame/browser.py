@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import sys
+import time
 from typing import Callable, Mapping, Optional
 
 import pygame
@@ -60,6 +61,7 @@ WEB_DEMO_RENDER_ENEMY_CAP = 8
 WEB_DEMO_RENDER_BULLET_CAP = 28
 WEB_DEMO_RENDER_ENEMY_SHOT_CAP = 18
 WEB_USE_LITE_RENDER = True
+WEB_PROFILER_ENABLED = IS_WEB
 WEB_ENABLE_ENEMY_PAINT = not WEB_DEMO
 WEB_ENABLE_VULNERABILITY_MARKS = not WEB_DEMO
 WEB_ENABLE_HURRICANES = not WEB_DEMO
@@ -243,6 +245,157 @@ class WebInputState:
 
 
 WEB_INPUT = WebInputState()
+
+
+def _set_browser_profiler_phase(phase: str, detail: str = "") -> None:
+    if not IS_WEB:
+        return
+    try:
+        import platform as web_platform
+
+        window = getattr(web_platform, "window", None)
+        if window is None:
+            return
+        setattr(window, "__zgame_prof_phase", str(phase or ""))
+        if detail:
+            setattr(window, "__zgame_prof_detail", str(detail))
+    except Exception:
+        pass
+
+
+class WebRuntimeProfiler:
+    """Small web-only frame profiler for spotting the last hot gameplay phase."""
+
+    def __init__(self) -> None:
+        self.enabled = bool(WEB_PROFILER_ENABLED)
+        self.frame_index = 0
+        self.current_phase = ""
+        self._phase_started_at = 0.0
+        self._phase_order: list[str] = []
+        self._phase_last: dict[str, float] = {}
+        self._phase_avg: dict[str, float] = {}
+        self._phase_max: dict[str, float] = {}
+        self._counters: dict[str, int | float | str] = {}
+        self.last_total_ms = 0.0
+        self.avg_total_ms = 0.0
+        self.max_total_ms = 0.0
+        self.last_dt_ms = 0.0
+        self.last_rendered = False
+        self.last_hot_label = ""
+        self.last_hot_ms = 0.0
+        self.last_hot_total_ms = 0.0
+        self._last_console_log_s = -999.0
+        self._hot_phase_threshold_ms = 16.0
+        self._hot_total_threshold_ms = 33.0
+
+    def begin_frame(self, dt_s: float) -> None:
+        if not self.enabled:
+            return
+        self.frame_index += 1
+        self.current_phase = ""
+        self._phase_started_at = time.perf_counter()
+        self._phase_order = []
+        self._phase_last = {}
+        self._counters = {}
+        self.last_dt_ms = max(0.0, float(dt_s) * 1000.0)
+        _set_browser_profiler_phase("frame")
+
+    def mark(self, phase: str) -> None:
+        if not self.enabled:
+            return
+        now = time.perf_counter()
+        if self.current_phase:
+            self._record(self.current_phase, (now - self._phase_started_at) * 1000.0)
+        self.current_phase = str(phase or "")
+        self._phase_started_at = now
+        _set_browser_profiler_phase(self.current_phase)
+
+    def counter(self, name: str, value) -> None:
+        if not self.enabled:
+            return
+        self._counters[str(name)] = value
+
+    def finish(self, *, rendered: bool) -> None:
+        if not self.enabled:
+            return
+        now = time.perf_counter()
+        if self.current_phase:
+            self._record(self.current_phase, (now - self._phase_started_at) * 1000.0)
+        total_ms = sum(self._phase_last.values())
+        self.last_total_ms = total_ms
+        self.avg_total_ms = total_ms if self.frame_index <= 1 else (self.avg_total_ms * 0.92 + total_ms * 0.08)
+        self.max_total_ms = max(self.max_total_ms, total_ms)
+        self.last_rendered = bool(rendered)
+        self._maybe_log_hot_frame(now)
+        _set_browser_profiler_phase(
+            "render" if rendered else "update",
+            f"frame={self.frame_index} total={total_ms:.1f}ms",
+        )
+        self.current_phase = ""
+        self._phase_started_at = now
+
+    def _record(self, phase: str, elapsed_ms: float) -> None:
+        phase = str(phase or "")
+        if not phase:
+            return
+        elapsed_ms = max(0.0, float(elapsed_ms))
+        self._phase_last[phase] = elapsed_ms
+        if phase not in self._phase_order:
+            self._phase_order.append(phase)
+        avg_ms = self._phase_avg.get(phase)
+        self._phase_avg[phase] = elapsed_ms if avg_ms is None else (avg_ms * 0.92 + elapsed_ms * 0.08)
+        self._phase_max[phase] = max(self._phase_max.get(phase, 0.0), elapsed_ms)
+        if elapsed_ms >= self.last_hot_ms:
+            self.last_hot_ms = elapsed_ms
+            self.last_hot_label = phase
+
+    def _maybe_log_hot_frame(self, now_s: float) -> None:
+        hot_name = ""
+        hot_ms = 0.0
+        for phase_name, elapsed_ms in self._phase_last.items():
+            if elapsed_ms >= hot_ms:
+                hot_name = phase_name
+                hot_ms = elapsed_ms
+        self.last_hot_label = hot_name
+        self.last_hot_ms = hot_ms
+        self.last_hot_total_ms = self.last_total_ms
+        if hot_ms < self._hot_phase_threshold_ms and self.last_total_ms < self._hot_total_threshold_ms:
+            return
+        if (now_s - self._last_console_log_s) < 0.75:
+            return
+        self._last_console_log_s = now_s
+        counts = " ".join(
+            f"{key}={self._counters[key]}"
+            for key in ("obs", "en", "b", "es", "spawn", "rendered")
+            if key in self._counters
+        )
+        print(
+            f"[WebProfiler] frame={self.frame_index} dt={self.last_dt_ms:.1f}ms "
+            f"total={self.last_total_ms:.1f}ms hot={hot_name}:{hot_ms:.1f}ms {counts}".rstrip()
+        )
+
+    def overlay_lines(self) -> list[str]:
+        if not self.enabled:
+            return []
+        lines = [
+            f"WEB PROFILER  f:{self.frame_index}  dt:{self.last_dt_ms:.1f}  total:{self.last_total_ms:.1f}/{self.avg_total_ms:.1f}/{self.max_total_ms:.1f}",
+            f"hot {self.last_hot_label or '-'}  {self.last_hot_ms:.1f} ms  rendered:{int(self.last_rendered)}",
+        ]
+        preferred = ("pre", "events", "focus", "update", "bullets", "spawn", "flow", "enemy_move", "enemy_special", "enemy_shots", "render")
+        ordered = [name for name in preferred if name in self._phase_last]
+        ordered.extend(name for name in self._phase_order if name not in ordered)
+        for phase_name in ordered[:8]:
+            last_ms = self._phase_last.get(phase_name, 0.0)
+            avg_ms = self._phase_avg.get(phase_name, 0.0)
+            max_ms = self._phase_max.get(phase_name, 0.0)
+            lines.append(f"{phase_name:<13} {last_ms:>5.1f} / {avg_ms:>5.1f} / {max_ms:>5.1f}")
+        counter_parts = []
+        for key in ("obs", "en", "b", "es", "spawn", "wave", "trans"):
+            if key in self._counters:
+                counter_parts.append(f"{key}:{self._counters[key]}")
+        if counter_parts:
+            lines.append("  ".join(counter_parts))
+        return lines
 
 
 def get_initial_web_window_size() -> tuple[int, int]:

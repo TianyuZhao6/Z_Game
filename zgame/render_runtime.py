@@ -26,6 +26,28 @@ def install(game):
             return True
         return bool(getattr(game, flag_name, False))
 
+    def _draw_web_profiler_overlay(screen: pygame.Surface) -> None:
+        if not IS_WEB:
+            return
+        profiler = getattr(game, "_web_profiler", None)
+        lines = profiler.overlay_lines() if profiler is not None and hasattr(profiler, "overlay_lines") else []
+        if not lines:
+            return
+        font = mono_font(14)
+        pad = 8
+        line_h = font.get_linesize()
+        width = max(font.size(line)[0] for line in lines) + pad * 2
+        height = line_h * len(lines) + pad * 2
+        panel = pygame.Surface((width, height), pygame.SRCALPHA)
+        panel.fill((8, 14, 26, 210))
+        pygame.draw.rect(panel, (80, 210, 255, 220), panel.get_rect(), 1, border_radius=6)
+        y = pad
+        for idx, line in enumerate(lines):
+            color = (185, 230, 255) if idx < 2 else (235, 245, 250)
+            panel.blit(font.render(line, True, color), (pad, y))
+            y += line_h
+        screen.blit(panel, (10, max(INFO_BAR_HEIGHT + 6, 42)))
+
     def draw_settings_gear(screen, x, y):
         """Draw a simple gear icon at (x,y) top-left; returns its rect."""
         rect = pygame.Rect(x, y, 32, 24)
@@ -400,6 +422,7 @@ def install(game):
         elif len(bosses) == 1:
             draw_boss_hp_bar(screen, bosses[0])
         run_pending_menu_transition(screen)
+        _draw_web_profiler_overlay(screen)
         pygame.display.flip()
         return screen.copy() if copy_frame else None
 
@@ -1153,6 +1176,7 @@ def install(game):
         elif len(bosses) == 1:
             draw_boss_hp_bar(screen, bosses[0])
         run_pending_menu_transition(screen)
+        _draw_web_profiler_overlay(screen)
         pygame.display.flip()
         return screen.copy() if copy_frame else None
 

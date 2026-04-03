@@ -12,6 +12,59 @@ def install(game):
         It probes several likely paths so ZGAME.wav is found regardless of where ZGame.py runs from.
         """
 
+        @staticmethod
+        def _mixer_attempts() -> list[tuple[int, int]]:
+            if getattr(game, "IS_WEB", False):
+                # Prefer full-rate playback in browser so the original asset
+                # is not audibly degraded by an aggressive downsample step.
+                return [
+                    (44100, 4096),
+                    (44100, 2048),
+                    (48000, 4096),
+                    (22050, 2048),
+                ]
+            return [
+                (44100, 512),
+                (44100, 1024),
+            ]
+
+        @classmethod
+        def _ensure_music_mixer(cls) -> bool:
+            try:
+                current = pygame.mixer.get_init()
+            except Exception:
+                current = None
+            if current:
+                try:
+                    cur_freq = int(current[0])
+                except Exception:
+                    cur_freq = 0
+                if (not getattr(game, "IS_WEB", False)) or cur_freq >= 44100:
+                    return True
+                try:
+                    busy = bool(pygame.mixer.music.get_busy())
+                except Exception:
+                    busy = False
+                if not busy:
+                    try:
+                        pygame.mixer.quit()
+                    except Exception:
+                        pass
+                else:
+                    return True
+            last_error = None
+            for mix_freq, mix_buffer in cls._mixer_attempts():
+                try:
+                    pygame.mixer.pre_init(mix_freq, -16, 2, mix_buffer)
+                    pygame.mixer.init(mix_freq, -16, 2, mix_buffer)
+                    actual = pygame.mixer.get_init()
+                    print(f"[Audio] mixer ready: requested={mix_freq}/{mix_buffer} actual={actual}")
+                    return True
+                except Exception as e:
+                    last_error = e
+            print(f"[Audio] mixer init failed: {last_error}")
+            return False
+
         def __init__(self, music_path: str = None, volume: float = 0.6):
             self.volume = max(0.0, min(1.0, float(volume)))
             self._ready = False
@@ -27,17 +80,8 @@ def install(game):
                 print("[Audio] ZGAME.wav not found in expected locations.")
                 return
             try:
-                if not pygame.mixer.get_init():
-                    if getattr(game, "IS_WEB", False):
-                        # Browser audio is more stable with a larger buffer and
-                        # lower sample rate than the desktop defaults.
-                        mix_freq = 22050
-                        mix_buffer = 2048
-                    else:
-                        mix_freq = 44100
-                        mix_buffer = 512
-                    pygame.mixer.pre_init(mix_freq, -16, 2, mix_buffer)
-                    pygame.mixer.init(mix_freq, -16, 2, mix_buffer)
+                if not self._ensure_music_mixer():
+                    return
             except Exception as e:
                 print(f"[Audio] mixer init failed: {e}")
                 return

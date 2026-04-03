@@ -8,7 +8,7 @@ import random
 import sys
 from typing import Dict, List, Optional, Set, Tuple
 import pygame
-from zgame.browser import clamp_web_dt, is_escape_event, is_web_interaction_event
+from zgame.browser import WebRuntimeProfiler, clamp_web_dt, is_escape_event, is_web_interaction_event
 from zgame import runtime_state as rs
 
 
@@ -59,6 +59,62 @@ def _web_feature_enabled(game, flag_name: str) -> bool:
     if not getattr(game, "IS_WEB", False):
         return True
     return bool(getattr(game, flag_name, False))
+
+
+def _web_profiler(game) -> WebRuntimeProfiler | None:
+    if not getattr(game, "IS_WEB", False):
+        return None
+    profiler = getattr(game, "_web_profiler", None)
+    if not isinstance(profiler, WebRuntimeProfiler):
+        profiler = WebRuntimeProfiler()
+        setattr(game, "_web_profiler", profiler)
+    return profiler
+
+
+def _profile_begin(game, dt_s: float) -> WebRuntimeProfiler | None:
+    profiler = _web_profiler(game)
+    if profiler is not None:
+        profiler.begin_frame(dt_s)
+    return profiler
+
+
+def _profile_mark(profiler: WebRuntimeProfiler | None, phase: str) -> None:
+    if profiler is not None:
+        profiler.mark(phase)
+
+
+def _profile_set_counters(game, profiler: WebRuntimeProfiler | None, game_state, enemies, bullets, enemy_shots,
+                          *, wave_index: int = 0, rendered: bool = False) -> None:
+    if profiler is None:
+        return
+    profiler.counter("obs", len(getattr(game_state, "obstacles", {}) or {}))
+    profiler.counter("en", len(enemies or ()))
+    profiler.counter("b", len(bullets or ()))
+    profiler.counter("es", len(enemy_shots or ()))
+    profiler.counter("wave", int(wave_index))
+    runtime = rs.runtime(game)
+    profiler.counter(
+        "trans",
+        int(bool(runtime.get("_web_hex_transition_state") is not None or runtime.get("_menu_transition_frame") is not None)),
+    )
+    profiler.counter("rendered", int(bool(rendered)))
+
+
+def _profile_finish(game, profiler: WebRuntimeProfiler | None, game_state, enemies, bullets, enemy_shots,
+                    *, wave_index: int = 0, rendered: bool = False) -> None:
+    if profiler is None:
+        return
+    _profile_set_counters(
+        game,
+        profiler,
+        game_state,
+        enemies,
+        bullets,
+        enemy_shots,
+        wave_index=wave_index,
+        rendered=rendered,
+    )
+    profiler.finish(rendered=rendered)
 
 
 def _combat_bgm_selected(game) -> bool:
@@ -380,10 +436,12 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     last_frame = None
     render_cooldown = 0.0
     web_transition_guard_t = 0.65 if game.IS_WEB else 0.0
+    profiler = _web_profiler(game)
     clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60)
     entry_freeze = 0.4
     while running:
         dt = _frame_dt(game, clock)
+        profiler = _profile_begin(game, dt)
         render_cooldown = max(0.0, render_cooldown - dt)
         if web_transition_guard_t > 0.0:
             web_transition_guard_t = max(0.0, web_transition_guard_t - dt)
@@ -394,6 +452,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 game.clear_menu_transition_state()
         if entry_freeze > 0:
             entry_freeze = max(0.0, entry_freeze - dt)
+            _profile_mark(profiler, "events")
             for event in pygame.event.get():
                 screen = game._handle_web_window_event(event) or screen
                 game._sync_web_input_event(event)
@@ -410,6 +469,8 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             game.update_hit_flash_timer(player, dt)
             for z in enemies:
                 game.update_hit_flash_timer(z, dt)
+            _profile_mark(profiler, "render")
+            rendered = False
             if (not game.IS_WEB) or render_cooldown <= 0.0 or last_frame is None:
                 last_frame = game.render_game_iso(
                     screen,
@@ -422,6 +483,17 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                     copy_frame=False,
                 )
                 render_cooldown = float(getattr(game, "WEB_RENDER_INTERVAL", 0.0) or 0.0)
+                rendered = True
+            _profile_finish(
+                game,
+                profiler,
+                game_state,
+                enemies,
+                bullets,
+                enemy_shots,
+                wave_index=wave_index,
+                rendered=rendered,
+            )
             if game.IS_WEB:
                 await asyncio.sleep(0)
             continue
@@ -430,13 +502,16 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             if combat_bgm_delay <= 0.0:
                 game.play_combat_bgm()
                 combat_bgm_started = True
+        _profile_mark(profiler, "pre")
         pf = getattr(game_state, 'pending_focus', None)
         if pf:
+            _profile_mark(profiler, "focus")
             fkind, (fx, fy) = pf
             game.play_focus_cinematic_iso(screen, clock, game_state, player, enemies, bullets, enemy_shots, (fx, fy), label='BANDIT!' if fkind == 'bandit' else 'BOSS!')
             game_state.pending_focus = None
         fq = getattr(game_state, 'focus_queue', None)
         if fq:
+            _profile_mark(profiler, "focus")
             if fq[0][0] == 'boss':
                 boss_targets = []
                 while fq and fq[0][0] == 'boss':
@@ -452,6 +527,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         if time_left <= 0:
             game_result = 'success' if 'game_result' in locals() else 'success'
             running = False
+        _profile_mark(profiler, "spawn")
         spawn_timer += dt
         if spawn_timer >= game.SPAWN_INTERVAL:
             spawn_timer = 0.0
@@ -460,6 +536,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 if spawned > 0:
                     wave_index += 1
                     runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
+        _profile_mark(profiler, "events")
         for event in pygame.event.get():
             screen = game._handle_web_window_event(event) or screen
             game._sync_web_input_event(event)
@@ -537,6 +614,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 player.targeting_skill = None
             if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
+        _profile_mark(profiler, "update")
         if getattr(player, 'targeting_skill', None):
             game._update_skill_target(player, game_state)
         keys = pygame.key.get_pressed()
@@ -554,6 +632,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         game_state.update_comet_blasts(dt, player, enemies)
         game_state.update_camera_shake(dt)
         ptile = (int(player.rect.centerx // game.CELL_SIZE), int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE))
+        _profile_mark(profiler, "flow")
         game_state.refresh_flow_field(ptile, dt)
         game_state.collect_item(player.rect)
         game_state.update_spoils(dt, player)
@@ -600,6 +679,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 copy_frame=False,
             )
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
+        _profile_mark(profiler, "bullets")
         target, dist = find_target()
         if target and player.fire_cd <= 0 and (dist is None or dist <= player.range):
             _, gp, ob_or_z, cx, cy = target
@@ -634,6 +714,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 bullets.remove(b)
         player.hit_cd = max(0.0, player.hit_cd - dt)
         _flush_pending_bullets(game, bullets, game_state, player)
+        _profile_mark(profiler, "enemy_move")
         obstacle_values = tuple(game_state.obstacles.values())
         for enemy in list(enemies):
             enemy.move_and_attack(player, obstacle_values, game_state, dt=dt)
@@ -649,6 +730,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                     game_result = 'fail'
                     running = False
                     break
+        _profile_mark(profiler, "enemy_special")
         if _web_feature_enabled(game, 'WEB_ENABLE_GROUND_SPIKES'):
             game_state.update_ground_spikes(dt, player, enemies)
         if _web_feature_enabled(game, 'WEB_ENABLE_CURING_PAINT'):
@@ -688,6 +770,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                         pass
                 game.transfer_xp_to_neighbors(z, enemies)
                 enemies.remove(z)
+        _profile_mark(profiler, "enemy_shots")
         _sanitize_enemy_shots(game, enemy_shots)
         for es in list(enemy_shots):
             es.update(dt, player, game_state)
@@ -713,6 +796,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
             continue
         should_render = (not game.IS_WEB) or render_cooldown <= 0.0 or last_frame is None
+        _profile_mark(profiler, "render")
         if should_render:
             if game.USE_ISO:
                 last_frame = game.render_game_iso(
@@ -740,6 +824,16 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             runtime['_last_spoils'] = getattr(game_state, 'spoils_gained', 0)
             runtime['_carry_player_state'] = game.capture_player_carry(player)
         _web_snapshot_autosave(game, runtime, game_state, player, enemies, game.current_level, chosen_enemy_type, bullets)
+        _profile_finish(
+            game,
+            profiler,
+            game_state,
+            enemies,
+            bullets,
+            enemy_shots,
+            wave_index=wave_index,
+            rendered=should_render,
+        )
         if game.IS_WEB:
             await asyncio.sleep(0)
     return (game_result, config.get('reward', None), last_frame or screen.copy())
@@ -939,8 +1033,10 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets, force=True)
     render_cooldown = 0.0
     web_transition_guard_t = 0.65 if game.IS_WEB else 0.0
+    profiler = _web_profiler(game)
     while running:
         dt = _frame_dt(game, clock)
+        profiler = _profile_begin(game, dt)
         render_cooldown = max(0.0, render_cooldown - dt)
         if web_transition_guard_t > 0.0:
             web_transition_guard_t = max(0.0, web_transition_guard_t - dt)
@@ -959,6 +1055,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         if time_left <= 0:
             chosen = await game.show_success_screen(screen, last_frame or game.render_game(screen, game_state, player, enemies, bullets, enemy_shots), reward_choices=[])
             return ('success', None, last_frame or screen.copy())
+        _profile_mark(profiler, "events")
         for event in pygame.event.get():
             screen = game._handle_web_window_event(event) or screen
             game._sync_web_input_event(event)
@@ -1029,6 +1126,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 player.targeting_skill = None
             if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
+        _profile_mark(profiler, "update")
         if getattr(player, 'targeting_skill', None):
             game._update_skill_target(player, game_state)
         keys = pygame.key.get_pressed()
@@ -1058,6 +1156,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         player.skill_flash['blast'] = max(0.0, float(player.skill_flash.get('blast', 0.0)) - dt)
         player.skill_flash['teleport'] = max(0.0, float(player.skill_flash.get('teleport', 0.0)) - dt)
         player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
+        _profile_mark(profiler, "bullets")
         target, dist = find_target()
         if target and player.fire_cd <= 0 and (dist is None or dist <= player.range):
             _, gp, ob_or_z, cx, cy = target
@@ -1084,6 +1183,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             if (not getattr(b, 'alive', False)) or (hasattr(game, 'verify_bullet_runtime') and (not game.verify_bullet_runtime(b, player))):
                 bullets.remove(b)
         _flush_pending_bullets(game, bullets, game_state, player)
+        _profile_mark(profiler, "spawn")
         spawn_timer += dt
         if spawn_timer >= game.SPAWN_INTERVAL:
             spawn_timer = 0.0
@@ -1095,8 +1195,10 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         player.hit_cd = max(0.0, player.hit_cd - dt)
         pgx = int(player.rect.centerx // game.CELL_SIZE)
         pgy = int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
+        _profile_mark(profiler, "flow")
         game_state.refresh_flow_field((pgx, pgy), dt)
         obstacle_values = tuple(game_state.obstacles.values())
+        _profile_mark(profiler, "enemy_move")
         for enemy in list(enemies):
             enemy.move_and_attack(player, obstacle_values, game_state, dt=dt)
             if player.hit_cd <= 0.0 and game.circle_touch(enemy, player):
@@ -1120,6 +1222,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                         game.clear_save()
                         game.flush_events()
                         return ('restart', None, last_frame or screen.copy())
+        _profile_mark(profiler, "enemy_special")
         if _web_feature_enabled(game, 'WEB_ENABLE_GROUND_SPIKES'):
             game_state.update_ground_spikes(dt, player, enemies)
         if _web_feature_enabled(game, 'WEB_ENABLE_CURING_PAINT'):
@@ -1155,6 +1258,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                     pass
                 game.transfer_xp_to_neighbors(z, enemies)
                 enemies.remove(z)
+        _profile_mark(profiler, "enemy_shots")
         _sanitize_enemy_shots(game, enemy_shots)
         for es in list(enemy_shots):
             es.update(dt, player, game_state)
@@ -1175,6 +1279,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 game.flush_events()
                 return ('restart', None, last_frame or screen.copy())
         should_render = (not game.IS_WEB) or render_cooldown <= 0.0 or last_frame is None
+        _profile_mark(profiler, "render")
         if should_render:
             if game.USE_ISO:
                 last_frame = game.render_game_iso(
@@ -1199,6 +1304,16 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 )
             render_cooldown = float(getattr(game, "WEB_RENDER_INTERVAL", 0.0) or 0.0)
         _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets)
+        _profile_finish(
+            game,
+            profiler,
+            game_state,
+            enemies,
+            bullets,
+            enemy_shots,
+            wave_index=wave_index,
+            rendered=should_render,
+        )
         if game.IS_WEB:
             await asyncio.sleep(0)
     return ('home', None, last_frame or screen.copy())
