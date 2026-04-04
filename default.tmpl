@@ -288,6 +288,7 @@ function updateZGameDiagDom() {
     const lines = [];
     lines.push(`js frame:${Number(window.__zgame_js_frame || 0)} gap:${Number(window.__zgame_js_gap_ms || 0).toFixed(1)}ms`);
     lines.push(`py frame:${Number(window.__zgame_py_frame || 0)} dt:${Number(window.__zgame_py_dt_ms || 0).toFixed(1)} raw:${Number(window.__zgame_py_raw_dt_ms || 0).toFixed(1)} total:${Number(window.__zgame_py_total_ms || 0).toFixed(1)} rendered:${Number(window.__zgame_py_rendered || 0)}`);
+    lines.push(`idle:${Number(window.__zgame_py_idle_loops || 0)} accum:${Number(window.__zgame_py_accum_ms || 0).toFixed(1)}ms`);
     lines.push(`phase:${String(window.__zgame_prof_phase || "-")}  detail:${String(window.__zgame_prof_detail || "")}`);
     if (window.__zgame_last_error) {
         lines.push(`err:${String(window.__zgame_last_error)}`);

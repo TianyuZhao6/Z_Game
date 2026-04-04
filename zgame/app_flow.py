@@ -1,6 +1,7 @@
 """Level and app flow extracted from ZGame.py."""
 from __future__ import annotations
 import asyncio
+import builtins
 import copy
 import math
 import os
@@ -8,7 +9,15 @@ import random
 import sys
 from typing import Dict, List, Optional, Set, Tuple
 import pygame
-from zgame.browser import WebRuntimeProfiler, clamp_web_dt, is_escape_event, is_web_interaction_event
+from zgame.browser import (
+    WebRuntimeProfiler,
+    _set_browser_profiler_phase,
+    _set_browser_profiler_metrics,
+    browser_now_s,
+    clamp_web_dt,
+    is_escape_event,
+    is_web_interaction_event,
+)
 from zgame import runtime_state as rs
 
 
@@ -44,7 +53,7 @@ def _frame_dt(game, clock: pygame.time.Clock) -> float:
         runtime["_last_raw_frame_dt_s"] = raw_dt
         return raw_dt
     # Avoid blocking SDL sleep on web; let the browser event loop drive cadence.
-    now_s = pygame.time.get_ticks() / 1000.0
+    now_s = browser_now_s()
     last_s = float(runtime.get("_web_last_frame_s", now_s) or now_s)
     raw_dt = max(0.0, now_s - last_s)
     runtime["_web_last_frame_s"] = now_s
@@ -53,10 +62,25 @@ def _frame_dt(game, clock: pygame.time.Clock) -> float:
     runtime["_last_raw_frame_dt_s"] = raw_dt
     target_dt = 1.0 / max(1.0, float(getattr(game, "WEB_TARGET_FPS", 30) or 30))
     accum = float(runtime.get("_web_frame_accum_s", 0.0) or 0.0) + raw_dt
+    idle_loops = int(runtime.get("_web_idle_loops", 0) or 0)
     if accum + 1e-6 < target_dt:
+        idle_loops += 1
         runtime["_web_frame_accum_s"] = accum
-        return 0.0
+        runtime["_web_idle_loops"] = idle_loops
+        try:
+            _set_browser_profiler_metrics(idle_loops=idle_loops, accum_ms=accum * 1000.0)
+        except Exception:
+            pass
+        # Fallback heartbeat: if the browser/runtime keeps resuming us but the
+        # accumulated delta never crosses target_dt, force one simulation step
+        # after a short burst so gameplay does not dead-freeze.
+        if idle_loops < 8:
+            return 0.0
+        runtime["_web_frame_accum_s"] = 0.0
+        runtime["_web_idle_loops"] = 0
+        return clamp_web_dt(max(target_dt, accum))
     runtime["_web_frame_accum_s"] = 0.0
+    runtime["_web_idle_loops"] = 0
     # Browser tabs can resume with a very large frame delta; clamp that so
     # movement, timers, and spawn logic do not fast-forward in one frame.
     return clamp_web_dt(accum)
@@ -65,11 +89,16 @@ def _frame_dt(game, clock: pygame.time.Clock) -> float:
 async def _yield_web_frame(game) -> None:
     if not getattr(game, "IS_WEB", False):
         return
-    # In pygbag/browser builds, positive-duration asyncio.sleep(...) can stop
-    # resuming reliably under some runtimes even while the page JS loop keeps
-    # ticking. Use cooperative sleep(0) only, and let _frame_dt() decide when
-    # enough wall-clock time has accumulated to run the next simulation step.
-    await asyncio.sleep(0)
+    # Follow pygbag's own scheduling model instead of yielding unconditionally.
+    # On wasm builds, embed.sched_yield() decides when it's safe/necessary to
+    # hand control back to the browser loop.
+    sched = getattr(builtins, "sched_yield", None)
+    try:
+        should_yield = True if sched is None else bool(sched())
+    except Exception:
+        should_yield = True
+    if should_yield:
+        await asyncio.sleep(0)
 
 
 def _pump_web_idle_events(game, screen, on_focus_lost=None):
@@ -297,6 +326,11 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     level_config = game._web_level_config(config)
     enemy_cap = game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP
     combat_bgm_started = _combat_bgm_selected(game)
+    if game.IS_WEB and bool(getattr(game, "WEB_SINGLE_BGM", False)):
+        # Browser compatibility mode: avoid delayed mid-run track swaps.
+        # Real browser repros consistently freeze at the first combat-track
+        # switch, so keep the currently armed BGM alive for the whole session.
+        combat_bgm_started = True
     if not game.IS_WEB:
         game.play_combat_bgm()
         combat_bgm_started = True
@@ -1026,6 +1060,8 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     chosen_enemy_type = saved_meta.get('chosen_enemy_type', 'basic')
     enemy_cap = game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP
     combat_bgm_started = _combat_bgm_selected(game)
+    if game.IS_WEB and bool(getattr(game, "WEB_SINGLE_BGM", False)):
+        combat_bgm_started = True
     if not game.IS_WEB:
         game.play_combat_bgm()
         combat_bgm_started = True
@@ -1398,6 +1434,11 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
 async def app_main(game) -> None:
     runtime = rs.runtime(game)
     meta = rs.meta(game)
+    if getattr(game, "IS_WEB", False):
+        try:
+            _set_browser_profiler_phase("startup:init")
+        except Exception:
+            pass
     os.environ['SDL_VIDEO_CENTERED'] = '0'
     os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0'
     pygame.init()
@@ -1411,6 +1452,11 @@ async def app_main(game) -> None:
         game.VIEW_W, game.VIEW_H = (info.current_w, info.current_h)
     pygame.display.set_caption(game.GAME_TITLE)
     game.resize_world_to_view()
+    if getattr(game, "IS_WEB", False):
+        try:
+            _set_browser_profiler_phase("startup:bgm")
+        except Exception:
+            pass
     try:
         game.play_intro_bgm()
     except Exception as e:
@@ -1421,6 +1467,11 @@ async def app_main(game) -> None:
         game.VIEW_W, game.VIEW_H = (info.current_w, info.current_h)
     game.resize_world_to_view()
     game.flush_events()
+    if getattr(game, "IS_WEB", False):
+        try:
+            _set_browser_profiler_phase("startup:menu")
+        except Exception:
+            pass
 
     def apply_menu_selection(selection_data):
         if not selection_data:

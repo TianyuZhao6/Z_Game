@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import sys
 
 import pygame
-from zgame.browser import clamp_web_dt, is_escape_event, is_web_interaction_event
+from zgame.browser import _set_browser_profiler_metrics, browser_now_s, clamp_web_dt, is_escape_event, is_web_interaction_event
 from zgame import runtime_state as rs
 
 
@@ -24,7 +25,7 @@ def _menu_frame_dt(game, clock: pygame.time.Clock, state_key: str) -> float:
     if not getattr(game, "IS_WEB", False):
         return clock.tick(60) / 1000.0
     state = _state(game)
-    now_s = pygame.time.get_ticks() / 1000.0
+    now_s = browser_now_s()
     last_s = float(state.get(state_key, now_s) or now_s)
     raw_dt = max(0.0, now_s - last_s)
     state[state_key] = now_s
@@ -32,26 +33,36 @@ def _menu_frame_dt(game, clock: pygame.time.Clock, state_key: str) -> float:
         raw_dt = 1.0 / max(30.0, float(getattr(game, "WEB_TARGET_FPS", 30) or 30))
     target_dt = 1.0 / max(1.0, float(getattr(game, "WEB_TARGET_FPS", 30) or 30))
     accum_key = f"{state_key}_accum"
+    idle_key = f"{state_key}_idle"
     accum = float(state.get(accum_key, 0.0) or 0.0) + raw_dt
+    idle_loops = int(state.get(idle_key, 0) or 0)
     if accum + 1e-6 < target_dt:
+        idle_loops += 1
         state[accum_key] = accum
-        return 0.0
+        state[idle_key] = idle_loops
+        try:
+            _set_browser_profiler_metrics(idle_loops=idle_loops, accum_ms=accum * 1000.0)
+        except Exception:
+            pass
+        if idle_loops < 8:
+            return 0.0
+        state[accum_key] = 0.0
+        state[idle_key] = 0
+        return clamp_web_dt(max(target_dt, accum))
     state[accum_key] = 0.0
+    state[idle_key] = 0
     return clamp_web_dt(accum)
 
 
 async def _yield_menu_web_frame(game, state_key: str) -> None:
     if not getattr(game, "IS_WEB", False):
         return
-    state = _state(game)
-    target_dt = 1.0 / max(1.0, float(getattr(game, "WEB_TARGET_FPS", 30) or 30))
-    now_s = pygame.time.get_ticks() / 1000.0
-    last_s = float(state.get(state_key, now_s) or now_s)
-    raw_dt = max(0.0, now_s - last_s)
-    delay = max(0.0, target_dt - raw_dt)
-    if delay > 0.001:
-        await asyncio.sleep(delay)
-    else:
+    sched = getattr(builtins, "sched_yield", None)
+    try:
+        should_yield = True if sched is None else bool(sched())
+    except Exception:
+        should_yield = True
+    if should_yield:
         await asyncio.sleep(0)
 
 
@@ -229,6 +240,48 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
     btn_font = pygame.font.SysFont(None, 30)
     info_font = pygame.font.SysFont("Consolas", 18)
     t = 0.0
+
+    async def _handle_start_menu_click(pos) -> tuple[str, object] | None:
+        saved_exists = game.has_save()
+        can_continue = bool(saved_exists and not getattr(game, "WEB_DEMO_DISABLE_CONTINUE", False))
+        base_rects = game.neuro_menu_layout(include_continue=can_continue)
+        if base_rects["start"].collidepoint(pos):
+            game.clear_save()
+            game.reset_run_state()
+            game.queue_menu_transition(screen.copy())
+            game.flush_events()
+            return ("new", None)
+        cont_rect = base_rects.get("continue")
+        if cont_rect and can_continue and cont_rect.collidepoint(pos):
+            data = game.load_save()
+            if data:
+                game.queue_menu_transition(screen.copy())
+                game.flush_events()
+                return ("continue", data)
+            return None
+        if base_rects["instruction"].collidepoint(pos):
+            from_surf = screen.copy()
+            instr_surf = game.render_instruction_surface()
+            game.play_hex_transition(screen, from_surf, instr_surf, direction="down")
+            game.flush_events()
+            if game.IS_WEB:
+                await show_instruction_web(game, screen)
+            else:
+                show_instruction(game, screen)
+            game.flush_events()
+            return None
+        if base_rects["settings"].collidepoint(pos):
+            if game.IS_WEB:
+                await game.show_settings_popup_web(screen, screen.copy())
+            else:
+                game.show_settings_popup(screen, screen.copy())
+            game.flush_events()
+            return None
+        if base_rects["exit"].collidepoint(pos):
+            pygame.quit()
+            sys.exit()
+        return None
+
     while True:
         dt = _menu_frame_dt(game, clock, "_web_menu_last_frame_s")
         if game.IS_WEB and dt <= 0.0:
@@ -239,6 +292,10 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
                     sys.exit()
                 if is_web_interaction_event(event):
                     game._resume_bgm_if_needed(min_interval_s=0.0)
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    action = await _handle_start_menu_click(event.pos)
+                    if action is not None:
+                        return action
             await _yield_menu_web_frame(game, "_web_menu_last_frame_s")
             continue
         t += dt
@@ -328,38 +385,9 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
             if event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if drawn_rects["start"].collidepoint(event.pos):
-                    game.clear_save()
-                    game.reset_run_state()
-                    game.queue_menu_transition(screen.copy())
-                    game.flush_events()
-                    return ("new", None)
-                cont_rect = drawn_rects.get("continue")
-                if cont_rect and can_continue and cont_rect.collidepoint(event.pos):
-                    data = game.load_save()
-                    if data:
-                        game.queue_menu_transition(screen.copy())
-                        game.flush_events()
-                        return ("continue", data)
-                if drawn_rects["instruction"].collidepoint(event.pos):
-                    from_surf = screen.copy()
-                    instr_surf = game.render_instruction_surface()
-                    game.play_hex_transition(screen, from_surf, instr_surf, direction="down")
-                    game.flush_events()
-                    if game.IS_WEB:
-                        await show_instruction_web(game, screen)
-                    else:
-                        show_instruction(game, screen)
-                    game.flush_events()
-                if drawn_rects["settings"].collidepoint(event.pos):
-                    if game.IS_WEB:
-                        await game.show_settings_popup_web(screen, screen.copy())
-                    else:
-                        game.show_settings_popup(screen, screen.copy())
-                    game.flush_events()
-                if drawn_rects["exit"].collidepoint(event.pos):
-                    pygame.quit()
-                    sys.exit()
+                action = await _handle_start_menu_click(event.pos)
+                if action is not None:
+                    return action
         if game.IS_WEB:
             await _yield_menu_web_frame(game, "_web_menu_last_frame_s")
 
@@ -411,6 +439,12 @@ async def show_instruction_web(game, screen):
     title_font = pygame.font.SysFont("Consolas", 30, bold=True)
     btn_font = pygame.font.SysFont(None, 28)
     t = 0.0
+
+    def _return_to_start_menu() -> None:
+        from_surf = screen.copy()
+        to_surf = render_start_menu_surface(game, game.has_save())
+        game.play_hex_transition(screen, from_surf, to_surf, direction="up")
+
     while True:
         dt = _menu_frame_dt(game, clock, "_web_instruction_last_frame_s")
         if game.IS_WEB and dt <= 0.0:
@@ -421,6 +455,14 @@ async def show_instruction_web(game, screen):
                     sys.exit()
                 if game.IS_WEB and is_web_interaction_event(event):
                     game._resume_bgm_if_needed(min_interval_s=0.0)
+                if is_escape_event(event):
+                    _return_to_start_menu()
+                    return
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    _, back_rect = game.neuro_instruction_layout()
+                    if back_rect.collidepoint(event.pos):
+                        _return_to_start_menu()
+                        return
             await _yield_menu_web_frame(game, "_web_instruction_last_frame_s")
             continue
         t += dt
@@ -447,14 +489,10 @@ async def show_instruction_web(game, screen):
             if game.IS_WEB and is_web_interaction_event(event):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
             if is_escape_event(event):
-                from_surf = screen.copy()
-                to_surf = render_start_menu_surface(game, game.has_save())
-                game.play_hex_transition(screen, from_surf, to_surf, direction="up")
+                _return_to_start_menu()
                 return
             if event.type == pygame.MOUSEBUTTONDOWN and back.collidepoint(event.pos):
-                from_surf = screen.copy()
-                to_surf = render_start_menu_surface(game, game.has_save())
-                game.play_hex_transition(screen, from_surf, to_surf, direction="up")
+                _return_to_start_menu()
                 return
         await _yield_menu_web_frame(game, "_web_instruction_last_frame_s")
 

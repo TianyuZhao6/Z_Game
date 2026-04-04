@@ -10,6 +10,24 @@ import pygame
 IS_WEB = sys.platform == "emscripten"
 
 
+def browser_now_s() -> float:
+    if IS_WEB:
+        try:
+            import platform as web_platform
+
+            window = getattr(web_platform, "window", None)
+            perf = getattr(window, "performance", None) if window is not None else None
+            now = getattr(perf, "now", None) if perf is not None else None
+            if callable(now):
+                return float(now()) / 1000.0
+        except Exception:
+            pass
+    try:
+        return time.perf_counter()
+    except Exception:
+        return 0.0
+
+
 def _web_location_marker() -> str:
     if not IS_WEB:
         return ""
@@ -45,6 +63,7 @@ WEB_ENEMY_CAP = 8
 WEB_MAX_RENDER_WIDTH = 720
 WEB_MAX_RENDER_HEIGHT = 405
 WEB_RENDER_INTERVAL = 1.0 / 12.0
+WEB_SINGLE_BGM = IS_WEB
 WEB_DEMO = _detect_web_demo()
 WEB_AUTOSTART = _detect_web_autostart()
 WEB_DEMO_SKIP_INTRO = WEB_DEMO
@@ -283,6 +302,8 @@ def _set_browser_profiler_metrics(
     raw_dt_ms: float | None = None,
     total_ms: float | None = None,
     rendered: bool | None = None,
+    idle_loops: int | None = None,
+    accum_ms: float | None = None,
 ) -> None:
     if not IS_WEB:
         return
@@ -302,6 +323,10 @@ def _set_browser_profiler_metrics(
             setattr(window, "__zgame_py_total_ms", round(float(total_ms), 2))
         if rendered is not None:
             setattr(window, "__zgame_py_rendered", int(bool(rendered)))
+        if idle_loops is not None:
+            setattr(window, "__zgame_py_idle_loops", int(idle_loops))
+        if accum_ms is not None:
+            setattr(window, "__zgame_py_accum_ms", round(float(accum_ms), 2))
         setattr(window, "__zgame_py_heartbeat_ms", round(float(time.perf_counter()) * 1000.0, 1))
     except Exception:
         pass
