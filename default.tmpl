@@ -218,6 +218,102 @@ function focusCanvas() {
     catch (e) { try { canvas.focus(); } catch (_) {} }
 }
 
+window.__zgame_last_error = "";
+window.__zgame_error_count = 0;
+
+function zgameRecordError(prefix, err) {
+    try {
+        const msg = String(err && (err.message || err.reason || err.stack || err) || "").trim();
+        window.__zgame_last_error = (prefix + ": " + msg).slice(0, 240);
+        window.__zgame_error_count = (Number(window.__zgame_error_count || 0) + 1);
+        console.error("[ZGameError]", window.__zgame_last_error);
+    } catch (_) {}
+}
+
+window.addEventListener("error", function(ev) {
+    zgameRecordError("error", ev && (ev.error || ev.message || ev));
+});
+
+window.addEventListener("unhandledrejection", function(ev) {
+    zgameRecordError("promise", ev && (ev.reason || ev));
+});
+
+window.__zgame_diag_dom = null;
+window.__zgame_js_frame = 0;
+window.__zgame_js_gap_ms = 0;
+window.__zgame_js_last_now = 0;
+
+function zgameDiagEnabled() {
+    try {
+        const marker = String((window.location && (window.location.search + "&" + window.location.hash)) || "").toLowerCase();
+        if (marker.includes("diag=1") || marker.includes("debug=1") || marker.includes("autostart=1")) {
+            return true;
+        }
+        return Boolean(window.__zgame_last_error || window.__zgame_py_error);
+    } catch (e) {
+        return false;
+    }
+}
+
+function ensureZGameDiagDom() {
+    if (!zgameDiagEnabled()) return null;
+    let node = window.__zgame_diag_dom;
+    if (node && node.isConnected) return node;
+    node = document.createElement("pre");
+    node.id = "zgame-diag-dom";
+    node.style.position = "fixed";
+    node.style.left = "10px";
+    node.style.bottom = "10px";
+    node.style.zIndex = "999999";
+    node.style.margin = "0";
+    node.style.padding = "8px 10px";
+    node.style.maxWidth = "min(48vw, 720px)";
+    node.style.maxHeight = "36vh";
+    node.style.overflow = "auto";
+    node.style.whiteSpace = "pre-wrap";
+    node.style.font = "12px/1.35 Consolas, Menlo, monospace";
+    node.style.color = "#d8f3ff";
+    node.style.background = "rgba(5, 10, 18, 0.88)";
+    node.style.border = "1px solid rgba(88, 214, 255, 0.85)";
+    node.style.borderRadius = "8px";
+    node.style.pointerEvents = "none";
+    document.body.appendChild(node);
+    window.__zgame_diag_dom = node;
+    return node;
+}
+
+function updateZGameDiagDom() {
+    const node = ensureZGameDiagDom();
+    if (!node) return;
+    const lines = [];
+    lines.push(`js frame:${Number(window.__zgame_js_frame || 0)} gap:${Number(window.__zgame_js_gap_ms || 0).toFixed(1)}ms`);
+    lines.push(`py frame:${Number(window.__zgame_py_frame || 0)} dt:${Number(window.__zgame_py_dt_ms || 0).toFixed(1)} raw:${Number(window.__zgame_py_raw_dt_ms || 0).toFixed(1)} total:${Number(window.__zgame_py_total_ms || 0).toFixed(1)} rendered:${Number(window.__zgame_py_rendered || 0)}`);
+    lines.push(`phase:${String(window.__zgame_prof_phase || "-")}  detail:${String(window.__zgame_prof_detail || "")}`);
+    if (window.__zgame_last_error) {
+        lines.push(`err:${String(window.__zgame_last_error)}`);
+    }
+    if (window.__zgame_py_error) {
+        lines.push(`pyerr:${String(window.__zgame_py_error)}`);
+    }
+    node.textContent = lines.join("\n");
+}
+
+function zgameDiagTick(now) {
+    try {
+        const last = Number(window.__zgame_js_last_now || 0);
+        if (last > 0) {
+            window.__zgame_js_gap_ms = Math.max(0, Number(now || 0) - last);
+        }
+        window.__zgame_js_last_now = Number(now || 0);
+        window.__zgame_js_frame = Number(window.__zgame_js_frame || 0) + 1;
+    } catch (e) {}
+    updateZGameDiagDom();
+    window.requestAnimationFrame(zgameDiagTick);
+}
+
+window.requestAnimationFrame(zgameDiagTick);
+window.setInterval(updateZGameDiagDom, 250);
+
 function show_infobox() {
     infobox.style.display = "block";
 
@@ -232,6 +328,116 @@ function show_infobox() {
     infobox.style.left = left + "px";
     infobox.style.top = top + "px";
 }
+
+window.__zgame_bgm_audio = null;
+
+window.__zgame_bgm_open = function(src, volume) {
+    try {
+        const prev = window.__zgame_bgm_audio;
+        if (prev) {
+            try { prev.pause(); } catch (_) {}
+            prev.src = "";
+        }
+        const audio = new Audio(src);
+        audio.preload = "auto";
+        audio.loop = true;
+        audio.volume = Math.max(0, Math.min(1, Number(volume || 0)));
+        audio.crossOrigin = "anonymous";
+        window.__zgame_bgm_audio = audio;
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html bgm open failed", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_play = function(loops, fade_ms) {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        audio.loop = loops !== 0;
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch((e) => console.warn("[Audio] html bgm play failed", e));
+        }
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html bgm play exception", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_stop = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        audio.pause();
+        audio.currentTime = 0;
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html bgm stop failed", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_pause = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        audio.pause();
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html bgm pause failed", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_resume = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch((e) => console.warn("[Audio] html bgm resume failed", e));
+        }
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html bgm resume exception", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_set_volume = function(volume) {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        audio.volume = Math.max(0, Math.min(1, Number(volume || 0)));
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html bgm set_volume failed", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_busy = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        return !audio.paused && !audio.ended;
+    } catch (e) {
+        return false;
+    }
+};
+
+window.__zgame_bgm_pos_ms = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return -1;
+        return Math.floor((audio.currentTime || 0) * 1000);
+    } catch (e) {
+        return -1;
+    }
+};
 
 </script>
 
@@ -263,9 +469,15 @@ function show_infobox() {
         #status,
         #progress,
         #infobox,
+        #box,
+        #info,
+        #iframe,
+        #system,
         #crt,
         #pyconsole {
             display: none !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
         }
 
         #status {
@@ -469,6 +681,9 @@ frameborder="1"
         transfer.hidden = true
         info.hidden = true
         box.hidden = true
+        try { crt.hidden = true; } catch (e) {}
+        try { box.remove(); } catch (e) {}
+        try { crt.remove(); } catch (e) {}
         infobox.style.display = "none"
         if (window.vm && window.vm.config) {
             window.vm.config.user_canvas = 1
@@ -521,23 +736,15 @@ frameborder="1"
     }
 
     function info_inline(data){
-        document.getElementById("info").innerHTML = data
+        return
     }
 
     function info_online(url) {
-        // display info about current APK
-        fetch( url /*, options */)
-            .then((response) => response.text())
-            .then((html) => {
-                info_inline(html);
-        })
-        .catch((error) => {
-            console.warn(error);
-        });
+        return
     }
 
     function frame_online(url) {
-        window.frames["iframe"].location = url;
+        return
     }
 
     </script>

@@ -4,7 +4,7 @@ import asyncio
 import sys
 
 import pygame
-from zgame.browser import is_escape_event, is_web_interaction_event
+from zgame.browser import clamp_web_dt, is_escape_event, is_web_interaction_event
 from zgame import runtime_state as rs
 
 
@@ -18,6 +18,58 @@ def _meta(game):
 
 def _viz(game):
     return game._get_neuro_viz()
+
+
+def _menu_frame_dt(game, clock: pygame.time.Clock, state_key: str) -> float:
+    if not getattr(game, "IS_WEB", False):
+        return clock.tick(60) / 1000.0
+    state = _state(game)
+    now_s = pygame.time.get_ticks() / 1000.0
+    last_s = float(state.get(state_key, now_s) or now_s)
+    raw_dt = max(0.0, now_s - last_s)
+    state[state_key] = now_s
+    if raw_dt <= 0.0:
+        raw_dt = 1.0 / max(30.0, float(getattr(game, "WEB_TARGET_FPS", 30) or 30))
+    target_dt = 1.0 / max(1.0, float(getattr(game, "WEB_TARGET_FPS", 30) or 30))
+    accum_key = f"{state_key}_accum"
+    accum = float(state.get(accum_key, 0.0) or 0.0) + raw_dt
+    if accum + 1e-6 < target_dt:
+        state[accum_key] = accum
+        return 0.0
+    state[accum_key] = 0.0
+    return clamp_web_dt(accum)
+
+
+async def _yield_menu_web_frame(game, state_key: str) -> None:
+    if not getattr(game, "IS_WEB", False):
+        return
+    state = _state(game)
+    target_dt = 1.0 / max(1.0, float(getattr(game, "WEB_TARGET_FPS", 30) or 30))
+    now_s = pygame.time.get_ticks() / 1000.0
+    last_s = float(state.get(state_key, now_s) or now_s)
+    raw_dt = max(0.0, now_s - last_s)
+    delay = max(0.0, target_dt - raw_dt)
+    if delay > 0.001:
+        await asyncio.sleep(delay)
+    else:
+        await asyncio.sleep(0)
+
+
+def _ensure_intro_bgm(game) -> None:
+    try:
+        state = _state(game)
+        bgm = state.get("_bgm")
+        cur = getattr(bgm, "music_path", "") if bgm is not None else ""
+        cur_lower = str(cur or "").lower()
+        if "intro_v0.wav" not in cur_lower and "intro_v0.ogg" not in cur_lower:
+            game.play_intro_bgm()
+        if getattr(game, "IS_WEB", False):
+            game._resume_bgm_if_needed(min_interval_s=0.0)
+    except Exception:
+        try:
+            game.play_intro_bgm()
+        except Exception:
+            pass
 
 
 def _prime_web_gameplay_assets_step(game):
@@ -58,18 +110,47 @@ async def run_neuro_intro(game, screen: pygame.Surface):
     title_font = game._get_sekuya_font(64)
     prompt_font = pygame.font.SysFont("Consolas", 24)
     t = 0.0
+    web_exit_armed_ms = None
+    _ensure_intro_bgm(game)
     while True:
-        dt = clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60) / 1000.0
+        dt = _menu_frame_dt(game, clock, "_web_intro_last_frame_s")
+        if game.IS_WEB and dt <= 0.0:
+            for event in pygame.event.get():
+                screen = game._handle_web_window_event(event) or screen
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if game.IS_WEB and is_web_interaction_event(event):
+                    try:
+                        _ensure_intro_bgm(game)
+                        game._resume_bgm_if_needed(min_interval_s=0.0)
+                    except Exception:
+                        pass
+                    if web_exit_armed_ms is None:
+                        web_exit_armed_ms = pygame.time.get_ticks()
+                        continue
+                    game.flush_events()
+                    return
+            await _yield_menu_web_frame(game, "_web_intro_last_frame_s")
+            continue
         t += dt
         screen.blit(game.ensure_neuro_background(), (0, 0))
-        game._draw_intro_starfield(screen, t)
-        game._draw_intro_datastreams(screen, t)
-        game.draw_intro_waves(screen, t)
-        game._draw_intro_holo_core(screen, t)
-        game._draw_intro_scanlines(screen, t)
+        if game.IS_WEB:
+            game.draw_intro_waves(screen, t)
+            game._draw_intro_holo_core(screen, t)
+        else:
+            game._draw_intro_starfield(screen, t)
+            game._draw_intro_datastreams(screen, t)
+            game.draw_intro_waves(screen, t)
+            game._draw_intro_holo_core(screen, t)
+            game._draw_intro_scanlines(screen, t)
         game.draw_neuro_title_intro(screen, title_font, prompt_font, t)
         pygame.display.flip()
         _prime_web_gameplay_assets_step(game)
+        if game.IS_WEB and web_exit_armed_ms is not None:
+            if (pygame.time.get_ticks() - web_exit_armed_ms) >= 900:
+                game.flush_events()
+                return
         for event in pygame.event.get():
             screen = game._handle_web_window_event(event) or screen
             if event.type == pygame.QUIT:
@@ -77,9 +158,13 @@ async def run_neuro_intro(game, screen: pygame.Surface):
                 sys.exit()
             if game.IS_WEB and is_web_interaction_event(event):
                 try:
+                    _ensure_intro_bgm(game)
                     game._resume_bgm_if_needed(min_interval_s=0.0)
                 except Exception:
                     pass
+                if web_exit_armed_ms is None:
+                    web_exit_armed_ms = pygame.time.get_ticks()
+                    continue
                 game.flush_events()
                 return
             if event.type == pygame.KEYDOWN:
@@ -89,7 +174,7 @@ async def run_neuro_intro(game, screen: pygame.Surface):
                 game.flush_events()
                 return
         if game.IS_WEB:
-            await asyncio.sleep(0)
+            await _yield_menu_web_frame(game, "_web_intro_last_frame_s")
 
 
 def render_start_menu_surface(game, saved_exists: bool):
@@ -134,20 +219,10 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
     game.flush_events()
     intro_flag = state.pop("_skip_intro_once", False)
     skip_intro = bool(skip_intro or getattr(game, "WEB_DEMO_SKIP_INTRO", False))
+    _ensure_intro_bgm(game)
     if not skip_intro and not intro_flag:
         await run_neuro_intro(game, screen)
-    if not game.IS_WEB:
-        try:
-            bgm = state.get("_bgm")
-            cur = getattr(bgm, "music_path", "") if bgm is not None else ""
-            cur_lower = cur.lower()
-            if "intro_v0.wav" not in cur_lower and "intro_v0.ogg" not in cur_lower:
-                game.play_intro_bgm()
-        except Exception:
-            try:
-                game.play_intro_bgm()
-            except Exception:
-                pass
+    _ensure_intro_bgm(game)
     game._resume_bgm_if_needed(min_interval_s=0.0)
     clock = pygame.time.Clock()
     header_font = game._get_sekuya_font(22)
@@ -155,7 +230,17 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
     info_font = pygame.font.SysFont("Consolas", 18)
     t = 0.0
     while True:
-        dt = clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60) / 1000.0
+        dt = _menu_frame_dt(game, clock, "_web_menu_last_frame_s")
+        if game.IS_WEB and dt <= 0.0:
+            for event in pygame.event.get():
+                screen = game._handle_web_window_event(event) or screen
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if is_web_interaction_event(event):
+                    game._resume_bgm_if_needed(min_interval_s=0.0)
+            await _yield_menu_web_frame(game, "_web_menu_last_frame_s")
+            continue
         t += dt
 
         pos_ms = game._current_music_pos_ms()
@@ -276,7 +361,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
                     pygame.quit()
                     sys.exit()
         if game.IS_WEB:
-            await asyncio.sleep(0)
+            await _yield_menu_web_frame(game, "_web_menu_last_frame_s")
 
 
 def show_instruction(game, screen):
@@ -327,7 +412,17 @@ async def show_instruction_web(game, screen):
     btn_font = pygame.font.SysFont(None, 28)
     t = 0.0
     while True:
-        dt = clock.tick(game.WEB_TARGET_FPS) / 1000.0
+        dt = _menu_frame_dt(game, clock, "_web_instruction_last_frame_s")
+        if game.IS_WEB and dt <= 0.0:
+            for event in pygame.event.get():
+                screen = game._handle_web_window_event(event) or screen
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if game.IS_WEB and is_web_interaction_event(event):
+                    game._resume_bgm_if_needed(min_interval_s=0.0)
+            await _yield_menu_web_frame(game, "_web_instruction_last_frame_s")
+            continue
         t += dt
         _, back_rect = game.neuro_instruction_layout()
         hover_back = back_rect.inflate(int(back_rect.width * 0.08), int(back_rect.height * 0.08)).collidepoint(
@@ -361,7 +456,7 @@ async def show_instruction_web(game, screen):
                 to_surf = render_start_menu_surface(game, game.has_save())
                 game.play_hex_transition(screen, from_surf, to_surf, direction="up")
                 return
-        await asyncio.sleep(0)
+        await _yield_menu_web_frame(game, "_web_instruction_last_frame_s")
 
 
 def show_pause_menu(game, screen, background_surf):

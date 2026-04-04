@@ -66,6 +66,15 @@ def install(game):
 
     def _current_music_pos_ms() -> int | None:
         """Safe wrapper for pygame.mixer.music.get_pos(), returning None if not playing."""
+        runtime = _runtime()
+        bgm = runtime.get("_bgm")
+        if bgm is not None and hasattr(bgm, "position_ms"):
+            try:
+                pos = bgm.position_ms()
+                if pos is not None:
+                    return int(pos)
+            except Exception:
+                pass
         try:
             pos = pygame.mixer.music.get_pos()
             if pos is None or pos < 0:
@@ -76,6 +85,13 @@ def install(game):
 
     def _music_is_busy() -> bool:
         """Safe wrapper for pygame.mixer.music.get_busy()."""
+        runtime = _runtime()
+        bgm = runtime.get("_bgm")
+        if bgm is not None and hasattr(bgm, "is_busy"):
+            try:
+                return bool(bgm.is_busy())
+            except Exception:
+                pass
         try:
             if not pygame.mixer.get_init():
                 return False

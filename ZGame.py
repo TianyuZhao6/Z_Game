@@ -29,6 +29,7 @@ from zgame.browser import (
     WEB_ENABLE_GROUND_SPIKES,
     WEB_ENABLE_HURRICANES,
     WEB_ENABLE_VULNERABILITY_MARKS,
+    WEB_AUTOSTART,
     WEB_DEMO_DISABLE_CONTINUE,
     WEB_DEMO_LEVEL_LIMIT,
     WEB_DEMO_LEVEL_TIME_LIMIT,
@@ -41,6 +42,7 @@ from zgame.browser import (
     WEB_DEMO_SHOP_PROP_IDS,
     WEB_DEMO_SKIP_INTRO,
     WEB_ENEMY_CAP,
+    WEB_DISABLE_FX_AUDIO,
     WEB_FLOW_REFRESH_INTERVAL,
     WEB_RENDER_INTERVAL,
     WEB_SPATIAL_REFRESH_INTERVAL,
@@ -51,6 +53,7 @@ from zgame.browser import (
     cap_web_surface_size,
     get_initial_web_window_size,
     is_escape_event,
+    report_web_runtime_error,
 )
 from zgame.paths import (
     BASE_DIR,
@@ -4617,6 +4620,8 @@ def _load_effect_sound(filename: str):
 
 def _play_effect_sfx(filename: str):
     """Play an effect sound respecting the global FX volume slider."""
+    if IS_WEB and WEB_DISABLE_FX_AUDIO:
+        return
     snd = _load_effect_sound(filename)
     if not snd:
         return
@@ -5787,7 +5792,8 @@ def play_combat_bgm():
     if IS_WEB:
         runtime = _runtime_state()
         bgm = runtime.get("_bgm")
-        if bgm is not None and getattr(bgm, "_ready", False):
+        cur = str(getattr(bgm, "music_path", "") or "").lower() if bgm is not None else ""
+        if bgm is not None and getattr(bgm, "_ready", False) and any(token in cur for token in ("zgame.wav", "zgame.ogg")):
             try:
                 bgm.set_volume(BGM_VOLUME / 100.0)
                 bgm.playBackGroundMusic(loops=-1, fade_ms=0)
@@ -5802,16 +5808,48 @@ def play_combat_bgm():
 
 # ==================== 游戏主循环 ====================
 async def main_run_level(config, chosen_enemy_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
-    return await app_flow_support.main_run_level(_THIS_MODULE, config, chosen_enemy_type)
+    try:
+        return await app_flow_support.main_run_level(_THIS_MODULE, config, chosen_enemy_type)
+    except Exception as e:
+        if IS_WEB:
+            try:
+                import traceback
+
+                report_web_runtime_error("main_run_level", traceback.format_exc())
+            except Exception:
+                pass
+        raise
 
 
 async def run_from_snapshot(save_data: dict) -> Tuple[str, Optional[str], pygame.Surface]:
-    return await app_flow_support.run_from_snapshot(_THIS_MODULE, save_data)
+    try:
+        return await app_flow_support.run_from_snapshot(_THIS_MODULE, save_data)
+    except Exception as e:
+        if IS_WEB:
+            try:
+                import traceback
+
+                report_web_runtime_error("run_from_snapshot", traceback.format_exc())
+            except Exception:
+                pass
+        raise
 
 
 # ==================== 入口 ====================
 async def app_main() -> None:
-    return await app_flow_support.app_main(_THIS_MODULE)
+    try:
+        return await app_flow_support.app_main(_THIS_MODULE)
+    except Exception as e:
+        if IS_WEB:
+            try:
+                import traceback
+
+                report_web_runtime_error("app_main", traceback.format_exc())
+            except Exception:
+                pass
+            while True:
+                await asyncio.sleep(0.25)
+        raise
 
 
 if __name__ == "__main__":

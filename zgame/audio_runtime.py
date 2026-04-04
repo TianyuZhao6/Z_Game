@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pygame
 
 
@@ -65,9 +67,45 @@ def install(game):
             print(f"[Audio] mixer init failed: {last_error}")
             return False
 
+        @staticmethod
+        def _browser_music_url(path: str) -> str:
+            name = os.path.basename(str(path or ""))
+            return f"assets/music/{name}" if name else ""
+
+        def _open_native_web_audio(self) -> bool:
+            try:
+                import platform as web_platform
+
+                window = getattr(web_platform, "window", None)
+                if window is None:
+                    return False
+                url = self._browser_music_url(self.music_path)
+                if not url:
+                    return False
+                ok = window.__zgame_bgm_open(url, self.volume)
+                if ok:
+                    self._native_web_audio = True
+                    return True
+            except Exception as e:
+                print(f"[Audio] html bgm open failed: {e}")
+            return False
+
+        def _window_call(self, fn_name: str, *args):
+            try:
+                import platform as web_platform
+
+                window = getattr(web_platform, "window", None)
+                fn = getattr(window, fn_name, None) if window is not None else None
+                if fn is None:
+                    return None
+                return fn(*args)
+            except Exception:
+                return None
+
         def __init__(self, music_path: str = None, volume: float = 0.6):
             self.volume = max(0.0, min(1.0, float(volume)))
             self._ready = False
+            self._native_web_audio = False
             candidates = [
                 *game._asset_candidates("music", "Intro_V0.wav"),
                 *game._asset_candidates("music", "ZGAME.wav"),
@@ -78,6 +116,10 @@ def install(game):
             self.music_path = game._first_existing_path(candidates)
             if not self.music_path:
                 print("[Audio] ZGAME.wav not found in expected locations.")
+                return
+            if getattr(game, "IS_WEB", False) and self._open_native_web_audio():
+                self._ready = True
+                print(f"[Audio] Loaded HTML BGM: {self.music_path}")
                 return
             try:
                 if not self._ensure_music_mixer():
@@ -96,6 +138,9 @@ def install(game):
         def playBackGroundMusic(self, loops: int = -1, fade_ms: int = 500):
             if not self._ready:
                 return
+            if self._native_web_audio:
+                self._window_call("__zgame_bgm_play", loops, fade_ms)
+                return
             try:
                 pygame.mixer.music.play(loops=loops, fade_ms=fade_ms)
             except Exception as e:
@@ -103,6 +148,9 @@ def install(game):
 
         def stop(self, fade_ms: int = 300):
             if not self._ready:
+                return
+            if self._native_web_audio:
+                self._window_call("__zgame_bgm_stop")
                 return
             try:
                 if fade_ms > 0:
@@ -114,6 +162,9 @@ def install(game):
 
         def pause(self):
             if self._ready:
+                if self._native_web_audio:
+                    self._window_call("__zgame_bgm_pause")
+                    return
                 try:
                     pygame.mixer.music.pause()
                 except Exception as e:
@@ -121,6 +172,9 @@ def install(game):
 
         def resume(self):
             if self._ready:
+                if self._native_web_audio:
+                    self._window_call("__zgame_bgm_resume")
+                    return
                 try:
                     pygame.mixer.music.unpause()
                 except Exception as e:
@@ -129,10 +183,48 @@ def install(game):
         def set_volume(self, volume: float):
             self.volume = max(0.0, min(1.0, float(volume)))
             if self._ready:
+                if self._native_web_audio:
+                    self._window_call("__zgame_bgm_set_volume", self.volume)
+                    return
                 try:
                     pygame.mixer.music.set_volume(self.volume)
                 except Exception as e:
                     print(f"[Audio] set_volume failed: {e}")
+
+        def is_busy(self) -> bool:
+            if not self._ready:
+                return False
+            if self._native_web_audio:
+                return bool(self._window_call("__zgame_bgm_busy"))
+            try:
+                if not pygame.mixer.get_init():
+                    return False
+                return bool(pygame.mixer.music.get_busy())
+            except Exception:
+                return False
+
+        def position_ms(self) -> int | None:
+            if not self._ready:
+                return None
+            if self._native_web_audio:
+                try:
+                    if not bool(self._window_call("__zgame_bgm_busy")):
+                        return None
+                except Exception:
+                    return None
+                pos = self._window_call("__zgame_bgm_pos_ms")
+                try:
+                    pos_i = int(pos)
+                except Exception:
+                    return None
+                return pos_i if pos_i >= 0 else None
+            try:
+                pos = pygame.mixer.music.get_pos()
+                if pos is None or pos < 0:
+                    return None
+                return int(pos)
+            except Exception:
+                return None
 
     game.__dict__.update({"GameSound": GameSound})
     return GameSound

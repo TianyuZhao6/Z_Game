@@ -38,12 +38,57 @@ def _sanitize_enemy_shots(game, enemy_shots) -> None:
 
 
 def _frame_dt(game, clock: pygame.time.Clock) -> float:
-    dt = clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60) / 1000.0
+    runtime = rs.runtime(game)
     if not game.IS_WEB:
-        return dt
+        raw_dt = clock.tick(60) / 1000.0
+        runtime["_last_raw_frame_dt_s"] = raw_dt
+        return raw_dt
+    # Avoid blocking SDL sleep on web; let the browser event loop drive cadence.
+    now_s = pygame.time.get_ticks() / 1000.0
+    last_s = float(runtime.get("_web_last_frame_s", now_s) or now_s)
+    raw_dt = max(0.0, now_s - last_s)
+    runtime["_web_last_frame_s"] = now_s
+    if raw_dt <= 0.0:
+        raw_dt = 1.0 / max(30.0, float(getattr(game, "WEB_TARGET_FPS", 30) or 30))
+    runtime["_last_raw_frame_dt_s"] = raw_dt
+    target_dt = 1.0 / max(1.0, float(getattr(game, "WEB_TARGET_FPS", 30) or 30))
+    accum = float(runtime.get("_web_frame_accum_s", 0.0) or 0.0) + raw_dt
+    if accum + 1e-6 < target_dt:
+        runtime["_web_frame_accum_s"] = accum
+        return 0.0
+    runtime["_web_frame_accum_s"] = 0.0
     # Browser tabs can resume with a very large frame delta; clamp that so
     # movement, timers, and spawn logic do not fast-forward in one frame.
-    return clamp_web_dt(dt)
+    return clamp_web_dt(accum)
+
+
+async def _yield_web_frame(game) -> None:
+    if not getattr(game, "IS_WEB", False):
+        return
+    # In pygbag/browser builds, positive-duration asyncio.sleep(...) can stop
+    # resuming reliably under some runtimes even while the page JS loop keeps
+    # ticking. Use cooperative sleep(0) only, and let _frame_dt() decide when
+    # enough wall-clock time has accumulated to run the next simulation step.
+    await asyncio.sleep(0)
+
+
+def _pump_web_idle_events(game, screen, on_focus_lost=None):
+    for event in pygame.event.get():
+        screen = game._handle_web_window_event(event) or screen
+        game._sync_web_input_event(event)
+        _resume_web_audio_on_event(game, event)
+        if getattr(event, "type", None) in {
+            getattr(pygame, "WINDOWFOCUSLOST", None),
+        }:
+            if on_focus_lost is not None:
+                try:
+                    on_focus_lost()
+                except Exception:
+                    pass
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
+    return screen
 
 
 def _resume_web_audio_on_event(game, event) -> None:
@@ -74,7 +119,8 @@ def _web_profiler(game) -> WebRuntimeProfiler | None:
 def _profile_begin(game, dt_s: float) -> WebRuntimeProfiler | None:
     profiler = _web_profiler(game)
     if profiler is not None:
-        profiler.begin_frame(dt_s)
+        raw_dt_s = float(rs.runtime(game).get("_last_raw_frame_dt_s", dt_s) or dt_s)
+        profiler.begin_frame(dt_s, raw_dt_s=raw_dt_s)
     return profiler
 
 
@@ -98,6 +144,19 @@ def _profile_set_counters(game, profiler: WebRuntimeProfiler | None, game_state,
         int(bool(runtime.get("_web_hex_transition_state") is not None or runtime.get("_menu_transition_frame") is not None)),
     )
     profiler.counter("rendered", int(bool(rendered)))
+    bgm = runtime.get("_bgm")
+    if bgm is None:
+        profiler.counter("audio", "none")
+    else:
+        path = str(getattr(bgm, "music_path", "") or "").lower()
+        if "intro_v0" in path:
+            track = "intro"
+        elif "zgame" in path:
+            track = "combat"
+        else:
+            track = "other"
+        backend = "html" if bool(getattr(bgm, "_native_web_audio", False)) else "mixer"
+        profiler.counter("audio", f"{backend}:{track}")
 
 
 def _profile_finish(game, profiler: WebRuntimeProfiler | None, game_state, enemies, bullets, enemy_shots,
@@ -120,8 +179,6 @@ def _profile_finish(game, profiler: WebRuntimeProfiler | None, game_state, enemi
 def _combat_bgm_selected(game) -> bool:
     runtime = rs.runtime(game)
     bgm = runtime.get("_bgm")
-    if getattr(game, "IS_WEB", False) and bgm is not None and getattr(bgm, "_ready", False):
-        return True
     path = str(getattr(bgm, "music_path", "") or "").lower()
     return any(token in path for token in ("zgame.wav", "zgame.ogg"))
 
@@ -441,6 +498,16 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     entry_freeze = 0.4
     while running:
         dt = _frame_dt(game, clock)
+        if game.IS_WEB and dt <= 0.0:
+            screen = _pump_web_idle_events(
+                game,
+                screen,
+                on_focus_lost=lambda: _web_snapshot_autosave(
+                    game, runtime, game_state, player, enemies, game.current_level, chosen_enemy_type, bullets, force=True
+                ),
+            )
+            await _yield_web_frame(game)
+            continue
         profiler = _profile_begin(game, dt)
         render_cooldown = max(0.0, render_cooldown - dt)
         if web_transition_guard_t > 0.0:
@@ -495,7 +562,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 rendered=rendered,
             )
             if game.IS_WEB:
-                await asyncio.sleep(0)
+                await _yield_web_frame(game)
             continue
         if game.IS_WEB and (not combat_bgm_started):
             combat_bgm_delay = max(0.0, combat_bgm_delay - dt)
@@ -835,7 +902,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             rendered=should_render,
         )
         if game.IS_WEB:
-            await asyncio.sleep(0)
+            await _yield_web_frame(game)
     return (game_result, config.get('reward', None), last_frame or screen.copy())
 
 async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], pygame.Surface]:
@@ -1036,6 +1103,16 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     profiler = _web_profiler(game)
     while running:
         dt = _frame_dt(game, clock)
+        if game.IS_WEB and dt <= 0.0:
+            screen = _pump_web_idle_events(
+                game,
+                screen,
+                on_focus_lost=lambda: _web_snapshot_autosave(
+                    game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets, force=True
+                ),
+            )
+            await _yield_web_frame(game)
+            continue
         profiler = _profile_begin(game, dt)
         render_cooldown = max(0.0, render_cooldown - dt)
         if web_transition_guard_t > 0.0:
@@ -1315,7 +1392,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             rendered=should_render,
         )
         if game.IS_WEB:
-            await asyncio.sleep(0)
+            await _yield_web_frame(game)
     return ('home', None, last_frame or screen.copy())
 
 async def app_main(game) -> None:
@@ -1354,8 +1431,11 @@ async def app_main(game) -> None:
         game._reset_active_run_state(clear_save_file=True)
         return None
 
-    selection = await game.show_start_menu(screen, skip_intro=bool(getattr(game, 'WEB_DEMO_SKIP_INTRO', False)))
-    apply_menu_selection(selection)
+    if getattr(game, "IS_WEB", False) and bool(getattr(game, "WEB_AUTOSTART", False)):
+        game._reset_active_run_state(clear_save_file=True)
+    else:
+        selection = await game.show_start_menu(screen, skip_intro=bool(getattr(game, 'WEB_DEMO_SKIP_INTRO', False)))
+        apply_menu_selection(selection)
     START_IN_SHOP_FOR_TEST = False
     if START_IN_SHOP_FOR_TEST:
         runtime['_pending_shop'] = True

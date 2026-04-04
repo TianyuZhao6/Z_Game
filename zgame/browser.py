@@ -10,9 +10,9 @@ import pygame
 IS_WEB = sys.platform == "emscripten"
 
 
-def _detect_web_demo() -> bool:
+def _web_location_marker() -> str:
     if not IS_WEB:
-        return False
+        return ""
     try:
         import platform as web_platform
 
@@ -20,10 +20,21 @@ def _detect_web_demo() -> bool:
         location = getattr(window, "location", None) if window else None
         search = str(getattr(location, "search", "") or "").lower()
         hash_part = str(getattr(location, "hash", "") or "").lower()
-        marker = f"{search}&{hash_part}"
-        return any(token in marker for token in ("demo=1", "web_demo=1", "mode=demo", "#demo"))
+        return f"{search}&{hash_part}"
     except Exception:
+        return ""
+
+
+def _detect_web_demo() -> bool:
+    if not IS_WEB:
         return False
+    marker = _web_location_marker()
+    return any(token in marker for token in ("demo=1", "web_demo=1", "mode=demo", "#demo"))
+
+
+def _detect_web_autostart() -> bool:
+    marker = _web_location_marker()
+    return any(token in marker for token in ("autostart=1", "debug_start=1", "start=1"))
 WEB_WINDOW_SIZE = (960, 540)
 WEB_TARGET_FPS = 20
 WEB_MAX_FRAME_DT = 0.05
@@ -35,6 +46,7 @@ WEB_MAX_RENDER_WIDTH = 720
 WEB_MAX_RENDER_HEIGHT = 405
 WEB_RENDER_INTERVAL = 1.0 / 12.0
 WEB_DEMO = _detect_web_demo()
+WEB_AUTOSTART = _detect_web_autostart()
 WEB_DEMO_SKIP_INTRO = WEB_DEMO
 WEB_DEMO_DISABLE_CONTINUE = WEB_DEMO
 WEB_DEMO_LEVEL_LIMIT = 2
@@ -62,6 +74,7 @@ WEB_DEMO_RENDER_BULLET_CAP = 28
 WEB_DEMO_RENDER_ENEMY_SHOT_CAP = 18
 WEB_USE_LITE_RENDER = True
 WEB_PROFILER_ENABLED = IS_WEB
+WEB_DISABLE_FX_AUDIO = True
 WEB_ENABLE_ENEMY_PAINT = not WEB_DEMO
 WEB_ENABLE_VULNERABILITY_MARKS = not WEB_DEMO
 WEB_ENABLE_HURRICANES = not WEB_DEMO
@@ -263,6 +276,55 @@ def _set_browser_profiler_phase(phase: str, detail: str = "") -> None:
         pass
 
 
+def _set_browser_profiler_metrics(
+    *,
+    frame: int | None = None,
+    dt_ms: float | None = None,
+    raw_dt_ms: float | None = None,
+    total_ms: float | None = None,
+    rendered: bool | None = None,
+) -> None:
+    if not IS_WEB:
+        return
+    try:
+        import platform as web_platform
+
+        window = getattr(web_platform, "window", None)
+        if window is None:
+            return
+        if frame is not None:
+            setattr(window, "__zgame_py_frame", int(frame))
+        if dt_ms is not None:
+            setattr(window, "__zgame_py_dt_ms", round(float(dt_ms), 2))
+        if raw_dt_ms is not None:
+            setattr(window, "__zgame_py_raw_dt_ms", round(float(raw_dt_ms), 2))
+        if total_ms is not None:
+            setattr(window, "__zgame_py_total_ms", round(float(total_ms), 2))
+        if rendered is not None:
+            setattr(window, "__zgame_py_rendered", int(bool(rendered)))
+        setattr(window, "__zgame_py_heartbeat_ms", round(float(time.perf_counter()) * 1000.0, 1))
+    except Exception:
+        pass
+
+
+def report_web_runtime_error(context: str, err) -> None:
+    if not IS_WEB:
+        return
+    try:
+        import platform as web_platform
+
+        window = getattr(web_platform, "window", None)
+        if window is None:
+            return
+        msg = str(err or "").strip().replace("\r", " ").replace("\n", " | ")
+        full = f"{context}: {msg}".strip(": ").strip()
+        setattr(window, "__zgame_last_error", full[:240])
+        setattr(window, "__zgame_py_error", full[:512])
+        setattr(window, "__zgame_py_dead", True)
+    except Exception:
+        pass
+
+
 class WebRuntimeProfiler:
     """Small web-only frame profiler for spotting the last hot gameplay phase."""
 
@@ -280,7 +342,11 @@ class WebRuntimeProfiler:
         self.avg_total_ms = 0.0
         self.max_total_ms = 0.0
         self.last_dt_ms = 0.0
+        self.last_raw_dt_ms = 0.0
+        self.max_raw_dt_ms = 0.0
         self.last_rendered = False
+        self.last_heap_mb = None
+        self.peak_heap_mb = 0.0
         self.last_hot_label = ""
         self.last_hot_ms = 0.0
         self.last_hot_total_ms = 0.0
@@ -288,7 +354,7 @@ class WebRuntimeProfiler:
         self._hot_phase_threshold_ms = 16.0
         self._hot_total_threshold_ms = 33.0
 
-    def begin_frame(self, dt_s: float) -> None:
+    def begin_frame(self, dt_s: float, *, raw_dt_s: float | None = None) -> None:
         if not self.enabled:
             return
         self.frame_index += 1
@@ -298,7 +364,15 @@ class WebRuntimeProfiler:
         self._phase_last = {}
         self._counters = {}
         self.last_dt_ms = max(0.0, float(dt_s) * 1000.0)
+        raw_s = float(raw_dt_s if raw_dt_s is not None else dt_s)
+        self.last_raw_dt_ms = max(0.0, raw_s * 1000.0)
+        self.max_raw_dt_ms = max(self.max_raw_dt_ms, self.last_raw_dt_ms)
         _set_browser_profiler_phase("frame")
+        _set_browser_profiler_metrics(
+            frame=self.frame_index,
+            dt_ms=self.last_dt_ms,
+            raw_dt_ms=self.last_raw_dt_ms,
+        )
 
     def mark(self, phase: str) -> None:
         if not self.enabled:
@@ -326,10 +400,18 @@ class WebRuntimeProfiler:
         self.avg_total_ms = total_ms if self.frame_index <= 1 else (self.avg_total_ms * 0.92 + total_ms * 0.08)
         self.max_total_ms = max(self.max_total_ms, total_ms)
         self.last_rendered = bool(rendered)
+        self._refresh_heap()
         self._maybe_log_hot_frame(now)
         _set_browser_profiler_phase(
             "render" if rendered else "update",
             f"frame={self.frame_index} total={total_ms:.1f}ms",
+        )
+        _set_browser_profiler_metrics(
+            frame=self.frame_index,
+            dt_ms=self.last_dt_ms,
+            raw_dt_ms=self.last_raw_dt_ms,
+            total_ms=self.last_total_ms,
+            rendered=rendered,
         )
         self.current_phase = ""
         self._phase_started_at = now
@@ -371,14 +453,36 @@ class WebRuntimeProfiler:
         )
         print(
             f"[WebProfiler] frame={self.frame_index} dt={self.last_dt_ms:.1f}ms "
-            f"total={self.last_total_ms:.1f}ms hot={hot_name}:{hot_ms:.1f}ms {counts}".rstrip()
+            f"total={self.last_total_ms:.1f}ms hot={hot_name}:{hot_ms:.1f}ms "
+            f"heap={self.last_heap_mb if self.last_heap_mb is not None else 'n/a'}MB {counts}".rstrip()
         )
+
+    def _refresh_heap(self) -> None:
+        heap_mb = None
+        browser_error = ""
+        try:
+            import platform as web_platform
+
+            window = getattr(web_platform, "window", None)
+            perf = getattr(window, "performance", None) if window is not None else None
+            mem = getattr(perf, "memory", None) if perf is not None else None
+            used = getattr(mem, "usedJSHeapSize", None) if mem is not None else None
+            if used is not None:
+                heap_mb = round(float(used) / (1024.0 * 1024.0), 1)
+            browser_error = str(getattr(window, "__zgame_last_error", "") or "") if window is not None else ""
+        except Exception:
+            heap_mb = None
+            browser_error = ""
+        self.last_heap_mb = heap_mb
+        if heap_mb is not None:
+            self.peak_heap_mb = max(self.peak_heap_mb, heap_mb)
+        self._counters["jserr"] = browser_error[:96] if browser_error else ""
 
     def overlay_lines(self) -> list[str]:
         if not self.enabled:
             return []
         lines = [
-            f"WEB PROFILER  f:{self.frame_index}  dt:{self.last_dt_ms:.1f}  total:{self.last_total_ms:.1f}/{self.avg_total_ms:.1f}/{self.max_total_ms:.1f}",
+            f"WEB PROFILER  f:{self.frame_index}  dt:{self.last_dt_ms:.1f} raw:{self.last_raw_dt_ms:.1f}  total:{self.last_total_ms:.1f}/{self.avg_total_ms:.1f}/{self.max_total_ms:.1f}",
             f"hot {self.last_hot_label or '-'}  {self.last_hot_ms:.1f} ms  rendered:{int(self.last_rendered)}",
         ]
         preferred = ("pre", "events", "focus", "update", "bullets", "spawn", "flow", "enemy_move", "enemy_special", "enemy_shots", "render")
@@ -395,6 +499,18 @@ class WebRuntimeProfiler:
                 counter_parts.append(f"{key}:{self._counters[key]}")
         if counter_parts:
             lines.append("  ".join(counter_parts))
+        if "audio" in self._counters:
+            audio_line = f"audio:{self._counters['audio']}"
+            if self.last_heap_mb is not None:
+                audio_line += f"  heap:{self.last_heap_mb:.1f}/{self.peak_heap_mb:.1f}MB"
+            lines.append(audio_line)
+        elif self.last_heap_mb is not None:
+            lines.append(f"heap:{self.last_heap_mb:.1f}/{self.peak_heap_mb:.1f}MB")
+        js_err = str(self._counters.get("jserr", "") or "").strip()
+        if js_err:
+            lines.append(f"jserr:{js_err[:72]}")
+        if self.last_raw_dt_ms > self.last_total_ms + 8.0:
+            lines.append(f"browser_gap {max(0.0, self.last_raw_dt_ms - self.last_total_ms):.1f} ms")
         return lines
 
 

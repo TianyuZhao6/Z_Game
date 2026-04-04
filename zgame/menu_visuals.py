@@ -277,25 +277,28 @@ def install(game):
             runtime["_intro_view_size"] = view_size
         seed = _ensure_neuro_log_seed()
         rng = random.Random(seed ^ 0xA51D)
+        far_count = 80 if game.IS_WEB else 180
+        near_count = 42 if game.IS_WEB else 110
+        col_count = 6 if game.IS_WEB else 11
         star_far = runtime.get("_intro_star_far") or []
         if not star_far:
             star_far = [
                 (rng.uniform(0, game.VIEW_W), rng.uniform(0, game.VIEW_H), rng.random() * math.tau, rng.choice([1, 1, 2]))
-                for _ in range(180)
+                for _ in range(far_count)
             ]
             runtime["_intro_star_far"] = star_far
         star_near = runtime.get("_intro_star_near") or []
         if not star_near:
             star_near = [
                 (rng.uniform(0, game.VIEW_W), rng.uniform(0, game.VIEW_H), rng.random() * math.tau, rng.choice([2, 3]))
-                for _ in range(110)
+                for _ in range(near_count)
             ]
             runtime["_intro_star_near"] = star_near
         columns = runtime.get("_intro_columns") or []
         if not columns:
             columns = [
                 (rng.uniform(0.05, 0.95) * game.VIEW_W, rng.uniform(0.45, 0.75), rng.random() * math.tau)
-                for _ in range(11)
+                for _ in range(col_count)
             ]
             runtime["_intro_columns"] = columns
         return star_far, star_near, columns
@@ -331,7 +334,8 @@ def install(game):
         surf.blit(horizon, (0, 0), special_flags=pygame.BLEND_ADD)
         ribbon = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
         rng = random.Random(seed ^ 0x8A11)
-        for i in range(7):
+        ribbon_count = 4 if game.IS_WEB else 7
+        for i in range(ribbon_count):
             x0 = int(-game.VIEW_W * 0.25 + i * game.VIEW_W * 0.22 + rng.randint(-30, 30))
             x1 = x0 + int(game.VIEW_W * 0.65)
             y0 = int(game.VIEW_H * (0.15 + 0.02 * i))
@@ -340,7 +344,7 @@ def install(game):
             pygame.draw.polygon(ribbon, col, [(x0, y0), (x1, y0 + 40), (x1 - 120, y1), (x0 - 80, y1 - 60)])
         surf.blit(ribbon, (0, 0), special_flags=pygame.BLEND_ADD)
         grid = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
-        spacing = 32
+        spacing = 40 if game.IS_WEB else 32
         for y in range(0, game.VIEW_H, spacing):
             alpha = max(10, int(36 * (1 - abs((y - game.VIEW_H * 0.55) / (game.VIEW_H * 0.7)))))
             pygame.draw.line(grid, (18, 60, 86, alpha), (0, y), (game.VIEW_W, y))
@@ -349,7 +353,8 @@ def install(game):
             pygame.draw.line(grid, (18, 60, 86, alpha), (x, 0), (x, game.VIEW_H))
         surf.blit(grid, (0, 0))
         dust = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
-        for _ in range(180):
+        dust_count = 80 if game.IS_WEB else 180
+        for _ in range(dust_count):
             px, py = rng.randrange(game.VIEW_W), rng.randrange(game.VIEW_H)
             alpha = rng.randrange(12, 44)
             pygame.draw.circle(dust, (60, 150, 210, alpha), (px, py), 1)
@@ -377,6 +382,18 @@ def install(game):
     def _draw_intro_starfield(surface: pygame.Surface, t: float) -> None:
         """Animated parallax starfield for the intro."""
         star_far, star_near, _ = _seed_intro_layers()
+        if game.IS_WEB:
+            for x, y, phase, size in star_far:
+                px = (x + t * 10.0) % game.VIEW_W
+                twinkle = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(phase + t * 0.45))
+                shade = int(110 + 70 * twinkle)
+                pygame.draw.circle(surface, (shade // 2, shade, 205), (int(px), int(y)), size)
+            for x, y, phase, size in star_near[:24]:
+                px = (x - t * 20.0) % game.VIEW_W
+                twinkle = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(phase + t * 0.9))
+                shade = int(150 + 80 * twinkle)
+                pygame.draw.circle(surface, (shade // 2, shade, 240), (int(px), int(y)), size)
+            return
         overlay = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
         for x, y, phase, size in star_far:
             px = (x + t * 12.0) % game.VIEW_W
@@ -402,6 +419,21 @@ def install(game):
     def _draw_intro_datastreams(surface: pygame.Surface, t: float) -> None:
         """Tall translucent pillars that feel like stacked neural towers."""
         _, _, columns = _seed_intro_layers()
+        if game.IS_WEB:
+            for idx, (x0, h_factor, phase) in enumerate(columns[:4]):
+                sway = math.sin(t * (0.55 + idx * 0.05) + phase) * (16 + idx * 1.0)
+                x = int(x0 + sway)
+                h = int(game.VIEW_H * h_factor)
+                top = game.VIEW_H - h
+                width = 10 + (idx % 2) * 4
+                pts = [
+                    (x - width, game.VIEW_H),
+                    (x + width, game.VIEW_H),
+                    (x + int(width * 1.2), top + 24),
+                    (x - int(width * 1.2), top),
+                ]
+                pygame.draw.polygon(surface, (24, 112, 170), pts, 1)
+            return
         overlay = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
         base_col = (60, 170, 220)
         for idx, (x0, h_factor, phase) in enumerate(columns):
@@ -431,6 +463,18 @@ def install(game):
     def _draw_intro_holo_core(surface: pygame.Surface, t: float) -> None:
         """Central holographic orb with orbiting shards."""
         cx, cy = game.VIEW_W // 2, int(game.VIEW_H * 0.46)
+        if game.IS_WEB:
+            base_r = 150 + 10 * math.sin(t * 0.8)
+            for i in range(6):
+                r = int(base_r - i * 10)
+                if r <= 0:
+                    break
+                pygame.draw.circle(surface, (40 + i * 12, 150 + i * 7, 230), (cx, cy), r, 1)
+            for idx, r in enumerate((int(base_r + 22), int(base_r + 52))):
+                start = (t * (0.55 + idx * 0.18) + idx * 0.8) % (2 * math.pi)
+                span = math.pi * (0.95 + 0.06 * math.sin(t * 0.6 + idx))
+                pygame.draw.arc(surface, (90, 215 - idx * 10, 240), (cx - r, cy - r, 2 * r, 2 * r), start, start + span, 2)
+            return
         orb_size = 520
         orb = pygame.Surface((orb_size, orb_size), pygame.SRCALPHA)
         oc = orb_size // 2
@@ -488,6 +532,8 @@ def install(game):
 
     def _draw_intro_scanlines(surface: pygame.Surface, t: float) -> None:
         """Sweeping scan strip to make the scene feel like a live console feed."""
+        if game.IS_WEB:
+            return
         overlay = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
         stripe_h = 90
         sweep_y = (t * 120.0) % (game.VIEW_H + stripe_h) - stripe_h
@@ -519,13 +565,13 @@ def install(game):
 
     def draw_intro_waves(target: pygame.Surface, t: float):
         """Start-screen waves: radial ripples running forever until any key is pressed."""
-        overlay = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
+        overlay = target if game.IS_WEB else pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
         cx, cy = game.VIEW_W // 2, int(game.VIEW_H * 0.52)
         max_r = math.hypot(game.VIEW_W, game.VIEW_H) * 0.55
         ripple_freq_hz = 0.9
         ripple_speed = 320.0
         max_age = max_r / ripple_speed
-        active_ripples = int(max_age * ripple_freq_hz) + (2 if game.IS_WEB else 4)
+        active_ripples = int(max_age * ripple_freq_hz) + (1 if game.IS_WEB else 4)
         wave_period = 1.0 / ripple_freq_hz
         loop_window = max_age + wave_period
         energy = 0.0
@@ -551,25 +597,26 @@ def install(game):
             if alpha <= 0:
                 continue
             thickness = max(1, int(base_thickness + (1 if game.IS_WEB else 2) * fade))
-            col = (70, 200 + hue_shift, 255, alpha)
+            col = (70, 200 + hue_shift, 255) if game.IS_WEB else (70, 200 + hue_shift, 255, alpha)
             pygame.draw.circle(overlay, col, (cx, cy), int(radius), thickness)
             shimmer_radius = radius + (6 + energy_norm * 6) * math.sin(age * math.tau * 0.33)
             if (not game.IS_WEB) and 0 < shimmer_radius < max_r:
                 pygame.draw.circle(overlay, (col[0], col[1], col[2], int(alpha * 0.6)), (cx, cy), int(shimmer_radius), 1)
-        target.blit(overlay, (0, 0))
+        if not game.IS_WEB:
+            target.blit(overlay, (0, 0))
 
     def draw_neuro_waves(target: pygame.Surface, t: float):
         """Home/menus: infinite outline ripples based on the current NeuroViz shape and color."""
-        overlay = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
+        overlay = target if game.IS_WEB else pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
         cx, cy = game.VIEW_W // 2, int(game.VIEW_H * 0.52)
         base_pts = _neuro_outline_points(cx, cy)
         if len(base_pts) < 3:
             return
         ripple_freq_hz = 0.95
-        scale_speed = 0.85
-        max_scale = 4.5
+        scale_speed = 0.68 if game.IS_WEB else 0.85
+        max_scale = 2.8 if game.IS_WEB else 4.5
         max_age = (max_scale - 1.0) / scale_speed
-        active_ripples = int(max_age * ripple_freq_hz) + (2 if game.IS_WEB else 4)
+        active_ripples = int(max_age * ripple_freq_hz) + (1 if game.IS_WEB else 4)
         wave_period = 1.0 / ripple_freq_hz
         loop_window = max_age + wave_period
         energy = 0.0
@@ -603,7 +650,8 @@ def install(game):
             if len(pts) >= 3:
                 r, g, b = [max(0, min(255, int(v))) for v in col_base[:3]]
                 a = max(0, min(255, int(alpha)))
-                pygame.draw.polygon(overlay, (r, g, b, a), pts, thickness)
+                poly_col = (r, g, b) if game.IS_WEB else (r, g, b, a)
+                pygame.draw.polygon(overlay, poly_col, pts, thickness)
             shimmer_scale = scale + 0.05 + 0.02 * math.sin(age * math.tau * 0.5)
             if (not game.IS_WEB) and shimmer_scale < max_scale and len(base_pts) >= 3:
                 pts_shimmer = [
@@ -625,13 +673,14 @@ def install(game):
             freq = 0.018 + i * 0.007
             speed = 80 + i * 40
             pts = []
-            for x in range(0, game.VIEW_W + 12, 16 if game.IS_WEB else 8):
+            for x in range(0, game.VIEW_W + 12, 24 if game.IS_WEB else 8):
                 phase = t * speed * 0.05 + x * freq
                 w = math.sin(phase) * amp + math.sin(phase * 0.35 + i) * amp * 0.24
                 pts.append((x, int(round(mid_y + w))))
             if len(pts) >= 2:
                 pygame.draw.lines(overlay, col, False, pts, 2)
-        target.blit(overlay, (0, 0))
+        if not game.IS_WEB:
+            target.blit(overlay, (0, 0))
 
     def draw_neuro_hover_spike(target: pygame.Surface, rect: pygame.Rect, t: float):
         spike = pygame.Surface(rect.size, pygame.SRCALPHA)
