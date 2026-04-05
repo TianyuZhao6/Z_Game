@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import base64
 import copy
 import json
 import os
 import shutil
 import sys
+import zlib
 from datetime import datetime
 from typing import Optional
 
@@ -42,15 +44,133 @@ def web_storage(game):
         return None
 
 
+def _web_primary_key(game) -> str:
+    return str(getattr(game, "WEB_SAVE_STORAGE_KEY", "z_game_save_v2") or "z_game_save_v2")
+
+
+def _web_backup_key(game) -> str:
+    return f"{_web_primary_key(game)}:backup"
+
+
+def _web_meta_key(game) -> str:
+    return f"{_web_primary_key(game)}:meta"
+
+
+def _web_legacy_keys(game) -> tuple[str, ...]:
+    legacy = getattr(game, "WEB_SAVE_STORAGE_LEGACY_KEYS", ()) or ()
+    return tuple(str(key) for key in legacy if key)
+
+
+def _encode_web_payload(data: dict) -> str:
+    raw_json = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    raw_bytes = raw_json.encode("utf-8")
+    compressed = zlib.compress(raw_bytes, level=9)
+    if len(compressed) + 48 < len(raw_bytes):
+        encoding = "zlib+base64"
+        payload = base64.b64encode(compressed).decode("ascii")
+    else:
+        encoding = "json"
+        payload = raw_json
+    envelope = {
+        "version": 2,
+        "saved_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "encoding": encoding,
+        "payload": payload,
+        "json_bytes": len(raw_bytes),
+    }
+    return json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+
+
+def _decode_web_payload(raw: object) -> Optional[dict]:
+    if raw is None:
+        return None
+    text = str(raw)
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        return None
+    if isinstance(parsed, dict) and isinstance(parsed.get("payload"), str):
+        version = int(parsed.get("version", 0) or 0)
+        if version >= 2:
+            encoding = str(parsed.get("encoding", "") or "").lower()
+            payload = parsed.get("payload", "")
+            try:
+                if encoding == "zlib+base64":
+                    decoded = zlib.decompress(base64.b64decode(payload.encode("ascii"))).decode("utf-8")
+                    data = json.loads(decoded)
+                elif encoding == "json":
+                    data = json.loads(payload)
+                else:
+                    return None
+            except Exception:
+                return None
+            return data if isinstance(data, dict) else None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def web_storage_stats(game) -> dict[str, object]:
+    storage = web_storage(game)
+    info = {
+        "backend": "localStorage",
+        "has_save": False,
+        "used_bytes": 0,
+        "keys": [],
+    }
+    if storage is None:
+        info["backend"] = "unavailable"
+        return info
+    keys = [_web_primary_key(game), _web_backup_key(game), _web_meta_key(game), *_web_legacy_keys(game)]
+    seen: set[str] = set()
+    for key in keys:
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            raw = storage.getItem(key)
+        except Exception:
+            raw = None
+        if not raw:
+            continue
+        info["has_save"] = True
+        info["keys"].append(key)
+        info["used_bytes"] = int(info["used_bytes"]) + (len(key) + len(str(raw))) * 2
+    return info
+
+
 def store_web_save(game, data: Optional[dict]) -> None:
     storage = web_storage(game)
     if storage is None:
         return
+    primary_key = _web_primary_key(game)
+    backup_key = _web_backup_key(game)
+    meta_key = _web_meta_key(game)
     try:
         if data is None:
-            storage.removeItem(game.WEB_SAVE_STORAGE_KEY)
+            storage.removeItem(primary_key)
+            storage.removeItem(backup_key)
+            storage.removeItem(meta_key)
         else:
-            storage.setItem(game.WEB_SAVE_STORAGE_KEY, json.dumps(data, ensure_ascii=False))
+            previous = storage.getItem(primary_key)
+            encoded = _encode_web_payload(data)
+            if previous:
+                storage.setItem(backup_key, str(previous))
+            else:
+                storage.removeItem(backup_key)
+            storage.setItem(primary_key, encoded)
+            storage.setItem(
+                meta_key,
+                json.dumps(
+                    {
+                        "version": 2,
+                        "saved_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                        "used_bytes": web_storage_stats(game).get("used_bytes", 0),
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+            )
     except Exception:
         pass
 
@@ -59,14 +179,15 @@ def load_web_save(game) -> Optional[dict]:
     storage = web_storage(game)
     if storage is None:
         return None
-    try:
-        raw = storage.getItem(game.WEB_SAVE_STORAGE_KEY)
-        if not raw:
-            return None
-        data = json.loads(str(raw))
-        return data if isinstance(data, dict) else None
-    except Exception:
-        return None
+    for key in (_web_primary_key(game), _web_backup_key(game), *_web_legacy_keys(game)):
+        try:
+            raw = storage.getItem(key)
+        except Exception:
+            raw = None
+        data = _decode_web_payload(raw)
+        if isinstance(data, dict):
+            return data
+    return None
 
 
 def atomic_write_json(path: str, data: dict) -> None:

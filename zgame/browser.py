@@ -43,66 +43,88 @@ def _web_location_marker() -> str:
         return ""
 
 
-def _detect_web_demo() -> bool:
-    if not IS_WEB:
-        return False
-    marker = _web_location_marker()
-    return any(token in marker for token in ("demo=1", "web_demo=1", "mode=demo", "#demo"))
-
-
 def _detect_web_autostart() -> bool:
     marker = _web_location_marker()
     return any(token in marker for token in ("autostart=1", "debug_start=1", "start=1"))
-WEB_WINDOW_SIZE = (960, 540)
-WEB_TARGET_FPS = 20
+
+
+def _detect_web_diag() -> bool:
+    marker = _web_location_marker()
+    return any(token in marker for token in ("diag=1", "debug=1", "profile=1", "autostart=1"))
+
+
+WEB_WINDOW_SIZE = (1280, 720)
 WEB_MAX_FRAME_DT = 0.05
 WEB_AUTOSAVE_INTERVAL = 0.0
-WEB_FLOW_REFRESH_INTERVAL = 0.90
-WEB_SPATIAL_REFRESH_INTERVAL = 0.12
-WEB_ENEMY_CAP = 8
-WEB_MAX_RENDER_WIDTH = 720
-WEB_MAX_RENDER_HEIGHT = 405
-WEB_RENDER_INTERVAL = 1.0 / 12.0
 WEB_SINGLE_BGM = IS_WEB
-WEB_DEMO = _detect_web_demo()
 WEB_AUTOSTART = _detect_web_autostart()
-WEB_DEMO_SKIP_INTRO = WEB_DEMO
-WEB_DEMO_DISABLE_CONTINUE = WEB_DEMO
-WEB_DEMO_LEVEL_LIMIT = 2
-WEB_DEMO_LEVEL_TIME_LIMIT = 40.0
-WEB_DEMO_BOSS_TIME_LIMIT = 45.0
-WEB_DEMO_SCENE_BIOMES = ("Domain of Wind", "Misty Forest")
-WEB_DEMO_SHOP_PROP_IDS = frozenset({
-    "coin_magnet",
-    "carapace",
-    "aegis_pulse",
-    "auto_turret",
-    "piercing_rounds",
-    "ricochet_scope",
-    "explosive_rounds",
-    "dot_rounds",
-    "curing_paint",
-    "ground_spikes",
-    "mark_vulnerability",
-    "stationary_turret",
-})
-WEB_DEMO_RENDER_PICKUP_CAP = 8
-WEB_DEMO_RENDER_TURRET_CAP = 4
-WEB_DEMO_RENDER_ENEMY_CAP = 8
-WEB_DEMO_RENDER_BULLET_CAP = 28
-WEB_DEMO_RENDER_ENEMY_SHOT_CAP = 18
-WEB_USE_LITE_RENDER = True
+WEB_DIAG_MODE = _detect_web_diag()
+WEB_LITE_RENDER_PICKUP_CAP = 18
+WEB_LITE_RENDER_TURRET_CAP = 10
+WEB_LITE_RENDER_ENEMY_CAP = 16
+WEB_LITE_RENDER_BULLET_CAP = 48
+WEB_LITE_RENDER_ENEMY_SHOT_CAP = 32
+WEB_ALLOW_LITE_RENDER = False
+WEB_QUALITY_ORDER = ("full", "balanced", "safe")
+WEB_QUALITY_PRESETS = {
+    "full": {
+        "target_fps": 16,
+        "flow_refresh_interval": 1.00,
+        "spatial_refresh_interval": 0.32,
+        "enemy_cap": 12,
+        "max_render_width": 720,
+        "max_render_height": 405,
+        "render_interval": 1.0 / 5.0,
+        "use_lite_render": False,
+        "disable_fx_audio": False,
+        "enable_astar_recovery": False,
+    },
+    "balanced": {
+        "target_fps": 18,
+        "flow_refresh_interval": 0.95,
+        "spatial_refresh_interval": 0.28,
+        "enemy_cap": 14,
+        "max_render_width": 960,
+        "max_render_height": 540,
+        "render_interval": 1.0 / 6.0,
+        "use_lite_render": False,
+        "disable_fx_audio": False,
+        "enable_astar_recovery": False,
+    },
+    "safe": {
+        "target_fps": 16,
+        "flow_refresh_interval": 1.05,
+        "spatial_refresh_interval": 0.32,
+        "enemy_cap": 10,
+        "max_render_width": 720,
+        "max_render_height": 405,
+        "render_interval": 1.0 / 5.0,
+        "use_lite_render": True,
+        "disable_fx_audio": True,
+        "enable_astar_recovery": False,
+    },
+}
+WEB_DEFAULT_QUALITY = "full"
+WEB_TARGET_FPS = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["target_fps"])
+WEB_FLOW_REFRESH_INTERVAL = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["flow_refresh_interval"])
+WEB_SPATIAL_REFRESH_INTERVAL = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["spatial_refresh_interval"])
+WEB_ENEMY_CAP = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["enemy_cap"])
+WEB_MAX_RENDER_WIDTH = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_render_width"])
+WEB_MAX_RENDER_HEIGHT = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_render_height"])
+WEB_RENDER_INTERVAL = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["render_interval"])
+WEB_USE_LITE_RENDER = bool(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["use_lite_render"])
 WEB_PROFILER_ENABLED = IS_WEB
-WEB_DISABLE_FX_AUDIO = True
-WEB_ENABLE_ENEMY_PAINT = not WEB_DEMO
-WEB_ENABLE_VULNERABILITY_MARKS = not WEB_DEMO
-WEB_ENABLE_HURRICANES = not WEB_DEMO
-WEB_ENABLE_DAMAGE_TEXTS = not WEB_DEMO
-WEB_ENABLE_AEGIS_PULSES = not WEB_DEMO
-WEB_ENABLE_GROUND_SPIKES = not WEB_DEMO
-WEB_ENABLE_CURING_PAINT = not WEB_DEMO
-WEB_ENABLE_DOT_ROUNDS = not WEB_DEMO
-WEB_ENABLE_ASTAR_RECOVERY = False
+WEB_PROFILER_OVERLAY = IS_WEB and WEB_DIAG_MODE
+WEB_DISABLE_FX_AUDIO = bool(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["disable_fx_audio"])
+WEB_ENABLE_ENEMY_PAINT = True
+WEB_ENABLE_VULNERABILITY_MARKS = True
+WEB_ENABLE_HURRICANES = True
+WEB_ENABLE_DAMAGE_TEXTS = True
+WEB_ENABLE_AEGIS_PULSES = True
+WEB_ENABLE_GROUND_SPIKES = True
+WEB_ENABLE_CURING_PAINT = True
+WEB_ENABLE_DOT_ROUNDS = True
+WEB_ENABLE_ASTAR_RECOVERY = bool(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["enable_astar_recovery"])
 
 
 def clamp_web_dt(dt_s: float, *, max_dt: float = WEB_MAX_FRAME_DT) -> float:
@@ -149,6 +171,109 @@ def cap_web_surface_size(width: int, height: int) -> tuple[int, int]:
     if scale >= 0.999:
         return width, height
     return max(640, int(round(width * scale))), max(360, int(round(height * scale)))
+
+
+def _normalize_quality_name(profile_name: str | None) -> str:
+    name = str(profile_name or "").strip().lower()
+    if name in WEB_QUALITY_PRESETS:
+        return name
+    return WEB_DEFAULT_QUALITY
+
+
+def _window_call(fn_name: str, *args):
+    if not IS_WEB:
+        return None
+    try:
+        import platform as web_platform
+
+        window = getattr(web_platform, "window", None)
+        fn = getattr(window, fn_name, None) if window is not None else None
+        if fn is None:
+            return None
+        return fn(*args)
+    except Exception:
+        return None
+
+
+def _quality_payload(profile_name: str) -> dict[str, object]:
+    name = _normalize_quality_name(profile_name)
+    preset = WEB_QUALITY_PRESETS.get(name, WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY])
+    payload = dict(preset)
+    payload["quality"] = name
+    payload["single_bgm"] = True
+    for feature_name in (
+        "enable_enemy_paint",
+        "enable_vulnerability_marks",
+        "enable_hurricanes",
+        "enable_damage_texts",
+        "enable_aegis_pulses",
+        "enable_ground_spikes",
+        "enable_curing_paint",
+        "enable_dot_rounds",
+    ):
+        payload[feature_name] = True
+    return payload
+
+
+def apply_web_quality_profile(game, profile_name: str | None, *, reason: str = "") -> str:
+    if not getattr(game, "IS_WEB", False):
+        return "desktop"
+    payload = _quality_payload(profile_name)
+    assignments = {
+        "WEB_DEFAULT_QUALITY": str(payload["quality"]),
+        "WEB_WINDOW_SIZE": (int(payload["max_render_width"]), int(payload["max_render_height"])),
+        "WEB_TARGET_FPS": int(payload["target_fps"]),
+        "WEB_FLOW_REFRESH_INTERVAL": float(payload["flow_refresh_interval"]),
+        "WEB_SPATIAL_REFRESH_INTERVAL": float(payload["spatial_refresh_interval"]),
+        "WEB_ENEMY_CAP": int(payload["enemy_cap"]),
+        "WEB_MAX_RENDER_WIDTH": int(payload["max_render_width"]),
+        "WEB_MAX_RENDER_HEIGHT": int(payload["max_render_height"]),
+        "WEB_RENDER_INTERVAL": float(payload["render_interval"]),
+        "WEB_USE_LITE_RENDER": bool(payload["use_lite_render"]),
+        "WEB_SINGLE_BGM": bool(payload["single_bgm"]),
+        "WEB_DISABLE_FX_AUDIO": bool(payload["disable_fx_audio"]),
+        "WEB_ENABLE_ENEMY_PAINT": bool(payload["enable_enemy_paint"]),
+        "WEB_ENABLE_VULNERABILITY_MARKS": bool(payload["enable_vulnerability_marks"]),
+        "WEB_ENABLE_HURRICANES": bool(payload["enable_hurricanes"]),
+        "WEB_ENABLE_DAMAGE_TEXTS": bool(payload["enable_damage_texts"]),
+        "WEB_ENABLE_AEGIS_PULSES": bool(payload["enable_aegis_pulses"]),
+        "WEB_ENABLE_GROUND_SPIKES": bool(payload["enable_ground_spikes"]),
+        "WEB_ENABLE_CURING_PAINT": bool(payload["enable_curing_paint"]),
+        "WEB_ENABLE_DOT_ROUNDS": bool(payload["enable_dot_rounds"]),
+        "WEB_ENABLE_ASTAR_RECOVERY": bool(payload["enable_astar_recovery"]),
+    }
+    for key, value in assignments.items():
+        globals()[key] = value
+        try:
+            setattr(game, key, value)
+        except Exception:
+            pass
+    runtime = getattr(game, "__dict__", {})
+    runtime["_web_quality_profile"] = str(payload["quality"])
+    runtime["_web_quality_reason"] = str(reason or "")
+    runtime["_web_quality_last_adjust_s"] = browser_now_s()
+    _window_call("__zgame_apply_render_limits", int(payload["max_render_width"]), int(payload["max_render_height"]))
+    try:
+        surface = pygame.display.get_surface()
+        if surface is not None:
+            next_size = get_initial_web_window_size()
+            if surface.get_size() != next_size:
+                new_surface = pygame.display.set_mode(next_size, pygame.RESIZABLE)
+                refresh_view = getattr(game, "_refresh_viewport", None)
+                if callable(refresh_view):
+                    refresh_view(new_surface)
+                invalidate = getattr(game, "_invalidate_view_caches", None)
+                if callable(invalidate):
+                    invalidate()
+    except Exception:
+        pass
+    return str(payload["quality"])
+
+
+def maybe_adjust_web_quality_profile(game, profiler) -> str | None:
+    # Keep one fixed browser profile for the entire run. Live canvas/profile
+    # changes were causing layout drift from desktop and destabilizing Chrome.
+    return None
 
 
 def _normalize_web_key_name(name: str | None) -> str:
@@ -355,6 +480,7 @@ class WebRuntimeProfiler:
 
     def __init__(self) -> None:
         self.enabled = bool(WEB_PROFILER_ENABLED)
+        self.overlay_enabled = bool(WEB_PROFILER_OVERLAY)
         self.frame_index = 0
         self.current_phase = ""
         self._phase_started_at = 0.0
@@ -504,7 +630,7 @@ class WebRuntimeProfiler:
         self._counters["jserr"] = browser_error[:96] if browser_error else ""
 
     def overlay_lines(self) -> list[str]:
-        if not self.enabled:
+        if (not self.enabled) or (not self.overlay_enabled):
             return []
         lines = [
             f"WEB PROFILER  f:{self.frame_index}  dt:{self.last_dt_ms:.1f} raw:{self.last_raw_dt_ms:.1f}  total:{self.last_total_ms:.1f}/{self.avg_total_ms:.1f}/{self.max_total_ms:.1f}",

@@ -17,9 +17,7 @@ from typing import Dict, List, Set, Tuple, Optional
 from zgame.audio_analysis import NeuroMusicVisualizer
 from zgame.browser import (
     IS_WEB,
-    WEB_DEMO,
     WEB_AUTOSAVE_INTERVAL,
-    WEB_DEMO_BOSS_TIME_LIMIT,
     WEB_ENABLE_AEGIS_PULSES,
     WEB_ENABLE_ASTAR_RECOVERY,
     WEB_ENABLE_CURING_PAINT,
@@ -30,20 +28,14 @@ from zgame.browser import (
     WEB_ENABLE_HURRICANES,
     WEB_ENABLE_VULNERABILITY_MARKS,
     WEB_AUTOSTART,
-    WEB_DEMO_DISABLE_CONTINUE,
-    WEB_DEMO_LEVEL_LIMIT,
-    WEB_DEMO_LEVEL_TIME_LIMIT,
-    WEB_DEMO_RENDER_BULLET_CAP,
-    WEB_DEMO_RENDER_ENEMY_CAP,
-    WEB_DEMO_RENDER_ENEMY_SHOT_CAP,
-    WEB_DEMO_RENDER_PICKUP_CAP,
-    WEB_DEMO_RENDER_TURRET_CAP,
-    WEB_DEMO_SCENE_BIOMES,
-    WEB_DEMO_SHOP_PROP_IDS,
-    WEB_DEMO_SKIP_INTRO,
     WEB_ENEMY_CAP,
     WEB_DISABLE_FX_AUDIO,
     WEB_FLOW_REFRESH_INTERVAL,
+    WEB_LITE_RENDER_BULLET_CAP,
+    WEB_LITE_RENDER_ENEMY_CAP,
+    WEB_LITE_RENDER_ENEMY_SHOT_CAP,
+    WEB_LITE_RENDER_PICKUP_CAP,
+    WEB_LITE_RENDER_TURRET_CAP,
     WEB_RENDER_INTERVAL,
     WEB_SINGLE_BGM,
     WEB_SPATIAL_REFRESH_INTERVAL,
@@ -2213,7 +2205,7 @@ def _reset_active_run_state(*, clear_save_file: bool = False) -> None:
 def _verify_projectile_runtime_common(projectile, *, default_damage: int, default_range: float,
                                       max_speed: float, radius_default: int,
                                       radius_cap: int, color_default: tuple[int, int, int] | None = None,
-                                      radius_fn=None) -> bool:
+                                      radius_fn=None, allow_stationary: bool = False) -> bool:
     if projectile is None:
         return False
     projectile.alive = bool(getattr(projectile, "alive", True))
@@ -2231,7 +2223,7 @@ def _verify_projectile_runtime_common(projectile, *, default_damage: int, defaul
     if abs(vx) > max_speed or abs(vy) > max_speed:
         projectile.alive = False
         return False
-    if (vx * vx + vy * vy) <= 1e-6:
+    if (vx * vx + vy * vy) <= 1e-6 and (not allow_stationary):
         projectile.alive = False
         return False
     projectile.x = x
@@ -2270,6 +2262,7 @@ def verify_bullet_runtime(bullet, player=None) -> bool:
         radius_default=BULLET_RADIUS,
         radius_cap=BULLET_RADIUS_MAX,
         radius_fn=bullet_radius_for_damage,
+        allow_stationary=True,
     )
     if not ok:
         return False
@@ -3311,7 +3304,8 @@ def is_action_event(event, action: str) -> bool:
 # ==================== Save/Load Helpers ====================
 _shop_sprite_cache: dict[str, pygame.Surface | bool] = {}
 _web_save_cache: Optional[dict] = None
-WEB_SAVE_STORAGE_KEY = "z_game_save_v1"
+WEB_SAVE_STORAGE_KEY = "z_game_save_v2"
+WEB_SAVE_STORAGE_LEGACY_KEYS = ("z_game_save_v1",)
 
 
 def _web_storage():
@@ -3324,6 +3318,10 @@ def _store_web_save(data: Optional[dict]) -> None:
 
 def _load_web_save() -> Optional[dict]:
     return persistence_support.load_web_save(_THIS_MODULE)
+
+
+def web_storage_stats() -> dict[str, object]:
+    return persistence_support.web_storage_stats(_THIS_MODULE)
 def _load_shop_sprite(filename: str, max_size: tuple[int, int],
                       *, allow_upscale: bool = False) -> Optional["pygame.Surface"]:
     """Load and cache a sprite from assets/sprites, scaled to max_size."""
@@ -4687,16 +4685,7 @@ def resize_world_to_view():
 
 
 def _web_level_config(config: dict) -> dict:
-    if not IS_WEB:
-        return config
-    web_cfg = dict(config)
-    obstacle_cap = 8 if WEB_DEMO else 16
-    item_cap = 2 if WEB_DEMO else 4
-    enemy_seed_cap = 1 if WEB_DEMO else 2
-    web_cfg["obstacle_count"] = min(int(web_cfg.get("obstacle_count", 0)), obstacle_cap)
-    web_cfg["item_count"] = min(int(web_cfg.get("item_count", 0)), item_cap)
-    web_cfg["enemy_count"] = min(int(web_cfg.get("enemy_count", 0)), enemy_seed_cap)
-    return web_cfg
+    return dict(config)
 
 
 def play_bounds_for_circle(radius: float) -> tuple[float, float, float, float]:

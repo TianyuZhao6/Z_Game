@@ -14,6 +14,20 @@ def _sync_bgm_volume(game, bgm_value: int) -> None:
         bgm.set_volume(float(bgm_value) / 100.0)
 
 
+def _browser_runtime_summary(game) -> str:
+    if not getattr(game, "IS_WEB", False):
+        return ""
+    try:
+        stats = game.web_storage_stats()
+    except Exception:
+        stats = {}
+    backend = str(stats.get("backend", "localStorage") or "localStorage")
+    used_kb = float(stats.get("used_bytes", 0) or 0) / 1024.0
+    save_label = "save ready" if bool(stats.get("has_save", False)) else "save empty"
+    quality = str(getattr(game, "_web_quality_profile", getattr(game, "WEB_DEFAULT_QUALITY", "full")) or "full").upper()
+    return f"Chrome {backend}: {used_kb:.1f} KB, {save_label}, quality {quality}"
+
+
 async def show_settings_popup_web(game, screen, background_surf):
     clock = pygame.time.Clock()
     panel = pygame.Rect(0, 0, min(560, game.VIEW_W - 60), min(360, game.VIEW_H - 80))
@@ -26,6 +40,7 @@ async def show_settings_popup_web(game, screen, background_surf):
     bgm_val = int(game.BGM_VOLUME)
     status_msg = ""
     status_color = (170, 210, 230)
+    runtime_summary = _browser_runtime_summary(game)
 
     while True:
         screen.blit(background_surf, (0, 0))
@@ -39,9 +54,12 @@ async def show_settings_popup_web(game, screen, background_surf):
 
         info = label_font.render("Web demo settings: audio + save export", True, (180, 215, 235))
         screen.blit(info, info.get_rect(center=(panel.centerx, panel.top + 88)))
+        if runtime_summary:
+            summary = status_font.render(runtime_summary[:62], True, (140, 195, 220))
+            screen.blit(summary, summary.get_rect(center=(panel.centerx, panel.top + 112)))
         if status_msg:
             status = status_font.render(status_msg[:48], True, status_color)
-            screen.blit(status, status.get_rect(center=(panel.centerx, panel.top + 116)))
+            screen.blit(status, status.get_rect(center=(panel.centerx, panel.top + 134)))
 
         fx_minus = pygame.Rect(panel.left + 54, panel.top + 146, 54, 42)
         fx_plus = pygame.Rect(panel.right - 108, panel.top + 146, 54, 42)
@@ -110,6 +128,7 @@ async def show_settings_popup_web(game, screen, background_surf):
                     ok, msg = game.export_current_save()
                     status_msg = msg
                     status_color = (120, 230, 160) if ok else (255, 150, 150)
+                    runtime_summary = _browser_runtime_summary(game)
                 elif close_btn.collidepoint(event.pos):
                     game.FX_VOLUME = fx_val
                     game.BGM_VOLUME = bgm_val
@@ -277,6 +296,7 @@ def show_settings_popup(game, screen, background_surf):
     status_msg = ""
     status_color = (170, 210, 230)
     ctrl_buttons: list[tuple[pygame.Rect, str]] = []
+    runtime_summary = _browser_runtime_summary(game)
 
     control_actions = [
         ("Move Up", "move_up"),
@@ -319,6 +339,9 @@ def show_settings_popup(game, screen, background_surf):
         game.draw_neuro_button(screen, ctrl_btn, "Controls", btn_font, hovered=ctrl_btn.collidepoint(mouse_pos), disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
         game.draw_neuro_button(screen, export_btn, "Export Save", btn_font, hovered=export_btn.collidepoint(mouse_pos), disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
         game.draw_neuro_button(screen, close_btn, "Close", btn_font, hovered=close_btn.collidepoint(mouse_pos), disabled=False, t=pygame.time.get_ticks() * 0.001, show_spike=False)
+        if runtime_summary:
+            summary = status_font.render(runtime_summary[:68], True, (140, 195, 220))
+            screen.blit(summary, summary.get_rect(center=(panel.centerx, panel.bottom - 136)))
         if status_msg:
             status = status_font.render(status_msg[:64], True, status_color)
             screen.blit(status, status.get_rect(center=(panel.centerx, panel.bottom - 110)))
@@ -419,6 +442,7 @@ def show_settings_popup(game, screen, background_surf):
                         ok, msg = game.export_current_save()
                         status_msg = msg
                         status_color = (120, 230, 160) if ok else (255, 150, 150)
+                        runtime_summary = _browser_runtime_summary(game)
                     elif close_btn and close_btn.collidepoint((mx, my)):
                         game.FX_VOLUME = fx_val
                         game.BGM_VOLUME = bgm_val

@@ -190,7 +190,7 @@ async def run_neuro_intro(game, screen: pygame.Surface):
 
 def render_start_menu_surface(game, saved_exists: bool):
     """Static snapshot of the Neuro Console menu (used for transitions)."""
-    can_continue = bool(saved_exists and not getattr(game, "WEB_DEMO_DISABLE_CONTINUE", False))
+    can_continue = bool(saved_exists)
     surf = game.ensure_neuro_background().copy()
     viz = _viz(game)
     wave_t = 0.0
@@ -200,10 +200,7 @@ def render_start_menu_surface(game, saved_exists: bool):
     info_font = pygame.font.SysFont("Consolas", 18)
     game.draw_neuro_home_header(surf, header_font)
     rects = game.neuro_menu_layout(include_continue=can_continue)
-    if getattr(game, "WEB_DEMO", False):
-        start_label = "START DEMO"
-    else:
-        start_label = "START NEW" if can_continue else "START"
+    start_label = "START NEW" if can_continue else "START"
     game.draw_neuro_button(surf, rects["start"], start_label, btn_font, hovered=False, disabled=False, t=wave_t)
     if can_continue:
         game.draw_neuro_button(
@@ -229,7 +226,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
     viz = _viz(game)
     game.flush_events()
     intro_flag = state.pop("_skip_intro_once", False)
-    skip_intro = bool(skip_intro or getattr(game, "WEB_DEMO_SKIP_INTRO", False))
+    skip_intro = bool(skip_intro)
     _ensure_intro_bgm(game)
     if not skip_intro and not intro_flag:
         await run_neuro_intro(game, screen)
@@ -243,7 +240,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
 
     async def _handle_start_menu_click(pos) -> tuple[str, object] | None:
         saved_exists = game.has_save()
-        can_continue = bool(saved_exists and not getattr(game, "WEB_DEMO_DISABLE_CONTINUE", False))
+        can_continue = bool(saved_exists)
         base_rects = game.neuro_menu_layout(include_continue=can_continue)
         if base_rects["start"].collidepoint(pos):
             game.clear_save()
@@ -307,7 +304,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
             viz.update(dt, t)
 
         saved_exists = game.has_save()
-        can_continue = bool(saved_exists and not getattr(game, "WEB_DEMO_DISABLE_CONTINUE", False))
+        can_continue = bool(saved_exists)
         base_rects = game.neuro_menu_layout(include_continue=can_continue)
         mouse_pos = pygame.mouse.get_pos()
         hover_id = None
@@ -323,10 +320,7 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
 
         game.draw_neuro_home_header(screen, header_font)
         drawn_rects = {}
-        if getattr(game, "WEB_DEMO", False):
-            start_label = "START DEMO"
-        else:
-            start_label = "START NEW" if can_continue else "START"
+        start_label = "START NEW" if can_continue else "START"
         drawn_rects["start"] = game.draw_neuro_button(
             screen,
             base_rects["start"],

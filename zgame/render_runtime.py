@@ -26,6 +26,29 @@ def install(game):
             return True
         return bool(getattr(game, flag_name, False))
 
+    _ellipse_surface_cache: dict[tuple[int, int, tuple[int, ...], int], pygame.Surface] = {}
+
+    def _cached_ellipse_surface(width: int, height: int, color: tuple[int, ...], *, line_width: int = 0) -> pygame.Surface:
+        w = max(1, int(width))
+        h = max(1, int(height))
+        lw = max(0, int(line_width))
+        rgba = tuple(max(0, min(255, int(v))) for v in color)
+        key = (w, h, rgba, lw)
+        surf = _ellipse_surface_cache.get(key)
+        if surf is None:
+            surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            if lw > 0:
+                pygame.draw.ellipse(surf, rgba, surf.get_rect(), lw)
+            else:
+                pygame.draw.ellipse(surf, rgba, surf.get_rect())
+            _ellipse_surface_cache[key] = surf
+        return surf
+
+    def _blit_cached_ellipse(screen: pygame.Surface, center: tuple[int, int], width: int, height: int,
+                             color: tuple[int, ...], *, line_width: int = 0) -> None:
+        surf = _cached_ellipse_surface(width, height, color, line_width=line_width)
+        screen.blit(surf, surf.get_rect(center=(int(center[0]), int(center[1]))))
+
     def _draw_web_profiler_overlay(screen: pygame.Surface) -> None:
         if not IS_WEB:
             return
@@ -228,12 +251,11 @@ def install(game):
                                  override_cam: tuple[int, int] | None = None,
                                  copy_frame: bool = True) -> pygame.Surface | None:
         obstacles = obstacles if obstacles is not None else getattr(game_state, "obstacles", {})
-        demo_mode = bool(getattr(game, "WEB_DEMO", False))
-        pickup_cap = int(getattr(game, "WEB_DEMO_RENDER_PICKUP_CAP", 0)) if demo_mode else 0
-        turret_cap = int(getattr(game, "WEB_DEMO_RENDER_TURRET_CAP", 0)) if demo_mode else 0
-        enemy_cap = int(getattr(game, "WEB_DEMO_RENDER_ENEMY_CAP", 0)) if demo_mode else 0
-        bullet_cap = int(getattr(game, "WEB_DEMO_RENDER_BULLET_CAP", 0)) if demo_mode else 0
-        enemy_shot_cap = int(getattr(game, "WEB_DEMO_RENDER_ENEMY_SHOT_CAP", 0)) if demo_mode else 0
+        pickup_cap = int(getattr(game, "WEB_LITE_RENDER_PICKUP_CAP", 0) or 0)
+        turret_cap = int(getattr(game, "WEB_LITE_RENDER_TURRET_CAP", 0) or 0)
+        enemy_cap = int(getattr(game, "WEB_LITE_RENDER_ENEMY_CAP", 0) or 0)
+        bullet_cap = int(getattr(game, "WEB_LITE_RENDER_BULLET_CAP", 0) or 0)
+        enemy_shot_cap = int(getattr(game, "WEB_LITE_RENDER_ENEMY_SHOT_CAP", 0) or 0)
         px_grid = (player.x + player.size / 2) / CELL_SIZE
         py_grid = (player.y + player.size / 2) / CELL_SIZE
         if override_cam is not None:
@@ -258,6 +280,7 @@ def install(game):
         if getattr(player, "targeting_skill", None):
             _draw_skill_overlay(screen, player, camx, camy)
 
+        web_wall_h = max(12, int(ISO_WALL_Z * 0.7))
         for (gx, gy), ob in obstacles.items():
             if not (gx_min <= gx <= gx_max and gy_min <= gy <= gy_max):
                 continue
@@ -271,7 +294,7 @@ def install(game):
                 if ob_type == "Destructible" and getattr(ob, "health", None) is not None:
                     t = max(0.4, min(1.0, ob.health / float(max(1, OBSTACLE_HEALTH))))
                     base_col = (int(200 * t), int(80 * t), int(80 * t))
-            draw_iso_tile(screen, gx, gy, base_col, camx, camy, border=0)
+                draw_iso_prism(screen, gx, gy, base_col, camx, camy, wall_h=web_wall_h)
 
         spoils = getattr(game_state, "spoils", ())
         if pickup_cap > 0:
@@ -395,6 +418,17 @@ def install(game):
                     top = hp_anchor_y - 10
                     pygame.draw.rect(screen, (24, 34, 48), (cx - bar_w // 2, top, bar_w, 4))
                     pygame.draw.rect(screen, (90, 220, 120), (cx - bar_w // 2, top, int(bar_w * hp / hp_max), 4))
+                flash_t = float(getattr(obj, "_hit_flash", 0.0))
+                if flash_t > 0.0 and HIT_FLASH_DURATION > 0:
+                    flash_ratio = min(1.0, flash_t / HIT_FLASH_DURATION)
+                    flash_alpha = int(200 * flash_ratio)
+                    if flash_alpha > 0:
+                        if enemy_sprite:
+                            blit_sprite_tint(screen, enemy_sprite, rect.topleft, (255, 255, 255, flash_alpha))
+                        else:
+                            overlay = pygame.Surface((body_r * 2 + 4, body_r * 2 + 4), pygame.SRCALPHA)
+                            overlay.fill((255, 255, 255, flash_alpha))
+                            screen.blit(overlay, overlay.get_rect(center=(cx, body_y)).topleft)
             else:
                 if player_sprite:
                     rect = player_sprite.get_rect(midbottom=(cx, cy))
@@ -404,6 +438,17 @@ def install(game):
                     body_r = max(9, int(getattr(obj, "size", CELL_SIZE * 0.6) * 0.36))
                     pygame.draw.circle(screen, getattr(obj, "color", (110, 250, 170)), (cx, body_y), body_r)
                     pygame.draw.circle(screen, (12, 24, 40), (cx, body_y), body_r, 2)
+                flash_t = float(getattr(obj, "_hit_flash", 0.0))
+                if flash_t > 0.0 and HIT_FLASH_DURATION > 0:
+                    flash_ratio = min(1.0, flash_t / HIT_FLASH_DURATION)
+                    flash_alpha = int(200 * flash_ratio)
+                    if flash_alpha > 0:
+                        if player_sprite:
+                            blit_sprite_tint(screen, player_sprite, rect.topleft, (255, 255, 255, flash_alpha))
+                        else:
+                            overlay = pygame.Surface((body_r * 2 + 4, body_r * 2 + 4), pygame.SRCALPHA)
+                            overlay.fill((255, 255, 255, flash_alpha))
+                            screen.blit(overlay, overlay.get_rect(center=(cx, body_y)).topleft)
 
         web_bullets = bullets[:bullet_cap] if (bullet_cap > 0 and bullets) else (bullets or ())
         for bullet in web_bullets:
@@ -424,6 +469,27 @@ def install(game):
                 (int(sx), int(sy)),
                 max(2, int(getattr(shot, "r", BULLET_RADIUS))),
             )
+
+        if _web_feature_enabled("WEB_ENABLE_DAMAGE_TEXTS"):
+            for d in getattr(game_state, "dmg_texts", []):
+                wx = d.x / CELL_SIZE
+                wy = (d.y - INFO_BAR_HEIGHT) / CELL_SIZE
+                sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+                sy += d.screen_offset_y()
+                color_map = {
+                    "shield": ((120, 200, 255), (120, 200, 255)),
+                    "aegis": (AEGIS_PULSE_COLOR, AEGIS_PULSE_COLOR),
+                    "hp_player": ((255, 255, 255), (255, 255, 220)),
+                    "dot": ((80, 220, 255), (140, 255, 255)),
+                    "hp_enemy": ((255, 60, 60), (255, 140, 140)),
+                }
+                normal, crit = color_map.get(d.kind, ((255, 100, 100), (255, 240, 120)))
+                col = crit if d.crit else normal
+                size = max(14, DMG_TEXT_SIZE_NORMAL - 4) if d.kind == "dot" else (DMG_TEXT_SIZE_NORMAL if not d.crit else DMG_TEXT_SIZE_CRIT)
+                font = pygame.font.SysFont(None, size, bold=d.crit)
+                surf = font.render(str(d.amount), True, col)
+                surf.set_alpha(d.alpha())
+                screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
 
         draw_ui_topbar(
             screen,
@@ -446,7 +512,11 @@ def install(game):
                         override_cam: tuple[int, int] | None = None,
                         copy_frame: bool = True):
         obstacles = obstacles if obstacles is not None else getattr(game_state, "obstacles", {})
-        if IS_WEB and getattr(game, "WEB_USE_LITE_RENDER", False):
+        if (
+            IS_WEB
+            and getattr(game, "WEB_ALLOW_LITE_RENDER", False)
+            and getattr(game, "WEB_USE_LITE_RENDER", False)
+        ):
             return render_game_iso_web_lite(
                 screen, game_state, player, enemies, bullets, enemy_shots, obstacles,
                 override_cam=override_cam,
@@ -467,7 +537,7 @@ def install(game):
             camx += dx
             camy += dy
         screen.fill(MAP_BG)
-        margin = 2 if IS_WEB else 3
+        margin = 3
         gx_min = max(0, int(px_grid - game.VIEW_W // ISO_CELL_W) - margin)
         gx_max = min(GRID_SIZE - 1, int(px_grid + game.VIEW_W // ISO_CELL_W) + margin)
         gy_min = max(0, int(py_grid - game.VIEW_H // ISO_CELL_H) - margin)
@@ -548,18 +618,17 @@ def install(game):
             )
         player_rect = getattr(player, "rect", None)
         enemy_rects = [getattr(z, "rect", None) for z in enemies if getattr(z, "rect", None)]
-        if not IS_WEB:
-            for g in getattr(game_state, "ghosts", []):
-                gw = getattr(g, "w", 0)
-                gh = getattr(g, "h", 0)
-                if gw and gh:
-                    ghost_rect = pygame.Rect(0, 0, int(gw), int(gh))
-                    ghost_rect.midbottom = (int(getattr(g, "x", 0)), int(getattr(g, "y", 0)))
-                    if player_rect and ghost_rect.colliderect(player_rect):
-                        continue
-                    if enemy_rects and any(ghost_rect.colliderect(er) for er in enemy_rects if er):
-                        continue
-                g.draw_iso(screen, camx, camy)
+        for g in getattr(game_state, "ghosts", []):
+            gw = getattr(g, "w", 0)
+            gh = getattr(g, "h", 0)
+            if gw and gh:
+                ghost_rect = pygame.Rect(0, 0, int(gw), int(gh))
+                ghost_rect.midbottom = (int(getattr(g, "x", 0)), int(getattr(g, "y", 0)))
+                if player_rect and ghost_rect.colliderect(player_rect):
+                    continue
+                if enemy_rects and any(ghost_rect.colliderect(er) for er in enemy_rects if er):
+                    continue
+            g.draw_iso(screen, camx, camy)
         if _web_feature_enabled("WEB_ENABLE_ENEMY_PAINT") and hasattr(game_state, "draw_paint_iso"):
             game_state.draw_paint_iso(screen, camx, camy)
         drawables = []
@@ -648,27 +717,19 @@ def install(game):
                     draw_iso_tile(screen, gx, gy, col, camx, camy, border=0)
             elif kind == "coin":
                 cx, cy, r = data["cx"], data["cy"], data["r"]
-                shadow = pygame.Surface((r * 4, r * 2), pygame.SRCALPHA)
-                pygame.draw.ellipse(shadow, (0, 0, 0, ISO_SHADOW_ALPHA), shadow.get_rect())
-                screen.blit(shadow, shadow.get_rect(center=(cx, cy + 6)))
+                _blit_cached_ellipse(screen, (cx, cy + 6), r * 4, r * 2, (0, 0, 0, ISO_SHADOW_ALPHA))
                 pygame.draw.circle(screen, (255, 215, 80), (cx, cy), r)
                 pygame.draw.circle(screen, (255, 245, 200), (cx, cy), r, 1)
             elif kind == "heal":
                 cx, cy, r = data["cx"], data["cy"], data["r"]
-                shadow = pygame.Surface((r * 4, r * 2), pygame.SRCALPHA)
-                pygame.draw.ellipse(shadow, (0, 0, 0, ISO_SHADOW_ALPHA), shadow.get_rect())
-                screen.blit(shadow, shadow.get_rect(center=(cx, cy + 6)))
+                _blit_cached_ellipse(screen, (cx, cy + 6), r * 4, r * 2, (0, 0, 0, ISO_SHADOW_ALPHA))
                 pygame.draw.circle(screen, (225, 225, 225), (cx, cy), r)
                 pygame.draw.rect(screen, (220, 60, 60), pygame.Rect(cx - 2, cy - r + 3, 4, r * 2 - 6))
                 pygame.draw.rect(screen, (200, 40, 40), pygame.Rect(cx - r + 3, cy - 2, r * 2 - 6, 4))
             elif kind == "item":
                 cx, cy, r = data["cx"], data["cy"], data["r"]
-                shadow = pygame.Surface((r * 4, r * 2), pygame.SRCALPHA)
-                pygame.draw.ellipse(shadow, (0, 0, 0, ISO_SHADOW_ALPHA), shadow.get_rect())
-                screen.blit(shadow, shadow.get_rect(center=(cx, cy + 6)))
-                glow = pygame.Surface((r * 4, r * 2), pygame.SRCALPHA)
-                pygame.draw.ellipse(glow, (255, 240, 120, 90), glow.get_rect())
-                screen.blit(glow, glow.get_rect(center=(cx, cy + 6)))
+                _blit_cached_ellipse(screen, (cx, cy + 6), r * 4, r * 2, (0, 0, 0, ISO_SHADOW_ALPHA))
+                _blit_cached_ellipse(screen, (cx, cy + 6), r * 4, r * 2, (255, 240, 120, 90))
                 pygame.draw.circle(screen, (255, 224, 0), (cx, cy), r)
                 pygame.draw.circle(screen, (255, 255, 180), (cx, cy), r, 2)
             elif kind == "turret":
@@ -679,9 +740,7 @@ def install(game):
                     if sprite:
                         shadow_w = max(int(foot_w * 1.4), int(CELL_SIZE * 0.9))
                         shadow_h = max(int(foot_h * 0.8), int(CELL_SIZE * 0.4))
-                        shadow = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
-                        pygame.draw.ellipse(shadow, (0, 0, 0, ISO_SHADOW_ALPHA), shadow.get_rect())
-                        screen.blit(shadow, shadow.get_rect(center=(cx, cy + 6)))
+                        _blit_cached_ellipse(screen, (cx, cy + 6), shadow_w, shadow_h, (0, 0, 0, ISO_SHADOW_ALPHA))
                         rect = sprite.get_rect(midbottom=(cx, cy))
                         screen.blit(sprite, rect)
                     else:
@@ -715,9 +774,7 @@ def install(game):
                     if sprite:
                         shadow_w = max(int(sprite.get_width() * 0.6), int(CELL_SIZE * 0.6))
                         shadow_h = max(int(sprite.get_height() * 0.32), int(CELL_SIZE * 0.28))
-                        shadow = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
-                        pygame.draw.ellipse(shadow, (0, 0, 0, ISO_SHADOW_ALPHA), shadow.get_rect())
-                        screen.blit(shadow, shadow.get_rect(center=(cx, cy + 6)))
+                        _blit_cached_ellipse(screen, (cx, cy + 6), shadow_w, shadow_h, (0, 0, 0, ISO_SHADOW_ALPHA))
                         rect = sprite.get_rect(midbottom=(cx, cy))
                         screen.blit(sprite, rect)
                     else:
@@ -797,15 +854,17 @@ def install(game):
                 enemy_sprite = _enemy_sprite(getattr(z, "type", ""), draw_size)
                 sh_w = max(8, int(draw_size * 0.9))
                 sh_h = max(4, int(draw_size * 0.45))
-                sh = pygame.Surface((sh_w, sh_h), pygame.SRCALPHA)
-                pygame.draw.ellipse(sh, (0, 0, 0, ISO_SHADOW_ALPHA), sh.get_rect())
-                screen.blit(sh, sh.get_rect(center=(cx, cy + 6)))
+                _blit_cached_ellipse(screen, (cx, cy + 6), sh_w, sh_h, (0, 0, 0, ISO_SHADOW_ALPHA))
                 sprite_rect = body
                 if getattr(z, "_gold_glow_t", 0.0) > 0.0:
-                    glow = pygame.Surface((int(draw_size * 1.6), int(draw_size * 1.0)), pygame.SRCALPHA)
                     alpha = int(120 * (z._gold_glow_t / Z_GLOW_TIME))
-                    pygame.draw.ellipse(glow, (255, 220, 90, max(30, alpha)), glow.get_rect())
-                    screen.blit(glow, glow.get_rect(center=(cx, cy)))
+                    _blit_cached_ellipse(
+                        screen,
+                        (cx, cy),
+                        int(draw_size * 1.6),
+                        int(draw_size * 1.0),
+                        (255, 220, 90, max(30, alpha)),
+                    )
                 base_col = ENEMY_COLORS.get(getattr(z, "type", "basic"), (255, 60, 60))
                 col = getattr(z, "_current_color", getattr(z, "color", base_col))
                 flash = float(getattr(z, "_comet_flash", 0.0))
@@ -1035,9 +1094,7 @@ def install(game):
                         )
                 sh_w = max(8, int(player_size * 0.9))
                 sh_h = max(4, int(player_size * 0.45))
-                sh = pygame.Surface((sh_w, sh_h), pygame.SRCALPHA)
-                pygame.draw.ellipse(sh, (0, 0, 0, ISO_SHADOW_ALPHA), sh.get_rect())
-                screen.blit(sh, sh.get_rect(center=(cx, cy + 6)))
+                _blit_cached_ellipse(screen, (cx, cy + 6), sh_w, sh_h, (0, 0, 0, ISO_SHADOW_ALPHA))
                 rect = pygame.Rect(0, 0, player_size, player_size)
                 rect.midbottom = (cx, cy)
                 sprite_w = int(player_size * 2.0 * PLAYER_SPRITE_SCALE)
@@ -1150,13 +1207,13 @@ def install(game):
             game_state.draw_comet_blasts(screen, camx, camy)
         if hasattr(game_state, "draw_comet_corpses"):
             game_state.draw_comet_corpses(screen, camx, camy)
-        if (not IS_WEB) and getattr(game_state, "fog_enabled", False):
+        if getattr(game_state, "fog_enabled", False):
             game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)
-        if (not IS_WEB) and USE_ISO:
+        if USE_ISO:
             game_state.draw_lanterns_iso(screen, camx, camy)
-        elif (not IS_WEB):
+        else:
             game_state.draw_lanterns_topdown(screen, camx, camy)
-        if (not IS_WEB) and hasattr(game_state, "fx"):
+        if hasattr(game_state, "fx"):
             for p in game_state.fx.particles:
                 if p.size < 1:
                     continue
@@ -1166,7 +1223,7 @@ def install(game):
                 glow = GlowCache.get_glow_surf(p.size, p.color)
                 screen.blit(glow, (sx - p.size, sy - p.size), special_flags=pygame.BLEND_ADD)
         vignette_t = float(getattr(player, "_enemy_paint_vignette_t", 0.0))
-        if (not IS_WEB) and vignette_t > 0.0:
+        if vignette_t > 0.0:
             ratio = max(0.0, min(1.0, vignette_t / 0.18))
             alpha = int(80 * ratio)
             if alpha > 0:

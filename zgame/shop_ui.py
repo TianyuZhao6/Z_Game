@@ -445,10 +445,7 @@ def show_biome_picker_in_shop(game, screen) -> str:
     title_font = pygame.font.SysFont(None, 56)
     font = pygame.font.SysFont(None, 26)
     back_font = pygame.font.SysFont(None, 48)
-    if getattr(game, "WEB_DEMO", False):
-        names = list(getattr(game, "WEB_DEMO_SCENE_BIOMES", ()) or game.SCENE_BIOMES)
-    else:
-        names = list(game.SCENE_BIOMES)
+    names = list(game.SCENE_BIOMES)
     random.shuffle(names)
     card_w, card_h = (180, 240)
     gap = 20

@@ -149,8 +149,18 @@ config = {
     fb_height : String(Math.max(1, window.innerHeight || 720))
 }
 
-const INTERNAL_MAX_WIDTH = 720;
-const INTERNAL_MAX_HEIGHT = 405;
+window.__zgame_render_limits = {
+    maxWidth: 1280,
+    maxHeight: 720,
+};
+
+function renderLimitWidth() {
+    return Math.max(640, Number((window.__zgame_render_limits && window.__zgame_render_limits.maxWidth) || 1280));
+}
+
+function renderLimitHeight() {
+    return Math.max(360, Number((window.__zgame_render_limits && window.__zgame_render_limits.maxHeight) || 720));
+}
 
 function viewportWidth() {
     return Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1280);
@@ -165,8 +175,8 @@ function backingSize() {
     const vh = viewportHeight();
     const scale = Math.min(
         1,
-        INTERNAL_MAX_WIDTH / Math.max(1, vw),
-        INTERNAL_MAX_HEIGHT / Math.max(1, vh)
+        renderLimitWidth() / Math.max(1, vw),
+        renderLimitHeight() / Math.max(1, vh)
     );
     return {
         width: Math.max(1, Math.round(vw * scale)),
@@ -175,6 +185,21 @@ function backingSize() {
         viewportHeight: vh,
     };
 }
+
+window.__zgame_apply_render_limits = function(maxWidth, maxHeight) {
+    try {
+        window.__zgame_render_limits = {
+            maxWidth: Math.max(640, Math.round(Number(maxWidth || renderLimitWidth()))),
+            maxHeight: Math.max(360, Math.round(Number(maxHeight || renderLimitHeight()))),
+        };
+        applyCanvasFullscreen();
+        focusCanvas();
+        return true;
+    } catch (e) {
+        console.warn("[ZGame] apply render limits failed", e);
+        return false;
+    }
+};
 
 function applyViewportConfig() {
     const size = backingSize();
@@ -290,6 +315,24 @@ function updateZGameDiagDom() {
     lines.push(`py frame:${Number(window.__zgame_py_frame || 0)} dt:${Number(window.__zgame_py_dt_ms || 0).toFixed(1)} raw:${Number(window.__zgame_py_raw_dt_ms || 0).toFixed(1)} total:${Number(window.__zgame_py_total_ms || 0).toFixed(1)} rendered:${Number(window.__zgame_py_rendered || 0)}`);
     lines.push(`idle:${Number(window.__zgame_py_idle_loops || 0)} accum:${Number(window.__zgame_py_accum_ms || 0).toFixed(1)}ms`);
     lines.push(`phase:${String(window.__zgame_prof_phase || "-")}  detail:${String(window.__zgame_prof_detail || "")}`);
+    try {
+        const mem = window.performance && window.performance.memory;
+        const heapMb = mem && mem.usedJSHeapSize ? (Number(mem.usedJSHeapSize) / (1024 * 1024)) : null;
+        let saveBytes = 0;
+        if (window.localStorage) {
+            for (let i = 0; i < window.localStorage.length; i += 1) {
+                const key = String(window.localStorage.key(i) || "");
+                if (!key.startsWith("z_game_save_")) continue;
+                const value = String(window.localStorage.getItem(key) || "");
+                saveBytes += (key.length + value.length) * 2;
+            }
+        }
+        if (heapMb !== null || saveBytes > 0) {
+            lines.push(
+                `chrome heap:${heapMb !== null ? heapMb.toFixed(1) + "MB" : "n/a"}  save:${(saveBytes / 1024).toFixed(1)}KB`
+            );
+        }
+    } catch (e) {}
     if (window.__zgame_last_error) {
         lines.push(`err:${String(window.__zgame_last_error)}`);
     }

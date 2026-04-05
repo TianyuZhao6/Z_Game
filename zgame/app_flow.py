@@ -13,6 +13,7 @@ from zgame.browser import (
     WebRuntimeProfiler,
     _set_browser_profiler_phase,
     _set_browser_profiler_metrics,
+    apply_web_quality_profile,
     browser_now_s,
     clamp_web_dt,
     is_escape_event,
@@ -281,26 +282,23 @@ async def _preload_web_gameplay_assets(game, screen, runtime=None) -> None:
     runtime["_web_gameplay_assets_ready"] = True
 
 
-def _demo_level_limit(game) -> int:
-    if not getattr(game, "WEB_DEMO", False):
-        return 0
-    try:
-        return max(0, int(getattr(game, "WEB_DEMO_LEVEL_LIMIT", 0)))
-    except Exception:
-        return 0
-
-
-def _demo_complete_for_level(game, level_idx: int) -> bool:
-    limit = _demo_level_limit(game)
-    return limit > 0 and int(level_idx) >= (limit - 1)
-
-
 def _effective_level_time_limit(game, level_idx: int) -> float:
-    base_limit = float(game.BOSS_TIME_LIMIT) if game.is_boss_level(level_idx) else float(game.LEVEL_TIME_LIMIT)
-    if not getattr(game, "WEB_DEMO", False):
-        return base_limit
-    demo_limit = float(game.WEB_DEMO_BOSS_TIME_LIMIT) if game.is_boss_level(level_idx) else float(game.WEB_DEMO_LEVEL_TIME_LIMIT)
-    return min(base_limit, demo_limit)
+    return float(game.BOSS_TIME_LIMIT) if game.is_boss_level(level_idx) else float(game.LEVEL_TIME_LIMIT)
+
+
+def _level_layout_seed(game, level_idx: int, config: dict) -> int:
+    seed = 0x5A17C3D1
+    for value in (
+        int(level_idx),
+        int(config.get("obstacle_count", 0)),
+        int(config.get("item_count", 0)),
+        int(config.get("enemy_count", 0)),
+        int(config.get("block_hp", 0)),
+        int(getattr(game, "GRID_SIZE", 0)),
+    ):
+        seed ^= int(value) + 0x9E3779B9 + ((seed << 6) & 0xFFFFFFFF) + (seed >> 2)
+        seed &= 0xFFFFFFFF
+    return seed or 1
 
 
 async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
@@ -337,22 +335,29 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     else:
         await asyncio.sleep(0)
     spatial = game.SpatialHash(game.SPATIAL_CELL)
-    obstacles, items, player_start, enemy_starts, main_item_list, decorations = game.generate_game_entities(
-        grid_size=game.GRID_SIZE,
-        obstacle_count=level_config['obstacle_count'],
-        item_count=level_config['item_count'],
-        enemy_count=level_config['enemy_count'],
-        main_block_hp=level_config['block_hp'],
-        level_idx=level_idx,
-        use_density=not bool(getattr(game, "IS_WEB", False)),
-    )
+    layout_seed = _level_layout_seed(game, level_idx, level_config)
+    runtime["_level_layout_seed"] = layout_seed
+    random_state = random.getstate()
+    try:
+        random.seed(layout_seed)
+        obstacles, items, player_start, enemy_starts, main_item_list, decorations = game.generate_game_entities(
+            grid_size=game.GRID_SIZE,
+            obstacle_count=level_config['obstacle_count'],
+            item_count=level_config['item_count'],
+            enemy_count=level_config['enemy_count'],
+            main_block_hp=level_config['block_hp'],
+            level_idx=level_idx,
+            use_density=True,
+        )
+        game.ensure_passage_budget(obstacles, game.GRID_SIZE, player_start)
+    finally:
+        random.setstate(random_state)
     if game.IS_WEB:
         await asyncio.sleep(0)
     last_counted_level = runtime.get('_items_counted_level')
     if last_counted_level != level_idx:
         meta['run_items_spawned'] = int(meta.get('run_items_spawned', 0)) + len(items)
         runtime['_items_counted_level'] = level_idx
-    game.ensure_passage_budget(obstacles, game.GRID_SIZE, player_start)
     game_state = game.GameState(obstacles, items, main_item_list, decorations)
     if game.IS_WEB:
         await asyncio.sleep(0)
@@ -1442,6 +1447,8 @@ async def app_main(game) -> None:
     os.environ['SDL_VIDEO_CENTERED'] = '0'
     os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0'
     pygame.init()
+    if game.IS_WEB:
+        apply_web_quality_profile(game, getattr(game, "WEB_DEFAULT_QUALITY", "full"), reason="startup")
     info = pygame.display.Info()
     if game.IS_WEB:
         web_w, web_h = game.get_initial_web_window_size()
@@ -1485,17 +1492,12 @@ async def app_main(game) -> None:
     if getattr(game, "IS_WEB", False) and bool(getattr(game, "WEB_AUTOSTART", False)):
         game._reset_active_run_state(clear_save_file=True)
     else:
-        selection = await game.show_start_menu(screen, skip_intro=bool(getattr(game, 'WEB_DEMO_SKIP_INTRO', False)))
+        selection = await game.show_start_menu(screen)
         apply_menu_selection(selection)
     START_IN_SHOP_FOR_TEST = False
     if START_IN_SHOP_FOR_TEST:
         runtime['_pending_shop'] = True
     while True:
-        if _demo_level_limit(game) and int(game.current_level) >= _demo_level_limit(game):
-            game._reset_active_run_state(clear_save_file=True)
-            selection = await game.show_start_menu(screen, skip_intro=True)
-            apply_menu_selection(selection)
-            continue
         if runtime.get('_pending_shop', False):
             meta['spoils'] += int(runtime.pop('_last_spoils', 0))
             runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
@@ -1586,12 +1588,6 @@ async def app_main(game) -> None:
                 meta['spoils'] = int(runtime.get('_coins_at_level_start', meta.get('spoils', 0)))
                 runtime.pop('_last_spoils', None)
                 game.flush_events()
-                continue
-            if _demo_complete_for_level(game, game.current_level):
-                game._reset_active_run_state(clear_save_file=True)
-                game.flush_events()
-                selection = await game.show_start_menu(screen, skip_intro=True)
-                apply_menu_selection(selection)
                 continue
             runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
             game.save_progress(game.current_level, pending_shop=True)

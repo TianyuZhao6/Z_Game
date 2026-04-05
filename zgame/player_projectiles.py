@@ -292,6 +292,11 @@ def install(game):
                             break
                         self.alive = False
                         return
+            if (self.vx * self.vx + self.vy * self.vy) <= 1e-6:
+                # Allow one-frame overlap hits for spawned-on-target tests and
+                # edge cases, but do not let zero-velocity bullets linger.
+                self.alive = False
+                return
 
         def draw(self, screen, cam_x, cam_y):
             src = getattr(self, 'source', 'player')
