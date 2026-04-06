@@ -1,4 +1,5 @@
-﻿===================================================================
+﻿“dies before 10s” case is improved in my harness, but longer headless Playwright captures around 15s can still stall on the dense web path. So this is materially better, but I would not call long-run browser stability fully solved yet.
+===================================================================
 Executive Summary
 This document is the master working specification for Z Game's prop system, path identity, balance rules, UX readability, and release-readiness requirements.
 Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and production guidance.
