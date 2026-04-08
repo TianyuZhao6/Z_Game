@@ -271,7 +271,7 @@ window.__zgame_js_last_now = 0;
 function zgameDiagEnabled() {
     try {
         const marker = String((window.location && (window.location.search + "&" + window.location.hash)) || "").toLowerCase();
-        if (marker.includes("diag=1") || marker.includes("debug=1") || marker.includes("autostart=1")) {
+        if (marker.includes("diag=1") || marker.includes("debug=1")) {
             return true;
         }
         return Boolean(window.__zgame_last_error || window.__zgame_py_error);
@@ -374,20 +374,29 @@ function show_infobox() {
 }
 
 window.__zgame_bgm_audio = null;
+window.__zgame_bgm_pending = false;
+window.__zgame_bgm_last_play_ms = 0;
 
 window.__zgame_bgm_open = function(src, volume) {
     try {
         const prev = window.__zgame_bgm_audio;
         if (prev) {
             try { prev.pause(); } catch (_) {}
-            prev.src = "";
+            try { prev.removeAttribute("src"); } catch (_) {}
+            try { prev.load(); } catch (_) {}
         }
         const audio = new Audio(src);
         audio.preload = "auto";
+        audio.playsInline = true;
         audio.loop = true;
         audio.volume = Math.max(0, Math.min(1, Number(volume || 0)));
         audio.crossOrigin = "anonymous";
+        audio.addEventListener("playing", () => { window.__zgame_bgm_pending = false; });
+        audio.addEventListener("pause", () => { window.__zgame_bgm_pending = false; });
+        audio.addEventListener("ended", () => { window.__zgame_bgm_pending = false; });
         window.__zgame_bgm_audio = audio;
+        window.__zgame_bgm_pending = false;
+        window.__zgame_bgm_last_play_ms = 0;
         return true;
     } catch (e) {
         console.warn("[Audio] html bgm open failed", e);
@@ -399,13 +408,36 @@ window.__zgame_bgm_play = function(loops, fade_ms) {
     try {
         const audio = window.__zgame_bgm_audio;
         if (!audio) return false;
+        const now = (window.performance && typeof window.performance.now === "function")
+            ? window.performance.now()
+            : Date.now();
         audio.loop = loops !== 0;
+        if ((!audio.paused && !audio.ended) || window.__zgame_bgm_pending) {
+            return true;
+        }
+        if ((now - Number(window.__zgame_bgm_last_play_ms || 0)) < 250) {
+            return true;
+        }
+        window.__zgame_bgm_pending = true;
+        window.__zgame_bgm_last_play_ms = now;
         const playPromise = audio.play();
+        if (!playPromise || typeof playPromise.then !== "function") {
+            window.__zgame_bgm_pending = false;
+        }
+        if (playPromise && typeof playPromise.then === "function") {
+            playPromise.then(() => {
+                window.__zgame_bgm_pending = false;
+            });
+        }
         if (playPromise && typeof playPromise.catch === "function") {
-            playPromise.catch((e) => console.warn("[Audio] html bgm play failed", e));
+            playPromise.catch((e) => {
+                window.__zgame_bgm_pending = false;
+                console.warn("[Audio] html bgm play failed", e);
+            });
         }
         return true;
     } catch (e) {
+        window.__zgame_bgm_pending = false;
         console.warn("[Audio] html bgm play exception", e);
         return false;
     }
@@ -417,6 +449,7 @@ window.__zgame_bgm_stop = function() {
         if (!audio) return false;
         audio.pause();
         audio.currentTime = 0;
+        window.__zgame_bgm_pending = false;
         return true;
     } catch (e) {
         console.warn("[Audio] html bgm stop failed", e);
@@ -429,6 +462,7 @@ window.__zgame_bgm_pause = function() {
         const audio = window.__zgame_bgm_audio;
         if (!audio) return false;
         audio.pause();
+        window.__zgame_bgm_pending = false;
         return true;
     } catch (e) {
         console.warn("[Audio] html bgm pause failed", e);
@@ -467,7 +501,7 @@ window.__zgame_bgm_busy = function() {
     try {
         const audio = window.__zgame_bgm_audio;
         if (!audio) return false;
-        return !audio.paused && !audio.ended;
+        return window.__zgame_bgm_pending || (!audio.paused && !audio.ended);
     } catch (e) {
         return false;
     }

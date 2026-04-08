@@ -74,16 +74,11 @@ def install(game):
 
         def _open_native_web_audio(self) -> bool:
             try:
-                import platform as web_platform
-
-                window = getattr(web_platform, "window", None)
-                if window is None:
-                    return False
                 url = self._browser_music_url(self.music_path)
                 if not url:
                     return False
-                ok = window.__zgame_bgm_open(url, self.volume)
-                if ok:
+                ok = self._window_call("__zgame_bgm_open", url, self.volume)
+                if bool(ok):
                     self._native_web_audio = True
                     return True
             except Exception as e:
@@ -117,7 +112,7 @@ def install(game):
             if not self.music_path:
                 print("[Audio] ZGAME.wav not found in expected locations.")
                 return
-            if getattr(game, "IS_WEB", False) and self._open_native_web_audio():
+            if getattr(game, "IS_WEB", False) and bool(getattr(game, "WEB_NATIVE_BGM", False)) and self._open_native_web_audio():
                 self._ready = True
                 print(f"[Audio] Loaded HTML BGM: {self.music_path}")
                 return

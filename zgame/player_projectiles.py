@@ -284,6 +284,8 @@ def install(game):
                         if ob.health <= 0:
                             cx, cy = (ob.rect.centerx, ob.rect.centery)
                             del game_state.obstacles[gp]
+                            if hasattr(game_state, 'mark_nav_dirty'):
+                                game_state.mark_nav_dirty()
                             if random.random() < game.SPOILS_BLOCK_DROP_CHANCE:
                                 game_state.spawn_spoils(cx, cy, 1)
                             if player:

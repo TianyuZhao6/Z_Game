@@ -110,6 +110,36 @@ def install(game):
             self.kind = kind
             self.t = 0.0
             self.ttl = float(game.DMG_TEXT_TTL)
+            self._surf = None
+            self._last_alpha = -1
+
+        def _style(self) -> tuple[tuple[int, int, int], int]:
+            color_map = {
+                "shield": ((120, 200, 255), (120, 200, 255)),
+                "aegis": (game.AEGIS_PULSE_COLOR, game.AEGIS_PULSE_COLOR),
+                "hp_player": ((255, 255, 255), (255, 255, 220)),
+                "dot": ((80, 220, 255), (140, 255, 255)),
+                "hp_enemy": ((255, 60, 60), (255, 140, 140)),
+            }
+            normal, crit = color_map.get(self.kind, ((255, 100, 100), (255, 240, 120)))
+            color = crit if self.crit else normal
+            if self.kind == "dot":
+                size = max(14, game.DMG_TEXT_SIZE_NORMAL - 4)
+            else:
+                size = game.DMG_TEXT_SIZE_NORMAL if not self.crit else game.DMG_TEXT_SIZE_CRIT
+            return color, int(size)
+
+        def surface(self) -> pygame.Surface:
+            if self._surf is None:
+                color, size = self._style()
+                font = game.cached_sys_font(size, bold=self.crit)
+                surf = font.render(str(self.amount), True, color)
+                try:
+                    surf = surf.convert_alpha()
+                except Exception:
+                    pass
+                self._surf = surf
+            return self._surf
 
         def alive(self) -> bool:
             return self.t < self.ttl
@@ -126,6 +156,14 @@ def install(game):
                 return 255
             tail = (p - (1.0 - game.DMG_TEXT_FADE)) / max(1e-4, game.DMG_TEXT_FADE)
             return max(0, int(255 * (1.0 - tail)))
+
+        def draw_iso(self, screen, sx: float, sy: float) -> None:
+            surf = self.surface()
+            alpha = self.alpha()
+            if alpha != self._last_alpha:
+                surf.set_alpha(alpha)
+                self._last_alpha = alpha
+            screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
 
     game.__dict__.update({"EnemyShot": EnemyShot, "MistShot": MistShot, "DamageText": DamageText})
     return EnemyShot, MistShot, DamageText

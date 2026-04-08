@@ -50,13 +50,19 @@ def _detect_web_autostart() -> bool:
 
 def _detect_web_diag() -> bool:
     marker = _web_location_marker()
-    return any(token in marker for token in ("diag=1", "debug=1", "profile=1", "autostart=1"))
+    return any(token in marker for token in ("diag=1", "debug=1", "profile=1"))
+
+
+def _detect_web_flag(*tokens: str) -> bool:
+    marker = _web_location_marker()
+    return any(str(token or "").lower() in marker for token in tokens)
 
 
 WEB_WINDOW_SIZE = (1280, 720)
 WEB_MAX_FRAME_DT = 0.05
 WEB_AUTOSAVE_INTERVAL = 0.0
 WEB_SINGLE_BGM = IS_WEB
+WEB_NATIVE_BGM = IS_WEB
 WEB_AUTOSTART = _detect_web_autostart()
 WEB_DIAG_MODE = _detect_web_diag()
 WEB_LITE_RENDER_PICKUP_CAP = 18
@@ -68,13 +74,16 @@ WEB_ALLOW_LITE_RENDER = False
 WEB_QUALITY_ORDER = ("full", "balanced", "safe")
 WEB_QUALITY_PRESETS = {
     "full": {
-        "target_fps": 16,
+        "target_fps": 18,
         "flow_refresh_interval": 1.00,
         "spatial_refresh_interval": 0.32,
-        "enemy_cap": 12,
+        "enemy_cap": 10,
         "max_render_width": 720,
         "max_render_height": 405,
-        "render_interval": 1.0 / 5.0,
+        "render_interval": 1.0 / 8.0,
+        "max_damage_texts": 24,
+        "max_fx_particles": 120,
+        "max_spoils_on_field": 28,
         "use_lite_render": False,
         "disable_fx_audio": False,
         "enable_astar_recovery": False,
@@ -83,10 +92,13 @@ WEB_QUALITY_PRESETS = {
         "target_fps": 18,
         "flow_refresh_interval": 0.95,
         "spatial_refresh_interval": 0.28,
-        "enemy_cap": 14,
-        "max_render_width": 960,
-        "max_render_height": 540,
-        "render_interval": 1.0 / 6.0,
+        "enemy_cap": 9,
+        "max_render_width": 720,
+        "max_render_height": 405,
+        "render_interval": 1.0 / 7.0,
+        "max_damage_texts": 20,
+        "max_fx_particles": 96,
+        "max_spoils_on_field": 24,
         "use_lite_render": False,
         "disable_fx_audio": False,
         "enable_astar_recovery": False,
@@ -95,10 +107,13 @@ WEB_QUALITY_PRESETS = {
         "target_fps": 16,
         "flow_refresh_interval": 1.05,
         "spatial_refresh_interval": 0.32,
-        "enemy_cap": 10,
+        "enemy_cap": 8,
         "max_render_width": 720,
         "max_render_height": 405,
-        "render_interval": 1.0 / 5.0,
+        "render_interval": 1.0 / 6.0,
+        "max_damage_texts": 16,
+        "max_fx_particles": 72,
+        "max_spoils_on_field": 20,
         "use_lite_render": True,
         "disable_fx_audio": True,
         "enable_astar_recovery": False,
@@ -112,8 +127,11 @@ WEB_ENEMY_CAP = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["enemy_cap"])
 WEB_MAX_RENDER_WIDTH = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_render_width"])
 WEB_MAX_RENDER_HEIGHT = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_render_height"])
 WEB_RENDER_INTERVAL = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["render_interval"])
+WEB_MAX_DAMAGE_TEXTS = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_damage_texts"])
+WEB_MAX_FX_PARTICLES = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_fx_particles"])
+WEB_MAX_SPOILS_ON_FIELD = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_spoils_on_field"])
 WEB_USE_LITE_RENDER = bool(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["use_lite_render"])
-WEB_PROFILER_ENABLED = IS_WEB
+WEB_PROFILER_ENABLED = IS_WEB and WEB_DIAG_MODE
 WEB_PROFILER_OVERLAY = IS_WEB and WEB_DIAG_MODE
 WEB_DISABLE_FX_AUDIO = bool(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["disable_fx_audio"])
 WEB_ENABLE_ENEMY_PAINT = True
@@ -125,6 +143,16 @@ WEB_ENABLE_GROUND_SPIKES = True
 WEB_ENABLE_CURING_PAINT = True
 WEB_ENABLE_DOT_ROUNDS = True
 WEB_ENABLE_ASTAR_RECOVERY = bool(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["enable_astar_recovery"])
+WEB_SKIP_FLOW = IS_WEB and _detect_web_flag("skipflow=1")
+# Browser stability mode keeps the desktop layout and combat density, but drops
+# two late-run systems that repeatedly stalled Chrome in long sessions.
+WEB_SKIP_FLOW_FIELD = IS_WEB and (not _detect_web_flag("flowfield=1", "ff=1"))
+WEB_SKIP_ENEMY_SPOIL_COLLECT = IS_WEB and (not _detect_web_flag("enemycoins=1", "allowenemycoins=1"))
+WEB_SKIP_UPDATE = IS_WEB and _detect_web_flag("skipupdate=1")
+WEB_SKIP_BULLETS = IS_WEB and _detect_web_flag("skipbullets=1")
+WEB_SKIP_ENEMY_MOVE = IS_WEB and _detect_web_flag("skipmove=1")
+WEB_SKIP_ENEMY_SPECIAL = IS_WEB and _detect_web_flag("skipspecial=1")
+WEB_SKIP_RENDER = IS_WEB and _detect_web_flag("skiprender=1")
 
 
 def clamp_web_dt(dt_s: float, *, max_dt: float = WEB_MAX_FRAME_DT) -> float:
@@ -221,6 +249,7 @@ def apply_web_quality_profile(game, profile_name: str | None, *, reason: str = "
     payload = _quality_payload(profile_name)
     assignments = {
         "WEB_DEFAULT_QUALITY": str(payload["quality"]),
+        "WEB_NATIVE_BGM": bool(WEB_NATIVE_BGM),
         "WEB_WINDOW_SIZE": (int(payload["max_render_width"]), int(payload["max_render_height"])),
         "WEB_TARGET_FPS": int(payload["target_fps"]),
         "WEB_FLOW_REFRESH_INTERVAL": float(payload["flow_refresh_interval"]),
@@ -229,6 +258,9 @@ def apply_web_quality_profile(game, profile_name: str | None, *, reason: str = "
         "WEB_MAX_RENDER_WIDTH": int(payload["max_render_width"]),
         "WEB_MAX_RENDER_HEIGHT": int(payload["max_render_height"]),
         "WEB_RENDER_INTERVAL": float(payload["render_interval"]),
+        "WEB_MAX_DAMAGE_TEXTS": int(payload["max_damage_texts"]),
+        "WEB_MAX_FX_PARTICLES": int(payload["max_fx_particles"]),
+        "WEB_MAX_SPOILS_ON_FIELD": int(payload["max_spoils_on_field"]),
         "WEB_USE_LITE_RENDER": bool(payload["use_lite_render"]),
         "WEB_SINGLE_BGM": bool(payload["single_bgm"]),
         "WEB_DISABLE_FX_AUDIO": bool(payload["disable_fx_audio"]),
@@ -599,7 +631,7 @@ class WebRuntimeProfiler:
         self._last_console_log_s = now_s
         counts = " ".join(
             f"{key}={self._counters[key]}"
-            for key in ("obs", "en", "b", "es", "spawn", "rendered")
+            for key in ("obs", "en", "b", "es", "sp", "txt", "fx", "spawn", "rendered")
             if key in self._counters
         )
         print(
@@ -645,7 +677,7 @@ class WebRuntimeProfiler:
             max_ms = self._phase_max.get(phase_name, 0.0)
             lines.append(f"{phase_name:<13} {last_ms:>5.1f} / {avg_ms:>5.1f} / {max_ms:>5.1f}")
         counter_parts = []
-        for key in ("obs", "en", "b", "es", "spawn", "wave", "trans"):
+        for key in ("obs", "en", "b", "es", "sp", "txt", "fx", "spawn", "wave", "trans"):
             if key in self._counters:
                 counter_parts.append(f"{key}:{self._counters[key]}")
         if counter_parts:

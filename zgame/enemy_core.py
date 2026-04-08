@@ -190,14 +190,24 @@ def install(game):
             if n <= 0:
                 return
             self.coins_absorbed = int(getattr(self, 'coins_absorbed', 0)) + n
-            for _ in range(n):
-                self.spoils += 1
-                self.max_hp += game.Z_SPOIL_HP_PER
-                self.hp = min(self.max_hp, self.hp + game.Z_SPOIL_HP_PER)
-                if self.spoils % game.Z_SPOIL_ATK_STEP == 0:
-                    self.attack += 1
-                if self.spoils % game.Z_SPOIL_SPD_STEP == 0:
-                    self.speed = min(game.Z_SPOIL_SPD_CAP, float(self.speed) + float(game.Z_SPOIL_SPD_ADD))
+            old_spoils = int(getattr(self, 'spoils', 0))
+            new_spoils = old_spoils + n
+            self.spoils = new_spoils
+            hp_gain = int(game.Z_SPOIL_HP_PER) * n
+            if hp_gain > 0:
+                self.max_hp = int(getattr(self, 'max_hp', 0)) + hp_gain
+                self.hp = min(int(self.max_hp), int(getattr(self, 'hp', 0)) + hp_gain)
+            atk_step = int(getattr(game, 'Z_SPOIL_ATK_STEP', 0) or 0)
+            if atk_step > 0:
+                gained_atk = max(0, (new_spoils // atk_step) - (old_spoils // atk_step))
+                if gained_atk > 0:
+                    self.attack = int(getattr(self, 'attack', 0)) + gained_atk
+            spd_step = int(getattr(game, 'Z_SPOIL_SPD_STEP', 0) or 0)
+            if spd_step > 0:
+                gained_speed_steps = max(0, (new_spoils // spd_step) - (old_spoils // spd_step))
+                if gained_speed_steps > 0:
+                    speed_gain = float(game.Z_SPOIL_SPD_ADD) * float(gained_speed_steps)
+                    self.speed = min(game.Z_SPOIL_SPD_CAP, float(self.speed) + speed_gain)
             game.apply_coin_absorb_scale(self)
             self._gold_glow_t = float(game.Z_GLOW_TIME)
 
@@ -591,6 +601,8 @@ def install(game):
                     gp = getattr(ob, 'grid_pos', None)
                     if gp in game_state.obstacles:
                         del game_state.obstacles[gp]
+                        if hasattr(game_state, 'mark_nav_dirty'):
+                            game_state.mark_nav_dirty()
                     if getattr(ob, 'health', None) is not None:
                         ob.health = 0
                     cx2, cy2 = (ob.rect.centerx, ob.rect.centery)
@@ -645,6 +657,8 @@ def install(game):
                     gp = getattr(ob, 'grid_pos', None)
                     if gp in game_state.obstacles:
                         del game_state.obstacles[gp]
+                        if hasattr(game_state, 'mark_nav_dirty'):
+                            game_state.mark_nav_dirty()
                 self._crush_queue.clear()
                 self._focus_block = None
                 try:
@@ -656,6 +670,8 @@ def install(game):
                     for gp, ob in list(game_state.obstacles.items()):
                         if ob.rect.colliderect(bb):
                             del game_state.obstacles[gp]
+                            if hasattr(game_state, 'mark_nav_dirty'):
+                                game_state.mark_nav_dirty()
                             crushed_any = True
                             if getattr(ob, 'type', '') == 'Destructible':
                                 if random.random() < game.SPOILS_BLOCK_DROP_CHANCE:

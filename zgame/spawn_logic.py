@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import time
 
 import pygame
 from zgame import runtime_state as rs
@@ -89,12 +90,24 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
     if len(enemies) >= cap:
         return 0
     budget = budget_for_level(game, current_level)
+    web_diag = bool(getattr(game, "IS_WEB", False) and getattr(game, "WEB_DIAG_MODE", False))
+    wave_started_at = time.perf_counter()
     force_boss = is_boss_level(game, current_level) and (wave_index == 0)
     if force_boss:
         budget = int(budget * game.THREAT_BOSS_BONUS)
+    if web_diag:
+        print(
+            f"[WebSpawn] begin wave={int(wave_index)} level={int(current_level)} "
+            f"enemies={len(enemies)} cap={int(cap)} budget={int(budget)}"
+        )
+    spots_started_at = time.perf_counter()
     spots = spawn_positions(game, game_state, player, enemies, want=budget)
+    spots_elapsed_ms = (time.perf_counter() - spots_started_at) * 1000.0
+    if web_diag:
+        print(f"[WebSpawn] spots wave={int(wave_index)} count={len(spots)} took={spots_elapsed_ms:.1f}ms")
     spawned = 0
     boss_done = False
+    spawned_types: list[str] = []
     state = _state(game)
     meta = _meta(game)
     try:
@@ -132,6 +145,7 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
             bandit.radar_ring_period = 2.0
             bandit.radar_ring_phase = 0.0
         enemies.append(bandit)
+        spawned_types.append("bandit")
         game_state.bandit_spawned_this_level = True
         game_state.pending_focus = ("bandit", (cx, cy))
         if hasattr(game_state, "flash_banner"):
@@ -200,6 +214,7 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
                 game_state.focus_queue += [("boss", focus_one), ("boss", focus_two)]
                 enemies.append(boss_one)
                 enemies.append(boss_two)
+                spawned_types.extend(["boss_mem_twin", "boss_mem_twin"])
                 boss_done = True
             elif current_level in game.MISTWEAVER_LEVELS:
                 boss = game.MistweaverBoss((gx0, gy0), current_level)
@@ -213,6 +228,7 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
                 )
                 boss._spawn_wave_tag = wave_index
                 enemies.append(boss)
+                spawned_types.append("boss_mist")
                 focus = (int(boss.rect.centerx), int(boss.rect.centery))
                 game_state.focus_queue = getattr(game_state, "focus_queue", [])
                 game_state.focus_queue.append(("boss", focus))
@@ -240,6 +256,7 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
                 game_state.focus_queue = getattr(game_state, "focus_queue", [])
                 game_state.focus_queue.append(("boss", focus))
                 enemies.append(boss)
+                spawned_types.append("boss_mem")
                 boss_done = True
             continue
 
@@ -260,5 +277,15 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
         enemy._spawn_wave_tag = wave_index
         game.apply_biome_on_enemy_spawn(enemy, game_state)
         enemies.append(enemy)
+        spawned_types.append(str(enemy_type or getattr(enemy, "type", "unknown")))
         spawned += 1
+    total_elapsed_ms = (time.perf_counter() - wave_started_at) * 1000.0
+    if web_diag or total_elapsed_ms >= 120.0:
+        type_summary = ",".join(spawned_types[:8])
+        if len(spawned_types) > 8:
+            type_summary += ",..."
+        print(
+            f"[WebSpawn] end wave={int(wave_index)} spawned={int(spawned)} total={len(enemies)} "
+            f"took={total_elapsed_ms:.1f}ms types={type_summary}"
+        )
     return spawned

@@ -75,10 +75,32 @@ def install(game):
             return sum((1 for obs in self.obstacles.values() if obs.type == 'Destructible'))
 
         def spawn_spoils(self, x_px: float, y_px: float, count: int=1):
-            for _ in range(int(max(0, count))):
+            remaining = int(max(0, count))
+            if remaining <= 0:
+                return
+            max_spoils = int(getattr(game, "WEB_MAX_SPOILS_ON_FIELD", 0) or 0) if game.IS_WEB else 0
+            if max_spoils > 0:
+                slots_left = max(0, max_spoils - len(self.spoils))
+                if slots_left <= 0 and self.spoils:
+                    nearest = min(
+                        self.spoils,
+                        key=lambda spoil: (spoil.base_x - float(x_px)) ** 2 + (spoil.base_y - float(y_px)) ** 2,
+                    )
+                    nearest.value += remaining
+                    return
+                spawn_count = min(remaining, max(1, slots_left))
+                bundle = max(1, int(math.ceil(remaining / float(max(1, spawn_count)))))
+            else:
+                spawn_count = remaining
+                bundle = 1
+            for _ in range(spawn_count):
+                value = min(bundle, remaining)
                 jx = random.uniform(-6, 6)
                 jy = random.uniform(-6, 6)
-                self.spoils.append(game.Spoil(x_px + jx, y_px + jy, 1))
+                self.spoils.append(game.Spoil(x_px + jx, y_px + jy, value))
+                remaining -= value
+            if remaining > 0 and self.spoils:
+                self.spoils[-1].value += remaining
 
         def update_spoils(self, dt: float, player: 'Player'):
             """
@@ -668,7 +690,10 @@ def install(game):
             rebuild_interval = game.WEB_FLOW_REFRESH_INTERVAL if game.IS_WEB else 0.3
             self._ff_timer = max(0.0, self._ff_timer - dt)
             self._ff_tacc = min(1.0, float(getattr(self, '_ff_tacc', 0.0)) + float(dt or 0.0))
-            if self._ff_dirty or self._ff_timer <= 0.0 or self._ff_goal != player_tile:
+            needs_rebuild = bool(self._ff_dirty or self._ff_goal != player_tile or self.ff_dist is None or self.ff_next is None)
+            if (not game.IS_WEB) and self._ff_timer <= 0.0:
+                needs_rebuild = True
+            if needs_rebuild:
                 self.ff_dist, self.ff_next = game.build_flow_field(game.GRID_SIZE, self.obstacles, player_tile)
                 self._ff_goal = player_tile
                 self._ff_dirty = False
@@ -712,6 +737,20 @@ def install(game):
             self.aegis_pulses = alive
 
         def add_damage_text(self, x, y, amount, crit=False, kind='hp'):
+            max_texts = int(getattr(game, "WEB_MAX_DAMAGE_TEXTS", 0) or 0) if game.IS_WEB else 0
+            if max_texts > 0 and len(self.dmg_texts) >= max_texts:
+                if (not crit) and kind in {'dot', 'shield'}:
+                    return
+                drop_index = 0
+                for idx, existing in enumerate(self.dmg_texts):
+                    if (not getattr(existing, 'crit', False)) and getattr(existing, 'kind', '') in {'dot', 'shield'}:
+                        drop_index = idx
+                        break
+                try:
+                    self.dmg_texts.pop(drop_index)
+                except Exception:
+                    if self.dmg_texts:
+                        self.dmg_texts.pop(0)
             if isinstance(amount, (int, float)):
                 amount = int(amount)
                 if amount <= 0:
@@ -978,14 +1017,20 @@ def install(game):
                     continue
                 self.obstacles[gx, gy] = game.FogLantern(gx, gy)
                 spawned += 1
+            if spawned > 0:
+                self.mark_nav_dirty()
 
         def disable_fog_field(self):
             if not self.fog_on:
                 return
             self.fog_on = False
+            removed = False
             for gp, ob in list(self.obstacles.items()):
                 if getattr(ob, 'type', '') == 'Lantern':
                     del self.obstacles[gp]
+                    removed = True
+            if removed:
+                self.mark_nav_dirty()
 
         def request_fog_field(self, player=None):
             """首次启动雾场 & 刷新灯笼。player 可选（首次刷 Boss 时可能还没 self.player）。"""

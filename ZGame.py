@@ -27,10 +27,22 @@ from zgame.browser import (
     WEB_ENABLE_GROUND_SPIKES,
     WEB_ENABLE_HURRICANES,
     WEB_ENABLE_VULNERABILITY_MARKS,
+    WEB_NATIVE_BGM,
     WEB_AUTOSTART,
+    WEB_MAX_DAMAGE_TEXTS,
+    WEB_MAX_FX_PARTICLES,
     WEB_ENEMY_CAP,
+    WEB_MAX_SPOILS_ON_FIELD,
     WEB_DISABLE_FX_AUDIO,
     WEB_FLOW_REFRESH_INTERVAL,
+    WEB_SKIP_BULLETS,
+    WEB_SKIP_ENEMY_SPOIL_COLLECT,
+    WEB_SKIP_ENEMY_MOVE,
+    WEB_SKIP_ENEMY_SPECIAL,
+    WEB_SKIP_FLOW_FIELD,
+    WEB_SKIP_FLOW,
+    WEB_SKIP_RENDER,
+    WEB_SKIP_UPDATE,
     WEB_LITE_RENDER_BULLET_CAP,
     WEB_LITE_RENDER_ENEMY_CAP,
     WEB_LITE_RENDER_ENEMY_SHOT_CAP,
@@ -4763,6 +4775,9 @@ def iso_circle_radii_screen(r_px: float) -> tuple[int, int]:
     return max(1, rx), max(1, ry)
 
 
+_ISO_GROUND_ELLIPSE_CACHE: dict[tuple[int, int, tuple[int, int, int, int], bool, int], pygame.Surface] = {}
+
+
 def draw_iso_ground_ellipse(surface: pygame.Surface, x_px: float, y_px: float,
                             r_px: float, color: tuple, alpha: int,
                             camx: float, camy: float,
@@ -4776,14 +4791,27 @@ def draw_iso_ground_ellipse(surface: pygame.Surface, x_px: float, y_px: float,
     wy = (y_px - INFO_BAR_HEIGHT) / CELL_SIZE
     cx, cy = iso_world_to_screen(wx, wy, 0, camx, camy)
     rx, ry = iso_circle_radii_screen(float(r_px))
-    # 用一张带透明通道的小画布来画椭圆，再贴到主画面
-    surf = pygame.Surface((rx * 2 + 2, ry * 2 + 2), pygame.SRCALPHA)
-    rgba = (int(color[0]), int(color[1]), int(color[2]), int(alpha))
-    rect = pygame.Rect(1, 1, rx * 2, ry * 2)
-    if fill:
-        pygame.draw.ellipse(surf, rgba, rect)
-    else:
-        pygame.draw.ellipse(surf, rgba, rect, max(1, int(width)))
+    rgba = (
+        max(0, min(255, int(color[0]))),
+        max(0, min(255, int(color[1]))),
+        max(0, min(255, int(color[2]))),
+        max(0, min(255, int(alpha))),
+    )
+    stroke = max(1, int(width))
+    key = (int(rx), int(ry), rgba, bool(fill), stroke)
+    surf = _ISO_GROUND_ELLIPSE_CACHE.get(key)
+    if surf is None:
+        surf = pygame.Surface((rx * 2 + 2, ry * 2 + 2), pygame.SRCALPHA)
+        rect = pygame.Rect(1, 1, rx * 2, ry * 2)
+        if fill:
+            pygame.draw.ellipse(surf, rgba, rect)
+        else:
+            pygame.draw.ellipse(surf, rgba, rect, stroke)
+        try:
+            surf = surf.convert_alpha()
+        except Exception:
+            pass
+        _ISO_GROUND_ELLIPSE_CACHE[key] = surf
     surface.blit(surf, (cx - rx - 1, cy - ry - 1))
 
 

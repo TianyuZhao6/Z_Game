@@ -27,6 +27,9 @@ def install(game):
         return bool(getattr(game, flag_name, False))
 
     _ellipse_surface_cache: dict[tuple[int, int, tuple[int, ...], int], pygame.Surface] = {}
+    _iso_tile_surface_cache: dict[tuple[int, int, tuple[int, ...], int], pygame.Surface] = {}
+    _iso_wall_surface_cache: dict[tuple[str, int, tuple[int, ...]], tuple[pygame.Surface, int, int]] = {}
+    _text_surface_cache: dict[tuple[int, bool, tuple[int, ...], str], pygame.Surface] = {}
 
     def _cached_ellipse_surface(width: int, height: int, color: tuple[int, ...], *, line_width: int = 0) -> pygame.Surface:
         w = max(1, int(width))
@@ -49,6 +52,179 @@ def install(game):
         surf = _cached_ellipse_surface(width, height, color, line_width=line_width)
         screen.blit(surf, surf.get_rect(center=(int(center[0]), int(center[1]))))
 
+    def _cached_text_surface(text: str, color: tuple[int, ...], *, size: int = 18, bold: bool = False) -> pygame.Surface:
+        rgba = tuple(max(0, min(255, int(v))) for v in color)
+        key = (max(1, int(size)), bool(bold), rgba, str(text))
+        surf = _text_surface_cache.get(key)
+        if surf is None:
+            font = cached_sys_font(size, bold=bold)
+            surf = font.render(str(text), True, rgba)
+            try:
+                surf = surf.convert_alpha()
+            except Exception:
+                pass
+            _text_surface_cache[key] = surf
+        return surf
+
+    def _cached_iso_tile_surface(color: tuple[int, ...], *, border: int = 0) -> pygame.Surface:
+        rgba = tuple(max(0, min(255, int(v))) for v in color)
+        key = (int(ISO_CELL_W), int(ISO_CELL_H), rgba, max(0, int(border)))
+        surf = _iso_tile_surface_cache.get(key)
+        if surf is None:
+            w = int(ISO_CELL_W) + 2
+            h = int(ISO_CELL_H) + 2
+            surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            cx = w // 2
+            pts = [
+                (cx, 1),
+                (w - 1, h // 2),
+                (cx, h - 1),
+                (1, h // 2),
+            ]
+            pygame.draw.polygon(surf, rgba, pts, max(0, int(border)))
+            try:
+                surf = surf.convert_alpha()
+            except Exception:
+                pass
+            _iso_tile_surface_cache[key] = surf
+        return surf
+
+    def _blit_cached_iso_tile(screen: pygame.Surface, gx: int, gy: int, color: tuple[int, ...],
+                              camx: float, camy: float, *, border: int = 0) -> None:
+        surf = _cached_iso_tile_surface(color, border=border)
+        sx, sy = iso_world_to_screen(gx, gy, 0, camx, camy)
+        screen.blit(surf, (int(sx - ISO_CELL_W // 2 - 1), int(sy - 1)))
+
+    def _cached_iso_wall_surface(style: str, color: tuple[int, ...], *, wall_h: int) -> tuple[pygame.Surface, int, int]:
+        rgba = tuple(max(0, min(255, int(v))) for v in color)
+        style_name = str(style or "billboard")
+        wall_h = max(0, int(wall_h))
+        key = (style_name, wall_h, rgba)
+        cached = _iso_wall_surface_cache.get(key)
+        if cached is not None:
+            return cached
+        if style_name == "billboard":
+            surf = _cached_iso_tile_surface(rgba, border=0)
+            cached = (surf, int(ISO_CELL_W // 2 + 1), 1)
+            _iso_wall_surface_cache[key] = cached
+            return cached
+
+        pad_top = 0
+        rect_w = rect_h = 0
+        if style_name == "hybrid":
+            rect_h = int(ISO_CELL_H * 1.8)
+            rect_w = int(ISO_CELL_W * 0.35)
+            pad_top = max(0, rect_h - ISO_CELL_H // 2)
+        w = int(ISO_CELL_W) + 2
+        h = int(ISO_CELL_H) + wall_h + pad_top + 2
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        cx = w // 2
+        top_y = pad_top + 1
+        top = [
+            (cx, top_y),
+            (w - 1, top_y + ISO_CELL_H // 2),
+            (cx, top_y + ISO_CELL_H),
+            (1, top_y + ISO_CELL_H // 2),
+        ]
+        r = [
+            top[1],
+            (top[1][0], top[1][1] + wall_h),
+            (top[2][0], top[2][1] + wall_h),
+            top[2],
+        ]
+        l = [
+            top[3],
+            top[2],
+            (top[2][0], top[2][1] + wall_h),
+            (top[3][0], top[3][1] + wall_h),
+        ]
+        c_top = rgba
+        c_r = tuple(max(0, int(c * 0.78)) for c in rgba[:3])
+        c_l = tuple(max(0, int(c * 0.58)) for c in rgba[:3])
+        pygame.draw.polygon(surf, c_l, l)
+        pygame.draw.polygon(surf, c_r, r)
+        pygame.draw.polygon(surf, c_top, top)
+        if style_name == "hybrid":
+            pillar = pygame.Rect(0, 0, max(2, rect_w), max(2, rect_h))
+            pillar.midbottom = (cx, top_y + ISO_CELL_H // 2)
+            pygame.draw.rect(surf, rgba, pillar, border_radius=max(1, rect_w // 3))
+        try:
+            surf = surf.convert_alpha()
+        except Exception:
+            pass
+        cached = (surf, cx, top_y)
+        _iso_wall_surface_cache[key] = cached
+        return cached
+
+    def _blit_cached_iso_wall(screen: pygame.Surface, gx: int, gy: int, color: tuple[int, ...],
+                              camx: float, camy: float, *, wall_h: int | None = None) -> None:
+        if wall_h is None:
+            wall_h = ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0)
+        surf, anchor_x, anchor_y = _cached_iso_wall_surface(WALL_STYLE, color, wall_h=wall_h)
+        sx, sy = iso_world_to_screen(gx, gy, 0, camx, camy)
+        screen.blit(surf, (int(sx - anchor_x), int(sy - anchor_y)))
+
+    def _get_iso_floor_cache() -> dict[str, object]:
+        runtime = _runtime()
+        key = (
+            int(GRID_SIZE),
+            int(ISO_CELL_W),
+            int(ISO_CELL_H),
+            int(INFO_BAR_HEIGHT),
+            tuple(max(0, min(255, int(v))) for v in MAP_GRID),
+        )
+        cached = runtime.get("_iso_floor_cache")
+        if isinstance(cached, dict) and cached.get("key") == key:
+            return cached
+        half_w = ISO_CELL_W * 0.5
+        half_h = ISO_CELL_H * 0.5
+        min_x = max_x = min_y = max_y = None
+        for gx in range(GRID_SIZE):
+            for gy in range(GRID_SIZE):
+                cx = (gx - gy) * half_w
+                cy = (gx + gy) * half_h + INFO_BAR_HEIGHT
+                pts = (
+                    (cx, cy),
+                    (cx + ISO_CELL_W * 0.5, cy + ISO_CELL_H * 0.5),
+                    (cx, cy + ISO_CELL_H),
+                    (cx - ISO_CELL_W * 0.5, cy + ISO_CELL_H * 0.5),
+                )
+                for px, py in pts:
+                    min_x = px if min_x is None else min(min_x, px)
+                    max_x = px if max_x is None else max(max_x, px)
+                    min_y = py if min_y is None else min(min_y, py)
+                    max_y = py if max_y is None else max(max_y, py)
+        x0 = int(math.floor(float(min_x or 0.0))) - 2
+        y0 = int(math.floor(float(min_y or 0.0))) - 2
+        width = max(1, int(math.ceil(float(max_x or 0.0))) - x0 + 3)
+        height = max(1, int(math.ceil(float(max_y or 0.0))) - y0 + 3)
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        tile = _cached_iso_tile_surface(MAP_GRID, border=1)
+        for gx in range(GRID_SIZE):
+            for gy in range(GRID_SIZE):
+                sx, sy = iso_world_to_screen(gx, gy, 0, 0, 0)
+                surface.blit(tile, (int(sx - ISO_CELL_W // 2 - 1 - x0), int(sy - 1 - y0)))
+        try:
+            surface = surface.convert_alpha()
+        except Exception:
+            pass
+        cached = {"key": key, "surface": surface, "x0": x0, "y0": y0}
+        runtime["_iso_floor_cache"] = cached
+        return cached
+
+    def _blit_iso_floor(screen: pygame.Surface, camx: float, camy: float) -> None:
+        if not getattr(game, "IS_WEB", False):
+            return
+        cache = _get_iso_floor_cache()
+        surface = cache.get("surface")
+        if not isinstance(surface, pygame.Surface):
+            return
+        screen.blit(surface, (int(cache.get("x0", 0) - camx), int(cache.get("y0", 0) - camy)))
+
+    def _screen_visible_point(x: float, y: float, *, margin: int = 48) -> bool:
+        mx = max(0, int(margin))
+        return (-mx <= int(x) <= int(game.VIEW_W) + mx) and ((INFO_BAR_HEIGHT - mx) <= int(y) <= int(game.VIEW_H) + mx)
+
     def _draw_web_profiler_overlay(screen: pygame.Surface) -> None:
         if not IS_WEB:
             return
@@ -70,6 +246,38 @@ def install(game):
             panel.blit(font.render(line, True, color), (pad, y))
             y += line_h
         screen.blit(panel, (10, max(INFO_BAR_HEIGHT + 6, 42)))
+
+    def _begin_web_gameplay_render(screen: pygame.Surface) -> tuple[pygame.Surface, pygame.Surface | None, tuple[int, int] | None]:
+        if not IS_WEB:
+            return screen, None, None
+        display_surface = pygame.display.get_surface() or screen
+        target_size = cap_web_surface_size(*display_surface.get_size())
+        if target_size == display_surface.get_size():
+            return display_surface, None, None
+        runtime = _runtime()
+        render_surface = runtime.get("_web_gameplay_render_surface")
+        if render_surface is None or render_surface.get_size() != target_size:
+            try:
+                render_surface = pygame.Surface(target_size).convert()
+            except Exception:
+                render_surface = pygame.Surface(target_size)
+            runtime["_web_gameplay_render_surface"] = render_surface
+        prev_view = (int(getattr(game, "VIEW_W", target_size[0])), int(getattr(game, "VIEW_H", target_size[1])))
+        game.VIEW_W, game.VIEW_H = target_size
+        return render_surface, display_surface, prev_view
+
+    def _present_gameplay_render(render_surface: pygame.Surface, display_surface: pygame.Surface | None,
+                                 prev_view: tuple[int, int] | None, *, copy_frame: bool) -> pygame.Surface | None:
+        try:
+            if display_surface is not None and render_surface is not display_surface:
+                pygame.transform.scale(render_surface, display_surface.get_size(), display_surface)
+                pygame.display.flip()
+                return display_surface.copy() if copy_frame else None
+            pygame.display.flip()
+            return render_surface.copy() if copy_frame else None
+        finally:
+            if prev_view is not None:
+                game.VIEW_W, game.VIEW_H = prev_view
 
     def draw_settings_gear(screen, x, y):
         """Draw a simple gear icon at (x,y) top-left; returns its rect."""
@@ -130,6 +338,8 @@ def install(game):
         bgm = runtime.get("_bgm")
         if bgm is None or not getattr(bgm, "_ready", False):
             return False
+        if IS_WEB:
+            min_interval_s = max(float(min_interval_s), 0.35)
         now_s = pygame.time.get_ticks() / 1000.0
         last_retry_s = float(runtime.get("_last_bgm_resume_retry_s", -999.0))
         if (now_s - last_retry_s) < float(min_interval_s):
@@ -251,6 +461,7 @@ def install(game):
                                  override_cam: tuple[int, int] | None = None,
                                  copy_frame: bool = True) -> pygame.Surface | None:
         obstacles = obstacles if obstacles is not None else getattr(game_state, "obstacles", {})
+        screen, display_surface, prev_view = _begin_web_gameplay_render(screen)
         pickup_cap = int(getattr(game, "WEB_LITE_RENDER_PICKUP_CAP", 0) or 0)
         turret_cap = int(getattr(game, "WEB_LITE_RENDER_TURRET_CAP", 0) or 0)
         enemy_cap = int(getattr(game, "WEB_LITE_RENDER_ENEMY_CAP", 0) or 0)
@@ -271,6 +482,7 @@ def install(game):
             camy += dy
 
         screen.fill(MAP_BG)
+        _blit_iso_floor(screen, camx, camy)
         margin = 2
         gx_min = max(0, int(px_grid - game.VIEW_W // max(1, ISO_CELL_W)) - margin)
         gx_max = min(GRID_SIZE - 1, int(px_grid + game.VIEW_W // max(1, ISO_CELL_W)) + margin)
@@ -294,7 +506,7 @@ def install(game):
                 if ob_type == "Destructible" and getattr(ob, "health", None) is not None:
                     t = max(0.4, min(1.0, ob.health / float(max(1, OBSTACLE_HEALTH))))
                     base_col = (int(200 * t), int(80 * t), int(80 * t))
-                draw_iso_prism(screen, gx, gy, base_col, camx, camy, wall_h=web_wall_h)
+                _blit_cached_iso_wall(screen, gx, gy, base_col, camx, camy, wall_h=web_wall_h)
 
         spoils = getattr(game_state, "spoils", ())
         if pickup_cap > 0:
@@ -476,20 +688,7 @@ def install(game):
                 wy = (d.y - INFO_BAR_HEIGHT) / CELL_SIZE
                 sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
                 sy += d.screen_offset_y()
-                color_map = {
-                    "shield": ((120, 200, 255), (120, 200, 255)),
-                    "aegis": (AEGIS_PULSE_COLOR, AEGIS_PULSE_COLOR),
-                    "hp_player": ((255, 255, 255), (255, 255, 220)),
-                    "dot": ((80, 220, 255), (140, 255, 255)),
-                    "hp_enemy": ((255, 60, 60), (255, 140, 140)),
-                }
-                normal, crit = color_map.get(d.kind, ((255, 100, 100), (255, 240, 120)))
-                col = crit if d.crit else normal
-                size = max(14, DMG_TEXT_SIZE_NORMAL - 4) if d.kind == "dot" else (DMG_TEXT_SIZE_NORMAL if not d.crit else DMG_TEXT_SIZE_CRIT)
-                font = pygame.font.SysFont(None, size, bold=d.crit)
-                surf = font.render(str(d.amount), True, col)
-                surf.set_alpha(d.alpha())
-                screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
+                d.draw_iso(screen, sx, sy)
 
         draw_ui_topbar(
             screen,
@@ -505,8 +704,7 @@ def install(game):
             draw_boss_hp_bar(screen, bosses[0])
         run_pending_menu_transition(screen)
         _draw_web_profiler_overlay(screen)
-        pygame.display.flip()
-        return screen.copy() if copy_frame else None
+        return _present_gameplay_render(screen, display_surface, prev_view, copy_frame=copy_frame)
 
     def render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=None,
                         override_cam: tuple[int, int] | None = None,
@@ -522,6 +720,7 @@ def install(game):
                 override_cam=override_cam,
                 copy_frame=copy_frame,
             )
+        screen, display_surface, prev_view = _begin_web_gameplay_render(screen)
         px_grid = (player.x + player.size / 2) / CELL_SIZE
         py_grid = (player.y + player.size / 2) / CELL_SIZE
         pxs, pys = iso_world_to_screen(px_grid, py_grid, 0, 0, 0)
@@ -543,9 +742,13 @@ def install(game):
         gy_min = max(0, int(py_grid - game.VIEW_H // ISO_CELL_H) - margin)
         gy_max = min(GRID_SIZE - 1, int(py_grid + game.VIEW_H // ISO_CELL_H) + margin)
         grid_col = MAP_GRID
-        for gx in range(gx_min, gx_max + 1):
-            for gy in range(gy_min, gy_max + 1):
-                draw_iso_tile(screen, gx, gy, grid_col, camx, camy, border=1)
+        if IS_WEB:
+            _blit_iso_floor(screen, camx, camy)
+        else:
+            for gx in range(gx_min, gx_max + 1):
+                for gy in range(gy_min, gy_max + 1):
+                    _blit_cached_iso_tile(screen, gx, gy, grid_col, camx, camy, border=1)
+        view_margin = max(int(CELL_SIZE), int(ISO_CELL_W))
         for t in getattr(game_state, "telegraphs", []):
             draw_iso_ground_ellipse(
                 screen, t.x, t.y, t.r,
@@ -633,6 +836,8 @@ def install(game):
             game_state.draw_paint_iso(screen, camx, camy)
         drawables = []
         for (gx, gy), ob in game_state.obstacles.items():
+            if gx < gx_min - 1 or gx > gx_max + 1 or gy < gy_min - 1 or gy > gy_max + 1:
+                continue
             if getattr(ob, "type", "") == "Lantern":
                 continue
             if getattr(ob, "type", "") == "StationaryTurret":
@@ -647,24 +852,34 @@ def install(game):
         for s in getattr(game_state, "spoils", []):
             wx, wy = s.base_x / CELL_SIZE, (s.base_y - s.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=view_margin):
+                continue
             drawables.append(("coin", sy, {"cx": sx, "cy": sy, "r": s.r}))
         for t in getattr(game_state, "turrets", []):
             wx, wy = t.x / CELL_SIZE, (t.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=view_margin):
+                continue
             drawables.append(("turret", sy, {"cx": sx, "cy": sy, "obj": t}))
         for h in getattr(game_state, "heals", []):
             wx, wy = h.base_x / CELL_SIZE, (h.base_y - h.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=view_margin):
+                continue
             drawables.append(("heal", sy, {"cx": sx, "cy": sy, "r": h.r}))
         for it in getattr(game_state, "items", []):
             wx = it.center[0] / CELL_SIZE
             wy = (it.center[1] - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=view_margin):
+                continue
             drawables.append(("item", sy, {"cx": sx, "cy": sy, "r": it.radius, "main": it.is_main}))
         for z in enemies:
             wx = z.rect.centerx / CELL_SIZE
             wy = (z.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=view_margin):
+                continue
             drawables.append(("enemy", sy, {"cx": sx, "cy": sy, "z": z}))
         wx = player.rect.centerx / CELL_SIZE
         wy = (player.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
@@ -674,6 +889,8 @@ def install(game):
             for b in bullets:
                 wx, wy = b.x / CELL_SIZE, (b.y - INFO_BAR_HEIGHT) / CELL_SIZE
                 sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+                if not _screen_visible_point(sx, sy, margin=view_margin):
+                    continue
                 drawables.append((
                     "bullet",
                     sy,
@@ -688,6 +905,8 @@ def install(game):
             for es in enemy_shots:
                 wx, wy = es.x / CELL_SIZE, (es.y - INFO_BAR_HEIGHT) / CELL_SIZE
                 sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+                if not _screen_visible_point(sx, sy, margin=view_margin):
+                    continue
                 if isinstance(es, MistShot):
                     drawables.append(("mistshot", sy, {"cx": sx, "cy": sy, "obj": es}))
                 else:
@@ -702,19 +921,7 @@ def install(game):
         for kind, _, data in drawables:
             if kind == "wall":
                 gx, gy, col = data["gx"], data["gy"], data["color"]
-                if WALL_STYLE == "prism":
-                    draw_iso_prism(screen, gx, gy, col, camx, camy, wall_h=ISO_WALL_Z)
-                elif WALL_STYLE == "hybrid":
-                    draw_iso_prism(screen, gx, gy, col, camx, camy, wall_h=12)
-                    wx, wy = gx + 0.5, gy + 0.5
-                    sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
-                    rect_h = int(ISO_CELL_H * 1.8)
-                    rect_w = int(ISO_CELL_W * 0.35)
-                    pillar = pygame.Rect(0, 0, rect_w, rect_h)
-                    pillar.midbottom = (sx, sy)
-                    pygame.draw.rect(screen, col, pillar, border_radius=rect_w // 3)
-                else:
-                    draw_iso_tile(screen, gx, gy, col, camx, camy, border=0)
+                _blit_cached_iso_wall(screen, gx, gy, col, camx, camy)
             elif kind == "coin":
                 cx, cy, r = data["cx"], data["cy"], data["r"]
                 _blit_cached_ellipse(screen, (cx, cy + 6), r * 4, r * 2, (0, 0, 0, ISO_SHADOW_ALPHA))
@@ -975,8 +1182,7 @@ def install(game):
                         pygame.draw.rect(screen, (210, 70, 70), fill, border_radius=2)
                 coins = int(getattr(z, "spoils", 0))
                 if coins > 0:
-                    f = pygame.font.SysFont(None, 18)
-                    txt = f.render(f"{coins}", True, (255, 225, 120))
+                    txt = _cached_text_surface(f"{coins}", (255, 225, 120), size=18)
                     screen.blit(txt, txt.get_rect(midbottom=(cx, body.top - 4)))
                 if z.is_boss and not enemy_sprite:
                     pygame.draw.rect(screen, (255, 215, 0), body.inflate(4, 4), 3)
@@ -1184,23 +1390,9 @@ def install(game):
                 wy = (d.y - INFO_BAR_HEIGHT) / CELL_SIZE
                 sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
                 sy += d.screen_offset_y()
-                color_map = {
-                    "shield": ((120, 200, 255), (120, 200, 255)),
-                    "aegis": (AEGIS_PULSE_COLOR, AEGIS_PULSE_COLOR),
-                    "hp_player": ((255, 255, 255), (255, 255, 220)),
-                    "dot": ((80, 220, 255), (140, 255, 255)),
-                    "hp_enemy": ((255, 60, 60), (255, 140, 140)),
-                }
-                normal, crit = color_map.get(d.kind, ((255, 100, 100), (255, 240, 120)))
-                col = crit if d.crit else normal
-                if d.kind == "dot":
-                    size = max(14, DMG_TEXT_SIZE_NORMAL - 6)
-                else:
-                    size = DMG_TEXT_SIZE_NORMAL if not d.crit else DMG_TEXT_SIZE_CRIT
-                font = pygame.font.SysFont(None, size, bold=d.crit)
-                surf = font.render(str(d.amount), True, col)
-                surf.set_alpha(d.alpha())
-                screen.blit(surf, surf.get_rect(center=(int(sx), int(sy))))
+                if not _screen_visible_point(sx, sy, margin=view_margin):
+                    continue
+                d.draw_iso(screen, sx, sy)
         _draw_skill_overlay(screen, player, camx, camy)
         game_state.draw_hazards_iso(screen, camx, camy)
         if hasattr(game_state, "draw_comet_blasts"):
@@ -1220,6 +1412,8 @@ def install(game):
                 gx = p.x / CELL_SIZE
                 gy = (p.y - INFO_BAR_HEIGHT) / CELL_SIZE
                 sx, sy = iso_world_to_screen(gx, gy, 0, camx, camy)
+                if not _screen_visible_point(sx, sy, margin=view_margin):
+                    continue
                 glow = GlowCache.get_glow_surf(p.size, p.color)
                 screen.blit(glow, (sx - p.size, sy - p.size), special_flags=pygame.BLEND_ADD)
         vignette_t = float(getattr(player, "_enemy_paint_vignette_t", 0.0))
@@ -1250,8 +1444,7 @@ def install(game):
             draw_boss_hp_bar(screen, bosses[0])
         run_pending_menu_transition(screen)
         _draw_web_profiler_overlay(screen)
-        pygame.display.flip()
-        return screen.copy() if copy_frame else None
+        return _present_gameplay_render(screen, display_surface, prev_view, copy_frame=copy_frame)
 
     def render_game(screen: pygame.Surface, game_state, player: Player, enemies: List[Enemy],
                     bullets: Optional[List['Bullet']] = None,
