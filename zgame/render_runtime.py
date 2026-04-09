@@ -66,6 +66,121 @@ def install(game):
             _text_surface_cache[key] = surf
         return surf
 
+    def _draw_web_lite_ui_topbar(screen: pygame.Surface, game_state, player, *, time_left: float | None = None) -> None:
+        view_w, view_h = screen.get_size()
+        runtime = _runtime()
+        meta = rs.meta(game)
+        pygame.draw.rect(screen, (0, 0, 0), (0, 0, view_w, INFO_BAR_HEIGHT))
+
+        timer_left = max(0.0, float(time_left if time_left is not None else runtime.get("_time_left_runtime", LEVEL_TIME_LIMIT)))
+        mins = int(timer_left // 60)
+        secs = int(timer_left % 60)
+        level_idx = int(getattr(game_state, "current_level", 0))
+        timer_surf = _cached_text_surface(f"{mins:02d}:{secs:02d}", (255, 255, 255), size=28, bold=True)
+        level_surf = _cached_text_surface(f"LV {level_idx + 1:02d}", (255, 255, 255), size=22, bold=True)
+        bdg_surf = _cached_text_surface(f"BDG {budget_for_level(level_idx)}", (220, 220, 230), size=22, bold=True)
+        center_x = view_w // 2
+        screen.blit(timer_surf, timer_surf.get_rect(midtop=(center_x, 8)))
+        screen.blit(level_surf, level_surf.get_rect(midtop=(center_x - timer_surf.get_width() // 2 - level_surf.get_width() // 2 - 12, 8)))
+        screen.blit(bdg_surf, bdg_surf.get_rect(midtop=(center_x + timer_surf.get_width() // 2 + bdg_surf.get_width() // 2 + 12, 8)))
+
+        hp_bar_w, hp_bar_h = 240, 12
+        hp_x, hp_y = 16, 14
+        hp_now = int(getattr(player, "hp", 0))
+        hp_max = max(1, int(getattr(player, "max_hp", 1)))
+        hp_ratio = max(0.0, min(1.0, hp_now / float(hp_max)))
+        pygame.draw.rect(screen, (56, 56, 56), (hp_x - 2, hp_y - 2, hp_bar_w + 4, hp_bar_h + 4), border_radius=4)
+        pygame.draw.rect(screen, (34, 34, 34), (hp_x, hp_y, hp_bar_w, hp_bar_h), border_radius=3)
+        pygame.draw.rect(screen, (0, 210, 90), (hp_x, hp_y, int(hp_bar_w * hp_ratio), hp_bar_h), border_radius=3)
+        hp_text = _cached_text_surface(f"{hp_now}/{hp_max}", (16, 16, 16), size=20, bold=True)
+        screen.blit(hp_text, hp_text.get_rect(center=(hp_x + hp_bar_w // 2, hp_y + hp_bar_h // 2 + 1)))
+
+        xp_bar_w, xp_bar_h = hp_bar_w, 6
+        xp_x, xp_y = hp_x, hp_y + hp_bar_h + 8
+        xp_now = int(getattr(player, "xp", 0))
+        xp_need = max(1, int(getattr(player, "xp_to_next", 1)))
+        xp_ratio = max(0.0, min(1.0, xp_now / float(xp_need)))
+        pygame.draw.rect(screen, (56, 56, 56), (xp_x - 2, xp_y - 2, xp_bar_w + 4, xp_bar_h + 4), border_radius=4)
+        pygame.draw.rect(screen, (34, 34, 34), (xp_x, xp_y, xp_bar_w, xp_bar_h), border_radius=3)
+        pygame.draw.rect(screen, (120, 110, 255), (xp_x, xp_y, int(xp_bar_w * xp_ratio), xp_bar_h), border_radius=3)
+        lvl_surf = _cached_text_surface(f"Lv {int(getattr(player, 'level', 1))}", (220, 220, 235), size=18, bold=True)
+        screen.blit(lvl_surf, (xp_x + xp_bar_w + 8, xp_y - 7))
+
+        icon_x = view_w - 112
+        icon_y = 10
+        pygame.draw.circle(screen, (255, 255, 0), (icon_x, icon_y + 8), 8)
+        items_surf = _cached_text_surface(f"{int(meta.get('run_items_collected', 0))}", (255, 255, 255), size=24, bold=True)
+        screen.blit(items_surf, (icon_x + 16, icon_y - 2))
+        coin_x = view_w - 208
+        pygame.draw.circle(screen, (255, 215, 80), (coin_x, icon_y + 8), 8)
+        pygame.draw.circle(screen, (255, 245, 200), (coin_x, icon_y + 8), 8, 1)
+        spoils_total = int(meta.get("spoils", 0)) + int(getattr(game_state, "spoils_gained", 0))
+        spoils_surf = _cached_text_surface(f"{spoils_total}", (255, 255, 255), size=24, bold=True)
+        screen.blit(spoils_surf, (coin_x + 14, icon_y - 2))
+
+        def _draw_skill_card(x: int, y: int, label: str, key_txt: str, cd: float, cd_total: float, palette: dict[str, tuple[int, int, int]]):
+            w, h = 84, 56
+            rect = pygame.Rect(x, y, w, h)
+            pygame.draw.rect(screen, palette["bg"], rect, border_radius=10)
+            pygame.draw.rect(screen, palette["border"], rect, 2, border_radius=10)
+            cx = x + w - 18
+            cy = y + 18
+            if label == "BLAST":
+                pygame.draw.circle(screen, palette["accent"], (cx, cy), 9, 2)
+                pygame.draw.line(screen, palette["accent"], (cx, cy - 12), (cx, cy + 12), 2)
+                pygame.draw.line(screen, palette["accent"], (cx - 12, cy), (cx + 12, cy), 2)
+            else:
+                pygame.draw.rect(screen, palette["accent"], (cx - 2, cy - 12, 4, 24))
+                pygame.draw.rect(screen, palette["accent"], (cx - 12, cy - 2, 24, 4))
+                pygame.draw.circle(screen, palette["accent_dim"], (cx, cy), 9, 2)
+            label_surf = _cached_text_surface(label, palette["text"], size=13, bold=True)
+            key_surf = _cached_text_surface(key_txt, palette["key"], size=13, bold=True)
+            screen.blit(label_surf, (x + 8, y + h - 28))
+            screen.blit(key_surf, (x + 8, y + h - 14))
+            if cd > 0.0 and cd_total > 0.0:
+                ratio = max(0.0, min(1.0, cd / cd_total))
+                cover_h = int(h * ratio)
+                if cover_h > 0:
+                    pygame.draw.rect(screen, (0, 0, 0), (x, y, w, cover_h), border_radius=10)
+                cd_surf = _cached_text_surface(f"{int(math.ceil(cd))}", palette["text"], size=16, bold=True)
+                screen.blit(cd_surf, cd_surf.get_rect(center=(x + w - 14, y + h // 2)))
+
+        bottom_margin = 10
+        right_x = view_w - 96
+        bottom_y = view_h - 56 - bottom_margin
+        _draw_skill_card(
+            right_x,
+            bottom_y - 62,
+            "BLAST",
+            "Q",
+            float(getattr(player, "blast_cd", 0.0)),
+            BLAST_COOLDOWN,
+            {
+                "bg": (30, 16, 16),
+                "border": (200, 96, 52),
+                "accent": (255, 128, 64),
+                "accent_dim": (200, 96, 52),
+                "text": (240, 200, 180),
+                "key": (255, 180, 130),
+            },
+        )
+        _draw_skill_card(
+            right_x,
+            bottom_y,
+            "TELEPORT",
+            "E",
+            float(getattr(player, "teleport_cd", 0.0)),
+            TELEPORT_COOLDOWN,
+            {
+                "bg": (16, 26, 38),
+                "border": (72, 150, 215),
+                "accent": (96, 208, 255),
+                "accent_dim": (72, 150, 215),
+                "text": (216, 232, 250),
+                "key": (150, 220, 255),
+            },
+        )
+
     def _cached_iso_tile_surface(color: tuple[int, ...], *, border: int = 0) -> pygame.Surface:
         rgba = tuple(max(0, min(255, int(v))) for v in color)
         key = (int(ISO_CELL_W), int(ISO_CELL_H), rgba, max(0, int(border)))
@@ -219,7 +334,127 @@ def install(game):
         surface = cache.get("surface")
         if not isinstance(surface, pygame.Surface):
             return
-        screen.blit(surface, (int(cache.get("x0", 0) - camx), int(cache.get("y0", 0) - camy)))
+        dest_x = int(cache.get("x0", 0) - camx)
+        dest_y = int(cache.get("y0", 0) - camy)
+        view_w, view_h = screen.get_size()
+        src_x = max(0, -dest_x)
+        src_y = max(0, -dest_y)
+        src_w = min(surface.get_width() - src_x, max(0, view_w - max(0, dest_x)))
+        src_h = min(surface.get_height() - src_y, max(0, view_h - max(0, dest_y)))
+        if src_w <= 0 or src_h <= 0:
+            return
+        screen.blit(
+            surface,
+            (dest_x + src_x, dest_y + src_y),
+            area=pygame.Rect(int(src_x), int(src_y), int(src_w), int(src_h)),
+        )
+
+    def _wall_sort_world_y(gx: int, gy: int) -> int:
+        _, sy = iso_world_to_screen(gx, gy, 0, 0, 0)
+        wall_h = ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0)
+        return int(sy + ISO_CELL_H + wall_h)
+
+    def _wall_visual_color(ob) -> tuple[int, int, int]:
+        base_col = (120, 120, 120) if getattr(ob, "type", "") == "Indestructible" else (200, 80, 80)
+        if getattr(ob, "type", "") == "Destructible" and getattr(ob, "health", None) is not None:
+            t = max(0.4, min(1.0, float(ob.health) / float(max(1, OBSTACLE_HEALTH))))
+            base_col = (int(200 * t), int(80 * t), int(80 * t))
+        return base_col
+
+    def _get_web_wall_order(game_state) -> list[tuple[int, int, int]]:
+        if not IS_WEB:
+            return []
+        key = (
+            int(getattr(game_state, "_obstacle_revision", 0) or 0),
+            int(GRID_SIZE),
+            str(WALL_STYLE),
+            int(ISO_CELL_H),
+            int(ISO_WALL_Z),
+        )
+        cached = getattr(game_state, "_web_wall_order_cache", None)
+        if isinstance(cached, dict) and cached.get("key") == key:
+            return list(cached.get("entries", ()))
+        entries: list[tuple[int, int, int]] = []
+        for (gx, gy), ob in getattr(game_state, "obstacles", {}).items():
+            if getattr(ob, "type", "") in {"Lantern", "StationaryTurret"}:
+                continue
+            entries.append((_wall_sort_world_y(gx, gy), int(gx), int(gy)))
+        entries.sort(key=lambda item: item[0])
+        setattr(game_state, "_web_wall_order_cache", {"key": key, "entries": entries})
+        return entries
+
+    def _get_web_wall_layer_cache(game_state, *, wall_h: int) -> dict[str, object]:
+        key = (
+            int(getattr(game_state, "_obstacle_revision", 0) or 0),
+            int(wall_h),
+            int(GRID_SIZE),
+            int(ISO_CELL_W),
+            int(ISO_CELL_H),
+            str(WALL_STYLE),
+        )
+        cached = getattr(game_state, "_web_wall_layer_cache", None)
+        if isinstance(cached, dict) and cached.get("key") == key:
+            return cached
+        entries = _get_web_wall_order(game_state)
+        blits: list[tuple[pygame.Surface, int, int]] = []
+        min_x = min_y = max_x = max_y = None
+        for _, gx, gy in entries:
+            ob = getattr(game_state, "obstacles", {}).get((gx, gy))
+            if ob is None:
+                continue
+            surf, anchor_x, anchor_y = _cached_iso_wall_surface(
+                WALL_STYLE,
+                _wall_visual_color(ob),
+                wall_h=wall_h,
+            )
+            sx, sy = iso_world_to_screen(gx, gy, 0, 0, 0)
+            left = int(sx - anchor_x)
+            top = int(sy - anchor_y)
+            right = left + surf.get_width()
+            bottom = top + surf.get_height()
+            min_x = left if min_x is None else min(min_x, left)
+            min_y = top if min_y is None else min(min_y, top)
+            max_x = right if max_x is None else max(max_x, right)
+            max_y = bottom if max_y is None else max(max_y, bottom)
+            blits.append((surf, left, top))
+        if not blits:
+            cached = {"key": key, "surface": None, "x0": 0, "y0": 0}
+            setattr(game_state, "_web_wall_layer_cache", cached)
+            return cached
+        x0 = int(min_x) - 2
+        y0 = int(min_y) - 2
+        width = max(1, int(max_x) - x0 + 3)
+        height = max(1, int(max_y) - y0 + 3)
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        for surf, left, top in blits:
+            surface.blit(surf, (left - x0, top - y0))
+        try:
+            surface = surface.convert_alpha()
+        except Exception:
+            pass
+        cached = {"key": key, "surface": surface, "x0": x0, "y0": y0}
+        setattr(game_state, "_web_wall_layer_cache", cached)
+        return cached
+
+    def _blit_web_wall_layer(screen: pygame.Surface, game_state, camx: float, camy: float, *, wall_h: int) -> None:
+        cache = _get_web_wall_layer_cache(game_state, wall_h=wall_h)
+        surface = cache.get("surface")
+        if not isinstance(surface, pygame.Surface):
+            return
+        dest_x = int(cache.get("x0", 0) - camx)
+        dest_y = int(cache.get("y0", 0) - camy)
+        view_w, view_h = screen.get_size()
+        src_x = max(0, -dest_x)
+        src_y = max(0, -dest_y)
+        src_w = min(surface.get_width() - src_x, max(0, view_w - max(0, dest_x)))
+        src_h = min(surface.get_height() - src_y, max(0, view_h - max(0, dest_y)))
+        if src_w <= 0 or src_h <= 0:
+            return
+        screen.blit(
+            surface,
+            (dest_x + src_x, dest_y + src_y),
+            area=pygame.Rect(int(src_x), int(src_y), int(src_w), int(src_h)),
+        )
 
     def _screen_visible_point(x: float, y: float, *, margin: int = 48) -> bool:
         mx = max(0, int(margin))
@@ -493,20 +728,7 @@ def install(game):
             _draw_skill_overlay(screen, player, camx, camy)
 
         web_wall_h = max(12, int(ISO_WALL_Z * 0.7))
-        for (gx, gy), ob in obstacles.items():
-            if not (gx_min <= gx <= gx_max and gy_min <= gy <= gy_max):
-                continue
-            ob_type = getattr(ob, "type", "")
-            if ob_type in ("Lantern", "StationaryTurret"):
-                continue
-            if ob_type == "Indestructible":
-                base_col = (120, 120, 120)
-            else:
-                base_col = (200, 80, 80)
-                if ob_type == "Destructible" and getattr(ob, "health", None) is not None:
-                    t = max(0.4, min(1.0, ob.health / float(max(1, OBSTACLE_HEALTH))))
-                    base_col = (int(200 * t), int(80 * t), int(80 * t))
-                _blit_cached_iso_wall(screen, gx, gy, base_col, camx, camy, wall_h=web_wall_h)
+        _blit_web_wall_layer(screen, game_state, camx, camy, wall_h=web_wall_h)
 
         spoils = getattr(game_state, "spoils", ())
         if pickup_cap > 0:
@@ -690,12 +912,11 @@ def install(game):
                 sy += d.screen_offset_y()
                 d.draw_iso(screen, sx, sy)
 
-        draw_ui_topbar(
+        _draw_web_lite_ui_topbar(
             screen,
             game_state,
             player,
             time_left=_runtime().get("_time_left_runtime"),
-            enemies=enemies,
         )
         bosses = _find_all_bosses(enemies)
         if len(bosses) >= 2:
@@ -835,20 +1056,26 @@ def install(game):
         if _web_feature_enabled("WEB_ENABLE_ENEMY_PAINT") and hasattr(game_state, "draw_paint_iso"):
             game_state.draw_paint_iso(screen, camx, camy)
         drawables = []
-        for (gx, gy), ob in game_state.obstacles.items():
-            if gx < gx_min - 1 or gx > gx_max + 1 or gy < gy_min - 1 or gy > gy_max + 1:
-                continue
-            if getattr(ob, "type", "") == "Lantern":
-                continue
-            if getattr(ob, "type", "") == "StationaryTurret":
-                continue
-            base_col = (120, 120, 120) if ob.type == "Indestructible" else (200, 80, 80)
-            if ob.type == "Destructible" and ob.health is not None:
-                t = max(0.4, min(1.0, ob.health / float(max(1, OBSTACLE_HEALTH))))
-                base_col = (int(200 * t), int(80 * t), int(80 * t))
-            top_pts = iso_tile_points(gx, gy, camx, camy)
-            sort_y = top_pts[2][1] + (ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
-            drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": base_col}))
+        wall_drawables = []
+        if IS_WEB:
+            for sort_y, gx, gy in _get_web_wall_order(game_state):
+                if gx < gx_min - 1 or gx > gx_max + 1 or gy < gy_min - 1 or gy > gy_max + 1:
+                    continue
+                ob = game_state.obstacles.get((gx, gy))
+                if ob is None:
+                    continue
+                wall_drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": _wall_visual_color(ob)}))
+        else:
+            for (gx, gy), ob in game_state.obstacles.items():
+                if gx < gx_min - 1 or gx > gx_max + 1 or gy < gy_min - 1 or gy > gy_max + 1:
+                    continue
+                if getattr(ob, "type", "") == "Lantern":
+                    continue
+                if getattr(ob, "type", "") == "StationaryTurret":
+                    continue
+                top_pts = iso_tile_points(gx, gy, camx, camy)
+                sort_y = top_pts[2][1] + (ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
+                drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": _wall_visual_color(ob)}))
         for s in getattr(game_state, "spoils", []):
             wx, wy = s.base_x / CELL_SIZE, (s.base_y - s.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
@@ -915,6 +1142,20 @@ def install(game):
                         "r": int(getattr(es, "r", BULLET_RADIUS))
                     }))
         drawables.sort(key=lambda x: x[1])
+        if wall_drawables:
+            merged = []
+            wall_idx = 0
+            dyn_idx = 0
+            while wall_idx < len(wall_drawables) or dyn_idx < len(drawables):
+                wall_sort = wall_drawables[wall_idx][1] if wall_idx < len(wall_drawables) else None
+                dyn_sort = drawables[dyn_idx][1] if dyn_idx < len(drawables) else None
+                if dyn_sort is None or (wall_sort is not None and wall_sort <= dyn_sort):
+                    merged.append(wall_drawables[wall_idx])
+                    wall_idx += 1
+                else:
+                    merged.append(drawables[dyn_idx])
+                    dyn_idx += 1
+            drawables = merged
         hell = (getattr(game_state, "biome_active", "") == "Scorched Hell")
         COL_PLAYER_BULLET = (199, 68, 12) if hell else (120, 204, 121)
         COL_ENEMY_SHOT = (255, 80, 80) if hell else (255, 120, 50)

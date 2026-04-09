@@ -832,6 +832,8 @@ def install(game):
                         gp = getattr(ob_contact, 'grid_pos', None)
                         if gp in game_state.obstacles:
                             del game_state.obstacles[gp]
+                            if hasattr(game_state, 'mark_nav_dirty'):
+                                game_state.mark_nav_dirty()
                         cx2, cy2 = (ob_contact.rect.centerx, ob_contact.rect.centery)
                         if random.random() < game.SPOILS_BLOCK_DROP_CHANCE:
                             game_state.spawn_spoils(cx2, cy2, 1)
@@ -848,6 +850,8 @@ def install(game):
                             gp = getattr(ob, 'grid_pos', None)
                             if gp in game_state.obstacles:
                                 del game_state.obstacles[gp]
+                                if hasattr(game_state, 'mark_nav_dirty'):
+                                    game_state.mark_nav_dirty()
                             if getattr(ob, 'type', '') == 'Destructible':
                                 cx2, cy2 = (ob.rect.centerx, ob.rect.centery)
                                 if random.random() < game.SPOILS_BLOCK_DROP_CHANCE:
@@ -864,6 +868,8 @@ def install(game):
                                 gp = ob.grid_pos
                                 if gp in game_state.obstacles:
                                     del game_state.obstacles[gp]
+                                    if hasattr(game_state, 'mark_nav_dirty'):
+                                        game_state.mark_nav_dirty()
                                 cx2, cy2 = (ob.rect.centerx, ob.rect.centery)
                                 if random.random() < game.SPOILS_BLOCK_DROP_CHANCE:
                                     game_state.spawn_spoils(cx2, cy2, 1)
@@ -947,7 +953,9 @@ def install(game):
                     dx, dy = (px - cx, py - cy)
                     L = (dx * dx + dy * dy) ** 0.5 or 1.0
                     vx, vy = (dx / L * game.RANGED_PROJ_SPEED, dy / L * game.RANGED_PROJ_SPEED)
-                    enemy_shots.append(game.EnemyShot(cx, cy, vx, vy, game.RANGED_PROJ_DAMAGE))
+                    shot_cap = int(getattr(game, "WEB_SIM_ENEMY_SHOT_CAP", 0) or 0)
+                    if (not getattr(game, "IS_WEB", False)) or shot_cap <= 0 or len(enemy_shots) < shot_cap:
+                        enemy_shots.append(game.EnemyShot(cx, cy, vx, vy, game.RANGED_PROJ_DAMAGE))
                     self.ranged_cd = game.RANGED_COOLDOWN
             if self.type in ('suicide', 'bomber'):
                 cx, cy = (self.rect.centerx, self.rect.centery)

@@ -39,36 +39,50 @@ def install(game):
                 self.r = int(getattr(self, 'r', game.BULLET_RADIUS))
             _rr = int(getattr(self, 'r', game.BULLET_RADIUS))
             r = pygame.Rect(int(self.x - _rr), int(self.y - _rr), _rr * 2, _rr * 2)
-            for gp, ob in list(game_state.obstacles.items()):
-                if r.colliderect(ob.rect):
+            obstacle_map = getattr(game_state, "obstacles", {}) or {}
+            grid_x = int(self.x // game.CELL_SIZE)
+            grid_y = int((self.y - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
+            reach = 1 + int(max(_rr, 0) // max(1, game.CELL_SIZE))
+            for gy in range(grid_y - reach, grid_y + reach + 1):
+                for gx in range(grid_x - reach, grid_x + reach + 1):
+                    gp = (gx, gy)
+                    ob = obstacle_map.get(gp)
+                    if ob is None:
+                        continue
+                    if not r.colliderect(ob.rect):
+                        continue
                     dmg_block = int(getattr(game, 'ENEMY_SHOT_DAMAGE_BLOCK', game.BULLET_DAMAGE_BLOCK))
                     if getattr(ob, 'is_main_block', False):
                         ob.health = (ob.health or 0) - dmg_block
                         if ob.health <= 0:
-                            del game_state.obstacles[gp]
+                            if gp in obstacle_map:
+                                del obstacle_map[gp]
+                            if hasattr(game_state, 'mark_nav_dirty'):
+                                game_state.mark_nav_dirty()
                         self.alive = False
                         return
-                    if getattr(ob, 'type', None) == 'Indestructible':
+                    ob_type = getattr(ob, 'type', None)
+                    if ob_type == 'Indestructible':
                         self.alive = False
                         return
-                    if getattr(ob, 'type', None) == 'Destructible':
+                    if ob_type == 'Destructible':
                         ob.health = (ob.health or 0) - dmg_block
                         if ob.health <= 0:
-                            del game_state.obstacles[gp]
+                            if gp in obstacle_map:
+                                del obstacle_map[gp]
+                            if hasattr(game_state, 'mark_nav_dirty'):
+                                game_state.mark_nav_dirty()
                         self.alive = False
                         return
-                    for lan in list(getattr(game_state, 'fog_lanterns', [])):
-                        if not getattr(lan, 'alive', True):
-                            continue
-                        gx, gy = lan.grid_pos
-                        cx = int(gx * game.CELL_SIZE + game.CELL_SIZE * 0.5)
-                        cy = int(gy * game.CELL_SIZE + game.CELL_SIZE * 0.5 + game.INFO_BAR_HEIGHT)
-                        if r.collidepoint(cx, cy):
-                            lan.hp = max(0, getattr(lan, 'hp', 1) - self.dmg)
-                            if lan.hp == 0:
-                                lan.alive = False
-                            self.alive = False
-                            return
+                    if ob_type == 'Lantern':
+                        ob.health = max(0, int(getattr(ob, 'health', 1) or 1) - int(self.dmg))
+                        if ob.health <= 0:
+                            if gp in obstacle_map:
+                                del obstacle_map[gp]
+                            if hasattr(game_state, 'mark_nav_dirty'):
+                                game_state.mark_nav_dirty()
+                        self.alive = False
+                        return
                     self.alive = False
                     return
             if r.colliderect(player.rect):

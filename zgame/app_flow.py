@@ -43,9 +43,20 @@ def _flush_pending_bullets(game, bullets, game_state, player=None) -> None:
 
 
 def _sanitize_enemy_shots(game, enemy_shots) -> None:
+    if not enemy_shots:
+        return
     if not hasattr(game, "verify_enemy_shot_runtime"):
         return
     enemy_shots[:] = [shot for shot in enemy_shots if game.verify_enemy_shot_runtime(shot)]
+
+
+def _trim_web_enemy_shots(game, enemy_shots) -> None:
+    if (not getattr(game, "IS_WEB", False)) or (not enemy_shots):
+        return
+    cap = int(getattr(game, "WEB_SIM_ENEMY_SHOT_CAP", 0) or 0)
+    if cap <= 0 or len(enemy_shots) <= cap:
+        return
+    del enemy_shots[cap:]
 
 
 def _frame_dt(game, clock: pygame.time.Clock) -> float:
@@ -155,13 +166,16 @@ def _profile_mark(profiler: WebRuntimeProfiler | None, phase: str) -> None:
 
 
 def _web_diag_trace(game, profiler: WebRuntimeProfiler | None, label: str) -> None:
+    return
+
+
+def _web_diag_detail(game, phase: str, detail: str) -> None:
     if (not getattr(game, "IS_WEB", False)) or (not bool(getattr(game, "WEB_DIAG_MODE", False))):
         return
-    if profiler is None:
-        return
-    frame = int(getattr(profiler, "frame_index", 0) or 0)
-    if 130 <= frame <= 150:
-        print(f"[WebTrace] frame={frame} {label}")
+    try:
+        _set_browser_profiler_phase(str(phase or ""), str(detail or ""))
+    except Exception:
+        pass
 
 
 def _profile_set_counters(game, profiler: WebRuntimeProfiler | None, game_state, enemies, bullets, enemy_shots,
@@ -218,7 +232,8 @@ def _combat_bgm_selected(game) -> bool:
     runtime = rs.runtime(game)
     bgm = runtime.get("_bgm")
     path = str(getattr(bgm, "music_path", "") or "").lower()
-    return any(token in path for token in ("zgame.wav", "zgame.ogg"))
+    tokens = ["zgame.wav", "zgame.ogg"]
+    return any(token in path for token in tokens)
 
 
 def _trim_web_runtime_lists(game, game_state) -> None:
@@ -264,6 +279,101 @@ def _web_snapshot_autosave(game, runtime, game_state, player, enemies, current_l
         runtime["_last_web_autosave_s"] = now_s
     except Exception:
         pass
+
+
+def _web_simple_enemy_move(game, enemy, player, game_state, obstacles, *, dt: float, attack_interval: float = 0.5) -> None:
+    enemy._foot_prev = getattr(enemy, "_foot_curr", (enemy.rect.centerx, enemy.rect.bottom))
+    frame_scale = dt * 60.0
+    if not hasattr(enemy, "attack_timer"):
+        enemy.attack_timer = 0.0
+    enemy.attack_timer += dt
+    enemy._block_contact_cd = max(0.0, float(getattr(enemy, "_block_contact_cd", 0.0)) - dt)
+    enemy._hit_ob = None
+
+    base_speed = float(getattr(enemy, "speed", game.ENEMY_SPEED))
+    if getattr(enemy, "buff_t", 0.0) > 0.0:
+        base_speed = float(base_speed) + float(getattr(enemy, "buff_spd_add", 0.0))
+        enemy.buff_t = max(0.0, float(getattr(enemy, "buff_t", 0.0)) - dt)
+    base_speed *= float(getattr(enemy, "_hurricane_slow_mult", 1.0))
+    spike_slow_t = float(getattr(enemy, "_ground_spike_slow_t", 0.0))
+    if spike_slow_t > 0.0:
+        enemy._ground_spike_slow_t = max(0.0, spike_slow_t - dt)
+        base_speed *= float(getattr(game, "GROUND_SPIKES_SLOW_MULT", 1.0))
+    speed = float(min(game.Z_SPOIL_SPD_CAP, max(0.5, base_speed)))
+
+    cx = enemy.x + enemy.size * 0.5
+    cy = enemy.y + enemy.size * 0.5 + game.INFO_BAR_HEIGHT
+    px, py = player.rect.centerx, player.rect.centery
+    dx = px - cx
+    dy = py - cy
+    dist = math.hypot(dx, dy) or 1.0
+    ux, uy = (dx / dist, dy / dist)
+    step_x, step_y = game.chase_step(ux, uy, speed * frame_scale)
+    size = float(enemy.size)
+    radius = int(getattr(enemy, "radius", max(8, game.CELL_SIZE // 3)))
+    x_min, y_min, x_max, y_max = game.play_bounds_for_circle(radius)
+    obstacle_map = getattr(game_state, "obstacles", {}) or {}
+
+    def _clamp_axis(test_x: float, test_y: float) -> tuple[float, float]:
+        center_x = max(x_min, min(test_x + size * 0.5, x_max))
+        center_y = max(y_min, min(test_y + size * 0.5 + game.INFO_BAR_HEIGHT, y_max))
+        return (center_x - size * 0.5, center_y - size * 0.5 - game.INFO_BAR_HEIGHT)
+
+    def _find_hit(test_x: float, test_y: float):
+        center_x = test_x + size * 0.5
+        center_y = test_y + size * 0.5 + game.INFO_BAR_HEIGHT
+        cell_x = int(center_x // game.CELL_SIZE)
+        cell_y = int((center_y - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
+        reach = 1 + int(max(size, radius) // max(1, game.CELL_SIZE))
+        for gy in range(cell_y - reach, cell_y + reach + 1):
+            for gx in range(cell_x - reach, cell_x + reach + 1):
+                ob = obstacle_map.get((gx, gy))
+                if ob is None or getattr(ob, "nonblocking", False):
+                    continue
+                if ob.rect.inflate(radius * 2, radius * 2).collidepoint(center_x, center_y):
+                    return ob
+        return None
+
+    def _destroy_obstacle(ob) -> None:
+        gp = getattr(ob, "grid_pos", None)
+        if gp in obstacle_map:
+            del obstacle_map[gp]
+            if hasattr(game_state, "mark_nav_dirty"):
+                game_state.mark_nav_dirty()
+        cx2, cy2 = (ob.rect.centerx, ob.rect.centery)
+        if random.random() < game.SPOILS_BLOCK_DROP_CHANCE:
+            game_state.spawn_spoils(cx2, cy2, 1)
+        enemy.gain_xp(game.XP_ENEMY_BLOCK)
+        if random.random() < game.HEAL_DROP_CHANCE_BLOCK:
+            game_state.spawn_heal(cx2, cy2, game.HEAL_POTION_AMOUNT)
+
+    if getattr(enemy, "no_clip_t", 0.0) > 0.0:
+        enemy.no_clip_t = max(0.0, float(getattr(enemy, "no_clip_t", 0.0)) - dt)
+        enemy.x, enemy.y = _clamp_axis(enemy.x + step_x, enemy.y + step_y)
+        enemy.rect.x = int(enemy.x)
+        enemy.rect.y = int(enemy.y) + game.INFO_BAR_HEIGHT
+    else:
+        next_x, next_y = _clamp_axis(enemy.x + step_x, enemy.y)
+        hit_x = _find_hit(next_x, enemy.y)
+        if hit_x is None:
+            enemy.x = next_x
+        else:
+            enemy._hit_ob = hit_x
+        next_x, next_y = _clamp_axis(enemy.x, enemy.y + step_y)
+        hit_y = _find_hit(enemy.x, next_y)
+        if hit_y is None:
+            enemy.y = next_y
+        else:
+            enemy._hit_ob = hit_y
+        enemy.rect.x = int(enemy.x)
+        enemy.rect.y = int(enemy.y) + game.INFO_BAR_HEIGHT
+
+    enemy._foot_curr = (enemy.rect.centerx, enemy.rect.bottom)
+
+    # Keep browser obstacle layout stable. Desktop enemies can still chew
+    # through blocks via the full movement path, but the web fallback avoids
+    # mutating obstacle state during chase updates because that repeatedly
+    # destabilized long browser sessions.
 
 
 async def _yield_web_boot_frame(game, screen, runtime=None, *, fill_black: bool = True, count: int = 1) -> None:
@@ -456,7 +566,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     wave_index = 0
     spatial_rebuild_t = 0.0
     spatial_enemy_count = -1
-    combat_bgm_delay = 0.75 if game.IS_WEB else 0.0
+    combat_bgm_delay = 0.0
 
     def player_center():
         return (player.x + player.size / 2, player.y + player.size / 2 + game.INFO_BAR_HEIGHT)
@@ -564,6 +674,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     running = True
     game_result = None
     last_frame = None
+    has_rendered_frame = False
     render_cooldown = 0.0
     web_transition_guard_t = 0.65 if game.IS_WEB else 0.0
     profiler = _web_profiler(game)
@@ -880,7 +991,14 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         obstacle_values = tuple(game_state.obstacles.values())
         if not bool(getattr(game, "WEB_SKIP_ENEMY_MOVE", False)):
             for enemy in list(enemies):
-                enemy.move_and_attack(player, obstacle_values, game_state, dt=dt)
+                if (
+                    game.IS_WEB
+                    and not getattr(enemy, "is_boss", False)
+                    and getattr(enemy, "type", "") != "bandit"
+                ):
+                    _web_simple_enemy_move(game, enemy, player, game_state, obstacle_values, dt=dt)
+                else:
+                    enemy.move_and_attack(player, obstacle_values, game_state, dt=dt)
                 if player.hit_cd <= 0.0 and game.circle_touch(enemy, player):
                     mult = getattr(game_state, 'biome_enemy_contact_mult', 1.0)
                     base_mult = getattr(enemy, 'contact_damage_mult', 1.0)
@@ -935,16 +1053,39 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                             pass
                     game.transfer_xp_to_neighbors(z, enemies)
                     enemies.remove(z)
+        _web_diag_detail(
+            game,
+            "pre_enemy_shots",
+            f"frame={int(getattr(profiler, 'frame_index', 0) or 0)} es={len(enemy_shots)} en={len(enemies)}",
+        )
         _profile_mark(profiler, "enemy_shots")
         _web_diag_trace(game, profiler, f"enemy_shots es={len(enemy_shots)}")
+        _web_diag_detail(game, "enemy_shots", f"after_mark es={len(enemy_shots)}")
+        if bool(getattr(game, "WEB_SKIP_ENEMY_SHOTS", False)):
+            enemy_shots.clear()
         _sanitize_enemy_shots(game, enemy_shots)
-        for es in list(enemy_shots):
+        _trim_web_enemy_shots(game, enemy_shots)
+        _web_diag_trace(game, profiler, f"enemy_shots sanitized={len(enemy_shots)}")
+        _web_diag_detail(game, "enemy_shots", f"sanitized es={len(enemy_shots)}")
+        for idx, es in enumerate(list(enemy_shots)):
+            _web_diag_trace(game, profiler, f"enemy_shots update begin alive={int(bool(getattr(es, 'alive', False)))}")
+            _web_diag_detail(game, "enemy_shots", f"update_begin idx={idx} alive={int(bool(getattr(es, 'alive', False)))}")
             es.update(dt, player, game_state)
+            _web_diag_trace(game, profiler, f"enemy_shots update end alive={int(bool(getattr(es, 'alive', False)))}")
+            _web_diag_detail(game, "enemy_shots", f"update_end idx={idx} alive={int(bool(getattr(es, 'alive', False)))}")
             if (not getattr(es, 'alive', False)) or (hasattr(game, 'verify_enemy_shot_runtime') and (not game.verify_enemy_shot_runtime(es))):
                 enemy_shots.remove(es)
+                _web_diag_trace(game, profiler, f"enemy_shots removed left={len(enemy_shots)}")
+                _web_diag_detail(game, "enemy_shots", f"removed idx={idx} left={len(enemy_shots)}")
+        _web_diag_trace(game, profiler, "enemy_shots post_loop")
+        _web_diag_detail(game, "enemy_shots", "post_loop")
         game.update_hit_flash_timer(player, dt)
+        _web_diag_trace(game, profiler, "enemy_shots player_flash")
+        _web_diag_detail(game, "enemy_shots", "player_flash")
         for z in enemies:
             game.update_hit_flash_timer(z, dt)
+        _web_diag_trace(game, profiler, "enemy_shots enemy_flash")
+        _web_diag_detail(game, "enemy_shots", "enemy_flash")
         if game_state.ghosts:
             game_state.ghosts[:] = [g for g in game_state.ghosts if g.update(dt)]
         boss_now = game._find_current_boss(enemies)
@@ -961,7 +1102,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             else:
                 last_frame = game.render_game(pygame.display.get_surface(), game_state, player, enemies, bullets, enemy_shots)
             continue
-        should_render = (not game.IS_WEB) or render_cooldown <= 0.0 or last_frame is None
+        should_render = (not game.IS_WEB) or (not has_rendered_frame) or render_cooldown <= 0.0
         _profile_mark(profiler, "render")
         _web_diag_trace(game, profiler, "render")
         if should_render and (not bool(getattr(game, "WEB_SKIP_RENDER", False))):
@@ -987,6 +1128,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                     copy_frame=False,
                 )
             render_cooldown = float(getattr(game, "WEB_RENDER_INTERVAL", 0.0) or 0.0)
+            has_rendered_frame = True
         if game_result == 'success':
             runtime['_last_spoils'] = getattr(game_state, 'spoils_gained', 0)
             runtime['_carry_player_state'] = game.capture_player_carry(player)
@@ -1123,6 +1265,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     await _preload_web_gameplay_assets(game, screen, runtime)
     running = True
     last_frame = None
+    has_rendered_frame = False
     chosen_enemy_type = saved_meta.get('chosen_enemy_type', 'basic')
     enemy_cap = game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP
     combat_bgm_started = _combat_bgm_selected(game)
@@ -1133,7 +1276,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         combat_bgm_started = True
     spawn_timer = 0.0
     wave_index = 0
-    combat_bgm_delay = 0.75 if game.IS_WEB else 0.0
+    combat_bgm_delay = 0.0
 
     def player_center():
         return (player.x + player.size / 2, player.y + player.size / 2 + game.INFO_BAR_HEIGHT)
@@ -1381,7 +1524,14 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         obstacle_values = tuple(game_state.obstacles.values())
         _profile_mark(profiler, "enemy_move")
         for enemy in list(enemies):
-            enemy.move_and_attack(player, obstacle_values, game_state, dt=dt)
+            if (
+                game.IS_WEB
+                and not getattr(enemy, "is_boss", False)
+                and getattr(enemy, "type", "") != "bandit"
+            ):
+                _web_simple_enemy_move(game, enemy, player, game_state, obstacle_values, dt=dt)
+            else:
+                enemy.move_and_attack(player, obstacle_values, game_state, dt=dt)
             if player.hit_cd <= 0.0 and game.circle_touch(enemy, player):
                 mult = getattr(game_state, 'biome_enemy_contact_mult', 1.0)
                 base_mult = getattr(enemy, 'contact_damage_mult', 1.0)
@@ -1440,14 +1590,32 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 game.transfer_xp_to_neighbors(z, enemies)
                 enemies.remove(z)
         _profile_mark(profiler, "enemy_shots")
+        _web_diag_detail(game, "enemy_shots", f"start es={len(enemy_shots)}")
+        if bool(getattr(game, "WEB_SKIP_ENEMY_SHOTS", False)):
+            enemy_shots.clear()
         _sanitize_enemy_shots(game, enemy_shots)
-        for es in list(enemy_shots):
+        _trim_web_enemy_shots(game, enemy_shots)
+        _web_diag_trace(game, profiler, f"enemy_shots sanitized={len(enemy_shots)}")
+        _web_diag_detail(game, "enemy_shots", f"sanitized es={len(enemy_shots)}")
+        for idx, es in enumerate(list(enemy_shots)):
+            _web_diag_trace(game, profiler, f"enemy_shots update begin alive={int(bool(getattr(es, 'alive', False)))}")
+            _web_diag_detail(game, "enemy_shots", f"update_begin idx={idx} alive={int(bool(getattr(es, 'alive', False)))}")
             es.update(dt, player, game_state)
+            _web_diag_trace(game, profiler, f"enemy_shots update end alive={int(bool(getattr(es, 'alive', False)))}")
+            _web_diag_detail(game, "enemy_shots", f"update_end idx={idx} alive={int(bool(getattr(es, 'alive', False)))}")
             if (not getattr(es, 'alive', False)) or (hasattr(game, 'verify_enemy_shot_runtime') and (not game.verify_enemy_shot_runtime(es))):
                 enemy_shots.remove(es)
+                _web_diag_trace(game, profiler, f"enemy_shots removed left={len(enemy_shots)}")
+                _web_diag_detail(game, "enemy_shots", f"removed idx={idx} left={len(enemy_shots)}")
+        _web_diag_trace(game, profiler, "enemy_shots post_loop")
+        _web_diag_detail(game, "enemy_shots", "post_loop")
         game.update_hit_flash_timer(player, dt)
+        _web_diag_detail(game, "enemy_shots", "player_flash")
+        _web_diag_trace(game, profiler, "enemy_shots player_flash")
         for z in enemies:
             game.update_hit_flash_timer(z, dt)
+        _web_diag_detail(game, "enemy_shots", "enemy_flash")
+        _web_diag_trace(game, profiler, "enemy_shots enemy_flash")
         if player.hp <= 0:
             game.clear_save()
             action = await game.show_fail_screen(screen, last_frame or game.render_game(screen, game_state, player, enemies, bullets, enemy_shots))
@@ -1459,7 +1627,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 game.clear_save()
                 game.flush_events()
                 return ('restart', None, last_frame or screen.copy())
-        should_render = (not game.IS_WEB) or render_cooldown <= 0.0 or last_frame is None
+        should_render = (not game.IS_WEB) or (not has_rendered_frame) or render_cooldown <= 0.0
         _profile_mark(profiler, "render")
         if should_render:
             if game.USE_ISO:
@@ -1484,6 +1652,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                     copy_frame=False,
                 )
             render_cooldown = float(getattr(game, "WEB_RENDER_INTERVAL", 0.0) or 0.0)
+            has_rendered_frame = True
         _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets)
         _profile_finish(
             game,

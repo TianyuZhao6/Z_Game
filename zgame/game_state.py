@@ -58,6 +58,7 @@ def install(game):
             self.ff_next = None
             self._ff_goal = None
             self._ff_dirty = True
+            self._obstacle_revision = 0
             self._ff_timer = 0.0
             self._ff_tacc = 0.0
             self.projectiles = []
@@ -685,6 +686,7 @@ def install(game):
 
         def mark_nav_dirty(self):
             self._ff_dirty = True
+            self._obstacle_revision = int(getattr(self, '_obstacle_revision', 0) or 0) + 1
 
         def refresh_flow_field(self, player_tile, dt=0.0):
             rebuild_interval = game.WEB_FLOW_REFRESH_INTERVAL if game.IS_WEB else 0.3

@@ -61,30 +61,32 @@ def _detect_web_flag(*tokens: str) -> bool:
 WEB_WINDOW_SIZE = (1280, 720)
 WEB_MAX_FRAME_DT = 0.05
 WEB_AUTOSAVE_INTERVAL = 0.0
-WEB_SINGLE_BGM = IS_WEB
+WEB_SINGLE_BGM = False
 WEB_NATIVE_BGM = IS_WEB
 WEB_AUTOSTART = _detect_web_autostart()
 WEB_DIAG_MODE = _detect_web_diag()
-WEB_LITE_RENDER_PICKUP_CAP = 18
-WEB_LITE_RENDER_TURRET_CAP = 10
-WEB_LITE_RENDER_ENEMY_CAP = 16
-WEB_LITE_RENDER_BULLET_CAP = 48
-WEB_LITE_RENDER_ENEMY_SHOT_CAP = 32
-WEB_ALLOW_LITE_RENDER = False
+WEB_LITE_RENDER_PICKUP_CAP = 12
+WEB_LITE_RENDER_TURRET_CAP = 8
+WEB_LITE_RENDER_ENEMY_CAP = 10
+WEB_LITE_RENDER_BULLET_CAP = 28
+WEB_LITE_RENDER_ENEMY_SHOT_CAP = 16
+WEB_SIM_ENEMY_SHOT_CAP = 24
+WEB_ALLOW_LITE_RENDER = IS_WEB
 WEB_QUALITY_ORDER = ("full", "balanced", "safe")
 WEB_QUALITY_PRESETS = {
     "full": {
-        "target_fps": 18,
+        "target_fps": 16,
         "flow_refresh_interval": 1.00,
         "spatial_refresh_interval": 0.32,
-        "enemy_cap": 10,
-        "max_render_width": 720,
-        "max_render_height": 405,
-        "render_interval": 1.0 / 8.0,
-        "max_damage_texts": 24,
-        "max_fx_particles": 120,
-        "max_spoils_on_field": 28,
-        "use_lite_render": False,
+        "enemy_cap": 8,
+        "max_render_width": 1600,
+        "max_render_height": 900,
+        "render_interval": 0.5,
+        "max_damage_texts": 12,
+        "max_fx_particles": 48,
+        "max_spoils_on_field": 16,
+        "max_enemy_shots": 24,
+        "use_lite_render": True,
         "disable_fx_audio": False,
         "enable_astar_recovery": False,
     },
@@ -93,13 +95,14 @@ WEB_QUALITY_PRESETS = {
         "flow_refresh_interval": 0.95,
         "spatial_refresh_interval": 0.28,
         "enemy_cap": 9,
-        "max_render_width": 720,
-        "max_render_height": 405,
-        "render_interval": 1.0 / 7.0,
+        "max_render_width": 1152,
+        "max_render_height": 648,
+        "render_interval": 1.0 / 9.0,
         "max_damage_texts": 20,
         "max_fx_particles": 96,
         "max_spoils_on_field": 24,
-        "use_lite_render": False,
+        "max_enemy_shots": 20,
+        "use_lite_render": True,
         "disable_fx_audio": False,
         "enable_astar_recovery": False,
     },
@@ -108,12 +111,13 @@ WEB_QUALITY_PRESETS = {
         "flow_refresh_interval": 1.05,
         "spatial_refresh_interval": 0.32,
         "enemy_cap": 8,
-        "max_render_width": 720,
-        "max_render_height": 405,
-        "render_interval": 1.0 / 6.0,
+        "max_render_width": 960,
+        "max_render_height": 540,
+        "render_interval": 1.0 / 8.0,
         "max_damage_texts": 16,
         "max_fx_particles": 72,
         "max_spoils_on_field": 20,
+        "max_enemy_shots": 16,
         "use_lite_render": True,
         "disable_fx_audio": True,
         "enable_astar_recovery": False,
@@ -130,6 +134,7 @@ WEB_RENDER_INTERVAL = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["render_int
 WEB_MAX_DAMAGE_TEXTS = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_damage_texts"])
 WEB_MAX_FX_PARTICLES = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_fx_particles"])
 WEB_MAX_SPOILS_ON_FIELD = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_spoils_on_field"])
+WEB_SIM_ENEMY_SHOT_CAP = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_enemy_shots"])
 WEB_USE_LITE_RENDER = bool(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["use_lite_render"])
 WEB_PROFILER_ENABLED = IS_WEB and WEB_DIAG_MODE
 WEB_PROFILER_OVERLAY = IS_WEB and WEB_DIAG_MODE
@@ -152,6 +157,9 @@ WEB_SKIP_UPDATE = IS_WEB and _detect_web_flag("skipupdate=1")
 WEB_SKIP_BULLETS = IS_WEB and _detect_web_flag("skipbullets=1")
 WEB_SKIP_ENEMY_MOVE = IS_WEB and _detect_web_flag("skipmove=1")
 WEB_SKIP_ENEMY_SPECIAL = IS_WEB and _detect_web_flag("skipspecial=1")
+# Browser enemy projectiles are still unstable in long wasm sessions. Keep the
+# normal web route on the safer path and allow explicit opt-in when needed.
+WEB_SKIP_ENEMY_SHOTS = IS_WEB and (not _detect_web_flag("enemyshots=1", "allowenemyshots=1"))
 WEB_SKIP_RENDER = IS_WEB and _detect_web_flag("skiprender=1")
 
 
@@ -228,7 +236,7 @@ def _quality_payload(profile_name: str) -> dict[str, object]:
     preset = WEB_QUALITY_PRESETS.get(name, WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY])
     payload = dict(preset)
     payload["quality"] = name
-    payload["single_bgm"] = True
+    payload["single_bgm"] = bool(WEB_SINGLE_BGM)
     for feature_name in (
         "enable_enemy_paint",
         "enable_vulnerability_marks",
@@ -261,6 +269,7 @@ def apply_web_quality_profile(game, profile_name: str | None, *, reason: str = "
         "WEB_MAX_DAMAGE_TEXTS": int(payload["max_damage_texts"]),
         "WEB_MAX_FX_PARTICLES": int(payload["max_fx_particles"]),
         "WEB_MAX_SPOILS_ON_FIELD": int(payload["max_spoils_on_field"]),
+        "WEB_SIM_ENEMY_SHOT_CAP": int(payload["max_enemy_shots"]),
         "WEB_USE_LITE_RENDER": bool(payload["use_lite_render"]),
         "WEB_SINGLE_BGM": bool(payload["single_bgm"]),
         "WEB_DISABLE_FX_AUDIO": bool(payload["disable_fx_audio"]),

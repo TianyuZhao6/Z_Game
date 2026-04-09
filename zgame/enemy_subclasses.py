@@ -265,7 +265,10 @@ def install(game):
             if self._ring_bursts_left > 0:
                 self._ring_burst_t -= dt
                 if self._ring_burst_t <= 0.0:
+                    shot_cap = int(getattr(game, "WEB_SIM_ENEMY_SHOT_CAP", 0) or 0)
                     for i in range(game.MIST_RING_PROJECTILES):
+                        if getattr(game, "IS_WEB", False) and shot_cap > 0 and len(enemy_shots) >= shot_cap:
+                            break
                         ang = 2 * math.pi * (i / game.MIST_RING_PROJECTILES)
                         vx = math.cos(ang) * game.MIST_RING_SPEED
                         vy = math.sin(ang) * game.MIST_RING_SPEED

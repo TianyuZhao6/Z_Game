@@ -245,9 +245,61 @@ function focusCanvas() {
 
 window.__zgame_last_error = "";
 window.__zgame_error_count = 0;
+window.__zgame_audio_user_activated = false;
+
+function zgameIgnoreAutoplayMessage(err) {
+    try {
+        const msg = String(err && (err.message || err.reason || err.stack || err) || "").trim();
+        const lower = msg.toLowerCase();
+        return (
+            lower.includes("play() failed because the user didn't interact") ||
+            lower.includes("play() request was interrupted") ||
+            (lower.includes("rejection occurred:") && lower.includes("play() failed because the user didn't interact"))
+        );
+    } catch (_) {
+        return false;
+    }
+}
+
+function zgameCanPlayAudioNow() {
+    try {
+        if (window.__zgame_audio_user_activated) {
+            return true;
+        }
+        const ua = (navigator && navigator.userActivation) ? navigator.userActivation : null;
+        return !!(ua && (ua.hasBeenActive || ua.isActive));
+    } catch (_) {
+        return !!window.__zgame_audio_user_activated;
+    }
+}
+
+function zgameMarkAudioActivated() {
+    window.__zgame_audio_user_activated = true;
+}
+
+window.addEventListener("pointerdown", zgameMarkAudioActivated, true);
+window.addEventListener("mousedown", zgameMarkAudioActivated, true);
+window.addEventListener("keydown", zgameMarkAudioActivated, true);
+window.addEventListener("touchstart", zgameMarkAudioActivated, true);
+
+try {
+    const zgameNativeAlert = (typeof window.alert === "function") ? window.alert.bind(window) : null;
+    window.alert = function(msg) {
+        if (zgameIgnoreAutoplayMessage(msg)) {
+            console.warn("[ZGameAudio] Suppressed autoplay alert", String(msg || ""));
+            return;
+        }
+        if (zgameNativeAlert) {
+            return zgameNativeAlert(msg);
+        }
+    };
+} catch (_) {}
 
 function zgameRecordError(prefix, err) {
     try {
+        if (zgameIgnoreAutoplayMessage(err)) {
+            return;
+        }
         const msg = String(err && (err.message || err.reason || err.stack || err) || "").trim();
         window.__zgame_last_error = (prefix + ": " + msg).slice(0, 240);
         window.__zgame_error_count = (Number(window.__zgame_error_count || 0) + 1);
@@ -256,12 +308,35 @@ function zgameRecordError(prefix, err) {
 }
 
 window.addEventListener("error", function(ev) {
+    const target = ev && ev.target;
+    const tag = String(target && target.tagName || "").toLowerCase();
+    const src = String((target && (target.src || target.href)) || "");
+    if (tag === "audio") {
+        try { ev.preventDefault(); } catch (_) {}
+        try { ev.stopImmediatePropagation(); } catch (_) {}
+        return;
+    }
+    if (tag === "script" && src.includes("browserfs.min.js")) {
+        try { ev.preventDefault(); } catch (_) {}
+        try { ev.stopImmediatePropagation(); } catch (_) {}
+        return;
+    }
+    if (zgameIgnoreAutoplayMessage(ev && (ev.error || ev.message || ev))) {
+        try { ev.preventDefault(); } catch (_) {}
+        try { ev.stopImmediatePropagation(); } catch (_) {}
+        return;
+    }
     zgameRecordError("error", ev && (ev.error || ev.message || ev));
-});
+}, true);
 
 window.addEventListener("unhandledrejection", function(ev) {
+    if (zgameIgnoreAutoplayMessage(ev && (ev.reason || ev))) {
+        try { ev.preventDefault(); } catch (_) {}
+        try { ev.stopImmediatePropagation(); } catch (_) {}
+        return;
+    }
     zgameRecordError("promise", ev && (ev.reason || ev));
-});
+}, true);
 
 window.__zgame_diag_dom = null;
 window.__zgame_js_frame = 0;
@@ -382,8 +457,6 @@ window.__zgame_bgm_open = function(src, volume) {
         const prev = window.__zgame_bgm_audio;
         if (prev) {
             try { prev.pause(); } catch (_) {}
-            try { prev.removeAttribute("src"); } catch (_) {}
-            try { prev.load(); } catch (_) {}
         }
         const audio = new Audio(src);
         audio.preload = "auto";
@@ -408,6 +481,10 @@ window.__zgame_bgm_play = function(loops, fade_ms) {
     try {
         const audio = window.__zgame_bgm_audio;
         if (!audio) return false;
+        if (!zgameCanPlayAudioNow()) {
+            window.__zgame_bgm_pending = false;
+            return false;
+        }
         const now = (window.performance && typeof window.performance.now === "function")
             ? window.performance.now()
             : Date.now();
@@ -474,6 +551,10 @@ window.__zgame_bgm_resume = function() {
     try {
         const audio = window.__zgame_bgm_audio;
         if (!audio) return false;
+        if (!zgameCanPlayAudioNow()) {
+            window.__zgame_bgm_pending = false;
+            return false;
+        }
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.catch === "function") {
             playPromise.catch((e) => console.warn("[Audio] html bgm resume failed", e));

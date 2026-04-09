@@ -5798,8 +5798,20 @@ def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms:
 
 def play_intro_bgm():
     """Play Intro_V0 if present (home/start), fallback to ZGAME.wav."""
+    runtime = _runtime_state()
+    bgm = runtime.get("_bgm")
+    cur = str(getattr(bgm, "music_path", "") or "").lower() if bgm is not None else ""
+    intro_tokens = ("intro_v0.wav", "intro_v0.ogg", "intro_v1.wav", "intro_v1.ogg")
+    if bgm is not None and getattr(bgm, "_ready", False) and any(token in cur for token in intro_tokens):
+        try:
+            bgm.set_volume(BGM_VOLUME / 100.0)
+            bgm.playBackGroundMusic(loops=-1, fade_ms=0)
+        except Exception:
+            pass
+        return True
     intro_candidates = [
         *_asset_candidates("music", "Intro_V0.wav"),
+        *_asset_candidates("music", "Intro_V1.wav"),
         *_asset_candidates("music", "ZGAME.wav"),
     ]
     _play_bgm_candidates(intro_candidates, volume=BGM_VOLUME / 100.0)
@@ -5811,13 +5823,18 @@ def play_combat_bgm():
         runtime = _runtime_state()
         bgm = runtime.get("_bgm")
         cur = str(getattr(bgm, "music_path", "") or "").lower() if bgm is not None else ""
-        if bgm is not None and getattr(bgm, "_ready", False) and any(token in cur for token in ("zgame.wav", "zgame.ogg")):
+        web_tokens = ("zgame.wav", "zgame.ogg")
+        if bgm is not None and getattr(bgm, "_ready", False) and any(token in cur for token in web_tokens):
             try:
                 bgm.set_volume(BGM_VOLUME / 100.0)
                 bgm.playBackGroundMusic(loops=-1, fade_ms=0)
             except Exception:
                 pass
             return True
+        combat_candidates = [
+            *_asset_candidates("music", "ZGAME.wav"),
+        ]
+        return _play_bgm_candidates(combat_candidates, volume=BGM_VOLUME / 100.0, fadeout_ms=0)
     combat_candidates = [
         *_asset_candidates("music", "ZGAME.wav"),
     ]
