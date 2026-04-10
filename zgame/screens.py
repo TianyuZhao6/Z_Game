@@ -139,19 +139,25 @@ async def show_settings_popup_web(game, screen, background_surf):
 
 
 async def show_fail_screen(game, screen, background_surf):
-    dim = pygame.Surface((game.VIEW_W, game.VIEW_H))
-    dim.set_alpha(180)
-    dim.fill((0, 0, 0))
-    screen.blit(pygame.transform.smoothscale(background_surf, (game.VIEW_W, game.VIEW_H)), (0, 0))
-    screen.blit(dim, (0, 0))
-    title = pygame.font.SysFont(None, 80).render("YOU WERE CORRUPTED!", True, (255, 60, 60))
-    screen.blit(title, title.get_rect(center=(game.VIEW_W // 2, 140)))
-    retry = game.draw_button(screen, "RETRY", (game.VIEW_W // 2 - 200, 300))
-    home = game.draw_button(screen, "HOME", (game.VIEW_W // 2 + 20, 300))
-    pygame.display.flip()
+    def _draw_overlay() -> tuple[pygame.Rect, pygame.Rect]:
+        dim = pygame.Surface((game.VIEW_W, game.VIEW_H))
+        dim.set_alpha(180)
+        dim.fill((0, 0, 0))
+        screen.blit(pygame.transform.smoothscale(background_surf, (game.VIEW_W, game.VIEW_H)), (0, 0))
+        screen.blit(dim, (0, 0))
+        title = pygame.font.SysFont(None, 80).render("YOU WERE CORRUPTED!", True, (255, 60, 60))
+        screen.blit(title, title.get_rect(center=(game.VIEW_W // 2, 140)))
+        retry_rect = game.draw_button(screen, "RETRY", (game.VIEW_W // 2 - 200, 300))
+        home_rect = game.draw_button(screen, "HOME", (game.VIEW_W // 2 + 20, 300))
+        pygame.display.flip()
+        return retry_rect, home_rect
+
+    retry, home = _draw_overlay()
     start_menu_surf = None
     while True:
         for event in pygame.event.get():
+            screen = game._handle_web_window_event(event) or screen
+            game._sync_web_input_event(event)
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -161,16 +167,7 @@ async def show_fail_screen(game, screen, background_surf):
                 bg = pygame.display.get_surface().copy()
                 pick = game.pause_from_overlay(screen, bg)
                 if pick == "continue":
-                    dim = pygame.Surface((game.VIEW_W, game.VIEW_H))
-                    dim.set_alpha(180)
-                    dim.fill((0, 0, 0))
-                    screen.blit(pygame.transform.smoothscale(background_surf, (game.VIEW_W, game.VIEW_H)), (0, 0))
-                    screen.blit(dim, (0, 0))
-                    title = pygame.font.SysFont(None, 80).render("YOU WERE CORRUPTED!", True, (255, 60, 60))
-                    screen.blit(title, title.get_rect(center=(game.VIEW_W // 2, 140)))
-                    retry = game.draw_button(screen, "RETRY", (game.VIEW_W // 2 - 200, 300))
-                    home = game.draw_button(screen, "HOME", (game.VIEW_W // 2 + 20, 300))
-                    pygame.display.flip()
+                    retry, home = _draw_overlay()
                     continue
                 if pick == "home":
                     game.queue_menu_transition(pygame.display.get_surface().copy())
@@ -195,6 +192,7 @@ async def show_fail_screen(game, screen, background_surf):
                     game.flush_events()
                     return "home"
         if game.IS_WEB:
+            retry, home = _draw_overlay()
             await asyncio.sleep(0)
 
 

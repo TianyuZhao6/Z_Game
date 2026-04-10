@@ -173,14 +173,9 @@ function viewportHeight() {
 function backingSize() {
     const vw = viewportWidth();
     const vh = viewportHeight();
-    const scale = Math.min(
-        1,
-        renderLimitWidth() / Math.max(1, vw),
-        renderLimitHeight() / Math.max(1, vh)
-    );
     return {
-        width: Math.max(1, Math.round(vw * scale)),
-        height: Math.max(1, Math.round(vh * scale)),
+        width: Math.max(1, Math.round(vw)),
+        height: Math.max(1, Math.round(vh)),
         viewportWidth: vw,
         viewportHeight: vh,
     };

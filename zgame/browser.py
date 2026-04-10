@@ -75,17 +75,23 @@ WEB_ALLOW_LITE_RENDER = IS_WEB
 WEB_QUALITY_ORDER = ("full", "balanced", "safe")
 WEB_QUALITY_PRESETS = {
     "full": {
-        "target_fps": 16,
+        "target_fps": 18,
         "flow_refresh_interval": 1.00,
         "spatial_refresh_interval": 0.32,
-        "enemy_cap": 8,
+        "enemy_cap": 2,
         "max_render_width": 1600,
         "max_render_height": 900,
-        "render_interval": 0.5,
-        "max_damage_texts": 12,
-        "max_fx_particles": 48,
-        "max_spoils_on_field": 16,
-        "max_enemy_shots": 24,
+        "render_interval": 1.0 / 18.0,
+        "render_scale": 1.0,
+        "max_damage_texts": 4,
+        "max_fx_particles": 16,
+        "max_spoils_on_field": 8,
+        "max_enemy_shots": 12,
+        "contact_damage_mult": 0.25,
+        "player_hit_cooldown_mult": 2.0,
+        "enemy_speed_mult": 0.70,
+        "threat_budget_mult": 0.50,
+        "spawn_interval_mult": 3.00,
         "use_lite_render": True,
         "disable_fx_audio": False,
         "enable_astar_recovery": False,
@@ -94,14 +100,20 @@ WEB_QUALITY_PRESETS = {
         "target_fps": 18,
         "flow_refresh_interval": 0.95,
         "spatial_refresh_interval": 0.28,
-        "enemy_cap": 9,
+        "enemy_cap": 6,
         "max_render_width": 1152,
         "max_render_height": 648,
         "render_interval": 1.0 / 9.0,
+        "render_scale": 0.82,
         "max_damage_texts": 20,
         "max_fx_particles": 96,
         "max_spoils_on_field": 24,
         "max_enemy_shots": 20,
+        "contact_damage_mult": 0.65,
+        "player_hit_cooldown_mult": 1.25,
+        "enemy_speed_mult": 0.9,
+        "threat_budget_mult": 0.9,
+        "spawn_interval_mult": 1.15,
         "use_lite_render": True,
         "disable_fx_audio": False,
         "enable_astar_recovery": False,
@@ -114,10 +126,16 @@ WEB_QUALITY_PRESETS = {
         "max_render_width": 960,
         "max_render_height": 540,
         "render_interval": 1.0 / 8.0,
+        "render_scale": 0.9,
         "max_damage_texts": 16,
         "max_fx_particles": 72,
         "max_spoils_on_field": 20,
         "max_enemy_shots": 16,
+        "contact_damage_mult": 0.55,
+        "player_hit_cooldown_mult": 1.4,
+        "enemy_speed_mult": 0.85,
+        "threat_budget_mult": 0.8,
+        "spawn_interval_mult": 1.25,
         "use_lite_render": True,
         "disable_fx_audio": True,
         "enable_astar_recovery": False,
@@ -131,6 +149,12 @@ WEB_ENEMY_CAP = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["enemy_cap"])
 WEB_MAX_RENDER_WIDTH = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_render_width"])
 WEB_MAX_RENDER_HEIGHT = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_render_height"])
 WEB_RENDER_INTERVAL = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["render_interval"])
+WEB_RENDER_SCALE = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY].get("render_scale", 1.0) or 1.0)
+WEB_CONTACT_DAMAGE_MULT = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY].get("contact_damage_mult", 1.0) or 1.0)
+WEB_PLAYER_HIT_COOLDOWN_MULT = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY].get("player_hit_cooldown_mult", 1.0) or 1.0)
+WEB_ENEMY_SPEED_MULT = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY].get("enemy_speed_mult", 1.0) or 1.0)
+WEB_THREAT_BUDGET_MULT = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY].get("threat_budget_mult", 1.0) or 1.0)
+WEB_SPAWN_INTERVAL_MULT = float(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY].get("spawn_interval_mult", 1.0) or 1.0)
 WEB_MAX_DAMAGE_TEXTS = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_damage_texts"])
 WEB_MAX_FX_PARTICLES = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_fx_particles"])
 WEB_MAX_SPOILS_ON_FIELD = int(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["max_spoils_on_field"])
@@ -157,6 +181,7 @@ WEB_SKIP_UPDATE = IS_WEB and _detect_web_flag("skipupdate=1")
 WEB_SKIP_BULLETS = IS_WEB and _detect_web_flag("skipbullets=1")
 WEB_SKIP_ENEMY_MOVE = IS_WEB and _detect_web_flag("skipmove=1")
 WEB_SKIP_ENEMY_SPECIAL = IS_WEB and _detect_web_flag("skipspecial=1")
+WEB_DISABLE_TIMED_SPAWNS = IS_WEB and (not _detect_web_flag("timedspawns=1", "waves=1"))
 # Browser enemy projectiles are still unstable in long wasm sessions. Keep the
 # normal web route on the safer path and allow explicit opt-in when needed.
 WEB_SKIP_ENEMY_SHOTS = IS_WEB and (not _detect_web_flag("enemyshots=1", "allowenemyshots=1"))
@@ -266,6 +291,12 @@ def apply_web_quality_profile(game, profile_name: str | None, *, reason: str = "
         "WEB_MAX_RENDER_WIDTH": int(payload["max_render_width"]),
         "WEB_MAX_RENDER_HEIGHT": int(payload["max_render_height"]),
         "WEB_RENDER_INTERVAL": float(payload["render_interval"]),
+        "WEB_RENDER_SCALE": float(payload.get("render_scale", 1.0) or 1.0),
+        "WEB_CONTACT_DAMAGE_MULT": float(payload.get("contact_damage_mult", 1.0) or 1.0),
+        "WEB_PLAYER_HIT_COOLDOWN_MULT": float(payload.get("player_hit_cooldown_mult", 1.0) or 1.0),
+        "WEB_ENEMY_SPEED_MULT": float(payload.get("enemy_speed_mult", 1.0) or 1.0),
+        "WEB_THREAT_BUDGET_MULT": float(payload.get("threat_budget_mult", 1.0) or 1.0),
+        "WEB_SPAWN_INTERVAL_MULT": float(payload.get("spawn_interval_mult", 1.0) or 1.0),
         "WEB_MAX_DAMAGE_TEXTS": int(payload["max_damage_texts"]),
         "WEB_MAX_FX_PARTICLES": int(payload["max_fx_particles"]),
         "WEB_MAX_SPOILS_ON_FIELD": int(payload["max_spoils_on_field"]),
@@ -715,7 +746,7 @@ def get_initial_web_window_size() -> tuple[int, int]:
             w = int(getattr(win, "innerWidth", 0) or 0)
             h = int(getattr(win, "innerHeight", 0) or 0)
             if w > 0 and h > 0:
-                return cap_web_surface_size(max(640, w), max(360, h))
+                return max(640, w), max(360, h)
         except Exception:
             pass
     try:
@@ -726,4 +757,4 @@ def get_initial_web_window_size() -> tuple[int, int]:
         w = h = 0
     if w <= 0 or h <= 0:
         return WEB_WINDOW_SIZE
-    return cap_web_surface_size(max(800, w), max(450, h))
+    return max(800, w), max(450, h)

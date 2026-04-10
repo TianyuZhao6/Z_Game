@@ -20,10 +20,14 @@ def is_boss_level(game, level_idx_zero_based: int) -> bool:
 
 
 def budget_for_level(game, level_idx_zero_based: int) -> int:
-    return max(
+    budget = max(
         game.THREAT_BUDGET_MIN,
         int(round(game.THREAT_BUDGET_BASE * (game.THREAT_BUDGET_EXP ** level_idx_zero_based))),
     )
+    if getattr(game, "IS_WEB", False):
+        mult = float(getattr(game, "WEB_THREAT_BUDGET_MULT", 1.0) or 1.0)
+        budget = max(1, int(round(budget * mult)))
+    return budget
 
 
 def pick_type_by_budget(game, rem: int, level_idx_zero_based: int):

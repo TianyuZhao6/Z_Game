@@ -486,20 +486,9 @@ def install(game):
         if not IS_WEB:
             return screen, None, None
         display_surface = pygame.display.get_surface() or screen
-        target_size = cap_web_surface_size(*display_surface.get_size())
-        if target_size == display_surface.get_size():
-            return display_surface, None, None
-        runtime = _runtime()
-        render_surface = runtime.get("_web_gameplay_render_surface")
-        if render_surface is None or render_surface.get_size() != target_size:
-            try:
-                render_surface = pygame.Surface(target_size).convert()
-            except Exception:
-                render_surface = pygame.Surface(target_size)
-            runtime["_web_gameplay_render_surface"] = render_surface
-        prev_view = (int(getattr(game, "VIEW_W", target_size[0])), int(getattr(game, "VIEW_H", target_size[1])))
-        game.VIEW_W, game.VIEW_H = target_size
-        return render_surface, display_surface, prev_view
+        display_size = display_surface.get_size()
+        game.VIEW_W, game.VIEW_H = display_size
+        return display_surface, None, None
 
     def _present_gameplay_render(render_surface: pygame.Surface, display_surface: pygame.Surface | None,
                                  prev_view: tuple[int, int] | None, *, copy_frame: bool) -> pygame.Surface | None:

@@ -32,10 +32,14 @@ from zgame.browser import (
     WEB_MAX_DAMAGE_TEXTS,
     WEB_MAX_FX_PARTICLES,
     WEB_ENEMY_CAP,
+    WEB_ENEMY_SPEED_MULT,
+    WEB_CONTACT_DAMAGE_MULT,
+    WEB_PLAYER_HIT_COOLDOWN_MULT,
     WEB_MAX_SPOILS_ON_FIELD,
     WEB_DISABLE_FX_AUDIO,
     WEB_FLOW_REFRESH_INTERVAL,
     WEB_SKIP_BULLETS,
+    WEB_DISABLE_TIMED_SPAWNS,
     WEB_SKIP_ENEMY_SPOIL_COLLECT,
     WEB_SKIP_ENEMY_MOVE,
     WEB_SKIP_ENEMY_SPECIAL,
@@ -51,6 +55,8 @@ from zgame.browser import (
     WEB_RENDER_INTERVAL,
     WEB_SINGLE_BGM,
     WEB_SPATIAL_REFRESH_INTERVAL,
+    WEB_SPAWN_INTERVAL_MULT,
+    WEB_THREAT_BUDGET_MULT,
     WEB_INPUT,
     WEB_TARGET_FPS,
     WEB_USE_LITE_RENDER,
@@ -140,7 +146,6 @@ def _handle_web_window_event(event) -> pygame.Surface | None:
         return pygame.display.get_surface()
     width = max(640, int(getattr(event, "w", 0) or VIEW_W or WEB_WINDOW_SIZE[0]))
     height = max(360, int(getattr(event, "h", 0) or VIEW_H or WEB_WINDOW_SIZE[1]))
-    width, height = cap_web_surface_size(width, height)
     surface = pygame.display.set_mode((width, height), pygame.RESIZABLE)
     _refresh_viewport(surface)
     _invalidate_view_caches()
