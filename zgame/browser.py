@@ -75,13 +75,13 @@ WEB_ALLOW_LITE_RENDER = IS_WEB
 WEB_QUALITY_ORDER = ("full", "balanced", "safe")
 WEB_QUALITY_PRESETS = {
     "full": {
-        "target_fps": 18,
+        "target_fps": 24,
         "flow_refresh_interval": 1.00,
         "spatial_refresh_interval": 0.32,
         "enemy_cap": 2,
         "max_render_width": 1600,
         "max_render_height": 900,
-        "render_interval": 1.0 / 18.0,
+        "render_interval": 1.0 / 24.0,
         "render_scale": 1.0,
         "max_damage_texts": 4,
         "max_fx_particles": 16,

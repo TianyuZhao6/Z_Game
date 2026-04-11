@@ -491,8 +491,8 @@ async def show_instruction_web(game, screen):
         await _yield_menu_web_frame(game, "_web_instruction_last_frame_s")
 
 
-def show_pause_menu(game, screen, background_surf):
-    """Draw pause overlay with build info in the dimmed background, keeping buttons centered."""
+def _build_pause_menu_state(game, screen, background_surf):
+    """Build the pause menu background/state once; input loops reuse this frame."""
     state = _state(game)
     meta = _meta(game)
     dim = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
@@ -683,32 +683,75 @@ def show_pause_menu(game, screen, background_surf):
         (pygame.Rect(panel.centerx - btn_w // 2, start_y + i * (btn_h + spacing), btn_w, btn_h), tag, label)
         for i, (label, tag) in enumerate(labels)
     ]
+    return {
+        "pause_bg": pause_bg,
+        "panel": panel,
+        "title_surf": title_surf,
+        "btns": btns,
+        "owned_rows": owned_rows,
+        "desc_font": desc_font,
+        "view_size": (int(game.VIEW_W), int(game.VIEW_H)),
+    }
 
-    def redraw(hover_tag: str | None):
-        pygame.draw.rect(screen, game.UI_PANEL, panel, border_radius=16)
-        pygame.draw.rect(screen, game.UI_BORDER, panel, width=3, border_radius=16)
-        screen.blit(title_surf, title_surf.get_rect(center=(panel.centerx, panel.top + 58)))
-        for rect, tag, label in btns:
-            hover = tag == hover_tag
-            fill = None
-            border = None
-            if tag == "exit":
-                fill = (200, 50, 50)
-                border = (255, 120, 120)
-            game.draw_neuro_button(
-                screen,
-                rect,
-                label,
-                pygame.font.SysFont(None, 32),
-                hovered=hover,
-                disabled=False,
-                t=pygame.time.get_ticks() * 0.001,
-                fill_col=fill,
-                border_col=border,
-                show_spike=False,
-            )
 
+def _draw_pause_menu_frame(game, screen, pause_state, hover_tag: str | None, mouse_pos) -> None:
+    panel = pause_state["panel"]
+    title_surf = pause_state["title_surf"]
+    btns = pause_state["btns"]
+    owned_rows = pause_state["owned_rows"]
+    desc_font = pause_state["desc_font"]
+    pause_bg = pause_state["pause_bg"]
+    meta = _meta(game)
+
+    screen.blit(pause_bg, (0, 0))
+    pygame.draw.rect(screen, game.UI_PANEL, panel, border_radius=16)
+    pygame.draw.rect(screen, game.UI_BORDER, panel, width=3, border_radius=16)
+    screen.blit(title_surf, title_surf.get_rect(center=(panel.centerx, panel.top + 58)))
+    for rect, tag, label in btns:
+        hover = tag == hover_tag
+        fill = None
+        border = None
+        if tag == "exit":
+            fill = (200, 50, 50)
+            border = (255, 120, 120)
+        game.draw_neuro_button(
+            screen,
+            rect,
+            label,
+            pygame.font.SysFont(None, 32),
+            hovered=hover,
+            disabled=False,
+            t=pygame.time.get_ticks() * 0.001,
+            fill_col=fill,
+            border_col=border,
+            show_spike=False,
+        )
+
+    tooltip_txt = None
+    tooltip_pos = None
+    if owned_rows:
+        for row_rect, ent in owned_rows:
+            if row_rect.collidepoint(mouse_pos):
+                tooltip_txt = game.detailed_prop_tooltip_text(ent["itm"], ent["lvl"], meta)
+                tooltip_pos = (row_rect.right + 10, row_rect.centery)
+                break
+    if tooltip_txt:
+        tip_surf = desc_font.render(tooltip_txt, True, (235, 235, 235))
+        pad = 8
+        bg = pygame.Surface((tip_surf.get_width() + pad * 2, tip_surf.get_height() + pad * 2), pygame.SRCALPHA)
+        pygame.draw.rect(bg, (30, 30, 36, 230), bg.get_rect(), border_radius=10)
+        pygame.draw.rect(bg, (120, 150, 210, 240), bg.get_rect(), 2, border_radius=10)
+        bg.blit(tip_surf, (pad, pad))
+        bx = min(game.VIEW_W - bg.get_width() - 10, tooltip_pos[0])
+        by = max(60, min(game.VIEW_H - bg.get_height() - 60, tooltip_pos[1] - bg.get_height() // 2))
+        screen.blit(bg, (bx, by))
     pygame.display.flip()
+
+
+def show_pause_menu(game, screen, background_surf):
+    """Draw pause overlay with build info in the dimmed background, keeping buttons centered."""
+    pause_state = _build_pause_menu_state(game, screen, background_surf)
+    btns = pause_state["btns"]
     while True:
         mx, my = pygame.mouse.get_pos()
         hover_tag = None
@@ -716,28 +759,11 @@ def show_pause_menu(game, screen, background_surf):
             if rect.collidepoint((mx, my)):
                 hover_tag = tag
                 break
-        screen.blit(pause_bg, (0, 0))
-        redraw(hover_tag)
-        tooltip_txt = None
-        tooltip_pos = None
-        if owned_rows:
-            for row_rect, ent in owned_rows:
-                if row_rect.collidepoint((mx, my)):
-                    tooltip_txt = game.detailed_prop_tooltip_text(ent["itm"], ent["lvl"], meta)
-                    tooltip_pos = (row_rect.right + 10, row_rect.centery)
-                    break
-        if tooltip_txt:
-            tip_surf = desc_font.render(tooltip_txt, True, (235, 235, 235))
-            pad = 8
-            bg = pygame.Surface((tip_surf.get_width() + pad * 2, tip_surf.get_height() + pad * 2), pygame.SRCALPHA)
-            pygame.draw.rect(bg, (30, 30, 36, 230), bg.get_rect(), border_radius=10)
-            pygame.draw.rect(bg, (120, 150, 210, 240), bg.get_rect(), 2, border_radius=10)
-            bg.blit(tip_surf, (pad, pad))
-            bx = min(game.VIEW_W - bg.get_width() - 10, tooltip_pos[0])
-            by = max(60, min(game.VIEW_H - bg.get_height() - 60, tooltip_pos[1] - bg.get_height() // 2))
-            screen.blit(bg, (bx, by))
-        pygame.display.flip()
+        _draw_pause_menu_frame(game, screen, pause_state, hover_tag, (mx, my))
         for event in pygame.event.get():
+            if getattr(game, "IS_WEB", False):
+                screen = game._handle_web_window_event(event) or screen
+                game._sync_web_input_event(event)
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -751,3 +777,36 @@ def show_pause_menu(game, screen, background_surf):
                     if rect.collidepoint(event.pos):
                         game.flush_events()
                         return tag
+
+
+async def show_pause_menu_web(game, screen, background_surf):
+    pause_state = _build_pause_menu_state(game, screen, background_surf)
+    btns = pause_state["btns"]
+    while True:
+        if tuple(screen.get_size()) != tuple(pause_state.get("view_size", ())):
+            pause_state = _build_pause_menu_state(game, screen, background_surf)
+            btns = pause_state["btns"]
+        mx, my = pygame.mouse.get_pos()
+        hover_tag = None
+        for rect, tag, _ in btns:
+            if rect.collidepoint((mx, my)):
+                hover_tag = tag
+                break
+        _draw_pause_menu_frame(game, screen, pause_state, hover_tag, (mx, my))
+        for event in pygame.event.get():
+            screen = game._handle_web_window_event(event) or screen
+            game._sync_web_input_event(event)
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if is_web_interaction_event(event):
+                game._resume_bgm_if_needed(min_interval_s=0.0)
+            if is_escape_event(event):
+                game.flush_events()
+                return "continue"
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                for rect, tag, _ in btns:
+                    if rect.collidepoint(event.pos):
+                        game.flush_events()
+                        return tag
+        await _yield_menu_web_frame(game, "_web_pause_last_frame_s")

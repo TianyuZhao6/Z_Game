@@ -15,6 +15,17 @@ def _meta(game):
     return rs.meta(game)
 
 
+def _grid_positions(game):
+    cache_key = "_spawn_grid_positions_cache"
+    cached = getattr(game, cache_key, None)
+    expected = int(game.GRID_SIZE) * int(game.GRID_SIZE)
+    if isinstance(cached, tuple) and len(cached) == expected:
+        return cached
+    positions = tuple((x, y) for x in range(game.GRID_SIZE) for y in range(game.GRID_SIZE))
+    setattr(game, cache_key, positions)
+    return positions
+
+
 def is_boss_level(game, level_idx_zero_based: int) -> bool:
     return ((level_idx_zero_based + 1) % game.BOSS_EVERY_N_LEVELS) == 0
 
@@ -36,11 +47,24 @@ def pick_type_by_budget(game, rem: int, level_idx_zero_based: int):
             return level_idx_zero_based >= game.SPLINTER_UNLOCK_LEVEL
         return True
 
+    web_safe_types = None
+    if getattr(game, "IS_WEB", False) and (not bool(getattr(game, "WEB_DISABLE_TIMED_SPAWNS", False))):
+        web_safe_types = {"basic", "fast", "strong", "tank"}
     choices = [
         (enemy_type, weight)
         for enemy_type, weight in game.THREAT_WEIGHTS.items()
-        if game.THREAT_COSTS.get(enemy_type, 999) <= rem and _unlocked(enemy_type)
+        if (
+            game.THREAT_COSTS.get(enemy_type, 999) <= rem
+            and _unlocked(enemy_type)
+            and (web_safe_types is None or enemy_type in web_safe_types)
+        )
     ]
+    if not choices and web_safe_types is not None:
+        choices = [
+            (enemy_type, weight)
+            for enemy_type, weight in game.THREAT_WEIGHTS.items()
+            if game.THREAT_COSTS.get(enemy_type, 999) <= rem and _unlocked(enemy_type)
+        ]
     if not choices:
         return None
     total = sum(weight for _, weight in choices)
@@ -54,7 +78,7 @@ def pick_type_by_budget(game, rem: int, level_idx_zero_based: int):
 
 
 def spawn_positions(game, game_state, player, enemies, want: int):
-    all_pos = [(x, y) for x in range(game.GRID_SIZE) for y in range(game.GRID_SIZE)]
+    all_pos = _grid_positions(game)
     blocked = set(game_state.obstacles.keys()) | set((item.x, item.y) for item in getattr(game_state, "items", []))
     px = int(player.rect.centerx // game.CELL_SIZE)
     py = int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
@@ -90,9 +114,9 @@ def promote_to_boss(game, enemy):
     game.set_enemy_size_category(enemy)
 
 
-def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_index: int, enemies, cap: int) -> int:
+def _begin_wave_spawn_plan(game, game_state, player, current_level: int, wave_index: int, enemies, cap: int):
     if len(enemies) >= cap:
-        return 0
+        return None
     budget = budget_for_level(game, current_level)
     web_diag = bool(getattr(game, "IS_WEB", False) and getattr(game, "WEB_DIAG_MODE", False))
     wave_started_at = time.perf_counter()
@@ -109,9 +133,19 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
     spots_elapsed_ms = (time.perf_counter() - spots_started_at) * 1000.0
     if web_diag:
         print(f"[WebSpawn] spots wave={int(wave_index)} count={len(spots)} took={spots_elapsed_ms:.1f}ms")
-    spawned = 0
-    boss_done = False
-    spawned_types: list[str] = []
+    plan = {
+        "wave_index": int(wave_index),
+        "current_level": int(current_level),
+        "budget": int(budget),
+        "force_boss": bool(force_boss),
+        "boss_done": False,
+        "spawned": 0,
+        "spawned_types": [],
+        "spots": spots,
+        "spot_index": 0,
+        "wave_started_at": float(wave_started_at),
+        "web_diag": bool(web_diag),
+    }
     state = _state(game)
     meta = _meta(game)
     try:
@@ -149,7 +183,7 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
             bandit.radar_ring_period = 2.0
             bandit.radar_ring_phase = 0.0
         enemies.append(bandit)
-        spawned_types.append("bandit")
+        plan["spawned_types"].append("bandit")
         game_state.bandit_spawned_this_level = True
         game_state.pending_focus = ("bandit", (cx, cy))
         if hasattr(game_state, "flash_banner"):
@@ -163,11 +197,47 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
                 game.TelegraphCircle(cx, cy, int(game.CELL_SIZE * 1.1), 0.9, kind="bandit", color=(255, 215, 0))
             )
         game.apply_biome_on_enemy_spawn(bandit, game_state)
+    return plan
 
-    i = 0
-    while i < len(spots) and len(enemies) < cap:
+
+def _finish_wave_spawn_plan(game, plan, enemies) -> int:
+    if not isinstance(plan, dict):
+        return 0
+    total_elapsed_ms = (time.perf_counter() - float(plan.get("wave_started_at", time.perf_counter()))) * 1000.0
+    web_diag = bool(plan.get("web_diag", False))
+    spawned_types = list(plan.get("spawned_types", []) or [])
+    if web_diag or total_elapsed_ms >= 120.0:
+        type_summary = ",".join(spawned_types[:8])
+        if len(spawned_types) > 8:
+            type_summary += ",..."
+        print(
+            f"[WebSpawn] end wave={int(plan.get('wave_index', 0))} spawned={int(plan.get('spawned', 0))} "
+            f"total={len(enemies)} took={total_elapsed_ms:.1f}ms types={type_summary}"
+        )
+    return int(plan.get("spawned", 0) or 0)
+
+
+def continue_wave_spawn_plan(game, game_state, player, enemies, cap: int, plan, *, batch_limit: int | None = None):
+    if not isinstance(plan, dict):
+        return 0, True, 0
+    spots = plan.get("spots", []) or []
+    i = int(plan.get("spot_index", 0) or 0)
+    current_level = int(plan.get("current_level", 0) or 0)
+    force_boss = bool(plan.get("force_boss", False))
+    boss_done = bool(plan.get("boss_done", False))
+    budget = int(plan.get("budget", 0) or 0)
+    wave_index = int(plan.get("wave_index", 0) or 0)
+    spawned = int(plan.get("spawned", 0) or 0)
+    spawned_types = list(plan.get("spawned_types", []) or [])
+    if batch_limit is None:
+        steps_left = len(spots) - i
+    else:
+        steps_left = max(1, int(batch_limit))
+    spawned_now = 0
+    while i < len(spots) and len(enemies) < cap and steps_left > 0:
         gx, gy = spots[i]
         i += 1
+        steps_left -= 1
         if force_boss and not boss_done:
             gx0 = max(0, min(gx, game.GRID_SIZE - game.BOSS_FOOTPRINT_TILES))
             gy0 = max(0, min(gy, game.GRID_SIZE - game.BOSS_FOOTPRINT_TILES))
@@ -271,6 +341,7 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
         )
         enemy_type = pick_type_by_budget(game, max(1, remaining), current_level)
         if not enemy_type:
+            i = len(spots)
             break
         enemy = game.make_scaled_enemy(
             (gx, gy),
@@ -283,13 +354,33 @@ def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_in
         enemies.append(enemy)
         spawned_types.append(str(enemy_type or getattr(enemy, "type", "unknown")))
         spawned += 1
-    total_elapsed_ms = (time.perf_counter() - wave_started_at) * 1000.0
-    if web_diag or total_elapsed_ms >= 120.0:
-        type_summary = ",".join(spawned_types[:8])
-        if len(spawned_types) > 8:
-            type_summary += ",..."
-        print(
-            f"[WebSpawn] end wave={int(wave_index)} spawned={int(spawned)} total={len(enemies)} "
-            f"took={total_elapsed_ms:.1f}ms types={type_summary}"
+        spawned_now += 1
+    plan["spot_index"] = i
+    plan["boss_done"] = boss_done
+    plan["spawned"] = spawned
+    plan["spawned_types"] = spawned_types
+    done = i >= len(spots) or len(enemies) >= cap
+    total_spawned = _finish_wave_spawn_plan(game, plan, enemies) if done else spawned
+    return spawned_now, done, total_spawned
+
+
+def spawn_wave_with_budget(game, game_state, player, current_level: int, wave_index: int, enemies, cap: int) -> int:
+    plan = _begin_wave_spawn_plan(game, game_state, player, current_level, wave_index, enemies, cap)
+    if not isinstance(plan, dict):
+        return 0
+    while True:
+        _, done, total_spawned = continue_wave_spawn_plan(
+            game,
+            game_state,
+            player,
+            enemies,
+            cap,
+            plan,
+            batch_limit=max(1, len(plan.get("spots", []) or [])),
         )
-    return spawned
+        if done:
+            return total_spawned
+
+
+def prepare_wave_spawn_plan(game, game_state, player, current_level: int, wave_index: int, enemies, cap: int):
+    return _begin_wave_spawn_plan(game, game_state, player, current_level, wave_index, enemies, cap)

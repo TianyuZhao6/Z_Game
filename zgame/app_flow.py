@@ -291,6 +291,54 @@ def _web_spawn_interval(game) -> float:
     return max(4.0, base * float(getattr(game, "WEB_SPAWN_INTERVAL_MULT", 1.0) or 1.0))
 
 
+def _effective_enemy_cap(game, base_cap: int) -> int:
+    cap = max(1, int(base_cap or 1))
+    if not getattr(game, "IS_WEB", False):
+        return cap
+    if not bool(getattr(game, "WEB_DISABLE_TIMED_SPAWNS", False)):
+        return min(cap, 1)
+    return cap
+
+
+def _clear_pending_wave_spawn(runtime) -> None:
+    runtime.pop("_web_pending_wave_spawn", None)
+
+
+def _web_wave_spawn_batch(game) -> int | None:
+    if not getattr(game, "IS_WEB", False):
+        return None
+    return max(1, int(getattr(game, "WEB_WAVE_SPAWN_BATCH", 1) or 1))
+
+
+def _step_pending_wave_spawn(game, runtime, game_state, player, enemies, enemy_cap: int) -> tuple[bool, int]:
+    pending = runtime.get("_web_pending_wave_spawn")
+    if not isinstance(pending, dict):
+        return False, 0
+    _, done, total_spawned = game.continue_wave_spawn_plan(
+        game_state,
+        player,
+        enemies,
+        enemy_cap,
+        pending,
+        batch_limit=_web_wave_spawn_batch(game),
+    )
+    if done:
+        _clear_pending_wave_spawn(runtime)
+        return True, int(total_spawned)
+    runtime["_web_pending_wave_spawn"] = pending
+    return False, 0
+
+
+def _begin_wave_spawn(game, runtime, game_state, player, current_level: int, wave_index: int, enemies, enemy_cap: int) -> tuple[bool, int]:
+    if not getattr(game, "IS_WEB", False):
+        return True, int(game.spawn_wave_with_budget(game_state, player, current_level, wave_index, enemies, enemy_cap))
+    pending = game.prepare_wave_spawn_plan(game_state, player, current_level, wave_index, enemies, enemy_cap)
+    if not isinstance(pending, dict):
+        return True, 0
+    runtime["_web_pending_wave_spawn"] = pending
+    return _step_pending_wave_spawn(game, runtime, game_state, player, enemies, enemy_cap)
+
+
 def _web_player_hit_cooldown(game) -> float:
     cooldown = float(getattr(game, "PLAYER_HIT_COOLDOWN", 0.6) or 0.6)
     if not getattr(game, "IS_WEB", False):
@@ -432,6 +480,7 @@ def _level_layout_seed(game, level_idx: int, config: dict) -> int:
 async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Optional[str], pygame.Surface]:
     runtime = rs.runtime(game)
     meta = rs.meta(game)
+    _clear_pending_wave_spawn(runtime)
     pygame.display.set_caption('Enemy Card Game 闂?Level')
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
@@ -450,7 +499,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     runtime['_time_left_runtime'] = time_left
     runtime['_coins_at_level_start'] = int(meta.get('spoils', 0))
     level_config = game._web_level_config(config)
-    enemy_cap = game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP
+    enemy_cap = _effective_enemy_cap(game, game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP)
     combat_bgm_started = _combat_bgm_selected(game)
     if game.IS_WEB and bool(getattr(game, "WEB_SINGLE_BGM", False)):
         # Browser compatibility mode: avoid delayed mid-run track swaps.
@@ -766,12 +815,29 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             running = False
         _profile_mark(profiler, "spawn")
         _web_diag_trace(game, profiler, "spawn")
+        spawn_completed, spawned = _step_pending_wave_spawn(game, runtime, game_state, player, enemies, enemy_cap)
+        if spawn_completed and spawned > 0:
+            wave_index += 1
+            runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
         spawn_timer += dt
-        if (not bool(getattr(game, "WEB_DISABLE_TIMED_SPAWNS", False))) and spawn_timer >= _web_spawn_interval(game):
+        if (
+            (not bool(getattr(game, "WEB_DISABLE_TIMED_SPAWNS", False)))
+            and runtime.get("_web_pending_wave_spawn") is None
+            and spawn_timer >= _web_spawn_interval(game)
+        ):
             spawn_timer = 0.0
             if len(enemies) < enemy_cap:
-                spawned = game.spawn_wave_with_budget(game_state, player, game.current_level, wave_index, enemies, enemy_cap)
-                if spawned > 0:
+                spawn_completed, spawned = _begin_wave_spawn(
+                    game,
+                    runtime,
+                    game_state,
+                    player,
+                    game.current_level,
+                    wave_index,
+                    enemies,
+                    enemy_cap,
+                )
+                if spawn_completed and spawned > 0:
                     wave_index += 1
                     runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
         _profile_mark(profiler, "events")
@@ -804,7 +870,10 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 continue
             if is_escape_event(event):
                 bg = last_frame or game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=game_state.obstacles)
-                choice, time_left = game.pause_game_modal(screen, bg, clock, time_left, player)
+                if game.IS_WEB:
+                    choice, time_left = await game.pause_game_modal_web(screen, bg, clock, time_left, player)
+                else:
+                    choice, time_left = game.pause_game_modal(screen, bg, clock, time_left, player)
                 if choice == 'continue':
                     pass
                 elif choice == 'restart':
@@ -920,7 +989,10 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                     f"level={int(getattr(player, 'level', 1))} xp={int(getattr(player, 'xp', 0))}/{int(getattr(player, 'xp_to_next', 0))}"
                 )
             bg = last_frame or game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles)
-            time_left = game.levelup_modal(screen, bg, clock, time_left, player)
+            if game.IS_WEB:
+                time_left = await game.levelup_modal_web(screen, bg, clock, time_left, player)
+            else:
+                time_left = game.levelup_modal(screen, bg, clock, time_left, player)
             player.levelup_pending -= 1
             last_frame = game.render_game_iso(
                 screen,
@@ -1217,6 +1289,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     enemy_shots: List[game.EnemyShot] = []
     time_left = min(float(snap.get('time_left', _effective_level_time_limit(game, level_idx))), _effective_level_time_limit(game, level_idx))
     runtime['_time_left_runtime'] = time_left
+    _clear_pending_wave_spawn(runtime)
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
     if game.IS_WEB and runtime.get("_menu_transition_frame") is not None:
@@ -1226,7 +1299,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     last_frame = None
     has_rendered_frame = False
     chosen_enemy_type = saved_meta.get('chosen_enemy_type', 'basic')
-    enemy_cap = game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP
+    enemy_cap = _effective_enemy_cap(game, game.WEB_ENEMY_CAP if game.IS_WEB else game.ENEMY_CAP)
     combat_bgm_started = _combat_bgm_selected(game)
     if game.IS_WEB and bool(getattr(game, "WEB_SINGLE_BGM", False)):
         combat_bgm_started = True
@@ -1361,7 +1434,10 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 continue
             if is_escape_event(event):
                 bg = last_frame or game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=game_state.obstacles)
-                choice, time_left = game.pause_game_modal(screen, bg, clock, time_left, player)
+                if game.IS_WEB:
+                    choice, time_left = await game.pause_game_modal_web(screen, bg, clock, time_left, player)
+                else:
+                    choice, time_left = game.pause_game_modal(screen, bg, clock, time_left, player)
                 if choice == 'continue':
                     pass
                 elif choice == 'restart':
@@ -1466,12 +1542,29 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 bullets.remove(b)
         _flush_pending_bullets(game, bullets, game_state, player)
         _profile_mark(profiler, "spawn")
+        spawn_completed, spawned = _step_pending_wave_spawn(game, runtime, game_state, player, enemies, enemy_cap)
+        if spawn_completed and spawned > 0:
+            wave_index += 1
+            runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
         spawn_timer += dt
-        if (not bool(getattr(game, "WEB_DISABLE_TIMED_SPAWNS", False))) and spawn_timer >= _web_spawn_interval(game):
+        if (
+            (not bool(getattr(game, "WEB_DISABLE_TIMED_SPAWNS", False)))
+            and runtime.get("_web_pending_wave_spawn") is None
+            and spawn_timer >= _web_spawn_interval(game)
+        ):
             spawn_timer = 0.0
             if len(enemies) < enemy_cap:
-                spawned = game.spawn_wave_with_budget(game_state, player, level_idx, wave_index, enemies, enemy_cap)
-                if spawned > 0:
+                spawn_completed, spawned = _begin_wave_spawn(
+                    game,
+                    runtime,
+                    game_state,
+                    player,
+                    level_idx,
+                    wave_index,
+                    enemies,
+                    enemy_cap,
+                )
+                if spawn_completed and spawned > 0:
                     wave_index += 1
                     runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
         player.hit_cd = max(0.0, player.hit_cd - dt)

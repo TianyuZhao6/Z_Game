@@ -138,6 +138,124 @@ async def show_settings_popup_web(game, screen, background_surf):
         await asyncio.sleep(0)
 
 
+async def show_levelup_overlay_web(game, screen, background_surf, player):
+    import random
+
+    clock = pygame.time.Clock()
+    pool = [
+        {"key": "dmg", "title": "+1 Damage", "desc": "Increase your bullet damage by 1."},
+        {"key": "firerate", "title": "+5% Fire Rate", "desc": "Shoot slightly faster (multiplicative)."},
+        {"key": "range", "title": "+10% Range", "desc": "Longer effective range for shots."},
+        {"key": "speed", "title": "+5% Speed", "desc": "Move faster."},
+        {"key": "maxhp", "title": "+5 Max HP", "desc": "Increase max HP and heal 10."},
+        {"key": "crit", "title": "+2% Crit", "desc": "Increase critical hit chance slightly"},
+    ]
+    speed_cap = getattr(game, "PLAYER_SPEED_CAP", None)
+    if speed_cap is not None and player is not None:
+        try:
+            cur_spd = float(getattr(player, "speed", 0.0))
+            if cur_spd >= float(speed_cap) - 1e-6:
+                pool = [p for p in pool if p.get("key") != "speed"]
+        except Exception:
+            pass
+    if player is not None:
+        try:
+            cur_crit = float(getattr(player, "crit_chance", 0.0))
+            if cur_crit >= 0.75 - 1e-6:
+                pool = [p for p in pool if p.get("key") != "crit"]
+        except Exception:
+            pass
+    if not pool:
+        pool = [
+            {"key": "dmg", "title": "+1 Damage", "desc": "Increase your bullet damage by 1."},
+            {"key": "maxhp", "title": "+5 Max HP", "desc": "Increase max HP and heal 10."},
+            {"key": "firerate", "title": "+5% Fire Rate", "desc": "Shoot slightly faster (multiplicative)."},
+            {"key": "range", "title": "+10% Range", "desc": "Longer effective range for shots."},
+        ]
+    cards = random.sample(pool, k=min(4, len(pool)))
+    title_font = pygame.font.SysFont(None, 64)
+    head_font = pygame.font.SysFont(None, 30)
+    body_font = pygame.font.SysFont(None, 24)
+    hover = -1
+
+    def _layout():
+        w, h = screen.get_size()
+        card_w, card_h = 420, 140
+        gap_x, gap_y = 32, 28
+        total_w = 2 * card_w + gap_x
+        total_h = 2 * card_h + gap_y
+        base_x = (w - total_w) // 2
+        base_y = (h - total_h) // 2 + 10
+        rects = []
+        for i in range(len(cards)):
+            cx = base_x + (i % 2) * (card_w + gap_x)
+            cy = base_y + (i // 2) * (card_h + gap_y)
+            rects.append(pygame.Rect(cx, cy, card_w, card_h))
+        dim = pygame.Surface((w, h), pygame.SRCALPHA)
+        dim.fill((0, 0, 0, 140))
+        title = title_font.render("LEVEL UP - CHOOSE ONE", True, (235, 235, 235))
+        title_rect = title.get_rect(center=(w // 2, base_y - 48))
+        return rects, dim, title, title_rect
+
+    while True:
+        rects, dim, title, title_rect = _layout()
+        mx, my = pygame.mouse.get_pos()
+        hover = -1
+        for i, rect in enumerate(rects):
+            if rect.collidepoint(mx, my):
+                hover = i
+                break
+        screen.blit(background_surf, (0, 0))
+        screen.blit(dim, (0, 0))
+        screen.blit(title, title_rect)
+        for i, (rect, card) in enumerate(zip(rects, cards)):
+            shadow = rect.inflate(18, 18)
+            pygame.draw.rect(screen, (0, 0, 0, 90), shadow, border_radius=18)
+            pygame.draw.rect(screen, (35, 36, 38), rect, border_radius=14)
+            border_col = (200, 200, 200) if i == hover else (120, 120, 120)
+            pygame.draw.rect(screen, border_col, rect, width=2, border_radius=14)
+            idx_lbl = head_font.render(str(i + 1), True, (210, 210, 210))
+            screen.blit(idx_lbl, idx_lbl.get_rect(midleft=(rect.left + 14, rect.top + 18)))
+            title_surf = head_font.render(card["title"], True, (230, 230, 230))
+            screen.blit(title_surf, title_surf.get_rect(topleft=(rect.left + 44, rect.top + 12)))
+            desc_surf = body_font.render(card["desc"], True, (195, 195, 195))
+            screen.blit(desc_surf, desc_surf.get_rect(topleft=(rect.left + 20, rect.top + 56)))
+        pygame.display.flip()
+        for event in pygame.event.get():
+            screen = game._handle_web_window_event(event) or screen
+            game._sync_web_input_event(event)
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if is_web_interaction_event(event):
+                game._resume_bgm_if_needed(min_interval_s=0.0)
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_1, pygame.K_KP_1) and len(cards) >= 1:
+                    return cards[0]["key"]
+                if event.key in (pygame.K_2, pygame.K_KP_2) and len(cards) >= 2:
+                    return cards[1]["key"]
+                if event.key in (pygame.K_3, pygame.K_KP_3) and len(cards) >= 3:
+                    return cards[2]["key"]
+                if event.key in (pygame.K_4, pygame.K_KP_4) and len(cards) >= 4:
+                    return cards[3]["key"]
+                if is_escape_event(event):
+                    continue
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and hover != -1:
+                return cards[hover]["key"]
+        clock.tick(60)
+        await asyncio.sleep(0)
+
+
+async def levelup_modal_web(game, screen, bg_surface, clock, time_left, player):
+    key = await show_levelup_overlay_web(game, screen, bg_surface, player)
+    if key:
+        game._apply_levelup_choice(player, key)
+    rs.runtime(game)["_time_left_runtime"] = time_left
+    clock.tick(60)
+    game.flush_events()
+    return time_left
+
+
 async def show_fail_screen(game, screen, background_surf):
     def _draw_overlay() -> tuple[pygame.Rect, pygame.Rect]:
         dim = pygame.Surface((game.VIEW_W, game.VIEW_H))
@@ -165,7 +283,10 @@ async def show_fail_screen(game, screen, background_surf):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
             if is_escape_event(event):
                 bg = pygame.display.get_surface().copy()
-                pick = game.pause_from_overlay(screen, bg)
+                if game.IS_WEB:
+                    pick = await game.pause_from_overlay_web(screen, bg)
+                else:
+                    pick = game.pause_from_overlay(screen, bg)
                 if pick == "continue":
                     retry, home = _draw_overlay()
                     continue
@@ -219,6 +340,9 @@ async def show_success_screen(game, screen, background_surf, reward_choices):
     pygame.display.flip()
     while True:
         for event in pygame.event.get():
+            if getattr(game, "IS_WEB", False):
+                screen = game._handle_web_window_event(event) or screen
+                game._sync_web_input_event(event)
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
@@ -226,7 +350,10 @@ async def show_success_screen(game, screen, background_surf, reward_choices):
                 game._resume_bgm_if_needed(min_interval_s=0.0)
             if is_escape_event(event):
                 bg = pygame.display.get_surface().copy()
-                pick = game.pause_from_overlay(screen, bg)
+                if game.IS_WEB:
+                    pick = await game.pause_from_overlay_web(screen, bg)
+                else:
+                    pick = game.pause_from_overlay(screen, bg)
                 if pick == "continue":
                     dim = pygame.Surface((game.VIEW_W, game.VIEW_H))
                     dim.set_alpha(150)

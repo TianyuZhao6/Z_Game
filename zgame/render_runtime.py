@@ -456,6 +456,64 @@ def install(game):
             area=pygame.Rect(int(src_x), int(src_y), int(src_w), int(src_h)),
         )
 
+    def _get_web_static_background_cache(game_state, *, wall_h: int) -> dict[str, object]:
+        floor_cache = _get_iso_floor_cache()
+        wall_cache = _get_web_wall_layer_cache(game_state, wall_h=wall_h)
+        floor_surface = floor_cache.get("surface")
+        wall_surface = wall_cache.get("surface")
+        floor_key = tuple(floor_cache.get("key", ()))
+        wall_key = tuple(wall_cache.get("key", ()))
+        key = (floor_key, wall_key)
+        cached = getattr(game_state, "_web_static_bg_cache", None)
+        if isinstance(cached, dict) and cached.get("key") == key:
+            return cached
+        if not isinstance(floor_surface, pygame.Surface):
+            cached = {"key": key, "surface": None, "x0": 0, "y0": 0}
+            setattr(game_state, "_web_static_bg_cache", cached)
+            return cached
+        x0 = int(floor_cache.get("x0", 0))
+        y0 = int(floor_cache.get("y0", 0))
+        max_x = x0 + floor_surface.get_width()
+        max_y = y0 + floor_surface.get_height()
+        if isinstance(wall_surface, pygame.Surface):
+            wall_x0 = int(wall_cache.get("x0", 0))
+            wall_y0 = int(wall_cache.get("y0", 0))
+            x0 = min(x0, wall_x0)
+            y0 = min(y0, wall_y0)
+            max_x = max(max_x, wall_x0 + wall_surface.get_width())
+            max_y = max(max_y, wall_y0 + wall_surface.get_height())
+        surface = pygame.Surface((max(1, max_x - x0), max(1, max_y - y0)), pygame.SRCALPHA)
+        surface.blit(floor_surface, (int(floor_cache.get("x0", 0)) - x0, int(floor_cache.get("y0", 0)) - y0))
+        if isinstance(wall_surface, pygame.Surface):
+            surface.blit(wall_surface, (int(wall_cache.get("x0", 0)) - x0, int(wall_cache.get("y0", 0)) - y0))
+        try:
+            surface = surface.convert_alpha()
+        except Exception:
+            pass
+        cached = {"key": key, "surface": surface, "x0": x0, "y0": y0}
+        setattr(game_state, "_web_static_bg_cache", cached)
+        return cached
+
+    def _blit_web_static_background(screen: pygame.Surface, game_state, camx: float, camy: float, *, wall_h: int) -> None:
+        cache = _get_web_static_background_cache(game_state, wall_h=wall_h)
+        surface = cache.get("surface")
+        if not isinstance(surface, pygame.Surface):
+            return
+        dest_x = int(cache.get("x0", 0) - camx)
+        dest_y = int(cache.get("y0", 0) - camy)
+        view_w, view_h = screen.get_size()
+        src_x = max(0, -dest_x)
+        src_y = max(0, -dest_y)
+        src_w = min(surface.get_width() - src_x, max(0, view_w - max(0, dest_x)))
+        src_h = min(surface.get_height() - src_y, max(0, view_h - max(0, dest_y)))
+        if src_w <= 0 or src_h <= 0:
+            return
+        screen.blit(
+            surface,
+            (dest_x + src_x, dest_y + src_y),
+            area=pygame.Rect(int(src_x), int(src_y), int(src_w), int(src_h)),
+        )
+
     def _screen_visible_point(x: float, y: float, *, margin: int = 48) -> bool:
         mx = max(0, int(margin))
         return (-mx <= int(x) <= int(game.VIEW_W) + mx) and ((INFO_BAR_HEIGHT - mx) <= int(y) <= int(game.VIEW_H) + mx)
@@ -706,7 +764,7 @@ def install(game):
             camy += dy
 
         screen.fill(MAP_BG)
-        _blit_iso_floor(screen, camx, camy)
+        _blit_web_static_background(screen, game_state, camx, camy, wall_h=max(12, int(ISO_WALL_Z * 0.7)))
         margin = 2
         gx_min = max(0, int(px_grid - game.VIEW_W // max(1, ISO_CELL_W)) - margin)
         gx_max = min(GRID_SIZE - 1, int(px_grid + game.VIEW_W // max(1, ISO_CELL_W)) + margin)
@@ -716,9 +774,6 @@ def install(game):
         if getattr(player, "targeting_skill", None):
             _draw_skill_overlay(screen, player, camx, camy)
 
-        web_wall_h = max(12, int(ISO_WALL_Z * 0.7))
-        _blit_web_wall_layer(screen, game_state, camx, camy, wall_h=web_wall_h)
-
         spoils = getattr(game_state, "spoils", ())
         if pickup_cap > 0:
             spoils = spoils[:pickup_cap]
@@ -726,6 +781,8 @@ def install(game):
             wx = s.base_x / CELL_SIZE
             wy = (s.base_y - s.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=24):
+                continue
             pygame.draw.circle(screen, (255, 215, 80), (int(sx), int(sy)), int(s.r))
 
         heals = getattr(game_state, "heals", ())
@@ -735,6 +792,8 @@ def install(game):
             wx = h.base_x / CELL_SIZE
             wy = (h.base_y - h.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=24):
+                continue
             pygame.draw.circle(screen, (225, 225, 225), (int(sx), int(sy)), int(h.r))
 
         items = getattr(game_state, "items", ())
@@ -744,6 +803,8 @@ def install(game):
             wx = it.center[0] / CELL_SIZE
             wy = (it.center[1] - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=24):
+                continue
             col = (255, 224, 0) if getattr(it, "is_main", False) else (240, 210, 90)
             pygame.draw.circle(screen, col, (int(sx), int(sy)), int(it.radius))
 
@@ -766,6 +827,8 @@ def install(game):
             wx = turret.x / CELL_SIZE
             wy = (turret.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=96):
+                continue
             actors.append((sy, "turret", turret, sx, sy))
 
         web_enemies = enemies[:enemy_cap] if enemy_cap > 0 else enemies
@@ -773,6 +836,8 @@ def install(game):
             wx = enemy.rect.centerx / CELL_SIZE
             wy = (enemy.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=128):
+                continue
             actors.append((sy, "enemy", enemy, sx, sy))
 
         wx = player.rect.centerx / CELL_SIZE
@@ -878,6 +943,8 @@ def install(game):
             wx = bullet.x / CELL_SIZE
             wy = (bullet.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=16):
+                continue
             col = (0, 255, 255) if getattr(bullet, "source", "player") == "turret" else (120, 204, 121)
             pygame.draw.circle(screen, col, (int(sx), int(sy)), max(2, int(getattr(bullet, "r", BULLET_RADIUS))))
 
@@ -886,6 +953,8 @@ def install(game):
             wx = shot.x / CELL_SIZE
             wy = (shot.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
+            if not _screen_visible_point(sx, sy, margin=16):
+                continue
             pygame.draw.circle(
                 screen,
                 getattr(shot, "color", (255, 120, 50)),
@@ -899,6 +968,8 @@ def install(game):
                 wy = (d.y - INFO_BAR_HEIGHT) / CELL_SIZE
                 sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
                 sy += d.screen_offset_y()
+                if not _screen_visible_point(sx, sy, margin=24):
+                    continue
                 d.draw_iso(screen, sx, sy)
 
         _draw_web_lite_ui_topbar(

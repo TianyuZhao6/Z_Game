@@ -195,6 +195,10 @@ def pause_from_overlay(screen, bg_surface):
         return choice  # "home" | "exit" | "restart"
 
 
+async def pause_from_overlay_web(screen, bg_surface):
+    return await pause_ui_support.pause_from_overlay_web(_THIS_MODULE, screen, bg_surface)
+
+
 # --- Font helper ---
 _MONO_FONT_CACHE: dict[int, "pygame.font.Font"] = {}
 _SYS_FONT_CACHE: dict[tuple[str | None, int, bool], "pygame.font.Font"] = {}
@@ -778,6 +782,10 @@ def draw_boss_hp_bars_twin(screen, bosses):
 
 def pause_game_modal(screen, bg_surface, clock, time_left, player):
     return pause_ui_support.pause_game_modal(_THIS_MODULE, screen, bg_surface, clock, time_left, player)
+
+
+async def pause_game_modal_web(screen, bg_surface, clock, time_left, player):
+    return await pause_ui_support.pause_game_modal_web(_THIS_MODULE, screen, bg_surface, clock, time_left, player)
 
 # --- Domain/Biome helpers (one-level-only effects) ---
 def apply_domain_buffs_for_level(game_state, player):
@@ -4287,6 +4295,10 @@ def show_pause_menu(screen, background_surf):
     return menu_flow_support.show_pause_menu(_THIS_MODULE, screen, background_surf)
 
 
+async def show_pause_menu_web(screen, background_surf):
+    return await menu_flow_support.show_pause_menu_web(_THIS_MODULE, screen, background_surf)
+
+
 def _apply_levelup_choice(player, key: str):
     """Apply the chosen buff immediately AND persist in META so it carries over."""
     meta = _meta_state()
@@ -4392,6 +4404,9 @@ def show_levelup_overlay(screen, background_surf, player):
     hover = -1
     while True:
         for e in pygame.event.get():
+            if IS_WEB:
+                screen = _handle_web_window_event(e) or screen
+                _sync_web_input_event(e)
             if e.type == pygame.QUIT:
                 return None
             if e.type == pygame.KEYDOWN:
@@ -4453,6 +4468,10 @@ def levelup_modal(screen, bg_surface, clock, time_left, player):
     return time_left
 
 
+async def levelup_modal_web(screen, bg_surface, clock, time_left, player):
+    return await screens_support.levelup_modal_web(_THIS_MODULE, screen, bg_surface, clock, time_left, player)
+
+
 def show_settings_popup(screen, background_surf):
     return screens_support.show_settings_popup(_THIS_MODULE, screen, background_surf)
 
@@ -4500,6 +4519,40 @@ def spawn_wave_with_budget(game_state: "GameState",
         wave_index,
         enemies,
         cap,
+    )
+
+
+def prepare_wave_spawn_plan(game_state: "GameState",
+                            player: "Player",
+                            current_level: int,
+                            wave_index: int,
+                            enemies: List["Enemy"],
+                            cap: int):
+    return spawn_logic_support.prepare_wave_spawn_plan(
+        _THIS_MODULE,
+        game_state,
+        player,
+        current_level,
+        wave_index,
+        enemies,
+        cap,
+    )
+
+
+def continue_wave_spawn_plan(game_state: "GameState",
+                             player: "Player",
+                             enemies: List["Enemy"],
+                             cap: int,
+                             plan,
+                             batch_limit: Optional[int]=None):
+    return spawn_logic_support.continue_wave_spawn_plan(
+        _THIS_MODULE,
+        game_state,
+        player,
+        enemies,
+        cap,
+        plan,
+        batch_limit=batch_limit,
     )
 
 
