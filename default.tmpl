@@ -446,6 +446,7 @@ function show_infobox() {
 window.__zgame_bgm_audio = null;
 window.__zgame_bgm_pending = false;
 window.__zgame_bgm_last_play_ms = 0;
+window.__zgame_fx_pool = Object.create(null);
 
 window.__zgame_bgm_open = function(src, volume) {
     try {
@@ -468,6 +469,14 @@ window.__zgame_bgm_open = function(src, volume) {
         window.__zgame_bgm_audio = audio;
         window.__zgame_bgm_pending = false;
         window.__zgame_bgm_last_play_ms = 0;
+        const retryPlay = () => {
+            if (window.__zgame_bgm_audio !== audio) return;
+            window.__zgame_bgm_play(audio.loop ? -1 : 0, 0);
+        };
+        audio.addEventListener("loadeddata", retryPlay);
+        audio.addEventListener("canplay", retryPlay);
+        try { audio.load(); } catch (_) {}
+        retryPlay();
         return true;
     } catch (e) {
         console.warn("[Audio] html bgm open failed", e);
@@ -585,6 +594,54 @@ window.__zgame_bgm_pos_ms = function() {
         return Math.floor((audio.currentTime || 0) * 1000);
     } catch (e) {
         return -1;
+    }
+};
+
+window.__zgame_fx_play = function(src, volume) {
+    try {
+        const key = String(src || "");
+        if (!key) return false;
+        let pool = window.__zgame_fx_pool[key];
+        if (!pool) {
+            pool = [];
+            window.__zgame_fx_pool[key] = pool;
+        }
+        let audio = null;
+        for (const cand of pool) {
+            if (cand && (cand.paused || cand.ended)) {
+                audio = cand;
+                break;
+            }
+        }
+        if (!audio) {
+            audio = new Audio(key);
+            audio.preload = "auto";
+            audio.autoplay = false;
+            audio.playsInline = true;
+            audio.defaultMuted = false;
+            audio.muted = false;
+            audio.crossOrigin = "anonymous";
+            pool.push(audio);
+            while (pool.length > 6) {
+                pool.shift();
+            }
+            try { audio.load(); } catch (_) {}
+        }
+        try { audio.pause(); } catch (_) {}
+        try { audio.currentTime = 0; } catch (_) {}
+        audio.volume = Math.max(0, Math.min(1, Number(volume || 0)));
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch((e) => {
+                if (!zgameIgnoreAutoplayMessage(e)) {
+                    console.warn("[Audio] html fx play failed", e);
+                }
+            });
+        }
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html fx play exception", e);
+        return false;
     }
 };
 

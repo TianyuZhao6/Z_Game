@@ -16,6 +16,7 @@
 - Web gameplay rendering was also accidentally staying on the hot path more often than intended because the browser loop used a `last_frame is None` gate even when the web renderer intentionally returned `None` with `copy_frame=False`.
 - Browser enemy projectiles are still unstable in wasm long-run sessions. Repros consistently stopped once enemy-shot processing became active, even when JS and Python error flags stayed empty.
 - Timed browser wave renewals were still spawning a whole weighted wave at once. Even after batching that work, the first renewed enemy set could push Chrome over the edge once special enemy types and the wider web render path combined.
+- A later audio regression left browser BGM on native HTML audio but kept comet/teleport skill SFX on the pygame mixer, so the first web skill SFX could still force mixer work mid-combat and bring back crackle or instability.
 
 ## Fixes Applied
 
@@ -36,6 +37,7 @@
 - Restricted explicit timed web waves to the lighter browser-safe enemy subset and serialized that route to one active enemy at a time, which removed the repeatable 20-40s Chrome stall while still allowing a full level clear.
 - Reverted default web BGM back to the native HTML-audio route after a later regression had moved browser BGM onto the pygame mixer path again, which reintroduced audible crackle/noise under load.
 - Removed the game-side JS interaction gate before `audio.play()`, so the web build now attempts background-music autoplay on its own instead of waiting for a click before even trying.
+- Moved web comet/teleport skill SFX onto the same native HTML-audio path as browser BGM, with pooled effect audio instances instead of on-demand pygame mixer playback.
 
 ## Notes
 

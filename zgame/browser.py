@@ -66,6 +66,7 @@ WEB_SINGLE_BGM = False
 # available for debugging, but native playback isolates BGM from the pygame
 # effect mixer and was the clean/noise-free browser path.
 WEB_NATIVE_BGM = IS_WEB and (not _detect_web_flag("mixbgm=1", "mixerbgm=1", "nonativebgm=1"))
+WEB_NATIVE_FX_AUDIO = IS_WEB and bool(WEB_NATIVE_BGM) and (not _detect_web_flag("mixfx=1", "mixerfx=1", "nonativefx=1"))
 WEB_AUTOSTART = _detect_web_autostart()
 WEB_DIAG_MODE = _detect_web_diag()
 WEB_LITE_RENDER_PICKUP_CAP = 12
@@ -296,6 +297,7 @@ def apply_web_quality_profile(game, profile_name: str | None, *, reason: str = "
     assignments = {
         "WEB_DEFAULT_QUALITY": str(payload["quality"]),
         "WEB_NATIVE_BGM": bool(WEB_NATIVE_BGM),
+        "WEB_NATIVE_FX_AUDIO": bool(WEB_NATIVE_FX_AUDIO),
         "WEB_WINDOW_SIZE": (int(payload["max_render_width"]), int(payload["max_render_height"])),
         "WEB_TARGET_FPS": int(payload["target_fps"]),
         "WEB_FLOW_REFRESH_INTERVAL": float(payload["flow_refresh_interval"]),

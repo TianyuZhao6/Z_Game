@@ -36,6 +36,7 @@ from zgame.browser import (
     WEB_FOG_RENDER_SCALE,
     WEB_LIMIT_SPAWN_TYPES,
     WEB_NATIVE_BGM,
+    WEB_NATIVE_FX_AUDIO,
     WEB_AUTOSTART,
     WEB_MAX_DAMAGE_TEXTS,
     WEB_MAX_FX_PARTICLES,
@@ -4672,6 +4673,7 @@ GroundSpike, CuringPaintFootprint, PaintTile = paint_support.install(_THIS_MODUL
 # ==================== NEW HIGH-FIDELITY COMET SYSTEM ====================
 
 _effect_sfx_cache: dict[str, pygame.mixer.Sound | bool] = {}
+_effect_sfx_url_cache: dict[str, str | bool] = {}
 
 
 def _init_effect_mixer():
@@ -4710,10 +4712,49 @@ def _load_effect_sound(filename: str):
     return _effect_sfx_cache[filename]
 
 
+def _window_audio_call(fn_name: str, *args):
+    if not IS_WEB:
+        return None
+    try:
+        import platform as web_platform
+
+        window = getattr(web_platform, "window", None)
+        fn = getattr(window, fn_name, None) if window is not None else None
+        if fn is None:
+            return None
+        return fn(*args)
+    except Exception:
+        return None
+
+
+def _native_effect_audio_url(filename: str) -> str:
+    if filename in _effect_sfx_url_cache:
+        cached = _effect_sfx_url_cache[filename]
+        return cached if isinstance(cached, str) else ""
+    candidates: list[str] = []
+    for n in _audio_path_variants(filename):
+        candidates.extend(_asset_candidates("Effect", n))
+        candidates.extend(_asset_candidates(n))
+    path = _first_existing_path(_expand_audio_candidates(candidates))
+    if not path:
+        _effect_sfx_url_cache[filename] = False
+        return ""
+    url = f"assets/Effect/{os.path.basename(path)}"
+    _effect_sfx_url_cache[filename] = url
+    return url
+
+
 def _play_effect_sfx(filename: str):
     """Play an effect sound respecting the global FX volume slider."""
     if IS_WEB and WEB_DISABLE_FX_AUDIO:
         return
+    if IS_WEB and WEB_NATIVE_FX_AUDIO:
+        try:
+            url = _native_effect_audio_url(filename)
+            if url and bool(_window_audio_call("__zgame_fx_play", url, max(0.0, min(1.0, float(FX_VOLUME) / 100.0)))):
+                return
+        except Exception:
+            pass
     snd = _load_effect_sound(filename)
     if not snd:
         return
