@@ -34,11 +34,14 @@
 - Converted timed web renewals to a queued spawn plan so browser waves no longer spawn their whole payload in one frame.
 - Cached the lite-render static background as one composed floor-plus-wall layer and added off-screen culling for dynamic drawables to cut the post-renew render spike without changing the camera view.
 - Restricted explicit timed web waves to the lighter browser-safe enemy subset and serialized that route to one active enemy at a time, which removed the repeatable 20-40s Chrome stall while still allowing a full level clear.
+- Reverted default web BGM back to the native HTML-audio route after a later regression had moved browser BGM onto the pygame mixer path again, which reintroduced audible crackle/noise under load.
+- Removed the game-side JS interaction gate before `audio.play()`, so the web build now attempts background-music autoplay on its own instead of waiting for a click before even trying.
 
 ## Notes
 
 - One automated repro that looked like a browser freeze was actually the fail/death screen, not a JS/Python crash.
 - The most useful browser signals were `__zgame_py_frame`, `__zgame_py_heartbeat_ms`, `__zgame_prof_phase`, and whether Chrome showed a real dialog versus only a diagnostic error string.
 - The autoplay popup and the long-run freeze were separate problems. The popup came from Chrome media policy. The browser dead-run issue showed up later with steady `py_frame`/heartbeat stalls and no matching JS exception.
+- If autoplay still fails on a clean browser profile, that remaining block is the browser policy itself rather than a game-side interaction guard. The game code now attempts playback immediately and keeps retrying via the existing resume path.
 - The most useful timed-wave repro was the explicit `?start=1&diag=1&timedspawns=1` route. Before the queued/safe-type fix it repeatedly stalled around the first renewal window; after the fix it stayed responsive through a level-complete screen in headless Chromium.
 - Desktop gameplay is not affected by these web-only changes.

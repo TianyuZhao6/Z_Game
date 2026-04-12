@@ -288,14 +288,14 @@ def _web_spawn_interval(game) -> float:
     base = float(getattr(game, "SPAWN_INTERVAL", 8.0) or 8.0)
     if not getattr(game, "IS_WEB", False):
         return base
-    return max(4.0, base * float(getattr(game, "WEB_SPAWN_INTERVAL_MULT", 1.0) or 1.0))
+    return base * float(getattr(game, "WEB_SPAWN_INTERVAL_MULT", 1.0) or 1.0)
 
 
 def _effective_enemy_cap(game, base_cap: int) -> int:
     cap = max(1, int(base_cap or 1))
     if not getattr(game, "IS_WEB", False):
         return cap
-    if not bool(getattr(game, "WEB_DISABLE_TIMED_SPAWNS", False)):
+    if bool(getattr(game, "WEB_DISABLE_TIMED_SPAWNS", False)):
         return min(cap, 1)
     return cap
 
@@ -481,7 +481,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     runtime = rs.runtime(game)
     meta = rs.meta(game)
     _clear_pending_wave_spawn(runtime)
-    pygame.display.set_caption('Enemy Card Game 闂?Level')
+    pygame.display.set_caption(game.GAME_TITLE)
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
     if game.IS_WEB and runtime.get("_menu_transition_frame") is not None:
@@ -888,6 +888,9 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 elif choice == 'exit':
                     runtime['_carry_player_state'] = game.capture_player_carry(player)
                     game.save_progress(game.current_level, max_wave_reached=runtime.get('_max_wave_reached', None))
+                    if game.IS_WEB:
+                        runtime['_skip_intro_once'] = True
+                        return ('home', config.get('reward', None), bg)
                     return ('exit', config.get('reward', None), bg)
             if game.is_action_event(event, 'blast'):
                 if getattr(player, 'blast_cd', 0.0) <= 0.0:
@@ -1452,6 +1455,9 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 elif choice == 'exit':
                     runtime['_carry_player_state'] = game.capture_player_carry(player)
                     game.save_progress(level_idx, max_wave_reached=runtime.get('_max_wave_reached', None))
+                    if game.IS_WEB:
+                        runtime['_skip_intro_once'] = True
+                        return ('home', None, bg)
                     return ('exit', None, bg)
             if game.is_action_event(event, 'blast'):
                 if getattr(player, 'blast_cd', 0.0) <= 0.0:
@@ -1773,7 +1779,10 @@ async def app_main(game) -> None:
             meta['spoils'] += int(runtime.pop('_last_spoils', 0))
             runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
             game.save_progress(game.current_level, pending_shop=True)
-            action = game.show_shop_screen(screen)
+            if game.IS_WEB:
+                action = await game.show_shop_screen_web(screen)
+            else:
+                action = game.show_shop_screen(screen)
             runtime['_pending_shop'] = False
             if action in (None,):
                 runtime['_pending_shop'] = False
@@ -1794,6 +1803,11 @@ async def app_main(game) -> None:
                 continue
             elif action == 'exit':
                 game.save_progress(game.current_level, pending_shop=True)
+                if game.IS_WEB:
+                    game.flush_events()
+                    selection = await game.show_start_menu(screen, skip_intro=True)
+                    apply_menu_selection(selection)
+                    continue
                 pygame.quit()
                 sys.exit()
         resume_snapshot = runtime.pop('_resume_snapshot_data', None)
@@ -1828,6 +1842,11 @@ async def app_main(game) -> None:
             apply_menu_selection(selection)
             continue
         if result == 'exit':
+            if game.IS_WEB:
+                game.flush_events()
+                selection = await game.show_start_menu(screen, skip_intro=True)
+                apply_menu_selection(selection)
+                continue
             pygame.quit()
             sys.exit()
         if result == 'fail':
@@ -1862,7 +1881,10 @@ async def app_main(game) -> None:
                 continue
             runtime['_coins_at_shop_entry'] = int(meta.get('spoils', 0))
             game.save_progress(game.current_level, pending_shop=True)
-            action = game.show_shop_screen(screen)
+            if game.IS_WEB:
+                action = await game.show_shop_screen_web(screen)
+            else:
+                action = game.show_shop_screen(screen)
             if action == 'home':
                 game.save_progress(game.current_level, pending_shop=True)
                 game.flush_events()
@@ -1878,6 +1900,11 @@ async def app_main(game) -> None:
                 continue
             elif action == 'exit':
                 game.save_progress(game.current_level, pending_shop=True)
+                if game.IS_WEB:
+                    game.flush_events()
+                    selection = await game.show_start_menu(screen, skip_intro=True)
+                    apply_menu_selection(selection)
+                    continue
                 pygame.quit()
                 sys.exit()
             else:

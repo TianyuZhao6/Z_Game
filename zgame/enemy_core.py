@@ -814,7 +814,12 @@ def install(game):
                         dx = f1[0] - float(last_pos[0])
                         dy = f1[1] - float(last_pos[1])
                         dist = math.hypot(dx, dy)
-                        if hell_t >= game.HELL_ENEMY_PAINT_SPAWN_INTERVAL or dist >= game.HELL_ENEMY_PAINT_SPAWN_DIST:
+                        spawn_interval = float(game.HELL_ENEMY_PAINT_SPAWN_INTERVAL)
+                        spawn_dist = float(game.HELL_ENEMY_PAINT_SPAWN_DIST)
+                        if getattr(game, "IS_WEB", False):
+                            spawn_interval *= float(getattr(game, "WEB_HELL_TRAIL_INTERVAL_MULT", 1.0) or 1.0)
+                            spawn_dist *= float(getattr(game, "WEB_HELL_TRAIL_DIST_MULT", 1.0) or 1.0)
+                        if hell_t >= spawn_interval or dist >= spawn_dist:
                             paint_r = game.enemy_paint_radius_for(self)
                             game_state.apply_enemy_paint(f1[0], f1[1], paint_r, paint_type='hell_trail', paint_color=getattr(self, 'color', None))
                             hell_t = 0.0

@@ -24,9 +24,17 @@ from zgame.browser import (
     WEB_ENABLE_DAMAGE_TEXTS,
     WEB_ENABLE_DOT_ROUNDS,
     WEB_ENABLE_ENEMY_PAINT,
+    WEB_ENABLE_FOG,
     WEB_ENABLE_GROUND_SPIKES,
+    WEB_HELL_TRAIL_DIST_MULT,
+    WEB_HELL_TRAIL_INTERVAL_MULT,
+    WEB_HURRICANE_MAX_AFFECTED_SHOTS,
+    WEB_HURRICANE_SHOT_PULL_INTERVAL,
     WEB_ENABLE_HURRICANES,
     WEB_ENABLE_VULNERABILITY_MARKS,
+    WEB_FOG_REFRESH_MS,
+    WEB_FOG_RENDER_SCALE,
+    WEB_LIMIT_SPAWN_TYPES,
     WEB_NATIVE_BGM,
     WEB_AUTOSTART,
     WEB_MAX_DAMAGE_TEXTS,
@@ -55,6 +63,7 @@ from zgame.browser import (
     WEB_RENDER_INTERVAL,
     WEB_SINGLE_BGM,
     WEB_SPATIAL_REFRESH_INTERVAL,
+    WEB_WAVE_SPAWN_BATCH,
     WEB_SPAWN_INTERVAL_MULT,
     WEB_THREAT_BUDGET_MULT,
     WEB_INPUT,
@@ -1021,7 +1030,7 @@ def _enemy_sprite(ztype: str, size_px: int) -> pygame.Surface | None:
 # - Card system UI polish (later pass)
 # - Sprite/animation pipeline to be added
 # - Balance obstacle density via OBSTACLE_DENSITY/DECOR_DENSITY
-GAME_TITLE = "NEURONVIVOR"
+GAME_TITLE = "NEUROSURIVER"
 INFO_BAR_HEIGHT = 40
 GRID_SIZE = 36
 WORLD_SCALE = 1.3
@@ -4480,8 +4489,16 @@ def show_shop_screen(screen) -> Optional[str]:
     return shop_ui_support.show_shop_screen(_THIS_MODULE, screen)
 
 
+async def show_shop_screen_web(screen) -> Optional[str]:
+    return await shop_ui_support.show_shop_screen_web(_THIS_MODULE, screen)
+
+
 def show_biome_picker_in_shop(screen) -> str:
     return shop_ui_support.show_biome_picker_in_shop(_THIS_MODULE, screen)
+
+
+async def show_biome_picker_in_shop_web(screen) -> str:
+    return await shop_ui_support.show_biome_picker_in_shop_web(_THIS_MODULE, screen)
 
 
 def is_boss_level(level_idx_zero_based: int) -> bool:
@@ -4661,7 +4678,13 @@ def _init_effect_mixer():
     """Ensure mixer is ready before attempting to play SFX."""
     try:
         if not pygame.mixer.get_init():
-            pygame.mixer.init()
+            if IS_WEB:
+                pygame.mixer.pre_init(48000, -16, 2, 8192)
+                pygame.mixer.init(48000, -16, 2, 8192)
+            else:
+                pygame.mixer.init()
+        if pygame.mixer.get_init():
+            pygame.mixer.set_num_channels(24 if IS_WEB else 16)
     except Exception:
         pass
 
@@ -5800,7 +5823,8 @@ def compute_cam_for_center_iso(cx_px: int, cy_px: int) -> tuple[int, int]:
     render_game,
 ) = render_runtime_support.install(_THIS_MODULE)
 
-def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms: int = 400):
+def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms: int = 400,
+                         preserve_candidate_order: bool = False):
     """Stop current BGM and play the first existing file in candidates."""
     runtime = _runtime_state()
     viz = _get_neuro_viz()
@@ -5811,7 +5835,7 @@ def _play_bgm_candidates(candidates: list[str], volume: float = 0.6, fadeout_ms:
                 bgm.stop(fade_ms=fadeout_ms)
             except Exception:
                 pass
-        expanded = _expand_audio_candidates(candidates)
+        expanded = list(candidates) if preserve_candidate_order else _expand_audio_candidates(candidates)
         path = next((p for p in expanded if p and os.path.exists(p)), None)
         if not path:
             return False
@@ -5890,9 +5914,15 @@ def play_combat_bgm():
                 pass
             return True
         combat_candidates = [
+            *_asset_candidates("music", "ZGAME.ogg"),
             *_asset_candidates("music", "ZGAME.wav"),
         ]
-        return _play_bgm_candidates(combat_candidates, volume=BGM_VOLUME / 100.0, fadeout_ms=0)
+        return _play_bgm_candidates(
+            combat_candidates,
+            volume=BGM_VOLUME / 100.0,
+            fadeout_ms=0,
+            preserve_candidate_order=True,
+        )
     combat_candidates = [
         *_asset_candidates("music", "ZGAME.wav"),
     ]

@@ -1,5 +1,5 @@
 ﻿Great, the game can now proceed as normal only one thing is still missing, the wave renew within each level is missing, now the enemy only shown for the first wave never spawn again, and also there is some memory mistake for the game but we can resolve it later.
-=================================================
+=================================================   
 Executive Summary
 This document is the master working specification for Z Game's prop system, path identity, balance rules, UX readability, and release-readiness requirements.
 Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and production guidance.

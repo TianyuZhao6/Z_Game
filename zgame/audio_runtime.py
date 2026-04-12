@@ -17,13 +17,13 @@ def install(game):
         @staticmethod
         def _mixer_attempts() -> list[tuple[int, int]]:
             if getattr(game, "IS_WEB", False):
-                # Prefer full-rate playback in browser so the original asset
-                # is not audibly degraded by an aggressive downsample step.
+                # Browser audio crackle was coming from tight mixer buffers
+                # under gameplay load. Prefer stable full-rate configs first.
                 return [
+                    (48000, 8192),
+                    (44100, 8192),
                     (44100, 4096),
-                    (44100, 2048),
-                    (48000, 4096),
-                    (22050, 2048),
+                    (22050, 4096),
                 ]
             return [
                 (44100, 512),
@@ -59,6 +59,10 @@ def install(game):
                 try:
                     pygame.mixer.pre_init(mix_freq, -16, 2, mix_buffer)
                     pygame.mixer.init(mix_freq, -16, 2, mix_buffer)
+                    try:
+                        pygame.mixer.set_num_channels(24)
+                    except Exception:
+                        pass
                     actual = pygame.mixer.get_init()
                     print(f"[Audio] mixer ready: requested={mix_freq}/{mix_buffer} actual={actual}")
                     return True

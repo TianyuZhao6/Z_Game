@@ -71,6 +71,7 @@ def install(game):
             self._cam_shake_t = 0.0
             self._cam_shake_total = 0.001
             self._cam_shake_mag = 0.0
+            self._hurricane_shot_pull_t = 0.0
 
         def count_destructible_obstacles(self) -> int:
             return sum((1 for obs in self.obstacles.values() if obs.type == 'Destructible'))
@@ -319,6 +320,8 @@ def install(game):
                     life0 = self.player_paint_lifetime()
                 elif owner == 2:
                     life0 = float(game.ENEMY_PAINT_LIFETIME)
+            color_key = tuple((int(c) for c in paint_color[:3])) if paint_color else None
+            skip_hell_refresh = bool(getattr(game, 'IS_WEB', False) and int(owner) == 2 and paint_type == 'hell_trail')
             for gx in range(min_gx, max_gx + 1):
                 for gy in range(min_gy, max_gy + 1):
                     cx = gx * game.CELL_SIZE + game.CELL_SIZE * 0.5
@@ -328,12 +331,21 @@ def install(game):
                     if dx * dx + dy * dy > r2:
                         continue
                     tile = self.paint_grid[gy][gx]
+                    if skip_hell_refresh:
+                        same_owner = int(getattr(tile, 'paint_owner', 0)) == 2
+                        same_type = getattr(tile, 'paint_type', None) == paint_type
+                        same_color = getattr(tile, 'paint_color', None) == color_key
+                        fresh_tile = float(getattr(tile, 'paint_age', 999.0)) <= 0.12
+                        same_radius = abs(float(getattr(tile, 'paint_radius', 0.0)) - r) <= 1.0
+                        if same_owner and same_type and same_color and fresh_tile and same_radius:
+                            self.paint_active.add((gx, gy))
+                            continue
                     tile.paint_owner = int(owner)
                     tile.paint_intensity = 1.0
                     tile.paint_age = 0.0
                     tile.paint_type = paint_type
                     tile.paint_life0 = life0
-                    tile.paint_color = tuple((int(c) for c in paint_color[:3])) if paint_color else None
+                    tile.paint_color = color_key
                     tile.paint_radius = r
                     tile.refresh_visuals()
                     self.paint_active.add((gx, gy))
@@ -453,12 +465,17 @@ def install(game):
                     if hell:
                         gx = int(new_paint.x // game.CELL_SIZE)
                         gy = int((new_paint.y - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
-                        self._curing_paint_bins.setdefault((gx, gy), []).append(new_paint)
+                        self._curing_paint_bins[(gx, gy)] = [new_paint]
                         recent = getattr(self, '_curing_paint_recent', None)
                         if recent is None:
                             recent = []
                             self._curing_paint_recent = recent
                         recent.append(new_paint)
+                        denom = max(0.01, float(game.CURING_PAINT_SPAWN_INTERVAL))
+                        recent_limit = max(8, int(math.ceil(lifetime / denom)) + 2)
+                        if len(recent) > recent_limit:
+                            del recent[:-recent_limit]
+                        self.curing_paint = list(recent)
                     self.apply_player_paint(px, py, radius, paint_type='curing_paint')
                     self._curing_paint_t = 0.0
                     self._curing_paint_d = 0.0
@@ -466,9 +483,7 @@ def install(game):
                 lifetime = float(self.player_paint_lifetime())
                 denom = max(0.01, float(game.CURING_PAINT_SPAWN_INTERVAL))
                 anim_limit = max(6, int(math.ceil(lifetime / denom)))
-                recent = getattr(self, '_curing_paint_recent', []) or []
-                if not recent and self.curing_paint:
-                    recent = list(self.curing_paint[-anim_limit:])
+                recent = list(getattr(self, '_curing_paint_recent', []) or [])
                 if len(recent) > anim_limit:
                     recent = recent[-anim_limit:]
                 spark_chance = float(game.CURING_PAINT_SPARK_RATE) * dt
@@ -481,9 +496,10 @@ def install(game):
                         if random.random() < spark_chance:
                             game.spawn_curing_paint_spark_vfx(self, p.x, p.y, 1.0)
                         alive_recent.append(p)
-                    self._curing_paint_recent = alive_recent
+                    self._curing_paint_recent = alive_recent[-anim_limit:]
                 else:
                     self._curing_paint_recent = recent
+                self.curing_paint = list(self._curing_paint_recent)
             else:
                 alive = []
                 new_bins = {}
@@ -512,7 +528,7 @@ def install(game):
             ticks = int(abs(tick_t) // tick_interval) + 1
             tick_t += tick_interval * ticks
             self._curing_paint_tick_t = tick_t
-            if not enemies or not self.curing_paint:
+            if not enemies:
                 return
             paint_bins = getattr(self, '_curing_paint_bins', {})
             if not paint_bins:
@@ -842,6 +858,20 @@ def install(game):
                     z._wind_trapped = False
             if not getattr(self, 'hurricanes', None):
                 return
+            process_shot_pull = True
+            shot_pull_dt = float(dt)
+            if getattr(game, 'IS_WEB', False):
+                interval = float(getattr(game, 'WEB_HURRICANE_SHOT_PULL_INTERVAL', 0.0) or 0.0)
+                if interval > 0.0:
+                    accum = float(getattr(self, '_hurricane_shot_pull_t', 0.0)) + float(dt)
+                    if accum < interval:
+                        self._hurricane_shot_pull_t = accum
+                        process_shot_pull = False
+                    else:
+                        shot_pull_dt = accum
+                        self._hurricane_shot_pull_t = 0.0
+            else:
+                self._hurricane_shot_pull_t = 0.0
 
             def _vortex_resist(ent):
                 resist = 0.8
@@ -884,34 +914,41 @@ def install(game):
                         z._hurricane_slow_mult = 0.7
                     else:
                         z._hurricane_slow_mult = 1.0
-                all_shots = list(bullets)
-                if enemy_shots:
-                    all_shots.extend(enemy_shots)
-                for b in all_shots:
-                    bx = getattr(b, 'x', None)
-                    by = getattr(b, 'y', None)
-                    if bx is None or by is None:
-                        continue
-                    dx = h.x - bx
-                    dy = h.y - by
-                    dist = math.hypot(dx, dy)
+                if process_shot_pull:
+                    all_shots = list(bullets)
+                    if enemy_shots:
+                        all_shots.extend(enemy_shots)
+                    max_shots = int(getattr(game, 'WEB_HURRICANE_MAX_AFFECTED_SHOTS', 0) or 0) if getattr(game, 'IS_WEB', False) else 0
+                    if max_shots > 0 and len(all_shots) > max_shots:
+                        step = max(1, int(math.ceil(len(all_shots) / float(max_shots))))
+                        shot_iter = all_shots[::step]
+                    else:
+                        shot_iter = all_shots
                     effect_radius = h.r * game.HURRICANE_RANGE_MULT
-                    if dist <= 0.0001 or dist > effect_radius:
-                        continue
-                    influence = max(0.0, 1.0 - dist / effect_radius)
-                    nx, ny = (dx / dist, dy / dist)
-                    tx, ty = (-ny, nx)
-                    if h.spin_dir < 0:
-                        tx, ty = (-tx, -ty)
-                    pull = game.HURRICANE_BULLET_PULL * influence
-                    b.vx += nx * pull * dt
-                    b.vy += ny * pull * dt
-                    target_tan = h.spin_rate * dist * influence
-                    current_tan = b.vx * tx + b.vy * ty
-                    delta_tan = target_tan - current_tan
-                    steer = delta_tan * game.HURRICANE_BULLET_SPIN_STEER * dt
-                    b.vx += tx * steer
-                    b.vy += ty * steer
+                    for b in shot_iter:
+                        bx = getattr(b, 'x', None)
+                        by = getattr(b, 'y', None)
+                        if bx is None or by is None:
+                            continue
+                        dx = h.x - bx
+                        dy = h.y - by
+                        dist = math.hypot(dx, dy)
+                        if dist <= 0.0001 or dist > effect_radius:
+                            continue
+                        influence = max(0.0, 1.0 - dist / effect_radius)
+                        nx, ny = (dx / dist, dy / dist)
+                        tx, ty = (-ny, nx)
+                        if h.spin_dir < 0:
+                            tx, ty = (-tx, -ty)
+                        pull = game.HURRICANE_BULLET_PULL * influence
+                        b.vx += nx * pull * shot_pull_dt
+                        b.vy += ny * pull * shot_pull_dt
+                        target_tan = h.spin_rate * dist * influence
+                        current_tan = b.vx * tx + b.vy * ty
+                        delta_tan = target_tan - current_tan
+                        steer = delta_tan * game.HURRICANE_BULLET_SPIN_STEER * shot_pull_dt
+                        b.vx += tx * steer
+                        b.vy += ty * steer
 
         def update_vulnerability_marks(self, enemies, dt: float):
             lvl = int(meta.get('vuln_mark_level', 0))
@@ -1116,12 +1153,10 @@ def install(game):
             curing_paint = getattr(self, 'curing_paint', ())
             anim_start = 0
             recent_paints = None
-            if hell and curing_paint:
-                lifetime = float(self.player_paint_lifetime())
-                denom = max(0.01, float(game.CURING_PAINT_SPAWN_INTERVAL))
-                anim_limit = max(6, int(math.ceil(lifetime / denom)))
-                anim_start = max(0, len(curing_paint) - anim_limit)
-                recent_paints = set(curing_paint[anim_start:])
+            if hell:
+                recent_seq = list(getattr(self, '_curing_paint_recent', ()) or ())
+                if recent_seq:
+                    recent_paints = set(recent_seq)
             if hasattr(self, 'paint_active') and hasattr(self, 'paint_grid'):
                 for gx, gy in getattr(self, 'paint_active', ()):
                     if gx < gx_min or gx > gx_max or gy < gy_min or (gy > gy_max):
@@ -1173,10 +1208,56 @@ def install(game):
             if not self.fog_enabled:
                 return
             w, h = screen.get_size()
+            psx, psy = game.iso_world_to_screen(player.rect.centerx / game.CELL_SIZE, (player.rect.centery - game.INFO_BAR_HEIGHT) / game.CELL_SIZE, 0, camx, camy)
+            self._fog_pulse_t = (self._fog_pulse_t + 0.016) % 1.0
+            pulse = int(14 * (0.5 + 0.5 * math.sin(self._fog_pulse_t * math.tau)))
+            clear_r = game.FOG_VIEW_TILES * game.CELL_SIZE
+            if game.IS_WEB:
+                scale = max(0.25, min(1.0, float(getattr(game, "WEB_FOG_RENDER_SCALE", 0.5) or 0.5)))
+                mask_w = max(96, int(round(w * scale)))
+                mask_h = max(54, int(round(h * scale)))
+                now_ms = pygame.time.get_ticks()
+                lantern_points = []
+                for lan in self.fog_lanterns:
+                    if not lan.alive:
+                        continue
+                    gx, gy = lan.grid_pos
+                    sx, sy = game.iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
+                    lantern_points.append((int(sx * scale), int(sy * scale)))
+                cache_key = (
+                    int(w),
+                    int(h),
+                    int(mask_w),
+                    int(mask_h),
+                    int(psx * scale) // 4,
+                    int(psy * scale) // 4,
+                    tuple((lx // 4, ly // 4) for lx, ly in lantern_points),
+                    int(pulse // 3),
+                    int(game.FOG_OVERLAY_ALPHA),
+                )
+                refresh_ms = max(0, int(getattr(game, "WEB_FOG_REFRESH_MS", 80) or 80))
+                cached_key = getattr(self, "_fog_web_cache_key", None)
+                cached_surface = getattr(self, "_fog_web_cache_surface", None)
+                cached_at = int(getattr(self, "_fog_web_cache_at_ms", -999999) or -999999)
+                if cached_surface is None or cached_key != cache_key or (now_ms - cached_at) >= refresh_ms:
+                    mask = pygame.Surface((mask_w, mask_h), pygame.SRCALPHA)
+                    mask.fill((0, 0, 0, game.FOG_OVERLAY_ALPHA))
+                    pygame.draw.circle(mask, (0, 0, 0, 0), (int(psx * scale), int(psy * scale)), max(8, int(clear_r * scale)))
+                    lantern_clear_r = max(6, int(game.FOG_LANTERN_CLEAR_RADIUS * scale))
+                    for lan_x, lan_y in lantern_points:
+                        pygame.draw.circle(mask, (0, 0, 0, 0), (int(lan_x), int(lan_y)), lantern_clear_r)
+                    if pulse > 0:
+                        edge = pygame.Surface((mask_w, mask_h), pygame.SRCALPHA)
+                        edge.fill((220, 220, 240, pulse))
+                        mask.blit(edge, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+                    cached_surface = pygame.transform.scale(mask, (w, h))
+                    self._fog_web_cache_surface = cached_surface
+                    self._fog_web_cache_key = cache_key
+                    self._fog_web_cache_at_ms = now_ms
+                screen.blit(cached_surface, (0, 0))
+                return
             mask = pygame.Surface((w, h), pygame.SRCALPHA)
             mask.fill((0, 0, 0, game.FOG_OVERLAY_ALPHA))
-            clear_r = game.FOG_VIEW_TILES * game.CELL_SIZE
-            psx, psy = game.iso_world_to_screen(player.rect.centerx / game.CELL_SIZE, (player.rect.centery - game.INFO_BAR_HEIGHT) / game.CELL_SIZE, 0, camx, camy)
             pygame.draw.circle(mask, (0, 0, 0, 0), (int(psx), int(psy)), int(clear_r))
             for lan in self.fog_lanterns:
                 if not lan.alive:
@@ -1184,8 +1265,6 @@ def install(game):
                 gx, gy = lan.grid_pos
                 sx, sy = game.iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
                 pygame.draw.circle(mask, (0, 0, 0, 0), (int(sx), int(sy)), int(game.FOG_LANTERN_CLEAR_RADIUS))
-            self._fog_pulse_t = (self._fog_pulse_t + 0.016) % 1.0
-            pulse = int(14 * (0.5 + 0.5 * math.sin(self._fog_pulse_t * math.tau)))
             if pulse > 0:
                 edge = pygame.Surface((w, h), pygame.SRCALPHA)
                 edge.fill((220, 220, 240, pulse))

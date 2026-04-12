@@ -1700,7 +1700,7 @@ def install(game):
             game_state.draw_comet_blasts(screen, camx, camy)
         if hasattr(game_state, "draw_comet_corpses"):
             game_state.draw_comet_corpses(screen, camx, camy)
-        if getattr(game_state, "fog_enabled", False):
+        if getattr(game_state, "fog_enabled", False) and _web_feature_enabled("WEB_ENABLE_FOG"):
             game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)
         if USE_ISO:
             game_state.draw_lanterns_iso(screen, camx, camy)

@@ -48,7 +48,7 @@ def pick_type_by_budget(game, rem: int, level_idx_zero_based: int):
         return True
 
     web_safe_types = None
-    if getattr(game, "IS_WEB", False) and (not bool(getattr(game, "WEB_DISABLE_TIMED_SPAWNS", False))):
+    if getattr(game, "IS_WEB", False) and bool(getattr(game, "WEB_LIMIT_SPAWN_TYPES", False)):
         web_safe_types = {"basic", "fast", "strong", "tank"}
     choices = [
         (enemy_type, weight)

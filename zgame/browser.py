@@ -62,7 +62,10 @@ WEB_WINDOW_SIZE = (1280, 720)
 WEB_MAX_FRAME_DT = 0.05
 WEB_AUTOSAVE_INTERVAL = 0.0
 WEB_SINGLE_BGM = False
-WEB_NATIVE_BGM = IS_WEB
+# Default web BGM back to the native HTML-audio path. The mixer path is still
+# available for debugging, but native playback isolates BGM from the pygame
+# effect mixer and was the clean/noise-free browser path.
+WEB_NATIVE_BGM = IS_WEB and (not _detect_web_flag("mixbgm=1", "mixerbgm=1", "nonativebgm=1"))
 WEB_AUTOSTART = _detect_web_autostart()
 WEB_DIAG_MODE = _detect_web_diag()
 WEB_LITE_RENDER_PICKUP_CAP = 12
@@ -71,6 +74,7 @@ WEB_LITE_RENDER_ENEMY_CAP = 10
 WEB_LITE_RENDER_BULLET_CAP = 28
 WEB_LITE_RENDER_ENEMY_SHOT_CAP = 16
 WEB_SIM_ENEMY_SHOT_CAP = 24
+WEB_WAVE_SPAWN_BATCH = 8
 WEB_ALLOW_LITE_RENDER = IS_WEB
 WEB_QUALITY_ORDER = ("full", "balanced", "safe")
 WEB_QUALITY_PRESETS = {
@@ -78,7 +82,7 @@ WEB_QUALITY_PRESETS = {
         "target_fps": 24,
         "flow_refresh_interval": 1.00,
         "spatial_refresh_interval": 0.32,
-        "enemy_cap": 2,
+        "enemy_cap": 30,
         "max_render_width": 1600,
         "max_render_height": 900,
         "render_interval": 1.0 / 24.0,
@@ -90,8 +94,8 @@ WEB_QUALITY_PRESETS = {
         "contact_damage_mult": 0.25,
         "player_hit_cooldown_mult": 2.0,
         "enemy_speed_mult": 0.70,
-        "threat_budget_mult": 0.50,
-        "spawn_interval_mult": 3.00,
+        "threat_budget_mult": 1.0,
+        "spawn_interval_mult": 1.0,
         "use_lite_render": True,
         "disable_fx_audio": False,
         "enable_astar_recovery": False,
@@ -172,6 +176,13 @@ WEB_ENABLE_GROUND_SPIKES = True
 WEB_ENABLE_CURING_PAINT = True
 WEB_ENABLE_DOT_ROUNDS = True
 WEB_ENABLE_ASTAR_RECOVERY = bool(WEB_QUALITY_PRESETS[WEB_DEFAULT_QUALITY]["enable_astar_recovery"])
+WEB_ENABLE_FOG = True
+WEB_FOG_RENDER_SCALE = 0.5 if IS_WEB else 1.0
+WEB_FOG_REFRESH_MS = 80 if IS_WEB else 0
+WEB_HELL_TRAIL_INTERVAL_MULT = 1.45 if IS_WEB else 1.0
+WEB_HELL_TRAIL_DIST_MULT = 1.35 if IS_WEB else 1.0
+WEB_HURRICANE_SHOT_PULL_INTERVAL = (1.0 / 30.0) if IS_WEB else 0.0
+WEB_HURRICANE_MAX_AFFECTED_SHOTS = 36 if IS_WEB else 0
 WEB_SKIP_FLOW = IS_WEB and _detect_web_flag("skipflow=1")
 # Browser stability mode keeps the desktop layout and combat density, but drops
 # two late-run systems that repeatedly stalled Chrome in long sessions.
@@ -181,7 +192,9 @@ WEB_SKIP_UPDATE = IS_WEB and _detect_web_flag("skipupdate=1")
 WEB_SKIP_BULLETS = IS_WEB and _detect_web_flag("skipbullets=1")
 WEB_SKIP_ENEMY_MOVE = IS_WEB and _detect_web_flag("skipmove=1")
 WEB_SKIP_ENEMY_SPECIAL = IS_WEB and _detect_web_flag("skipspecial=1")
-WEB_DISABLE_TIMED_SPAWNS = IS_WEB and (not _detect_web_flag("timedspawns=1", "waves=1"))
+WEB_DISABLE_TIMED_SPAWNS = IS_WEB and _detect_web_flag("notimedspawns=1", "nowaves=1")
+# Optional web-only limiter for spawn types; default is desktop parity.
+WEB_LIMIT_SPAWN_TYPES = IS_WEB and _detect_web_flag("safeenemies=1")
 # Browser enemy projectiles are still unstable in long wasm sessions. Keep the
 # normal web route on the safer path and allow explicit opt-in when needed.
 WEB_SKIP_ENEMY_SHOTS = IS_WEB and (not _detect_web_flag("enemyshots=1", "allowenemyshots=1"))

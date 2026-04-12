@@ -455,8 +455,11 @@ window.__zgame_bgm_open = function(src, volume) {
         }
         const audio = new Audio(src);
         audio.preload = "auto";
+        audio.autoplay = true;
         audio.playsInline = true;
         audio.loop = true;
+        audio.defaultMuted = false;
+        audio.muted = false;
         audio.volume = Math.max(0, Math.min(1, Number(volume || 0)));
         audio.crossOrigin = "anonymous";
         audio.addEventListener("playing", () => { window.__zgame_bgm_pending = false; });
@@ -476,10 +479,6 @@ window.__zgame_bgm_play = function(loops, fade_ms) {
     try {
         const audio = window.__zgame_bgm_audio;
         if (!audio) return false;
-        if (!zgameCanPlayAudioNow()) {
-            window.__zgame_bgm_pending = false;
-            return false;
-        }
         const now = (window.performance && typeof window.performance.now === "function")
             ? window.performance.now()
             : Date.now();
@@ -546,10 +545,6 @@ window.__zgame_bgm_resume = function() {
     try {
         const audio = window.__zgame_bgm_audio;
         if (!audio) return false;
-        if (!zgameCanPlayAudioNow()) {
-            window.__zgame_bgm_pending = false;
-            return false;
-        }
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.catch === "function") {
             playPromise.catch((e) => console.warn("[Audio] html bgm resume failed", e));
@@ -595,7 +590,7 @@ window.__zgame_bgm_pos_ms = function() {
 
 </script>
 
-    <title>z_game</title>
+    <title>NEUROSURIVER</title>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
