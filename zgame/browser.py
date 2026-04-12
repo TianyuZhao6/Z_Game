@@ -69,6 +69,7 @@ WEB_NATIVE_BGM = IS_WEB and (not _detect_web_flag("mixbgm=1", "mixerbgm=1", "non
 WEB_NATIVE_FX_AUDIO = IS_WEB and bool(WEB_NATIVE_BGM) and (not _detect_web_flag("mixfx=1", "mixerfx=1", "nonativefx=1"))
 WEB_AUTOSTART = _detect_web_autostart()
 WEB_DIAG_MODE = _detect_web_diag()
+WEB_PAINT_RENDER_REFRESH_MS = 50 if IS_WEB else 0
 WEB_LITE_RENDER_PICKUP_CAP = 12
 WEB_LITE_RENDER_TURRET_CAP = 8
 WEB_LITE_RENDER_ENEMY_CAP = 10
@@ -298,6 +299,7 @@ def apply_web_quality_profile(game, profile_name: str | None, *, reason: str = "
         "WEB_DEFAULT_QUALITY": str(payload["quality"]),
         "WEB_NATIVE_BGM": bool(WEB_NATIVE_BGM),
         "WEB_NATIVE_FX_AUDIO": bool(WEB_NATIVE_FX_AUDIO),
+        "WEB_PAINT_RENDER_REFRESH_MS": int(WEB_PAINT_RENDER_REFRESH_MS),
         "WEB_WINDOW_SIZE": (int(payload["max_render_width"]), int(payload["max_render_height"])),
         "WEB_TARGET_FPS": int(payload["target_fps"]),
         "WEB_FLOW_REFRESH_INTERVAL": float(payload["flow_refresh_interval"]),

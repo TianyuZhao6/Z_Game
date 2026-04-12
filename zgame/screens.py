@@ -434,7 +434,7 @@ async def show_fail_screen(game, screen, background_surf):
                     if game.IS_WEB:
                         game.queue_menu_transition(pygame.display.get_surface().copy())
                         game.flush_events()
-                        return "home"
+                        return "exit"
                     pygame.quit()
                     sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN:
@@ -522,7 +522,7 @@ async def show_success_screen(game, screen, background_surf, reward_choices):
                     if game.IS_WEB:
                         game.queue_menu_transition(pygame.display.get_surface().copy())
                         game.flush_events()
-                        return "home"
+                        return "exit"
                     pygame.quit()
                     sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:

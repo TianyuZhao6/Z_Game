@@ -37,6 +37,7 @@ from zgame.browser import (
     WEB_LIMIT_SPAWN_TYPES,
     WEB_NATIVE_BGM,
     WEB_NATIVE_FX_AUDIO,
+    WEB_PAINT_RENDER_REFRESH_MS,
     WEB_AUTOSTART,
     WEB_MAX_DAMAGE_TEXTS,
     WEB_MAX_FX_PARTICLES,
@@ -4727,6 +4728,39 @@ def _window_audio_call(fn_name: str, *args):
         return None
 
 
+def stop_all_audio():
+    runtime = _runtime_state()
+    bgm = runtime.pop("_bgm", None)
+    if bgm is not None and hasattr(bgm, "stop"):
+        try:
+            bgm.stop(fade_ms=0)
+        except Exception:
+            pass
+    runtime.pop("_last_bgm_resume_retry_s", None)
+    if IS_WEB:
+        _window_audio_call("__zgame_audio_stop_all")
+        return
+    try:
+        if pygame.mixer.get_init():
+            pygame.mixer.stop()
+            pygame.mixer.music.stop()
+    except Exception:
+        pass
+
+
+def shutdown_web_app() -> bool:
+    if not IS_WEB:
+        return False
+    runtime = _runtime_state()
+    runtime["_web_shutdown"] = True
+    stop_all_audio()
+    try:
+        _window_audio_call("__zgame_terminate", GAME_TITLE)
+    except Exception:
+        pass
+    return True
+
+
 def _native_effect_audio_url(filename: str) -> str:
     if filename in _effect_sfx_url_cache:
         cached = _effect_sfx_url_cache[filename]
@@ -4742,6 +4776,23 @@ def _native_effect_audio_url(filename: str) -> str:
     url = f"assets/Effect/{os.path.basename(path)}"
     _effect_sfx_url_cache[filename] = url
     return url
+
+
+def _prewarm_native_effect_audio(*filenames: str, pool_size: int = 2) -> None:
+    if (not IS_WEB) or (not WEB_NATIVE_FX_AUDIO):
+        return
+    pool_size = max(1, min(8, int(pool_size or 2)))
+    for filename in filenames:
+        try:
+            url = _native_effect_audio_url(str(filename or ""))
+        except Exception:
+            url = ""
+        if not url:
+            continue
+        try:
+            _window_audio_call("__zgame_fx_preload", url, pool_size)
+        except Exception:
+            pass
 
 
 def _play_effect_sfx(filename: str):

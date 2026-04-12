@@ -162,12 +162,14 @@ def install(game):
             if web_state is None:
                 trans = ensure_hex_transition()
                 trans.start()
-                trans.duration_in = min(float(getattr(trans, "duration_in", 0.25)), 0.16)
-                trans.duration_hold = min(float(getattr(trans, "duration_hold", 0.10)), 0.04)
-                trans.duration_out = min(float(getattr(trans, "duration_out", 0.25)), 0.18)
+                trans.duration_in = max(0.20, float(getattr(trans, "duration_in", 0.25)))
+                trans.duration_hold = max(0.08, float(getattr(trans, "duration_hold", 0.10)))
+                trans.duration_out = max(0.22, float(getattr(trans, "duration_out", 0.25)))
+                to_surf = screen.copy()
                 web_state = {
                     "transition": trans,
                     "from_surface": from_surf,
+                    "to_surface": to_surf,
                     "last_tick_ms": now_ms,
                 }
                 runtime["_web_hex_transition_state"] = web_state
@@ -180,10 +182,17 @@ def install(game):
             dt = max(0.0, min(0.05, (now_ms - last_tick_ms) / 1000.0))
             web_state["last_tick_ms"] = now_ms
             trans.update(dt)
-            trans.should_swap_screens()
-            current_bg = web_state.get("from_surface")
-            if current_bg is not None and not getattr(trans, "midpoint_triggered", False):
-                screen.blit(current_bg, (0, 0))
+            swapped = trans.should_swap_screens()
+            from_bg = web_state.get("from_surface")
+            to_bg = web_state.get("to_surface")
+            if swapped and to_bg is None:
+                to_bg = screen.copy()
+                web_state["to_surface"] = to_bg
+            if not getattr(trans, "midpoint_triggered", False):
+                if from_bg is not None:
+                    screen.blit(from_bg, (0, 0))
+            elif to_bg is not None:
+                screen.blit(to_bg, (0, 0))
             trans.draw(screen)
             if not trans.is_active():
                 runtime["_menu_transition_frame"] = None

@@ -1490,7 +1490,13 @@ def install(game):
                 if not enemy_sprite:
                     pygame.draw.rect(screen, col, body)
                 paint_intensity = 0.0
-                if hasattr(game_state, "paint_intensity_at_world"):
+                paint_bonus = float(getattr(game, "ENEMY_PAINT_DAMAGE_BONUS", 0.0) or 0.0)
+                if paint_bonus > 0.0:
+                    paint_intensity = max(
+                        0.0,
+                        min(1.0, (float(getattr(z, "_paint_contact_mult", 1.0)) - 1.0) / paint_bonus),
+                    )
+                elif hasattr(game_state, "paint_intensity_at_world"):
                     paint_intensity = game_state.paint_intensity_at_world(z.rect.centerx, z.rect.centery, owner=2)
                 if paint_intensity > 0.0:
                     tint_alpha = int(70 * paint_intensity)
@@ -1582,7 +1588,13 @@ def install(game):
                 p, cx, cy = data["p"], data["cx"], data["cy"]
                 player_size = int(CELL_SIZE * 0.6)
                 paint_intensity = 0.0
-                if hasattr(game_state, "paint_intensity_at_world"):
+                slow_frac = float(getattr(game, "ENEMY_PAINT_PLAYER_SLOW", 0.0) or 0.0)
+                if slow_frac > 0.0:
+                    paint_intensity = max(
+                        0.0,
+                        min(1.0, float(getattr(p, "_enemy_paint_slow", 0.0)) / slow_frac),
+                    )
+                elif hasattr(game_state, "paint_intensity_at_world"):
                     paint_intensity = game_state.paint_intensity_at_world(p.rect.centerx, p.rect.centery, owner=2)
                 if paint_intensity > 0.0:
                     aura_r = max(10, int(player_size * 0.6)) * (0.85 + 0.3 * paint_intensity)

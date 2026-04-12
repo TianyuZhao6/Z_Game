@@ -88,7 +88,9 @@ def install(game):
         def update(self, dt):
             self.r = min(game.HURRICANE_MAX_RADIUS, self.r + game.HURRICANE_GROWTH_RATE * dt)
             self.t += dt * 5.0
-            target = int(self._base_particles + self._extra_particles * min(1.0, self.r / game.HURRICANE_MAX_RADIUS))
+            detail_mult = 0.6 if getattr(game, "IS_WEB", False) else 1.0
+            target = int((self._base_particles + self._extra_particles * min(1.0, self.r / game.HURRICANE_MAX_RADIUS)) * detail_mult)
+            target = max(14 if getattr(game, "IS_WEB", False) else 20, target)
             while len(self.particles) < target:
                 self.particles.append(self._make_particle())
             if len(self.particles) > target:
@@ -117,7 +119,10 @@ def install(game):
                 swoosh["t"] += dt
                 if swoosh["t"] >= swoosh["ttl"]:
                     self._ring_swooshes.remove(swoosh)
-            while len(self._ring_swooshes) < 9:
+            swoosh_target = 5 if getattr(game, "IS_WEB", False) else 9
+            if len(self._ring_swooshes) > swoosh_target:
+                self._ring_swooshes = self._ring_swooshes[:swoosh_target]
+            while len(self._ring_swooshes) < swoosh_target:
                 self._ring_swooshes.append(self._make_swoosh())
 
         def apply_vortex_physics(self, ent, dt, resist_scale=1.0):
@@ -158,7 +163,7 @@ def install(game):
             zone = pygame.Surface((rx_zone * 2, ry_zone * 2), pygame.SRCALPHA)
             pygame.draw.ellipse(zone, (40, 60, 80, 50), zone.get_rect())
             pygame.draw.ellipse(zone, (120, 220, 255, 110), zone.get_rect(), width=3)
-            streaks = 8
+            streaks = 4 if getattr(game, "IS_WEB", False) else 8
             for i in range(streaks):
                 ang = self.t * 0.6 * vis_spin_scale * vis_dir + i * (math.tau / streaks)
                 px = rx_zone + math.cos(ang) * rx_zone * 0.82
@@ -181,7 +186,7 @@ def install(game):
                 end = (x0 + tx * 0.5, y0 + ty * 0.5)
                 cx_mid = x0 + (-ty) * 0.2 + math.cos(arc_ang) * 4
                 cy_mid = y0 + (tx) * 0.2 + math.sin(arc_ang) * 2
-                steps = 12
+                steps = 6 if getattr(game, "IS_WEB", False) else 12
                 color = swoosh["color"]
                 alpha = int(swoosh["alpha"] * fade)
                 for j in range(steps):
@@ -196,7 +201,8 @@ def install(game):
                     radius = max(1, int(swoosh["thick"] * (0.5 + 0.8 * taper)))
                     pygame.draw.circle(zone, (*color, alpha), (px, py), radius)
             screen.blit(zone, (cx - rx_zone, cy - ry_zone))
-            for i in range(game.TORNADO_LAYER_COUNT):
+            layer_step = 2 if getattr(game, "IS_WEB", False) else 1
+            for i in range(0, game.TORNADO_LAYER_COUNT, layer_step):
                 ratio = i / float(game.TORNADO_LAYER_COUNT)
                 width = base_w * (0.25 + 0.8 * (ratio ** 1.8))
                 glitch_x = 0
@@ -216,7 +222,8 @@ def install(game):
                 pygame.draw.ellipse(surf, (*color, alpha), surf.get_rect())
                 pygame.draw.ellipse(surf, (120, 220, 255, int(alpha * 0.9)), surf.get_rect(), width=2)
                 screen.blit(surf, (draw_x - rx, draw_y - ry))
-            for r_ratio in (0.2, 0.45, 0.7, 0.9):
+            ring_ratios = (0.3, 0.7) if getattr(game, "IS_WEB", False) else (0.2, 0.45, 0.7, 0.9)
+            for r_ratio in ring_ratios:
                 width = base_w * (0.25 + 0.75 * (r_ratio ** 1.5))
                 rx, ry = game.iso_circle_radii_screen(width * 0.5)
                 y = cy - (r_ratio * game.TORNADO_FUNNEL_HEIGHT)
@@ -227,7 +234,8 @@ def install(game):
                     pygame.Rect(cx - rx, y - ry, rx * 2, ry * 2),
                     width=2,
                 )
-            for particle in self.particles:
+            particle_iter = self.particles[::2] if getattr(game, "IS_WEB", False) and len(self.particles) > 18 else self.particles
+            for particle in particle_iter:
                 h_px = particle["h"] * game.TORNADO_FUNNEL_HEIGHT
                 w_at_h = base_w * (0.25 + 0.8 * (particle["h"] ** 1.8)) * particle["dist"]
                 px_off = math.cos(particle["ang"]) * (w_at_h * 0.5)

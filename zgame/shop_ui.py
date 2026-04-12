@@ -35,7 +35,6 @@ def show_shop_screen(game, screen) -> Optional[str]:
         desc_font = pygame.font.SysFont(None, 24)
         title_font = pygame.font.SysFont(None, 56)
         btn_font = pygame.font.SysFont(None, 32)
-        did_menu_hex = False
         SHOP_BOX_BG = game.UI_PANEL
         SHOP_BOX_BORDER = game.UI_BORDER
         SHOP_BOX_BG_HOVER = (32, 40, 56)
@@ -343,9 +342,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
         if overlay_surf:
             overlay_surf.set_alpha(overlay_alpha)
             screen.blit(overlay_surf, overlay_surf.get_rect(center=(game.VIEW_W // 2, game.VIEW_H // 2)))
-        if not did_menu_hex:
-            game.run_pending_menu_transition(screen)
-            did_menu_hex = True
+        game.run_pending_menu_transition(screen)
         pygame.display.flip()
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
@@ -456,7 +453,6 @@ async def show_shop_screen_web(game, screen) -> Optional[str]:
         desc_font = pygame.font.SysFont(None, 24)
         title_font = pygame.font.SysFont(None, 56)
         btn_font = pygame.font.SysFont(None, 32)
-        did_menu_hex = False
         SHOP_BOX_BG = game.UI_PANEL
         SHOP_BOX_BORDER = game.UI_BORDER
         SHOP_BOX_BG_HOVER = (32, 40, 56)
@@ -689,8 +685,7 @@ async def show_shop_screen_web(game, screen) -> Optional[str]:
         if overlay_surf is not None:
             overlay_surf.set_alpha(overlay_alpha)
             screen.blit(overlay_surf, overlay_surf.get_rect(center=(game.VIEW_W // 2, 140)))
-        if did_menu_hex:
-            game.run_pending_menu_transition(screen)
+        game.run_pending_menu_transition(screen)
         pygame.display.flip()
         for ev in pygame.event.get():
             screen = game._handle_web_window_event(ev) or screen
@@ -717,7 +712,7 @@ async def show_shop_screen_web(game, screen) -> Optional[str]:
                 if pick == 'exit':
                     game.queue_menu_transition(pygame.display.get_surface().copy())
                     game.flush_events()
-                    return 'home'
+                    return 'exit'
             if ev.type == pygame.MOUSEMOTION:
                 hovered_uid = None
                 for r, it, dyn_cost, is_capped, uid, lock_rect, slot_idx in rects:
@@ -967,7 +962,7 @@ async def show_biome_picker_in_shop_web(game, screen) -> str:
                 if pick == 'exit':
                     game.queue_menu_transition(pygame.display.get_surface().copy())
                     game.flush_events()
-                    return '__HOME__'
+                    return '__EXIT__'
             if ev.type == pygame.MOUSEBUTTONDOWN:
                 if chosen is None:
                     for c in cards:

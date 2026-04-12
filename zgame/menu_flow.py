@@ -272,6 +272,9 @@ async def show_start_menu(game, screen, *, skip_intro: bool = False):
             game.flush_events()
             return None
         if base_rects["exit"].collidepoint(pos):
+            if getattr(game, "IS_WEB", False):
+                game.flush_events()
+                return ("exit", None)
             pygame.quit()
             sys.exit()
         return None

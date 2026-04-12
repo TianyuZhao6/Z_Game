@@ -31,12 +31,19 @@ def _append_verified_bullet(game, bullets, bullet, player=None) -> None:
     bullets.append(bullet)
 
 
+def _release_bullet(game_state, bullet) -> None:
+    release = getattr(game_state, "release_bullet", None)
+    if callable(release):
+        release(bullet)
+
+
 def _flush_pending_bullets(game, bullets, game_state, player=None) -> None:
     pending = getattr(game_state, "pending_bullets", None)
     if not pending:
         return
     for bullet in list(pending):
         if hasattr(game, "verify_bullet_runtime") and (not game.verify_bullet_runtime(bullet, player)):
+            _release_bullet(game_state, bullet)
             continue
         bullets.append(bullet)
     pending.clear()
@@ -1018,7 +1025,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 dx, dy = (cx - px, cy - py)
                 L = (dx * dx + dy * dy) ** 0.5 or 1.0
                 vx, vy = (dx / L * game.BULLET_SPEED, dy / L * game.BULLET_SPEED)
-                b = game.Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage)
+                b = game_state.acquire_bullet(px, py, vx, vy, player.range, damage=player.bullet_damage)
                 b.pierce_left = int(getattr(player, 'bullet_pierce', 0))
                 b.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
                 _append_verified_bullet(game, bullets, b, player)
@@ -1039,10 +1046,12 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                         bullets.remove(b)
                     except ValueError:
                         pass
+                    _release_bullet(game_state, b)
                     continue
                 b.update(dt, game_state, enemies, player)
                 if (not getattr(b, 'alive', False)) or (hasattr(game, 'verify_bullet_runtime') and (not game.verify_bullet_runtime(b, player))):
                     bullets.remove(b)
+                    _release_bullet(game_state, b)
         player.hit_cd = max(0.0, player.hit_cd - dt)
         _flush_pending_bullets(game, bullets, game_state, player)
         _profile_mark(profiler, "enemy_move")
@@ -1284,7 +1293,13 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         enemies.append(zobj)
     bullets: List[game.Bullet] = []
     for b in snap.get('bullets', []):
-        bobj = game.Bullet(float(b.get('x', 0.0)), float(b.get('y', 0.0)), float(b.get('vx', 0.0)), float(b.get('vy', 0.0)), game.clamp_player_range(getattr(player, 'range', game.PLAYER_RANGE_DEFAULT)))
+        bobj = game_state.acquire_bullet(
+            float(b.get('x', 0.0)),
+            float(b.get('y', 0.0)),
+            float(b.get('vx', 0.0)),
+            float(b.get('vy', 0.0)),
+            game.clamp_player_range(getattr(player, 'range', game.PLAYER_RANGE_DEFAULT)),
+        )
         bobj.traveled = float(b.get('traveled', 0.0))
         bobj.pierce_left = int(getattr(player, 'bullet_pierce', 0))
         bobj.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
@@ -1529,7 +1544,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             L = (dx * dx + dy * dy) ** 2 ** 0.5 if False else (dx * dx + dy * dy) ** 0.5
             L = L or 1.0
             vx, vy = (dx / L * game.BULLET_SPEED, dy / L * game.BULLET_SPEED)
-            b = game.Bullet(px, py, vx, vy, player.range, damage=player.bullet_damage)
+            b = game_state.acquire_bullet(px, py, vx, vy, player.range, damage=player.bullet_damage)
             b.pierce_left = int(getattr(player, 'bullet_pierce', 0))
             b.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
             _append_verified_bullet(game, bullets, b, player)
@@ -1542,10 +1557,12 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                     bullets.remove(b)
                 except ValueError:
                     pass
+                _release_bullet(game_state, b)
                 continue
             b.update(dt, game_state, enemies, player)
             if (not getattr(b, 'alive', False)) or (hasattr(game, 'verify_bullet_runtime') and (not game.verify_bullet_runtime(b, player))):
                 bullets.remove(b)
+                _release_bullet(game_state, b)
         _flush_pending_bullets(game, bullets, game_state, player)
         _profile_mark(profiler, "spawn")
         spawn_completed, spawned = _step_pending_wave_spawn(game, runtime, game_state, player, enemies, enemy_cap)
@@ -1745,6 +1762,10 @@ async def app_main(game) -> None:
         game.play_intro_bgm()
     except Exception as e:
         print(f'[Audio] background music not started: {e}')
+    try:
+        game._prewarm_native_effect_audio("comet.wav", "teleport.wav", pool_size=3)
+    except Exception:
+        pass
     if not game.IS_WEB:
         screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.NOFRAME)
         pygame.display.set_caption(game.GAME_TITLE)
@@ -1757,10 +1778,27 @@ async def app_main(game) -> None:
         except Exception:
             pass
 
+    def _shutdown_web_app() -> bool:
+        if not getattr(game, "IS_WEB", False):
+            return False
+        game.flush_events()
+        try:
+            game.shutdown_web_app()
+        except Exception:
+            pass
+        return True
+
     def apply_menu_selection(selection_data):
         if not selection_data:
+            if _shutdown_web_app():
+                return "__exit__"
             sys.exit()
         mode_in, save_in = selection_data
+        if mode_in == 'exit':
+            if _shutdown_web_app():
+                return "__exit__"
+            pygame.quit()
+            sys.exit()
         if mode_in == 'continue' and save_in:
             return game._apply_resume_save_data(save_in)
         game._reset_active_run_state(clear_save_file=True)
@@ -1770,7 +1808,8 @@ async def app_main(game) -> None:
         game._reset_active_run_state(clear_save_file=True)
     else:
         selection = await game.show_start_menu(screen)
-        apply_menu_selection(selection)
+        if apply_menu_selection(selection) == "__exit__":
+            return
     START_IN_SHOP_FOR_TEST = False
     if START_IN_SHOP_FOR_TEST:
         runtime['_pending_shop'] = True
@@ -1803,11 +1842,8 @@ async def app_main(game) -> None:
                 continue
             elif action == 'exit':
                 game.save_progress(game.current_level, pending_shop=True)
-                if game.IS_WEB:
-                    game.flush_events()
-                    selection = await game.show_start_menu(screen, skip_intro=True)
-                    apply_menu_selection(selection)
-                    continue
+                if _shutdown_web_app():
+                    return
                 pygame.quit()
                 sys.exit()
         resume_snapshot = runtime.pop('_resume_snapshot_data', None)
@@ -1839,14 +1875,12 @@ async def app_main(game) -> None:
         if result == 'home':
             game.flush_events()
             selection = await game.show_start_menu(screen, skip_intro=True)
-            apply_menu_selection(selection)
+            if apply_menu_selection(selection) == "__exit__":
+                return
             continue
         if result == 'exit':
-            if game.IS_WEB:
-                game.flush_events()
-                selection = await game.show_start_menu(screen, skip_intro=True)
-                apply_menu_selection(selection)
-                continue
+            if _shutdown_web_app():
+                return
             pygame.quit()
             sys.exit()
         if result == 'fail':
@@ -1855,8 +1889,14 @@ async def app_main(game) -> None:
             game.flush_events()
             if action == 'home':
                 selection = await game.show_start_menu(screen, skip_intro=True)
-                apply_menu_selection(selection)
+                if apply_menu_selection(selection) == "__exit__":
+                    return
                 continue
+            if action == 'exit':
+                if _shutdown_web_app():
+                    return
+                pygame.quit()
+                sys.exit()
             else:
                 cb = runtime.get('_consumable_baseline', {})
                 if isinstance(cb, dict):
@@ -1872,8 +1912,15 @@ async def app_main(game) -> None:
                 game.save_progress(game.current_level, pending_shop=True)
                 game.flush_events()
                 selection = await game.show_start_menu(screen, skip_intro=True)
-                apply_menu_selection(selection)
+                if apply_menu_selection(selection) == "__exit__":
+                    return
                 continue
+            if action == 'exit':
+                game.save_progress(game.current_level, pending_shop=True)
+                if _shutdown_web_app():
+                    return
+                pygame.quit()
+                sys.exit()
             if action in ('restart', 'retry'):
                 meta['spoils'] = int(runtime.get('_coins_at_level_start', meta.get('spoils', 0)))
                 runtime.pop('_last_spoils', None)
@@ -1889,7 +1936,8 @@ async def app_main(game) -> None:
                 game.save_progress(game.current_level, pending_shop=True)
                 game.flush_events()
                 selection = await game.show_start_menu(screen, skip_intro=True)
-                apply_menu_selection(selection)
+                if apply_menu_selection(selection) == "__exit__":
+                    return
                 continue
             elif action in ('restart', 'retry'):
                 meta['spoils'] = int(runtime.get('_coins_at_shop_entry', meta.get('spoils', 0)))
@@ -1900,11 +1948,8 @@ async def app_main(game) -> None:
                 continue
             elif action == 'exit':
                 game.save_progress(game.current_level, pending_shop=True)
-                if game.IS_WEB:
-                    game.flush_events()
-                    selection = await game.show_start_menu(screen, skip_intro=True)
-                    apply_menu_selection(selection)
-                    continue
+                if _shutdown_web_app():
+                    return
                 pygame.quit()
                 sys.exit()
             else:
@@ -1914,5 +1959,6 @@ async def app_main(game) -> None:
                 game.save_progress(game.current_level)
         else:
             selection = await game.show_start_menu(screen, skip_intro=True)
-            apply_menu_selection(selection)
+            if apply_menu_selection(selection) == "__exit__":
+                return
 

@@ -63,6 +63,7 @@ def install(game):
             self._ff_tacc = 0.0
             self.projectiles = []
             self.pending_bullets: List['Bullet'] = []
+            self.bullet_pool: List['Bullet'] = []
             self._vuln_mark_cd: float = 0.0
             self.hurricanes: list[dict] = []
             self.fx = game.ParticleSystem()
@@ -75,6 +76,85 @@ def install(game):
 
         def count_destructible_obstacles(self) -> int:
             return sum((1 for obs in self.obstacles.values() if obs.type == 'Destructible'))
+
+        def query_obstacles_near_circle(self, x_px: float, y_px: float, radius_px: float, *, pad_cells: int = 1):
+            if not self.obstacles:
+                return []
+            cell = max(1.0, float(game.CELL_SIZE))
+            pad = max(0, int(pad_cells))
+            span = max(1, int(math.ceil(max(0.0, float(radius_px)) / cell)) + pad)
+            gx = int(float(x_px) // cell)
+            gy = int((float(y_px) - float(game.INFO_BAR_HEIGHT)) // cell)
+            max_idx = int(getattr(game, "GRID_SIZE", 0) or 0) - 1
+            hits = []
+            seen = set()
+            min_x = gx - span
+            max_x = gx + span
+            min_y = gy - span
+            max_y = gy + span
+            if max_idx >= 0:
+                min_x = max(0, min_x)
+                max_x = min(max_idx, max_x)
+                min_y = max(0, min_y)
+                max_y = min(max_idx, max_y)
+            for oy in range(min_y, max_y + 1):
+                for ox in range(min_x, max_x + 1):
+                    ob = self.obstacles.get((ox, oy))
+                    if ob is None:
+                        continue
+                    ob_id = id(ob)
+                    if ob_id in seen:
+                        continue
+                    seen.add(ob_id)
+                    hits.append(((ox, oy), ob))
+            return hits
+
+        def query_obstacles_near_rect(self, rect: pygame.Rect, *, pad_cells: int = 1):
+            if rect is None:
+                return []
+            radius_px = 0.5 * max(float(rect.width), float(rect.height))
+            return self.query_obstacles_near_circle(rect.centerx, rect.centery, radius_px, pad_cells=pad_cells)
+
+        def acquire_bullet(
+            self,
+            x: float,
+            y: float,
+            vx: float,
+            vy: float,
+            max_dist: float = game.MAX_FIRE_RANGE,
+            damage: int = game.BULLET_DAMAGE_ENEMY,
+            source: str = 'player',
+        ):
+            pool = getattr(self, 'bullet_pool', None)
+            if pool:
+                bullet = pool.pop()
+                reset = getattr(bullet, 'reset', None)
+                if callable(reset):
+                    return reset(x, y, vx, vy, max_dist=max_dist, damage=damage, source=source)
+            return game.Bullet(x, y, vx, vy, max_dist=max_dist, damage=damage, source=source)
+
+        def release_bullet(self, bullet) -> None:
+            if bullet is None:
+                return
+            pool = getattr(self, 'bullet_pool', None)
+            if pool is None:
+                self.bullet_pool = []
+                pool = self.bullet_pool
+            if bool(getattr(bullet, '_pooled', False)):
+                return
+            pool_cap = 96 if game.IS_WEB else 192
+            if len(pool) >= pool_cap:
+                return
+            bullet.alive = False
+            bullet.traveled = 0.0
+            if hasattr(bullet, 'pierce_left'):
+                bullet.pierce_left = 0
+            if hasattr(bullet, 'ricochet_left'):
+                bullet.ricochet_left = 0
+            if hasattr(bullet, 'is_shrapnel'):
+                bullet.is_shrapnel = False
+            bullet._pooled = True
+            pool.append(bullet)
 
         def spawn_spoils(self, x_px: float, y_px: float, count: int=1):
             remaining = int(max(0, count))
@@ -1157,36 +1237,65 @@ def install(game):
                 recent_seq = list(getattr(self, '_curing_paint_recent', ()) or ())
                 if recent_seq:
                     recent_paints = set(recent_seq)
-            if hasattr(self, 'paint_active') and hasattr(self, 'paint_grid'):
-                for gx, gy in getattr(self, 'paint_active', ()):
-                    if gx < gx_min or gx > gx_max or gy < gy_min or (gy > gy_max):
-                        continue
-                    if not (0 <= gx < game.GRID_SIZE and 0 <= gy < game.GRID_SIZE):
-                        continue
-                    tile = self.paint_grid[gy][gx]
-                    if getattr(tile, 'paint_owner', 0) != 2:
-                        continue
-                    game.draw_enemy_paint_tile_iso(screen, gx, gy, tile, cam_x, cam_y, static=static_enemy)
-            paint_bins = getattr(self, '_curing_paint_bins', {})
-            if paint_bins:
-                for gx in range(gx_min, gx_max + 1):
-                    for gy in range(gy_min, gy_max + 1):
-                        for p in paint_bins.get((gx, gy), []):
+
+            def _draw_paint_layer(target_surface):
+                if hasattr(self, 'paint_active') and hasattr(self, 'paint_grid'):
+                    for gx, gy in getattr(self, 'paint_active', ()):
+                        if gx < gx_min or gx > gx_max or gy < gy_min or (gy > gy_max):
+                            continue
+                        if not (0 <= gx < game.GRID_SIZE and 0 <= gy < game.GRID_SIZE):
+                            continue
+                        tile = self.paint_grid[gy][gx]
+                        if getattr(tile, 'paint_owner', 0) != 2:
+                            continue
+                        game.draw_enemy_paint_tile_iso(target_surface, gx, gy, tile, cam_x, cam_y, static=static_enemy)
+                paint_bins = getattr(self, '_curing_paint_bins', {})
+                if paint_bins:
+                    for (gx, gy), paints in paint_bins.items():
+                        if gx < gx_min or gx > gx_max or gy < gy_min or gy > gy_max:
+                            continue
+                        for p in paints:
                             if p.x < min_x or p.x > max_x or p.y < min_y or (p.y > max_y):
                                 continue
                             tile = self.paint_tile_at_world(p.x, p.y)
                             if tile is not None and getattr(tile, 'paint_owner', 0) != 1:
                                 continue
                             static_paint = bool(hell and recent_paints is not None and (p not in recent_paints))
-                            game.draw_curing_paint_iso(screen, p, cam_x, cam_y, static=static_paint)
-            else:
-                for idx, p in enumerate(curing_paint):
-                    if p.x < min_x or p.x > max_x or p.y < min_y or (p.y > max_y):
-                        continue
-                    tile = self.paint_tile_at_world(p.x, p.y)
-                    if tile is not None and getattr(tile, 'paint_owner', 0) != 1:
-                        continue
-                    game.draw_curing_paint_iso(screen, p, cam_x, cam_y, static=hell and idx < anim_start)
+                            game.draw_curing_paint_iso(target_surface, p, cam_x, cam_y, static=static_paint)
+                else:
+                    for idx, p in enumerate(curing_paint):
+                        if p.x < min_x or p.x > max_x or p.y < min_y or (p.y > max_y):
+                            continue
+                        tile = self.paint_tile_at_world(p.x, p.y)
+                        if tile is not None and getattr(tile, 'paint_owner', 0) != 1:
+                            continue
+                        game.draw_curing_paint_iso(target_surface, p, cam_x, cam_y, static=hell and idx < anim_start)
+
+            if getattr(game, 'IS_WEB', False):
+                refresh_ms = max(16, int(getattr(game, 'WEB_PAINT_RENDER_REFRESH_MS', 50) or 50))
+                now_ms = pygame.time.get_ticks()
+                cache_key = (
+                    tuple(screen.get_size()),
+                    int(cam_x) // 8,
+                    int(cam_y) // 8,
+                    int(now_ms // refresh_ms),
+                    bool(hell),
+                    int(len(getattr(self, 'paint_active', ()) or ())),
+                    int(len(getattr(self, '_curing_paint_bins', {}) or {})),
+                    int(len(curing_paint or ())),
+                    int(len(getattr(self, '_curing_paint_recent', ()) or ())),
+                )
+                cached_key = getattr(self, '_paint_web_cache_key', None)
+                cached_surface = getattr(self, '_paint_web_cache_surface', None)
+                if cached_surface is None or cached_key != cache_key or cached_surface.get_size() != screen.get_size():
+                    cached_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+                    _draw_paint_layer(cached_surface)
+                    self._paint_web_cache_surface = cached_surface
+                    self._paint_web_cache_key = cache_key
+                screen.blit(cached_surface, (0, 0))
+                return
+
+            _draw_paint_layer(screen)
 
         def draw_hazards_iso(self, screen, cam_x, cam_y):
             for p in list(getattr(self, 'aegis_pulses', [])):

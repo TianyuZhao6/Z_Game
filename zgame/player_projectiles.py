@@ -9,9 +9,73 @@ from zgame import runtime_state as rs
 def install(game):
     meta = rs.meta(game)
 
+    def _query_local_obstacles(game_state, rect: pygame.Rect):
+        query = getattr(game_state, 'query_obstacles_near_rect', None)
+        if callable(query):
+            return query(rect, pad_cells=1)
+        return list(getattr(game_state, 'obstacles', {}).items())
+
+    def _soft_explosion_count(game_state, requested: int) -> int:
+        count = int(max(0, requested))
+        if count <= 0 or (not getattr(game, 'IS_WEB', False)):
+            return count
+        max_particles = int(getattr(game, 'WEB_MAX_FX_PARTICLES', 0) or 0)
+        if max_particles <= 0:
+            return count
+        particles = getattr(getattr(game_state, 'fx', None), 'particles', None)
+        active_particles = len(particles) if isinstance(particles, list) else 0
+        soft_cap = max(10, max_particles)
+        floor = 12 if count >= 100 else 6 if count >= 20 else 3
+        headroom = max(0, soft_cap - active_particles)
+        if headroom <= 0:
+            return min(count, floor)
+        if count <= headroom:
+            return count
+        return max(floor, min(count, headroom))
+
+    def _soft_spawned_bullet_count(game_state, requested: int) -> int:
+        count = int(max(0, requested))
+        if count <= 0 or (not getattr(game, 'IS_WEB', False)):
+            return count
+        pending = getattr(game_state, 'pending_bullets', None)
+        pending_count = len(pending) if isinstance(pending, list) else 0
+        render_cap = int(getattr(game, 'WEB_LITE_RENDER_BULLET_CAP', 0) or 0)
+        soft_cap = max(10, render_cap * 2) if render_cap > 0 else 12
+        headroom = max(0, soft_cap - pending_count)
+        if headroom <= 0:
+            return 0
+        if count <= headroom:
+            return count
+        return max(1, min(count, int(math.ceil(headroom * 0.5))))
+
+    def _acquire_bullet(game_state, x: float, y: float, vx: float, vy: float, *, max_dist: float, damage: int, source: str):
+        acquire = getattr(game_state, 'acquire_bullet', None)
+        if callable(acquire):
+            return acquire(x, y, vx, vy, max_dist=max_dist, damage=damage, source=source)
+        return game.Bullet(x, y, vx, vy, max_dist=max_dist, damage=damage, source=source)
+
     class Bullet:
+        __slots__ = (
+            'x',
+            'y',
+            'vx',
+            'vy',
+            'alive',
+            'traveled',
+            'max_dist',
+            'damage',
+            'r',
+            'source',
+            'pierce_left',
+            'ricochet_left',
+            'is_shrapnel',
+            '_pooled',
+        )
 
         def __init__(self, x: float, y: float, vx: float, vy: float, max_dist: float=game.MAX_FIRE_RANGE, damage: int=game.BULLET_DAMAGE_ENEMY, source: str='player'):
+            self.reset(x, y, vx, vy, max_dist=max_dist, damage=damage, source=source)
+
+        def reset(self, x: float, y: float, vx: float, vy: float, max_dist: float=game.MAX_FIRE_RANGE, damage: int=game.BULLET_DAMAGE_ENEMY, source: str='player'):
             self.x = x
             self.y = y
             self.vx = vx
@@ -22,6 +86,11 @@ def install(game):
             self.damage = int(damage)
             self.r = game.bullet_radius_for_damage(self.damage)
             self.source = source
+            self.pierce_left = 0
+            self.ricochet_left = 0
+            self.is_shrapnel = False
+            self._pooled = False
+            return self
 
         def update(self, dt: float, game_state: 'GameState', enemies: List['Enemy'], player: 'Player'=None):
             if not self.alive:
@@ -61,7 +130,11 @@ def install(game):
                     return False
                 target = None
                 best_d2 = None
-                for z in enemies:
+                if spatial:
+                    ricochet_candidates = spatial.query_circle(hit_x, hit_y, query_r)
+                else:
+                    ricochet_candidates = nearby_enemies
+                for z in ricochet_candidates:
                     if getattr(z, 'hp', 0) <= 0:
                         continue
                     dx = z.rect.centerx - hit_x
@@ -156,9 +229,9 @@ def install(game):
                         cx, cy = (z.rect.centerx, z.rect.centery)
                         if int(meta.get('explosive_rounds_level', 0)) > 0:
                             if getattr(z, 'is_boss', False):
-                                game_state.fx.spawn_explosion(cx, cy, (255, 100, 50), count=150)
+                                game_state.fx.spawn_explosion(cx, cy, (255, 100, 50), count=_soft_explosion_count(game_state, 150))
                             else:
-                                game_state.fx.spawn_explosion(cx, cy, z.color, count=25)
+                                game_state.fx.spawn_explosion(cx, cy, z.color, count=_soft_explosion_count(game_state, 25))
                         game._bandit_death_notice(z, game_state)
                         shrap_lvl = int(meta.get('shrapnel_level', 0))
                         if shrap_lvl > 0 and hp_lost > 0 and (getattr(self, 'source', 'player') == 'player'):
@@ -166,14 +239,14 @@ def install(game):
                             per_level = 0.1
                             chance = min(0.8, base_chance + per_level * (shrap_lvl - 1))
                             if random.random() < chance:
-                                count = random.randint(3, 4)
+                                count = _soft_spawned_bullet_count(game_state, random.randint(3, 4))
                                 shrap_dmg = max(1, int(round(hp_lost * 0.4)))
                                 for _ in range(count):
                                     ang = random.uniform(0.0, 2.0 * math.pi)
                                     speed = game.BULLET_SPEED * 0.85
                                     vx = math.cos(ang) * speed
                                     vy = math.sin(ang) * speed
-                                    sb = game.Bullet(cx, cy, vx, vy, max_dist=player.range * 0.5, damage=shrap_dmg, source='player')
+                                    sb = _acquire_bullet(game_state, cx, cy, vx, vy, max_dist=player.range * 0.5, damage=shrap_dmg, source='player')
                                     sb.pierce_left = 0
                                     sb.ricochet_left = 0
                                     sb.is_shrapnel = True
@@ -266,7 +339,7 @@ def install(game):
                                     break
                             self.alive = False
                             return
-            for gp, ob in list(game_state.obstacles.items()):
+            for gp, ob in _query_local_obstacles(game_state, r):
                 if r.colliderect(ob.rect):
                     hit_x, hit_y = (self.x, self.y)
                     if ob.type == 'Lantern':

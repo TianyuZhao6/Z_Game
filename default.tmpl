@@ -597,6 +597,32 @@ window.__zgame_bgm_pos_ms = function() {
     }
 };
 
+window.__zgame_audio_stop_all = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (audio) {
+            try { audio.pause(); } catch (_) {}
+            try { audio.currentTime = 0; } catch (_) {}
+            try { audio.src = ""; } catch (_) {}
+        }
+        window.__zgame_bgm_audio = null;
+        window.__zgame_bgm_pending = false;
+        const pool = window.__zgame_fx_pool || {};
+        for (const key of Object.keys(pool)) {
+            for (const audioEl of (pool[key] || [])) {
+                try { audioEl.pause(); } catch (_) {}
+                try { audioEl.currentTime = 0; } catch (_) {}
+                try { audioEl.src = ""; } catch (_) {}
+            }
+        }
+        window.__zgame_fx_pool = Object.create(null);
+        return true;
+    } catch (e) {
+        console.warn("[Audio] stop all failed", e);
+        return false;
+    }
+};
+
 window.__zgame_fx_play = function(src, volume) {
     try {
         const key = String(src || "");
@@ -608,9 +634,17 @@ window.__zgame_fx_play = function(src, volume) {
         }
         let audio = null;
         for (const cand of pool) {
-            if (cand && (cand.paused || cand.ended)) {
+            if (cand && (cand.paused || cand.ended) && Number(cand.readyState || 0) >= 2) {
                 audio = cand;
                 break;
+            }
+        }
+        if (!audio) {
+            for (const cand of pool) {
+                if (cand && (cand.paused || cand.ended)) {
+                    audio = cand;
+                    break;
+                }
             }
         }
         if (!audio) {
@@ -643,6 +677,69 @@ window.__zgame_fx_play = function(src, volume) {
         console.warn("[Audio] html fx play exception", e);
         return false;
     }
+};
+
+window.__zgame_fx_preload = function(src, poolSize) {
+    try {
+        const key = String(src || "");
+        if (!key) return false;
+        const want = Math.max(1, Math.min(8, Number(poolSize || 2) | 0));
+        let pool = window.__zgame_fx_pool[key];
+        if (!pool) {
+            pool = [];
+            window.__zgame_fx_pool[key] = pool;
+        }
+        while (pool.length < want) {
+            const audio = new Audio(key);
+            audio.preload = "auto";
+            audio.autoplay = false;
+            audio.playsInline = true;
+            audio.defaultMuted = false;
+            audio.muted = false;
+            audio.crossOrigin = "anonymous";
+            pool.push(audio);
+        }
+        for (const audio of pool) {
+            try { audio.load(); } catch (_) {}
+        }
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html fx preload failed", e);
+        return false;
+    }
+};
+
+window.__zgame_terminate = function(reason) {
+    try {
+        window.__zgame_audio_stop_all();
+    } catch (_) {}
+    try { window.__zgame_last_error = ""; } catch (_) {}
+    try { window.__zgame_py_error = ""; } catch (_) {}
+    try {
+        if (window.__zgame_diag_dom && window.__zgame_diag_dom.parentNode) {
+            window.__zgame_diag_dom.parentNode.removeChild(window.__zgame_diag_dom);
+        }
+        window.__zgame_diag_dom = null;
+    } catch (_) {}
+    try {
+        const canvas = document.querySelector("canvas");
+        if (canvas) {
+            canvas.style.display = "none";
+        }
+        document.body.innerHTML = "";
+        document.body.style.margin = "0";
+        document.body.style.background = "#000";
+    } catch (_) {}
+    try {
+        window.open("", "_self");
+        window.close();
+    } catch (_) {}
+    setTimeout(() => {
+        try {
+            window.location.replace("about:blank");
+        } catch (_) {}
+    }, 20);
+    return true;
 };
 
 </script>

@@ -71,7 +71,7 @@ def install(game):
             vx = (dx / dist) * speed
             vy = (dy / dist) * speed
             bullets.append(
-                game.Bullet(
+                game_state.acquire_bullet(
                     tx,
                     ty,
                     vx,
@@ -138,7 +138,7 @@ def install(game):
             vx = (dx / dist) * speed
             vy = (dy / dist) * speed
             bullets.append(
-                game.Bullet(
+                game_state.acquire_bullet(
                     tx,
                     ty,
                     vx,
