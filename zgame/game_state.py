@@ -64,6 +64,14 @@ def install(game):
             self.projectiles = []
             self.pending_bullets: List['Bullet'] = []
             self.bullet_pool: List['Bullet'] = []
+            pickup_cell = max(16, int(getattr(game, 'SPATIAL_CELL', game.CELL_SIZE) or game.CELL_SIZE))
+            self.spoil_spatial = game.GridBuckets(pickup_cell)
+            self.heal_spatial = game.GridBuckets(pickup_cell)
+            self._dynamic_spoils = []
+            self._dynamic_heals = []
+            self._paint_active_cache = []
+            self._paint_active_dirty = True
+            self._paint_update_accum = 0.0
             self._vuln_mark_cd: float = 0.0
             self.hurricanes: list[dict] = []
             self.fx = game.ParticleSystem()
@@ -76,6 +84,66 @@ def install(game):
 
         def count_destructible_obstacles(self) -> int:
             return sum((1 for obs in self.obstacles.values() if obs.type == 'Destructible'))
+
+        def _pickup_is_dynamic(self, pickup) -> bool:
+            return bool(float(getattr(pickup, 'h', 0.0)) > 0.001 or abs(float(getattr(pickup, 'vh', 0.0))) > 0.05)
+
+        def _track_dynamic_pickup(self, bucket: list, pickup) -> None:
+            if pickup is None or bool(getattr(pickup, '_pickup_removed', False)):
+                return
+            if bool(getattr(pickup, '_pickup_dynamic', False)):
+                return
+            pickup._pickup_dynamic = True
+            bucket.append(pickup)
+
+        def _mark_spoil_dynamic(self, spoil) -> None:
+            self._track_dynamic_pickup(self._dynamic_spoils, spoil)
+
+        def _mark_heal_dynamic(self, heal) -> None:
+            self._track_dynamic_pickup(self._dynamic_heals, heal)
+
+        def _remove_spoil(self, spoil) -> None:
+            if spoil is None:
+                return
+            spoil._pickup_removed = True
+            spoil._pickup_dynamic = False
+            self.spoil_spatial.remove(spoil)
+            try:
+                self.spoils.remove(spoil)
+            except ValueError:
+                pass
+
+        def _remove_heal(self, heal) -> None:
+            if heal is None:
+                return
+            heal._pickup_removed = True
+            heal._pickup_dynamic = False
+            self.heal_spatial.remove(heal)
+            try:
+                self.heals.remove(heal)
+            except ValueError:
+                pass
+
+        def query_spoils_near_circle(self, x_px: float, y_px: float, radius_px: float, *, pad_cells: int = 1):
+            return self.spoil_spatial.query_circle(float(x_px), float(y_px), float(radius_px), pad_cells=pad_cells)
+
+        def query_spoils_near_rect(self, rect: pygame.Rect, *, pad_px: float = 0.0, pad_cells: int = 1):
+            return self.spoil_spatial.query_rect(rect, pad_px=pad_px, pad_cells=pad_cells)
+
+        def query_heals_near_circle(self, x_px: float, y_px: float, radius_px: float, *, pad_cells: int = 1):
+            return self.heal_spatial.query_circle(float(x_px), float(y_px), float(radius_px), pad_cells=pad_cells)
+
+        def query_heals_near_rect(self, rect: pygame.Rect, *, pad_px: float = 0.0, pad_cells: int = 1):
+            return self.heal_spatial.query_rect(rect, pad_px=pad_px, pad_cells=pad_cells)
+
+        def _mark_paint_active_dirty(self) -> None:
+            self._paint_active_dirty = True
+
+        def _paint_active_entries(self):
+            if self._paint_active_dirty:
+                self._paint_active_cache = list(self.paint_active)
+                self._paint_active_dirty = False
+            return self._paint_active_cache
 
         def query_obstacles_near_circle(self, x_px: float, y_px: float, radius_px: float, *, pad_cells: int = 1):
             if not self.obstacles:
@@ -161,11 +229,22 @@ def install(game):
             if remaining <= 0:
                 return
             max_spoils = int(getattr(game, "WEB_MAX_SPOILS_ON_FIELD", 0) or 0) if game.IS_WEB else 0
+            if game.IS_WEB and self.spoils:
+                bundle_radius = max(18.0, float(game.CELL_SIZE) * 0.65)
+                nearby = self.query_spoils_near_circle(x_px, y_px, bundle_radius)
+                if nearby and (remaining >= 4 or len(nearby) >= 2 or (max_spoils > 0 and len(self.spoils) >= max(1, max_spoils - 3))):
+                    nearest = min(
+                        nearby,
+                        key=lambda spoil: (spoil.base_x - float(x_px)) ** 2 + (spoil.base_y - float(y_px)) ** 2,
+                    )
+                    nearest.value += remaining
+                    return
             if max_spoils > 0:
                 slots_left = max(0, max_spoils - len(self.spoils))
                 if slots_left <= 0 and self.spoils:
+                    nearby = self.query_spoils_near_circle(x_px, y_px, max(float(game.CELL_SIZE) * 2.0, 48.0))
                     nearest = min(
-                        self.spoils,
+                        nearby or self.spoils,
                         key=lambda spoil: (spoil.base_x - float(x_px)) ** 2 + (spoil.base_y - float(y_px)) ** 2,
                     )
                     nearest.value += remaining
@@ -179,7 +258,12 @@ def install(game):
                 value = min(bundle, remaining)
                 jx = random.uniform(-6, 6)
                 jy = random.uniform(-6, 6)
-                self.spoils.append(game.Spoil(x_px + jx, y_px + jy, value))
+                spoil = game.Spoil(x_px + jx, y_px + jy, value)
+                spoil._pickup_removed = False
+                spoil._pickup_dynamic = False
+                self.spoils.append(spoil)
+                self.spoil_spatial.insert(spoil)
+                self._mark_spoil_dynamic(spoil)
                 remaining -= value
             if remaining > 0 and self.spoils:
                 self.spoils[-1].value += remaining
@@ -189,16 +273,43 @@ def install(game):
         Update coin bounce, and gently pull coins toward the player within pickup range.
         Actual pickup still happens in collect_spoils when a coin overlaps the player.
         """
-            for s in self.spoils:
-                s.update(dt)
             magnet_radius = int(meta.get('coin_magnet_radius', 0) or 0)
             pull_radius = max(0, int(game.COIN_PICKUP_RADIUS_BASE + magnet_radius))
-            if pull_radius <= 0:
-                return
             px, py = player.rect.center
             pull_speed = 480.0
             r2 = float(pull_radius * pull_radius)
-            for s in self.spoils:
+            local_spoils = []
+            if self.spoils:
+                local_radius = max(float(pull_radius), float(game.CELL_SIZE) * 1.5)
+                local_spoils = self.query_spoils_near_circle(px, py, local_radius)
+            seen = set()
+            alive_dynamic = []
+            for s in getattr(self, '_dynamic_spoils', []):
+                if bool(getattr(s, '_pickup_removed', False)):
+                    continue
+                s.update(dt)
+                if pull_radius > 0:
+                    cx, cy = s.rect.center
+                    dx = px - cx
+                    dy = py - cy
+                    dist2 = dx * dx + dy * dy
+                    if dist2 <= r2:
+                        dist = max(1.0, dist2 ** 0.5)
+                        step = min(pull_speed * dt, dist)
+                        s.base_x += dx / dist * step
+                        s.base_y += dy / dist * step
+                        s._update_rect()
+                self.spoil_spatial.update(s)
+                s._pickup_dynamic = self._pickup_is_dynamic(s)
+                if s._pickup_dynamic:
+                    alive_dynamic.append(s)
+                seen.add(id(s))
+            self._dynamic_spoils = alive_dynamic
+            if pull_radius <= 0:
+                return
+            for s in local_spoils:
+                if bool(getattr(s, '_pickup_removed', False)) or id(s) in seen:
+                    continue
                 cx, cy = s.rect.center
                 dx = px - cx
                 dy = py - cy
@@ -207,11 +318,10 @@ def install(game):
                     continue
                 dist = max(1.0, dist2 ** 0.5)
                 step = min(pull_speed * dt, dist)
-                nx = cx + dx / dist * step
-                ny = cy + dy / dist * step
-                s.base_x += nx - cx
-                s.base_y += ny - cy
+                s.base_x += dx / dist * step
+                s.base_y += dy / dist * step
                 s._update_rect()
+                self.spoil_spatial.update(s)
 
         def collect_item(self, player_rect: pygame.Rect) -> bool:
             """Collect one item if the player overlaps it. Returns True if collected."""
@@ -229,9 +339,10 @@ def install(game):
             """Collect spoils that touch the player."""
             gained = 0
             pickup_rect = player_rect
-            for s in list(self.spoils):
+            query_pad = max(float(game.CELL_SIZE), float(max(player_rect.width, player_rect.height)))
+            for s in list(self.query_spoils_near_rect(pickup_rect, pad_px=query_pad)):
                 if pickup_rect.colliderect(s.rect):
-                    self.spoils.remove(s)
+                    self._remove_spoil(s)
                     self.spoils_gained += s.value
                     self.level_coin_delta += s.value
                     gained += s.value
@@ -241,9 +352,10 @@ def install(game):
             """让某个僵尸收集与其相交的金币，返回本次收集数量。"""
             gained = 0
             zr = enemy.rect
-            for s in list(self.spoils):
+            query_pad = max(float(game.CELL_SIZE), float(max(zr.width, zr.height)))
+            for s in list(self.query_spoils_near_rect(zr, pad_px=query_pad)):
                 if zr.colliderect(s.rect):
-                    self.spoils.remove(s)
+                    self._remove_spoil(s)
                     gained += s.value
             return gained
 
@@ -287,17 +399,33 @@ def install(game):
                 return
             jx = random.uniform(-6, 6)
             jy = random.uniform(-6, 6)
-            self.heals.append(game.HealPickup(x_px + jx, y_px + jy, amount))
+            heal = game.HealPickup(x_px + jx, y_px + jy, amount)
+            heal._pickup_removed = False
+            heal._pickup_dynamic = False
+            self.heals.append(heal)
+            self.heal_spatial.insert(heal)
+            self._mark_heal_dynamic(heal)
 
         def update_heals(self, dt: float):
-            for h in self.heals:
+            if not getattr(self, '_dynamic_heals', None):
+                return
+            alive_dynamic = []
+            for h in self._dynamic_heals:
+                if bool(getattr(h, '_pickup_removed', False)):
+                    continue
                 h.update(dt)
+                self.heal_spatial.update(h)
+                h._pickup_dynamic = self._pickup_is_dynamic(h)
+                if h._pickup_dynamic:
+                    alive_dynamic.append(h)
+            self._dynamic_heals = alive_dynamic
 
         def collect_heals(self, player: 'Player') -> int:
             healed = 0
-            for h in list(self.heals):
+            query_pad = max(float(game.CELL_SIZE), float(max(player.rect.width, player.rect.height)))
+            for h in list(self.query_heals_near_rect(player.rect, pad_px=query_pad)):
                 if player.rect.colliderect(h.rect):
-                    self.heals.remove(h)
+                    self._remove_heal(h)
                     before = player.hp
                     player.hp = min(player.max_hp, player.hp + h.heal)
                     healed += player.hp - before
@@ -419,6 +547,7 @@ def install(game):
                         same_radius = abs(float(getattr(tile, 'paint_radius', 0.0)) - r) <= 1.0
                         if same_owner and same_type and same_color and fresh_tile and same_radius:
                             self.paint_active.add((gx, gy))
+                            self._mark_paint_active_dirty()
                             continue
                     tile.paint_owner = int(owner)
                     tile.paint_intensity = 1.0
@@ -429,6 +558,7 @@ def install(game):
                     tile.paint_radius = r
                     tile.refresh_visuals()
                     self.paint_active.add((gx, gy))
+                    self._mark_paint_active_dirty()
 
         def apply_enemy_paint(self, x_px: float, y_px: float, radius_px: float, paint_type: str='corrupt_trail', paint_color: Optional[tuple[int, int, int]]=None) -> None:
             self.apply_paint(x_px, y_px, radius_px, owner=2, paint_type=paint_type, paint_color=paint_color)
@@ -439,16 +569,31 @@ def install(game):
 
         def update_paint_tiles(self, dt: float) -> None:
             if not self.paint_active:
+                self._paint_active_cache = []
+                self._paint_active_dirty = False
+                self._paint_update_accum = 0.0
                 return
+            step_dt = float(dt)
+            if getattr(game, 'IS_WEB', False):
+                interval = float(getattr(game, 'WEB_PAINT_SIM_INTERVAL', 1.0 / 30.0) or 0.0)
+                if interval > 0.0:
+                    self._paint_update_accum = float(getattr(self, '_paint_update_accum', 0.0)) + step_dt
+                    if self._paint_update_accum + 1e-6 < interval:
+                        return
+                    step_dt = self._paint_update_accum
+                    self._paint_update_accum = 0.0
             hell = getattr(self, 'biome_active', None) == 'Scorched Hell'
-            for gx, gy in list(self.paint_active):
+            removed_any = False
+            for gx, gy in self._paint_active_entries():
                 if not (0 <= gx < game.GRID_SIZE and 0 <= gy < game.GRID_SIZE):
                     self.paint_active.discard((gx, gy))
+                    removed_any = True
                     continue
                 tile = self.paint_grid[gy][gx]
                 owner = int(getattr(tile, 'paint_owner', 0))
                 if owner <= 0:
                     self.paint_active.discard((gx, gy))
+                    removed_any = True
                     continue
                 life0 = float(getattr(tile, 'paint_life0', 0.0))
                 if life0 <= 0.0:
@@ -465,8 +610,9 @@ def install(game):
                     tile.paint_color = None
                     tile.paint_radius = 0.0
                     self.paint_active.discard((gx, gy))
+                    removed_any = True
                     continue
-                tile.paint_age = float(getattr(tile, 'paint_age', 0.0)) + float(dt)
+                tile.paint_age = float(getattr(tile, 'paint_age', 0.0)) + step_dt
                 if hell:
                     tile.paint_intensity = 1.0
                     continue
@@ -479,6 +625,9 @@ def install(game):
                     tile.paint_type = None
                     tile.paint_color = None
                     self.paint_active.discard((gx, gy))
+                    removed_any = True
+            if removed_any:
+                self._mark_paint_active_dirty()
 
         def update_enemy_paint(self, dt: float, player: 'Player') -> None:
             self.update_paint_tiles(dt)
@@ -809,13 +958,18 @@ def install(game):
             self.telegraphs.append(game.TelegraphCircle(float(x), float(y), float(r), float(life), kind, payload, color))
 
         def update_telegraphs(self, dt: float):
-            for t in list(self.telegraphs):
+            if not self.telegraphs:
+                return
+            alive = []
+            for t in self.telegraphs:
                 t.t -= dt
                 if t.t <= 0:
                     if t.kind == 'acid' and t.payload:
                         for px, py in t.payload.get('points', []):
                             self.spawn_acid_pool(px, py, r=t.payload.get('radius', 24), dps=t.payload.get('dps', game.ACID_DPS), slow_frac=t.payload.get('slow', game.ACID_SLOW_FRAC), life=t.payload.get('life', game.ACID_LIFETIME))
-                    self.telegraphs.remove(t)
+                    continue
+                alive.append(t)
+            self.telegraphs = alive
 
         def update_aegis_pulses(self, dt: float, player=None, enemies=None):
             if not getattr(self, 'aegis_pulses', None):
@@ -858,10 +1012,32 @@ def install(game):
                 self.dmg_texts.append(game.DamageText(x, y, str(amount), True if crit else False, kind))
 
         def update_damage_texts(self, dt: float):
-            for d in list(self.dmg_texts):
+            if not self.dmg_texts:
+                return
+            alive = []
+            for d in self.dmg_texts:
                 d.step(dt)
                 if not d.alive():
-                    self.dmg_texts.remove(d)
+                    continue
+                alive.append(d)
+            self.dmg_texts = alive
+
+        def enforce_transient_budgets(self):
+            if not getattr(game, 'IS_WEB', False):
+                return
+            max_texts = int(getattr(game, 'WEB_MAX_DAMAGE_TEXTS', 0) or 0)
+            if max_texts > 0 and len(self.dmg_texts) > max_texts:
+                del self.dmg_texts[:-max_texts]
+            fx_particles = getattr(getattr(self, 'fx', None), 'particles', None)
+            max_fx = int(getattr(game, 'WEB_MAX_FX_PARTICLES', 0) or 0)
+            if max_fx > 0 and isinstance(fx_particles, list) and len(fx_particles) > max_fx:
+                del fx_particles[:-max_fx]
+            max_ghosts = int(getattr(game, 'WEB_MAX_GHOSTS', 24) or 24)
+            if max_ghosts > 0 and len(self.ghosts) > max_ghosts:
+                del self.ghosts[:-max_ghosts]
+            max_corpses = int(getattr(game, 'WEB_MAX_COMET_CORPSES', 10) or 10)
+            if max_corpses > 0 and len(self.comet_corpses) > max_corpses:
+                del self.comet_corpses[:-max_corpses]
 
         def add_cam_shake(self, magnitude: float, duration: float=0.25):
             mag = max(0.0, float(magnitude))
@@ -891,10 +1067,13 @@ def install(game):
             return cb
 
         def update_comet_blasts(self, dt: float, player=None, enemies=None):
-            for b in list(self.comet_blasts):
+            alive_blasts = []
+            for b in self.comet_blasts:
                 b.update(dt)
                 if b.done():
-                    self.comet_blasts.remove(b)
+                    continue
+                alive_blasts.append(b)
+            self.comet_blasts = alive_blasts
             if enemies is not None:
                 for z in enemies:
                     flash = float(getattr(z, '_comet_flash', 0.0))
@@ -1231,6 +1410,7 @@ def install(game):
             hell = getattr(self, 'biome_active', None) == 'Scorched Hell'
             static_enemy = hell and game.HELL_ENEMY_PAINT_STATIC
             curing_paint = getattr(self, 'curing_paint', ())
+            paint_active_entries = self._paint_active_entries() if hasattr(self, '_paint_active_entries') else tuple(getattr(self, 'paint_active', ()))
             anim_start = 0
             recent_paints = None
             if hell:
@@ -1240,7 +1420,7 @@ def install(game):
 
             def _draw_paint_layer(target_surface):
                 if hasattr(self, 'paint_active') and hasattr(self, 'paint_grid'):
-                    for gx, gy in getattr(self, 'paint_active', ()):
+                    for gx, gy in paint_active_entries:
                         if gx < gx_min or gx > gx_max or gy < gy_min or (gy > gy_max):
                             continue
                         if not (0 <= gx < game.GRID_SIZE and 0 <= gy < game.GRID_SIZE):
@@ -1280,7 +1460,7 @@ def install(game):
                     int(cam_y) // 8,
                     int(now_ms // refresh_ms),
                     bool(hell),
-                    int(len(getattr(self, 'paint_active', ()) or ())),
+                    int(len(paint_active_entries)),
                     int(len(getattr(self, '_curing_paint_bins', {}) or {})),
                     int(len(curing_paint or ())),
                     int(len(getattr(self, '_curing_paint_recent', ()) or ())),

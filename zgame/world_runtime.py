@@ -9,32 +9,143 @@ import pygame
 
 
 def install(game):
-    class SpatialHash:
+    class GridBuckets:
         def __init__(self, cell=64):
-            self.cell = int(cell)
+            self.cell = max(1, int(cell))
             self.buckets = {}
+            self._object_keys = {}
 
         def _key(self, x, y):
             return (int(x) // self.cell, int(y) // self.cell)
 
-        def rebuild(self, enemies):
-            self.buckets.clear()
-            for z in enemies:
-                k = self._key(z.rect.centerx, z.rect.centery)
-                self.buckets.setdefault(k, []).append(z)
+        def _resolve_xy(self, obj):
+            rect = getattr(obj, "rect", None)
+            if rect is not None:
+                return (float(rect.centerx), float(rect.centery))
+            if hasattr(obj, "base_x") and hasattr(obj, "base_y"):
+                return (float(getattr(obj, "base_x", 0.0)), float(getattr(obj, "base_y", 0.0)))
+            return (float(getattr(obj, "x", 0.0)), float(getattr(obj, "y", 0.0)))
 
-        def query_circle(self, x, y, r):
+        def clear(self):
+            self.buckets.clear()
+            self._object_keys.clear()
+
+        def rebuild(self, objects):
+            self.clear()
+            for obj in objects:
+                self.insert(obj)
+
+        def insert(self, obj, x=None, y=None):
+            if obj is None:
+                return
+            if x is None or y is None:
+                x, y = self._resolve_xy(obj)
+            k = self._key(x, y)
+            self.buckets.setdefault(k, []).append(obj)
+            self._object_keys[id(obj)] = k
+
+        def remove(self, obj):
+            if obj is None:
+                return
+            obj_id = id(obj)
+            key = self._object_keys.pop(obj_id, None)
+            if key is None:
+                return
+            bucket = self.buckets.get(key)
+            if not bucket:
+                return
+            try:
+                bucket.remove(obj)
+            except ValueError:
+                pass
+            if not bucket:
+                self.buckets.pop(key, None)
+
+        def update(self, obj, x=None, y=None):
+            if obj is None:
+                return
+            if x is None or y is None:
+                x, y = self._resolve_xy(obj)
+            new_key = self._key(x, y)
+            obj_id = id(obj)
+            old_key = self._object_keys.get(obj_id)
+            if old_key is None:
+                self.insert(obj, x, y)
+                return
+            if old_key == new_key:
+                return
+            bucket = self.buckets.get(old_key)
+            if bucket:
+                try:
+                    bucket.remove(obj)
+                except ValueError:
+                    pass
+                if not bucket:
+                    self.buckets.pop(old_key, None)
+            self.buckets.setdefault(new_key, []).append(obj)
+            self._object_keys[obj_id] = new_key
+
+        def _query_keys(self, min_x, min_y, max_x, max_y):
+            for gx in range(min_x, max_x + 1):
+                for gy in range(min_y, max_y + 1):
+                    for obj in self.buckets.get((gx, gy), ()):
+                        yield obj
+
+        def query_circle(self, x, y, r, *, pad_cells=0, inflate=0.0):
             cx, cy = self._key(x, y)
             out = []
-            rr = r + max(16, game.CELL_SIZE // 2)
-            for gx in (cx - 1, cx, cx + 1):
-                for gy in (cy - 1, cy, cy + 1):
-                    for z in self.buckets.get((gx, gy), []):
-                        dx = z.rect.centerx - x
-                        dy = z.rect.centery - y
-                        if dx * dx + dy * dy <= rr * rr:
-                            out.append(z)
+            seen = set()
+            rr = max(0.0, float(r)) + max(0.0, float(inflate))
+            span = max(1, int(math.ceil(rr / float(self.cell))) + max(0, int(pad_cells)))
+            for obj in self._query_keys(cx - span, cy - span, cx + span, cy + span):
+                obj_id = id(obj)
+                if obj_id in seen:
+                    continue
+                seen.add(obj_id)
+                ox, oy = self._resolve_xy(obj)
+                dx = ox - x
+                dy = oy - y
+                if dx * dx + dy * dy <= rr * rr:
+                    out.append(obj)
             return out
+
+        def query_rect(self, rect, *, pad_px=0.0, pad_cells=0):
+            if rect is None:
+                return []
+            if pad_px:
+                rect = rect.inflate(int(pad_px * 2), int(pad_px * 2))
+            min_x, min_y = self._key(rect.left, rect.top)
+            max_x, max_y = self._key(rect.right, rect.bottom)
+            pad = max(0, int(pad_cells))
+            out = []
+            seen = set()
+            for obj in self._query_keys(min_x - pad, min_y - pad, max_x + pad, max_y + pad):
+                obj_id = id(obj)
+                if obj_id in seen:
+                    continue
+                seen.add(obj_id)
+                obj_rect = getattr(obj, "rect", None)
+                if obj_rect is not None:
+                    if rect.colliderect(obj_rect):
+                        out.append(obj)
+                    continue
+                ox, oy = self._resolve_xy(obj)
+                if rect.collidepoint(int(ox), int(oy)):
+                    out.append(obj)
+            return out
+
+    class SpatialHash(GridBuckets):
+        def rebuild(self, enemies):
+            super().rebuild(enemies)
+
+        def query_circle(self, x, y, r):
+            return super().query_circle(
+                x,
+                y,
+                r,
+                pad_cells=1,
+                inflate=max(16, game.CELL_SIZE // 2),
+            )
 
     class TornadoEntity:
         def __init__(self, x, y, r=game.HURRICANE_START_RADIUS, *, spin_rate=None, spin_dir=None):
@@ -263,5 +374,5 @@ def install(game):
                     size = 2 if is_behind else 4
                     pygame.draw.circle(screen, color, (int(px), int(py)), size)
 
-    game.__dict__.update({"SpatialHash": SpatialHash, "TornadoEntity": TornadoEntity})
+    game.__dict__.update({"GridBuckets": GridBuckets, "SpatialHash": SpatialHash, "TornadoEntity": TornadoEntity})
     return SpatialHash, TornadoEntity

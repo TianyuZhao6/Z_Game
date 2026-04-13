@@ -249,10 +249,25 @@ def _combat_bgm_selected(game) -> bool:
 def _trim_web_runtime_lists(game, game_state) -> None:
     if not getattr(game, "IS_WEB", False):
         return
+    enforce = getattr(game_state, "enforce_transient_budgets", None)
+    if callable(enforce):
+        enforce()
+        return
     max_fx = int(getattr(game, "WEB_MAX_FX_PARTICLES", 0) or 0)
     fx_particles = getattr(getattr(game_state, "fx", None), "particles", None)
     if max_fx > 0 and isinstance(fx_particles, list) and len(fx_particles) > max_fx:
         del fx_particles[:-max_fx]
+
+
+def _runtime_interval_step(game, runtime, key: str, dt: float, interval_s: float):
+    if (not getattr(game, "IS_WEB", False)) or interval_s <= 0.0:
+        return True, float(dt)
+    accum = float(runtime.get(key, 0.0) or 0.0) + float(dt)
+    if accum + 1e-6 < float(interval_s):
+        runtime[key] = accum
+        return False, 0.0
+    runtime[key] = 0.0
+    return True, accum
 
 
 def _apply_enemy_spoil_gain(game, enemy, gained: int) -> None:
@@ -821,12 +836,15 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             running = False
         _profile_mark(profiler, "spawn")
         _web_diag_trace(game, profiler, "spawn")
-        spawn_completed, spawned = _step_pending_wave_spawn(game, runtime, game_state, player, enemies, enemy_cap)
-        if spawn_completed and spawned > 0:
-            wave_index += 1
-            runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
+        if do_spawn_step:
+            spawn_completed, spawned = _step_pending_wave_spawn(game, runtime, game_state, player, enemies, enemy_cap)
+            if spawn_completed and spawned > 0:
+                wave_index += 1
+                runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
         spawn_timer += dt
         if (
+            do_spawn_step
+            and
             (not bool(getattr(game, "WEB_DISABLE_TIMED_SPAWNS", False)))
             and runtime.get("_web_pending_wave_spawn") is None
             and spawn_timer >= _web_spawn_interval(game)
@@ -931,6 +949,17 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 player.targeting_skill = None
             if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
+        do_telegraphs, telegraph_dt = _runtime_interval_step(game, runtime, "_sched_lvl_telegraphs", dt, 1.0 / 30.0)
+        do_enemy_paint, enemy_paint_dt = _runtime_interval_step(game, runtime, "_sched_lvl_enemy_paint", dt, 1.0 / 24.0)
+        do_vuln, vuln_dt = _runtime_interval_step(game, runtime, "_sched_lvl_vuln", dt, 0.10)
+        do_pickups, pickup_dt = _runtime_interval_step(game, runtime, "_sched_lvl_pickups", dt, 1.0 / 30.0)
+        do_damage_texts, dmg_text_dt = _runtime_interval_step(game, runtime, "_sched_lvl_dmg_text", dt, 1.0 / 24.0)
+        do_aegis, aegis_dt = _runtime_interval_step(game, runtime, "_sched_lvl_aegis", dt, 1.0 / 24.0)
+        do_ground_spikes, ground_spike_dt = _runtime_interval_step(game, runtime, "_sched_lvl_ground", dt, 1.0 / 20.0)
+        do_curing_paint, curing_paint_dt = _runtime_interval_step(game, runtime, "_sched_lvl_curing", dt, 1.0 / 20.0)
+        do_dot_rounds, dot_rounds_dt = _runtime_interval_step(game, runtime, "_sched_lvl_dot_rounds", dt, 1.0 / 20.0)
+        do_enemy_specials, enemy_special_dt = _runtime_interval_step(game, runtime, "_sched_lvl_enemy_special", dt, 1.0 / 24.0)
+        do_spawn_step, _ = _runtime_interval_step(game, runtime, "_sched_lvl_wave_step", dt, 1.0 / 30.0)
         _profile_mark(profiler, "update")
         _web_diag_trace(game, profiler, "update")
         if not bool(getattr(game, "WEB_SKIP_UPDATE", False)):
@@ -938,12 +967,13 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 game._update_skill_target(player, game_state)
             keys = pygame.key.get_pressed()
             player.slow_t = max(0.0, getattr(player, 'slow_t', 0.0) - dt)
-            game_state.update_telegraphs(dt)
+            if do_telegraphs:
+                game_state.update_telegraphs(telegraph_dt)
             game_state.update_acids(dt, player)
-            if _web_feature_enabled(game, 'WEB_ENABLE_ENEMY_PAINT'):
-                game_state.update_enemy_paint(dt, player)
-            if _web_feature_enabled(game, 'WEB_ENABLE_VULNERABILITY_MARKS'):
-                game_state.update_vulnerability_marks(enemies, dt)
+            if do_enemy_paint and _web_feature_enabled(game, 'WEB_ENABLE_ENEMY_PAINT'):
+                game_state.update_enemy_paint(enemy_paint_dt, player)
+            if do_vuln and _web_feature_enabled(game, 'WEB_ENABLE_VULNERABILITY_MARKS'):
+                game_state.update_vulnerability_marks(enemies, vuln_dt)
             if _web_feature_enabled(game, 'WEB_ENABLE_HURRICANES'):
                 game_state.update_hurricanes(dt, player, enemies, bullets, enemy_shots)
             player.move(keys, game_state.obstacles, dt)
@@ -958,23 +988,27 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             if not bool(getattr(game, "WEB_SKIP_FLOW_FIELD", False)):
                 game_state.refresh_flow_field(ptile, dt)
             game_state.collect_item(player.rect)
-            game_state.update_spoils(dt, player)
             skip_enemy_spoil_collect = bool(getattr(game, "WEB_SKIP_ENEMY_SPOIL_COLLECT", False))
-            for z in enemies:
-                if skip_enemy_spoil_collect:
-                    z._pending_spoils_absorb = 0
-                else:
-                    got = game_state.collect_spoils_for_enemy(z)
-                    if got > 0 or getattr(z, "_pending_spoils_absorb", 0):
-                        _apply_enemy_spoil_gain(game, z, got)
-                z._gold_glow_t = max(0.0, getattr(z, '_gold_glow_t', 0.0) - dt)
-            game_state.collect_spoils(player.rect)
-            game_state.update_heals(dt)
-            if _web_feature_enabled(game, 'WEB_ENABLE_DAMAGE_TEXTS'):
-                game_state.update_damage_texts(dt)
-            if _web_feature_enabled(game, 'WEB_ENABLE_AEGIS_PULSES'):
-                game_state.update_aegis_pulses(dt, player, enemies)
-            game_state.collect_heals(player)
+            if do_pickups:
+                game_state.update_spoils(pickup_dt, player)
+                for z in enemies:
+                    if skip_enemy_spoil_collect:
+                        z._pending_spoils_absorb = 0
+                    else:
+                        got = game_state.collect_spoils_for_enemy(z)
+                        if got > 0 or getattr(z, "_pending_spoils_absorb", 0):
+                            _apply_enemy_spoil_gain(game, z, got)
+                    z._gold_glow_t = max(0.0, getattr(z, '_gold_glow_t', 0.0) - pickup_dt)
+                game_state.collect_spoils(player.rect)
+                game_state.update_heals(pickup_dt)
+                game_state.collect_heals(player)
+            else:
+                for z in enemies:
+                    z._gold_glow_t = max(0.0, getattr(z, '_gold_glow_t', 0.0) - dt)
+            if do_damage_texts and _web_feature_enabled(game, 'WEB_ENABLE_DAMAGE_TEXTS'):
+                game_state.update_damage_texts(dmg_text_dt)
+            if do_aegis and _web_feature_enabled(game, 'WEB_ENABLE_AEGIS_PULSES'):
+                game_state.update_aegis_pulses(aegis_dt, player, enemies)
         player.update_bone_plating(dt)
         player.blast_cd = max(0.0, getattr(player, 'blast_cd', 0.0) - dt)
         player.teleport_cd = max(0.0, getattr(player, 'teleport_cd', 0.0) - dt)
@@ -1077,45 +1111,46 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         _profile_mark(profiler, "enemy_special")
         _web_diag_trace(game, profiler, f"enemy_special en={len(enemies)}")
         if not bool(getattr(game, "WEB_SKIP_ENEMY_SPECIAL", False)):
-            if _web_feature_enabled(game, 'WEB_ENABLE_GROUND_SPIKES'):
-                game_state.update_ground_spikes(dt, player, enemies)
-            if _web_feature_enabled(game, 'WEB_ENABLE_CURING_PAINT'):
-                game_state.update_curing_paint(dt, player, enemies)
-            if _web_feature_enabled(game, 'WEB_ENABLE_DOT_ROUNDS'):
-                game_state.update_dot_rounds(enemies, dt)
-            for z in list(enemies):
-                if hasattr(game, 'verify_enemy_special_runtime'):
-                    game.verify_enemy_special_runtime(z)
-                z.update_special(dt, player, enemies, enemy_shots, game_state)
-                if hasattr(game, 'verify_enemy_special_runtime'):
-                    game.verify_enemy_special_runtime(z)
-                if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
-                    z._death_processed = True
-                    game.increment_kill_count()
-                    game._bandit_death_notice(z, game_state)
-                    if getattr(z, '_comet_death', False) and (not getattr(z, '_comet_fx_done', False)):
-                        z._comet_fx_done = True
-                        if hasattr(game_state, 'comet_corpses'):
-                            body_size = max(int(z.rect.w), int(z.rect.h))
-                            game_state.comet_corpses.append(game.CometCorpse(z.rect.centerx, z.rect.centery, getattr(z, 'color', (255, 60, 60)), body_size))
-                    if getattr(z, 'is_boss', False) and getattr(z, 'twin_id', None) is not None:
-                        game.trigger_twin_enrage(z, enemies, game_state)
-                    total_drop = int(game.SPOILS_PER_KILL) + int(getattr(z, 'spoils', 0))
-                    if total_drop > 0:
-                        game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
-                    if getattr(z, 'is_boss', False):
-                        for _ in range(game.BOSS_HEAL_POTIONS):
+            if do_ground_spikes and _web_feature_enabled(game, 'WEB_ENABLE_GROUND_SPIKES'):
+                game_state.update_ground_spikes(ground_spike_dt, player, enemies)
+            if do_curing_paint and _web_feature_enabled(game, 'WEB_ENABLE_CURING_PAINT'):
+                game_state.update_curing_paint(curing_paint_dt, player, enemies)
+            if do_dot_rounds and _web_feature_enabled(game, 'WEB_ENABLE_DOT_ROUNDS'):
+                game_state.update_dot_rounds(enemies, dot_rounds_dt)
+            if do_enemy_specials:
+                for z in list(enemies):
+                    if hasattr(game, 'verify_enemy_special_runtime'):
+                        game.verify_enemy_special_runtime(z)
+                    z.update_special(enemy_special_dt, player, enemies, enemy_shots, game_state)
+                    if hasattr(game, 'verify_enemy_special_runtime'):
+                        game.verify_enemy_special_runtime(z)
+                    if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
+                        z._death_processed = True
+                        game.increment_kill_count()
+                        game._bandit_death_notice(z, game_state)
+                        if getattr(z, '_comet_death', False) and (not getattr(z, '_comet_fx_done', False)):
+                            z._comet_fx_done = True
+                            if hasattr(game_state, 'comet_corpses'):
+                                body_size = max(int(z.rect.w), int(z.rect.h))
+                                game_state.comet_corpses.append(game.CometCorpse(z.rect.centerx, z.rect.centery, getattr(z, 'color', (255, 60, 60)), body_size))
+                        if getattr(z, 'is_boss', False) and getattr(z, 'twin_id', None) is not None:
+                            game.trigger_twin_enrage(z, enemies, game_state)
+                        total_drop = int(game.SPOILS_PER_KILL) + int(getattr(z, 'spoils', 0))
+                        if total_drop > 0:
+                            game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
+                        if getattr(z, 'is_boss', False):
+                            for _ in range(game.BOSS_HEAL_POTIONS):
+                                game_state.spawn_heal(z.rect.centerx, z.rect.centery, game.HEAL_POTION_AMOUNT)
+                        elif random.random() < game.HEAL_DROP_CHANCE_ENEMY:
                             game_state.spawn_heal(z.rect.centerx, z.rect.centery, game.HEAL_POTION_AMOUNT)
-                    elif random.random() < game.HEAL_DROP_CHANCE_ENEMY:
-                        game_state.spawn_heal(z.rect.centerx, z.rect.centery, game.HEAL_POTION_AMOUNT)
-                    if not getattr(z, '_xp_awarded', False):
-                        try:
-                            player.add_xp(int(getattr(z, 'spoils', 0)) * int(game.Z_SPOIL_XP_BONUS_PER))
-                            setattr(z, '_xp_awarded', True)
-                        except Exception:
-                            pass
-                    game.transfer_xp_to_neighbors(z, enemies)
-                    enemies.remove(z)
+                        if not getattr(z, '_xp_awarded', False):
+                            try:
+                                player.add_xp(int(getattr(z, 'spoils', 0)) * int(game.Z_SPOIL_XP_BONUS_PER))
+                                setattr(z, '_xp_awarded', True)
+                            except Exception:
+                                pass
+                        game.transfer_xp_to_neighbors(z, enemies)
+                        enemies.remove(z)
         _profile_mark(profiler, "enemy_shots")
         if bool(getattr(game, "WEB_SKIP_ENEMY_SHOTS", False)):
             enemy_shots.clear()
@@ -1495,31 +1530,44 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 player.targeting_skill = None
             if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
+        do_telegraphs, telegraph_dt = _runtime_interval_step(game, runtime, "_sched_resume_telegraphs", dt, 1.0 / 30.0)
+        do_enemy_paint, enemy_paint_dt = _runtime_interval_step(game, runtime, "_sched_resume_enemy_paint", dt, 1.0 / 24.0)
+        do_vuln, vuln_dt = _runtime_interval_step(game, runtime, "_sched_resume_vuln", dt, 0.10)
+        do_pickups, pickup_dt = _runtime_interval_step(game, runtime, "_sched_resume_pickups", dt, 1.0 / 30.0)
+        do_damage_texts, dmg_text_dt = _runtime_interval_step(game, runtime, "_sched_resume_dmg_text", dt, 1.0 / 24.0)
+        do_aegis, aegis_dt = _runtime_interval_step(game, runtime, "_sched_resume_aegis", dt, 1.0 / 24.0)
+        do_ground_spikes, ground_spike_dt = _runtime_interval_step(game, runtime, "_sched_resume_ground", dt, 1.0 / 20.0)
+        do_curing_paint, curing_paint_dt = _runtime_interval_step(game, runtime, "_sched_resume_curing", dt, 1.0 / 20.0)
+        do_dot_rounds, dot_rounds_dt = _runtime_interval_step(game, runtime, "_sched_resume_dot_rounds", dt, 1.0 / 20.0)
+        do_enemy_specials, enemy_special_dt = _runtime_interval_step(game, runtime, "_sched_resume_enemy_special", dt, 1.0 / 24.0)
+        do_spawn_step, _ = _runtime_interval_step(game, runtime, "_sched_resume_wave_step", dt, 1.0 / 30.0)
         _profile_mark(profiler, "update")
         if getattr(player, 'targeting_skill', None):
             game._update_skill_target(player, game_state)
         keys = pygame.key.get_pressed()
         player.slow_t = max(0.0, getattr(player, 'slow_t', 0.0) - dt)
-        game_state.update_telegraphs(dt)
+        if do_telegraphs:
+            game_state.update_telegraphs(telegraph_dt)
         game_state.update_acids(dt, player)
-        if _web_feature_enabled(game, 'WEB_ENABLE_ENEMY_PAINT'):
-            game_state.update_enemy_paint(dt, player)
-        if _web_feature_enabled(game, 'WEB_ENABLE_VULNERABILITY_MARKS'):
-            game_state.update_vulnerability_marks(enemies, dt)
+        if do_enemy_paint and _web_feature_enabled(game, 'WEB_ENABLE_ENEMY_PAINT'):
+            game_state.update_enemy_paint(enemy_paint_dt, player)
+        if do_vuln and _web_feature_enabled(game, 'WEB_ENABLE_VULNERABILITY_MARKS'):
+            game_state.update_vulnerability_marks(enemies, vuln_dt)
         player.move(keys, game_state.obstacles, dt)
         game_state.fx.update(dt)
         _trim_web_runtime_lists(game, game_state)
         game_state.update_comet_blasts(dt, player, enemies)
         game_state.update_camera_shake(dt)
         game_state.collect_item(player.rect)
-        game_state.update_spoils(dt, player)
-        game_state.collect_spoils(player.rect)
-        game_state.update_heals(dt)
-        if _web_feature_enabled(game, 'WEB_ENABLE_DAMAGE_TEXTS'):
-            game_state.update_damage_texts(dt)
-        if _web_feature_enabled(game, 'WEB_ENABLE_AEGIS_PULSES'):
-            game_state.update_aegis_pulses(dt, player, enemies)
-        game_state.collect_heals(player)
+        if do_pickups:
+            game_state.update_spoils(pickup_dt, player)
+            game_state.collect_spoils(player.rect)
+            game_state.update_heals(pickup_dt)
+            game_state.collect_heals(player)
+        if do_damage_texts and _web_feature_enabled(game, 'WEB_ENABLE_DAMAGE_TEXTS'):
+            game_state.update_damage_texts(dmg_text_dt)
+        if do_aegis and _web_feature_enabled(game, 'WEB_ENABLE_AEGIS_PULSES'):
+            game_state.update_aegis_pulses(aegis_dt, player, enemies)
         game.tick_aegis_pulse(player, game_state, enemies, dt)
         player.blast_cd = max(0.0, getattr(player, 'blast_cd', 0.0) - dt)
         player.teleport_cd = max(0.0, getattr(player, 'teleport_cd', 0.0) - dt)
@@ -1556,12 +1604,15 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                 _release_bullet(game_state, b)
         _flush_pending_bullets(game, bullets, game_state, player)
         _profile_mark(profiler, "spawn")
-        spawn_completed, spawned = _step_pending_wave_spawn(game, runtime, game_state, player, enemies, enemy_cap)
-        if spawn_completed and spawned > 0:
-            wave_index += 1
-            runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
+        if do_spawn_step:
+            spawn_completed, spawned = _step_pending_wave_spawn(game, runtime, game_state, player, enemies, enemy_cap)
+            if spawn_completed and spawned > 0:
+                wave_index += 1
+                runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
         spawn_timer += dt
         if (
+            do_spawn_step
+            and
             (not bool(getattr(game, "WEB_DISABLE_TIMED_SPAWNS", False)))
             and runtime.get("_web_pending_wave_spawn") is None
             and spawn_timer >= _web_spawn_interval(game)
@@ -1616,41 +1667,42 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                         game.flush_events()
                         return ('restart', None, last_frame or screen.copy())
         _profile_mark(profiler, "enemy_special")
-        if _web_feature_enabled(game, 'WEB_ENABLE_GROUND_SPIKES'):
-            game_state.update_ground_spikes(dt, player, enemies)
-        if _web_feature_enabled(game, 'WEB_ENABLE_CURING_PAINT'):
-            game_state.update_curing_paint(dt, player, enemies)
-        if _web_feature_enabled(game, 'WEB_ENABLE_DOT_ROUNDS'):
-            game_state.update_dot_rounds(enemies, dt)
-        for z in list(enemies):
-            if hasattr(game, 'verify_enemy_special_runtime'):
-                game.verify_enemy_special_runtime(z)
-            z.update_special(dt, player, enemies, enemy_shots, game_state)
-            if hasattr(game, 'verify_enemy_special_runtime'):
-                game.verify_enemy_special_runtime(z)
-            if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
-                z._death_processed = True
-                game.increment_kill_count()
-                game._bandit_death_notice(z, game_state)
-                if getattr(z, '_comet_death', False) and (not getattr(z, '_comet_fx_done', False)):
-                    z._comet_fx_done = True
-                    if hasattr(game_state, 'comet_corpses'):
-                        body_size = max(int(z.rect.w), int(z.rect.h))
-                        game_state.comet_corpses.append(game.CometCorpse(z.rect.centerx, z.rect.centery, getattr(z, 'color', (255, 60, 60)), body_size))
-                total_drop = int(game.SPOILS_PER_KILL) + int(getattr(z, 'spoils', 0))
-                if total_drop > 0:
-                    game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
-                if getattr(z, 'is_boss', False):
-                    for _ in range(game.BOSS_HEAL_POTIONS):
+        if do_ground_spikes and _web_feature_enabled(game, 'WEB_ENABLE_GROUND_SPIKES'):
+            game_state.update_ground_spikes(ground_spike_dt, player, enemies)
+        if do_curing_paint and _web_feature_enabled(game, 'WEB_ENABLE_CURING_PAINT'):
+            game_state.update_curing_paint(curing_paint_dt, player, enemies)
+        if do_dot_rounds and _web_feature_enabled(game, 'WEB_ENABLE_DOT_ROUNDS'):
+            game_state.update_dot_rounds(enemies, dot_rounds_dt)
+        if do_enemy_specials:
+            for z in list(enemies):
+                if hasattr(game, 'verify_enemy_special_runtime'):
+                    game.verify_enemy_special_runtime(z)
+                z.update_special(enemy_special_dt, player, enemies, enemy_shots, game_state)
+                if hasattr(game, 'verify_enemy_special_runtime'):
+                    game.verify_enemy_special_runtime(z)
+                if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
+                    z._death_processed = True
+                    game.increment_kill_count()
+                    game._bandit_death_notice(z, game_state)
+                    if getattr(z, '_comet_death', False) and (not getattr(z, '_comet_fx_done', False)):
+                        z._comet_fx_done = True
+                        if hasattr(game_state, 'comet_corpses'):
+                            body_size = max(int(z.rect.w), int(z.rect.h))
+                            game_state.comet_corpses.append(game.CometCorpse(z.rect.centerx, z.rect.centery, getattr(z, 'color', (255, 60, 60)), body_size))
+                    total_drop = int(game.SPOILS_PER_KILL) + int(getattr(z, 'spoils', 0))
+                    if total_drop > 0:
+                        game_state.spawn_spoils(z.rect.centerx, z.rect.centery, total_drop)
+                    if getattr(z, 'is_boss', False):
+                        for _ in range(game.BOSS_HEAL_POTIONS):
+                            game_state.spawn_heal(z.rect.centerx, z.rect.centery, game.HEAL_POTION_AMOUNT)
+                    elif random.random() < game.HEAL_DROP_CHANCE_ENEMY:
                         game_state.spawn_heal(z.rect.centerx, z.rect.centery, game.HEAL_POTION_AMOUNT)
-                elif random.random() < game.HEAL_DROP_CHANCE_ENEMY:
-                    game_state.spawn_heal(z.rect.centerx, z.rect.centery, game.HEAL_POTION_AMOUNT)
-                try:
-                    player.add_xp(int(getattr(z, 'spoils', 0)) * int(game.Z_SPOIL_XP_BONUS_PER))
-                except Exception:
-                    pass
-                game.transfer_xp_to_neighbors(z, enemies)
-                enemies.remove(z)
+                    try:
+                        player.add_xp(int(getattr(z, 'spoils', 0)) * int(game.Z_SPOIL_XP_BONUS_PER))
+                    except Exception:
+                        pass
+                    game.transfer_xp_to_neighbors(z, enemies)
+                    enemies.remove(z)
         _profile_mark(profiler, "enemy_shots")
         _web_diag_detail(game, "enemy_shots", f"es={len(enemy_shots)}")
         if bool(getattr(game, "WEB_SKIP_ENEMY_SHOTS", False)):

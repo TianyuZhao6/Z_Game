@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 import time
 
@@ -77,20 +78,35 @@ def pick_type_by_budget(game, rem: int, level_idx_zero_based: int):
     return choices[-1][0]
 
 
+def _random_coprime_step(size: int) -> int:
+    if size <= 2:
+        return 1
+    step = random.randrange(1, size)
+    while math.gcd(step, size) != 1:
+        step = random.randrange(1, size)
+    return step
+
+
 def spawn_positions(game, game_state, player, enemies, want: int):
     all_pos = _grid_positions(game)
     blocked = set(game_state.obstacles.keys()) | set((item.x, item.y) for item in getattr(game_state, "items", []))
     px = int(player.rect.centerx // game.CELL_SIZE)
     py = int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
-    candidates = [pos for pos in all_pos if pos not in blocked and abs(pos[0] - px) + abs(pos[1] - py) >= 6]
-    random.shuffle(candidates)
     occupied_cells = {
         (int((enemy.x + enemy.size // 2) // game.CELL_SIZE), int((enemy.y + enemy.size // 2) // game.CELL_SIZE))
         for enemy in enemies
     }
     out = []
-    for pos in candidates:
-        if pos in occupied_cells:
+    total = len(all_pos)
+    if total <= 0:
+        return out
+    start = random.randrange(total)
+    step = _random_coprime_step(total)
+    for idx in range(total):
+        pos = all_pos[(start + idx * step) % total]
+        if pos in blocked or pos in occupied_cells:
+            continue
+        if abs(pos[0] - px) + abs(pos[1] - py) < 6:
             continue
         out.append(pos)
         if len(out) >= want:
@@ -137,6 +153,7 @@ def _begin_wave_spawn_plan(game, game_state, player, current_level: int, wave_in
         "wave_index": int(wave_index),
         "current_level": int(current_level),
         "budget": int(budget),
+        "remaining_budget": int(budget),
         "force_boss": bool(force_boss),
         "boss_done": False,
         "spawned": 0,
@@ -226,6 +243,7 @@ def continue_wave_spawn_plan(game, game_state, player, enemies, cap: int, plan, 
     force_boss = bool(plan.get("force_boss", False))
     boss_done = bool(plan.get("boss_done", False))
     budget = int(plan.get("budget", 0) or 0)
+    remaining_budget = int(plan.get("remaining_budget", budget) or budget)
     wave_index = int(plan.get("wave_index", 0) or 0)
     spawned = int(plan.get("spawned", 0) or 0)
     spawned_types = list(plan.get("spawned_types", []) or [])
@@ -334,12 +352,7 @@ def continue_wave_spawn_plan(game, game_state, player, enemies, cap: int, plan, 
                 boss_done = True
             continue
 
-        remaining = budget - sum(
-            game.THREAT_COSTS.get(getattr(enemy, "type", "basic"), 0)
-            for enemy in enemies
-            if getattr(enemy, "_spawn_wave_tag", -1) == wave_index
-        )
-        enemy_type = pick_type_by_budget(game, max(1, remaining), current_level)
+        enemy_type = pick_type_by_budget(game, max(1, remaining_budget), current_level)
         if not enemy_type:
             i = len(spots)
             break
@@ -353,12 +366,14 @@ def continue_wave_spawn_plan(game, game_state, player, enemies, cap: int, plan, 
         game.apply_biome_on_enemy_spawn(enemy, game_state)
         enemies.append(enemy)
         spawned_types.append(str(enemy_type or getattr(enemy, "type", "unknown")))
+        remaining_budget = max(0, remaining_budget - int(game.THREAT_COSTS.get(enemy_type, 0) or 0))
         spawned += 1
         spawned_now += 1
     plan["spot_index"] = i
     plan["boss_done"] = boss_done
     plan["spawned"] = spawned
     plan["spawned_types"] = spawned_types
+    plan["remaining_budget"] = remaining_budget
     done = i >= len(spots) or len(enemies) >= cap
     total_spawned = _finish_wave_spawn_plan(game, plan, enemies) if done else spawned
     return spawned_now, done, total_spawned

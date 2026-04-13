@@ -518,6 +518,34 @@ def install(game):
         mx = max(0, int(margin))
         return (-mx <= int(x) <= int(game.VIEW_W) + mx) and ((INFO_BAR_HEIGHT - mx) <= int(y) <= int(game.VIEW_H) + mx)
 
+    def _screen_visible_circle(x: float, y: float, radius: float, *, margin: int = 0) -> bool:
+        return _screen_visible_point(x, y, margin=max(int(margin), int(radius)))
+
+    def _iso_view_world_rect(camx: float, camy: float, *, pad_px: int = 0) -> pygame.Rect:
+        corners = (
+            game.iso_screen_to_world_px(0, 0, camx, camy),
+            game.iso_screen_to_world_px(game.VIEW_W, 0, camx, camy),
+            game.iso_screen_to_world_px(0, game.VIEW_H, camx, camy),
+            game.iso_screen_to_world_px(game.VIEW_W, game.VIEW_H, camx, camy),
+        )
+        min_x = min((p[0] for p in corners)) - int(pad_px)
+        max_x = max((p[0] for p in corners)) + int(pad_px)
+        min_y = min((p[1] for p in corners)) - int(pad_px)
+        max_y = max((p[1] for p in corners)) + int(pad_px)
+        return pygame.Rect(
+            int(min_x),
+            int(min_y),
+            max(1, int(max_x - min_x)),
+            max(1, int(max_y - min_y)),
+        )
+
+    def _cap_visible_entries(entries: list, cap: int, *, key=None) -> list:
+        if cap > 0 and len(entries) > cap:
+            if key is not None:
+                entries.sort(key=key)
+            del entries[cap:]
+        return entries
+
     def _draw_web_profiler_overlay(screen: pygame.Surface) -> None:
         if not IS_WEB:
             return
@@ -763,6 +791,9 @@ def install(game):
             camx += dx
             camy += dy
 
+        player_cx = float(player.rect.centerx)
+        player_cy = float(player.rect.centery)
+        view_world_rect = _iso_view_world_rect(camx, camy, pad_px=int(CELL_SIZE * 2))
         screen.fill(MAP_BG)
         _blit_web_static_background(screen, game_state, camx, camy, wall_h=max(12, int(ISO_WALL_Z * 0.7)))
         margin = 2
@@ -774,37 +805,57 @@ def install(game):
         if getattr(player, "targeting_skill", None):
             _draw_skill_overlay(screen, player, camx, camy)
 
-        spoils = getattr(game_state, "spoils", ())
-        if pickup_cap > 0:
-            spoils = spoils[:pickup_cap]
-        for s in spoils:
+        spoil_iter = (
+            game_state.query_spoils_near_rect(view_world_rect, pad_px=CELL_SIZE)
+            if hasattr(game_state, "query_spoils_near_rect")
+            else getattr(game_state, "spoils", ())
+        )
+        visible_spoils = []
+        for s in spoil_iter:
             wx = s.base_x / CELL_SIZE
             wy = (s.base_y - s.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             if not _screen_visible_point(sx, sy, margin=24):
                 continue
+            dx = float(getattr(s, "base_x", 0.0)) - player_cx
+            dy = float(getattr(s, "base_y", 0.0)) - player_cy
+            visible_spoils.append((dx * dx + dy * dy, sx, sy, s))
+        _cap_visible_entries(visible_spoils, pickup_cap, key=lambda item: item[0])
+        for _, sx, sy, s in visible_spoils:
             pygame.draw.circle(screen, (255, 215, 80), (int(sx), int(sy)), int(s.r))
 
-        heals = getattr(game_state, "heals", ())
-        if pickup_cap > 0:
-            heals = heals[:pickup_cap]
-        for h in heals:
+        heal_iter = (
+            game_state.query_heals_near_rect(view_world_rect, pad_px=CELL_SIZE)
+            if hasattr(game_state, "query_heals_near_rect")
+            else getattr(game_state, "heals", ())
+        )
+        visible_heals = []
+        for h in heal_iter:
             wx = h.base_x / CELL_SIZE
             wy = (h.base_y - h.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             if not _screen_visible_point(sx, sy, margin=24):
                 continue
+            dx = float(getattr(h, "base_x", 0.0)) - player_cx
+            dy = float(getattr(h, "base_y", 0.0)) - player_cy
+            visible_heals.append((dx * dx + dy * dy, sx, sy, h))
+        _cap_visible_entries(visible_heals, pickup_cap, key=lambda item: item[0])
+        for _, sx, sy, h in visible_heals:
             pygame.draw.circle(screen, (225, 225, 225), (int(sx), int(sy)), int(h.r))
 
         items = getattr(game_state, "items", ())
-        if pickup_cap > 0:
-            items = items[:pickup_cap]
+        visible_items = []
         for it in items:
             wx = it.center[0] / CELL_SIZE
             wy = (it.center[1] - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             if not _screen_visible_point(sx, sy, margin=24):
                 continue
+            dx = float(it.center[0]) - player_cx
+            dy = float(it.center[1]) - player_cy
+            visible_items.append((dx * dx + dy * dy, sx, sy, it))
+        _cap_visible_entries(visible_items, pickup_cap, key=lambda item: item[0])
+        for _, sx, sy, it in visible_items:
             col = (255, 224, 0) if getattr(it, "is_main", False) else (240, 210, 90)
             pygame.draw.circle(screen, col, (int(sx), int(sy)), int(it.radius))
 
@@ -821,24 +872,38 @@ def install(game):
 
         actors = []
         turrets = getattr(game_state, "turrets", ())
-        if turret_cap > 0:
-            turrets = turrets[:turret_cap]
+        visible_turrets = []
         for turret in turrets:
             wx = turret.x / CELL_SIZE
             wy = (turret.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             if not _screen_visible_point(sx, sy, margin=96):
                 continue
-            actors.append((sy, "turret", turret, sx, sy))
+            dx = float(getattr(turret, "x", 0.0)) - player_cx
+            dy = float(getattr(turret, "y", 0.0)) - player_cy
+            visible_turrets.append((dx * dx + dy * dy, sy, turret, sx, sy))
+        _cap_visible_entries(visible_turrets, turret_cap, key=lambda item: item[0])
+        for _, sy, turret, sx, sy2 in visible_turrets:
+            actors.append((sy, "turret", turret, sx, sy2))
 
-        web_enemies = enemies[:enemy_cap] if enemy_cap > 0 else enemies
-        for enemy in web_enemies:
+        enemy_iter = (
+            getattr(game_state, "spatial").query_rect(view_world_rect, pad_px=CELL_SIZE * 2)
+            if getattr(game_state, "spatial", None) is not None
+            else enemies
+        )
+        visible_enemies = []
+        for enemy in enemy_iter:
             wx = enemy.rect.centerx / CELL_SIZE
             wy = (enemy.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             if not _screen_visible_point(sx, sy, margin=128):
                 continue
-            actors.append((sy, "enemy", enemy, sx, sy))
+            dx = float(enemy.rect.centerx) - player_cx
+            dy = float(enemy.rect.centery) - player_cy
+            visible_enemies.append((dx * dx + dy * dy, sy, enemy, sx, sy))
+        _cap_visible_entries(visible_enemies, enemy_cap, key=lambda item: item[0])
+        for _, sy, enemy, sx, sy2 in visible_enemies:
+            actors.append((sy, "enemy", enemy, sx, sy2))
 
         wx = player.rect.centerx / CELL_SIZE
         wy = (player.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
@@ -938,23 +1003,33 @@ def install(game):
                             overlay.fill((255, 255, 255, flash_alpha))
                             screen.blit(overlay, overlay.get_rect(center=(cx, body_y)).topleft)
 
-        web_bullets = bullets[:bullet_cap] if (bullet_cap > 0 and bullets) else (bullets or ())
-        for bullet in web_bullets:
+        visible_bullets = []
+        for bullet in (bullets or ()):
             wx = bullet.x / CELL_SIZE
             wy = (bullet.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             if not _screen_visible_point(sx, sy, margin=16):
                 continue
+            dx = float(getattr(bullet, "x", 0.0)) - player_cx
+            dy = float(getattr(bullet, "y", 0.0)) - player_cy
+            visible_bullets.append((dx * dx + dy * dy, sx, sy, bullet))
+        _cap_visible_entries(visible_bullets, bullet_cap, key=lambda item: item[0])
+        for _, sx, sy, bullet in visible_bullets:
             col = (0, 255, 255) if getattr(bullet, "source", "player") == "turret" else (120, 204, 121)
             pygame.draw.circle(screen, col, (int(sx), int(sy)), max(2, int(getattr(bullet, "r", BULLET_RADIUS))))
 
-        web_enemy_shots = enemy_shots[:enemy_shot_cap] if (enemy_shot_cap > 0 and enemy_shots) else (enemy_shots or ())
-        for shot in web_enemy_shots:
+        visible_enemy_shots = []
+        for shot in (enemy_shots or ()):
             wx = shot.x / CELL_SIZE
             wy = (shot.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             if not _screen_visible_point(sx, sy, margin=16):
                 continue
+            dx = float(getattr(shot, "x", 0.0)) - player_cx
+            dy = float(getattr(shot, "y", 0.0)) - player_cy
+            visible_enemy_shots.append((dx * dx + dy * dy, sx, sy, shot))
+        _cap_visible_entries(visible_enemy_shots, enemy_shot_cap, key=lambda item: item[0])
+        for _, sx, sy, shot in visible_enemy_shots:
             pygame.draw.circle(
                 screen,
                 getattr(shot, "color", (255, 120, 50)),
@@ -1030,7 +1105,11 @@ def install(game):
                 for gy in range(gy_min, gy_max + 1):
                     _blit_cached_iso_tile(screen, gx, gy, grid_col, camx, camy, border=1)
         view_margin = max(int(CELL_SIZE), int(ISO_CELL_W))
+        view_world_rect = _iso_view_world_rect(camx, camy, pad_px=int(CELL_SIZE * 2))
         for t in getattr(game_state, "telegraphs", []):
+            sx, sy = iso_world_to_screen(t.x / CELL_SIZE, (t.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
+            if not _screen_visible_circle(sx, sy, float(getattr(t, "r", 0.0)), margin=view_margin):
+                continue
             draw_iso_ground_ellipse(
                 screen, t.x, t.y, t.r,
                 color=t.color, alpha=180,
@@ -1057,6 +1136,9 @@ def install(game):
 
         if _web_feature_enabled("WEB_ENABLE_HURRICANES"):
             for h in getattr(game_state, "hurricanes", []):
+                hsx, hsy = iso_world_to_screen(h.x / CELL_SIZE, (h.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
+                if not _screen_visible_circle(hsx, hsy, float(getattr(h, "r", 0.0)) * HURRICANE_RANGE_MULT, margin=view_margin):
+                    continue
                 pulse = 0.6 + 0.4 * math.sin(pygame.time.get_ticks() * 0.008)
                 alpha = int(40 + 60 * pulse)
                 draw_iso_ground_ellipse(
@@ -1085,6 +1167,9 @@ def install(game):
                 if fade <= 0:
                     continue
                 current_r = max(AEGIS_PULSE_MIN_START_R, float(getattr(p, "r", 0.0)) * grow_progress)
+                sx, sy = iso_world_to_screen(p.x / CELL_SIZE, (p.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
+                if not _screen_visible_circle(sx, sy, current_r, margin=view_margin):
+                    continue
                 draw_iso_hex_ring(
                     screen, p.x, p.y, current_r,
                     AEGIS_PULSE_COLOR, int(AEGIS_PULSE_RING_ALPHA * fade),
@@ -1094,6 +1179,9 @@ def install(game):
                     width=2
                 )
         for a in getattr(game_state, "acids", []):
+            sx, sy = iso_world_to_screen(a.x / CELL_SIZE, (a.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
+            if not _screen_visible_circle(sx, sy, float(getattr(a, "r", 0.0)), margin=view_margin):
+                continue
             draw_iso_ground_ellipse(
                 screen, a.x, a.y, a.r,
                 color=(60, 200, 90), alpha=110,
@@ -1102,7 +1190,17 @@ def install(game):
             )
         player_rect = getattr(player, "rect", None)
         enemy_rects = [getattr(z, "rect", None) for z in enemies if getattr(z, "rect", None)]
+        visible_ghosts = []
         for g in getattr(game_state, "ghosts", []):
+            gsx, gsy = iso_world_to_screen(
+                float(getattr(g, "x", 0.0)) / CELL_SIZE,
+                (float(getattr(g, "y", 0.0)) - INFO_BAR_HEIGHT) / CELL_SIZE,
+                0,
+                camx,
+                camy,
+            )
+            if not _screen_visible_point(gsx, gsy, margin=view_margin):
+                continue
             gw = getattr(g, "w", 0)
             gh = getattr(g, "h", 0)
             if gw and gh:
@@ -1112,6 +1210,15 @@ def install(game):
                     continue
                 if enemy_rects and any(ghost_rect.colliderect(er) for er in enemy_rects if er):
                     continue
+            dx = float(getattr(g, "x", 0.0)) - float(player.rect.centerx)
+            dy = float(getattr(g, "y", 0.0)) - float(player.rect.centery)
+            visible_ghosts.append((dx * dx + dy * dy, g))
+        _cap_visible_entries(
+            visible_ghosts,
+            int(getattr(game, "WEB_MAX_GHOSTS", 0) or 0) if IS_WEB else 0,
+            key=lambda item: item[0],
+        )
+        for _, g in visible_ghosts:
             g.draw_iso(screen, camx, camy)
         if _web_feature_enabled("WEB_ENABLE_ENEMY_PAINT") and hasattr(game_state, "draw_paint_iso"):
             game_state.draw_paint_iso(screen, camx, camy)
@@ -1698,6 +1805,7 @@ def install(game):
                         ]
                         pygame.draw.polygon(screen, BONE_PLATING_COLOR, sparkle, width=1)
         if _web_feature_enabled("WEB_ENABLE_DAMAGE_TEXTS"):
+            visible_dmg_texts = []
             for d in getattr(game_state, "dmg_texts", []):
                 wx = d.x / CELL_SIZE
                 wy = (d.y - INFO_BAR_HEIGHT) / CELL_SIZE
@@ -1705,6 +1813,15 @@ def install(game):
                 sy += d.screen_offset_y()
                 if not _screen_visible_point(sx, sy, margin=view_margin):
                     continue
+                dx = float(getattr(d, "x", 0.0)) - float(player.rect.centerx)
+                dy = float(getattr(d, "y", 0.0)) - float(player.rect.centery)
+                visible_dmg_texts.append((dx * dx + dy * dy, d, sx, sy))
+            _cap_visible_entries(
+                visible_dmg_texts,
+                int(getattr(game, "WEB_MAX_DAMAGE_TEXTS", 0) or 0) if IS_WEB else 0,
+                key=lambda item: item[0],
+            )
+            for _, d, sx, sy in visible_dmg_texts:
                 d.draw_iso(screen, sx, sy)
         _draw_skill_overlay(screen, player, camx, camy)
         game_state.draw_hazards_iso(screen, camx, camy)
@@ -1719,6 +1836,7 @@ def install(game):
         else:
             game_state.draw_lanterns_topdown(screen, camx, camy)
         if hasattr(game_state, "fx"):
+            visible_particles = []
             for p in game_state.fx.particles:
                 if p.size < 1:
                     continue
@@ -1727,6 +1845,15 @@ def install(game):
                 sx, sy = iso_world_to_screen(gx, gy, 0, camx, camy)
                 if not _screen_visible_point(sx, sy, margin=view_margin):
                     continue
+                dx = float(getattr(p, "x", 0.0)) - float(player.rect.centerx)
+                dy = float(getattr(p, "y", 0.0)) - float(player.rect.centery)
+                visible_particles.append((dx * dx + dy * dy, p, sx, sy))
+            _cap_visible_entries(
+                visible_particles,
+                int(getattr(game, "WEB_MAX_FX_PARTICLES", 0) or 0) if IS_WEB else 0,
+                key=lambda item: item[0],
+            )
+            for _, p, sx, sy in visible_particles:
                 glow = GlowCache.get_glow_surf(p.size, p.color)
                 screen.blit(glow, (sx - p.size, sy - p.size), special_flags=pygame.BLEND_ADD)
         vignette_t = float(getattr(player, "_enemy_paint_vignette_t", 0.0))

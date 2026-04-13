@@ -144,6 +144,15 @@ def install(game):
             self.last_paint_pos = None
             self._hell_paint_t = 0.0
             self._hell_paint_pos = None
+            self._lod_bucket = 0
+            self._cached_paint_intensity = 0.0
+            self._paint_query_accum = 0.0
+            self._cached_line_ob = None
+            self._obstacle_probe_accum = 0.0
+            self._bandit_escape_probe_accum = 0.0
+            self._support_logic_accum = 0.0
+            self._boss_logic_accum = 0.0
+            self._bandit_logic_accum = 0.0
 
         def draw(self, screen):
             color = getattr(self, '_current_color', self.color)
@@ -248,6 +257,38 @@ def install(game):
                     y0 += sy
             return None
 
+        def _web_lod_bucket(self, player) -> int:
+            if not getattr(game, 'IS_WEB', False) or player is None:
+                return 0
+            dx = float(self.rect.centerx - player.rect.centerx)
+            dy = float(self.rect.centery - player.rect.centery)
+            d2 = dx * dx + dy * dy
+            near_r = float(getattr(game, 'WEB_ENEMY_NEAR_RADIUS', game.CELL_SIZE * 8) or (game.CELL_SIZE * 8))
+            mid_r = float(getattr(game, 'WEB_ENEMY_MID_RADIUS', game.CELL_SIZE * 16) or (game.CELL_SIZE * 16))
+            if getattr(self, 'is_boss', False):
+                near_r *= 1.35
+                mid_r *= 1.4
+            if d2 <= near_r * near_r:
+                return 0
+            if d2 <= mid_r * mid_r:
+                return 1
+            return 2
+
+        def _web_should_run(self, attr: str, dt: float, *, near: float = 0.0, mid: float = 0.0, far: float = 0.0):
+            if not getattr(game, 'IS_WEB', False):
+                return True, float(dt)
+            bucket = int(getattr(self, '_lod_bucket', 0) or 0)
+            interval = float(near if bucket <= 0 else mid if bucket == 1 else far)
+            if interval <= 0.0:
+                setattr(self, attr, 0.0)
+                return True, float(dt)
+            accum = float(getattr(self, attr, 0.0)) + float(dt)
+            if accum + 1e-6 < interval:
+                setattr(self, attr, accum)
+                return False, 0.0
+            setattr(self, attr, 0.0)
+            return True, accum
+
         def _choose_bypass_cell(self, ob_cell, player_cell, obstacles_dict):
             """Pick a simple side cell next to the blocking obstacle to go around it."""
             ox, oy = ob_cell
@@ -277,6 +318,7 @@ def install(game):
         def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
             self._foot_prev = getattr(self, '_foot_curr', (self.rect.centerx, self.rect.bottom))
             frame_scale = dt * 60.0
+            self._lod_bucket = self._web_lod_bucket(player)
             base_attack = self.attack
             if getattr(game_state, 'biome_active', None) == 'Scorched Hell':
                 base_attack = int(base_attack * (1.5 if getattr(self, 'is_boss', False) else 2.0))
@@ -287,7 +329,10 @@ def install(game):
                 self.buff_t = max(0.0, self.buff_t - dt)
             paint_intensity = 0.0
             if game_state is not None and hasattr(game_state, 'paint_intensity_at_world'):
-                paint_intensity = game_state.paint_intensity_at_world(self.rect.centerx, self.rect.centery, owner=2)
+                paint_due, _ = self._web_should_run("_paint_query_accum", dt, near=0.0, mid=0.05, far=0.12)
+                if paint_due:
+                    self._cached_paint_intensity = game_state.paint_intensity_at_world(self.rect.centerx, self.rect.centery, owner=2)
+                paint_intensity = float(getattr(self, '_cached_paint_intensity', 0.0))
             self._paint_contact_mult = 1.0 + game.ENEMY_PAINT_DAMAGE_BONUS * paint_intensity
             base_speed *= 1.0 + game.ENEMY_PAINT_SPEED_BONUS * paint_intensity
             base_speed *= float(getattr(self, '_hurricane_slow_mult', 1.0))
@@ -381,12 +426,21 @@ def install(game):
                 if getattr(self, 'can_crush_all_blocks', False) or getattr(self._hit_ob, 'type', '') == 'Destructible':
                     self._focus_block = self._hit_ob
             if not self._focus_block:
+                probe_due, _ = self._web_should_run("_obstacle_probe_accum", dt, near=0.0, mid=0.06, far=0.12)
                 gz = (int((self.x + self.size * 0.5) // game.CELL_SIZE), int((self.y + self.size * 0.5) // game.CELL_SIZE))
                 if bandit_flee:
                     gp = (int(target_cx // game.CELL_SIZE), int((target_cy - game.INFO_BAR_HEIGHT) // game.CELL_SIZE))
                 else:
                     gp = (int(player.rect.centerx // game.CELL_SIZE), int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE))
-                ob = self.first_obstacle_on_grid_line(gz, gp, game_state.obstacles)
+                ob = None
+                if probe_due:
+                    ob = self.first_obstacle_on_grid_line(gz, gp, game_state.obstacles)
+                    self._cached_line_ob = ob
+                else:
+                    ob = getattr(self, '_cached_line_ob', None)
+                    if getattr(ob, 'grid_pos', None) not in game_state.obstacles:
+                        ob = None
+                        self._cached_line_ob = None
                 self._focus_block = None
                 if ob:
                     if bandit_flee:
@@ -614,6 +668,7 @@ def install(game):
                     self.bandit_break_t = max(float(getattr(self, 'bandit_break_t', 0.0)), game.BANDIT_BREAK_SLOW_TIME)
                     self._focus_block = None
             if is_bandit:
+                bandit_escape_due, _ = self._web_should_run("_bandit_escape_probe_accum", dt, near=0.0, mid=0.10, far=0.2)
                 moved_len = ((self.x - bandit_prev_pos[0]) ** 2 + (self.y - bandit_prev_pos[1]) ** 2) ** 0.5
                 if moved_len < 1.0:
                     self._bandit_stuck_t = float(getattr(self, '_bandit_stuck_t', 0.0)) + dt
@@ -636,7 +691,7 @@ def install(game):
                         self._bypass_t = 0.0
                         self._bandit_idle_pos = (self.x, self.y)
                         self._bandit_idle_t = 0.0
-                if bandit_flee and getattr(self, '_bandit_stuck_t', 0.0) > 0.6 and (fd is not None):
+                if bandit_flee and getattr(self, '_bandit_stuck_t', 0.0) > 0.6 and (fd is not None) and bandit_escape_due:
                     best = None
                     bestd = -1
                     for ny, row in enumerate(fd):
@@ -886,6 +941,10 @@ def install(game):
         def update_special(self, dt: float, player: 'Player', enemies: List['Enemy'], enemy_shots: List['EnemyShot'], game_state: 'GameState'=None):
             cx, cy = (self.rect.centerx, self.rect.centery)
             px, py = (player.rect.centerx, player.rect.centery)
+            self._lod_bucket = self._web_lod_bucket(player)
+            support_due, _ = self._web_should_run("_support_logic_accum", dt, near=0.0, mid=0.08, far=0.16)
+            bandit_due, _ = self._web_should_run("_bandit_logic_accum", dt, near=0.0, mid=0.08, far=0.16)
+            boss_due, _ = self._web_should_run("_boss_logic_accum", dt, near=0.0, mid=0.06, far=0.12)
             if self._can_split and (not self._split_done) and (self.hp > 0) and (self.hp <= int(self.max_hp * 0.5)):
                 self._split_done = True
                 self._can_split = False
@@ -1035,7 +1094,7 @@ def install(game):
                 game.trigger_twin_enrage(self, enemies, game_state)
             if self.type == 'buffer':
                 self.buff_cd = max(0.0, (self.buff_cd or 0.0) - dt)
-                if self.buff_cd <= 0.0:
+                if self.buff_cd <= 0.0 and support_due:
                     cx, cy = (self.rect.centerx, self.rect.centery)
                     for z in enemies:
                         zx, zy = (z.rect.centerx, z.rect.centery)
@@ -1050,7 +1109,7 @@ def install(game):
                     self.shield_t -= dt
                     if self.shield_t <= 0:
                         self.shield_hp = 0
-                    if self.shield_cd <= 0.0:
+                    if self.shield_cd <= 0.0 and support_due:
                         cx, cy = (self.rect.centerx, self.rect.centery)
                         for z in enemies:
                             zx, zy = (z.rect.centerx, z.rect.centery)
@@ -1070,7 +1129,7 @@ def install(game):
                     self.radar_ring_phase = (float(getattr(self, 'radar_ring_phase', 0.0)) + dt) % float(getattr(self, 'radar_ring_period', 2.0))
                 self._steal_accum += float(getattr(self, 'steal_per_sec', game.BANDIT_STEAL_RATE_MIN)) * dt
                 steal_units = int(self._steal_accum)
-                if steal_units >= 1 and game_state is not None:
+                if steal_units >= 1 and game_state is not None and bandit_due:
                     meta = _meta()
                     self._steal_accum -= steal_units
                     lvl = int(getattr(game_state, 'spoils_gained', 0))
@@ -1148,7 +1207,7 @@ def install(game):
                 phase1_ok = enraged or self.phase >= 1
                 phase2_ok = enraged or self.phase >= 2
                 phase3_ok = enraged or self.phase >= 3
-                if phase1_ok:
+                if phase1_ok and boss_due:
                     if self._spit_cd <= 0.0:
                         px, py = (player.rect.centerx, player.rect.centery)
                         ang = math.atan2(py - cy, px - cx)
@@ -1166,7 +1225,7 @@ def install(game):
                         self._split_cd = game.SPLIT_CD_P1 * cd_mult
                 if phase2_ok:
                     self.speed = max(game.MEMDEV_SPEED, game.MEMDEV_SPEED + 0.5)
-                    if self._spit_cd <= 0.0:
+                    if boss_due and self._spit_cd <= 0.0:
                         for _ in range(2):
                             px, py = (player.rect.centerx, player.rect.centery)
                             ang = math.atan2(py - cy, px - cx)
@@ -1178,21 +1237,22 @@ def install(game):
                                     points.append((cx + math.cos(off_ang) * dist, cy + math.sin(off_ang) * dist))
                             game_state.spawn_telegraph(cx, cy, r=32, life=game.ACID_TELEGRAPH_T, kind='acid', payload={'points': points, 'radius': 26, 'life': game.ACID_LIFETIME, 'dps': game.ACID_DPS, 'slow': game.ACID_SLOW_FRAC})
                         self._spit_cd = 4.0 * cd_mult
-                    if self._split_cd <= 0.0:
+                    if boss_due and self._split_cd <= 0.0:
                         for _ in range(3):
                             enemies.append(game.spawn_corruptling_at(cx + random.randint(-20, 20), cy + random.randint(-20, 20)))
                         self._split_cd = game.SPLIT_CD_P2 * cd_mult
-                    pull_any = False
-                    for z in list(enemies):
-                        if getattr(z, 'type', '') == 'corruptling' and getattr(z, '_life', 0.0) >= game.FUSION_LIFETIME:
-                            zx, zy = (z.rect.centerx, z.rect.centery)
-                            if (zx - cx) ** 2 + (zy - cy) ** 2 <= game.FUSION_PULL_RADIUS ** 2:
-                                z.hp = 0
-                                self.hp = min(self.max_hp, self.hp + game.FUSION_HEAL)
-                                pull_any = True
-                    if pull_any:
-                        game_state.add_damage_text(cx, cy, +game.FUSION_HEAL, crit=False, kind='shield')
-                if phase3_ok:
+                    if boss_due:
+                        pull_any = False
+                        for z in list(enemies):
+                            if getattr(z, 'type', '') == 'corruptling' and getattr(z, '_life', 0.0) >= game.FUSION_LIFETIME:
+                                zx, zy = (z.rect.centerx, z.rect.centery)
+                                if (zx - cx) ** 2 + (zy - cy) ** 2 <= game.FUSION_PULL_RADIUS ** 2:
+                                    z.hp = 0
+                                    self.hp = min(self.max_hp, self.hp + game.FUSION_HEAL)
+                                    pull_any = True
+                        if pull_any:
+                            game_state.add_damage_text(cx, cy, +game.FUSION_HEAL, crit=False, kind='shield')
+                if phase3_ok and boss_due:
                     next_pct = getattr(self, '_rain_next_pct', 0.4)
                     while hp_pct_effective <= next_pct and next_pct >= 0.0:
                         pts = []

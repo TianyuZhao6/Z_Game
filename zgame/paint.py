@@ -56,6 +56,7 @@ def install(game):
             "_blob_rot",
             "_spark_phase",
             "_static_cache",
+            "_visual_identity",
         )
 
         def __init__(self):
@@ -71,14 +72,33 @@ def install(game):
             self._blob_rot = 0.0
             self._spark_phase = random.uniform(0.0, math.tau)
             self._static_cache = None
+            self._visual_identity = None
 
-        def refresh_visuals(self):
+        def _current_visual_identity(self):
+            color = getattr(self, "paint_color", None)
+            if isinstance(color, (tuple, list)) and len(color) >= 3:
+                color = (int(color[0]), int(color[1]), int(color[2]))
+            else:
+                color = None
+            radius = round(float(getattr(self, "paint_radius", 0.0) or 0.0), 1)
+            return (int(getattr(self, "paint_owner", 0)), getattr(self, "paint_type", None), color, radius)
+
+        def refresh_visuals(self, *, force: bool = False):
+            identity = self._current_visual_identity()
+            if (
+                not force
+                and self._visual_identity == identity
+                and self._blob_noise is not None
+                and self._blob_phase is not None
+            ):
+                return
             count = max(8, int(game.ENEMY_PAINT_BLOB_POINTS))
             self._blob_noise = [random.uniform(0.78, 1.20) for _ in range(count)]
             self._blob_phase = [random.uniform(0.0, math.tau) for _ in range(count)]
             self._blob_rot = random.uniform(0.0, math.tau)
             self._spark_phase = random.uniform(0.0, math.tau)
             self._static_cache = None
+            self._visual_identity = identity
 
     game.__dict__.update(
         {
