@@ -834,6 +834,17 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         if time_left <= 0:
             game_result = 'success' if 'game_result' in locals() else 'success'
             running = False
+        do_telegraphs, telegraph_dt = _runtime_interval_step(game, runtime, "_sched_lvl_telegraphs", dt, 1.0 / 30.0)
+        do_enemy_paint, enemy_paint_dt = _runtime_interval_step(game, runtime, "_sched_lvl_enemy_paint", dt, 1.0 / 24.0)
+        do_vuln, vuln_dt = _runtime_interval_step(game, runtime, "_sched_lvl_vuln", dt, 0.10)
+        do_pickups, pickup_dt = _runtime_interval_step(game, runtime, "_sched_lvl_pickups", dt, 1.0 / 30.0)
+        do_damage_texts, dmg_text_dt = _runtime_interval_step(game, runtime, "_sched_lvl_dmg_text", dt, 1.0 / 24.0)
+        do_aegis, aegis_dt = _runtime_interval_step(game, runtime, "_sched_lvl_aegis", dt, 1.0 / 24.0)
+        do_ground_spikes, ground_spike_dt = _runtime_interval_step(game, runtime, "_sched_lvl_ground", dt, 1.0 / 20.0)
+        do_curing_paint, curing_paint_dt = _runtime_interval_step(game, runtime, "_sched_lvl_curing", dt, 1.0 / 20.0)
+        do_dot_rounds, dot_rounds_dt = _runtime_interval_step(game, runtime, "_sched_lvl_dot_rounds", dt, 1.0 / 20.0)
+        do_enemy_specials, enemy_special_dt = _runtime_interval_step(game, runtime, "_sched_lvl_enemy_special", dt, 1.0 / 24.0)
+        do_spawn_step, _ = _runtime_interval_step(game, runtime, "_sched_lvl_wave_step", dt, 1.0 / 30.0)
         _profile_mark(profiler, "spawn")
         _web_diag_trace(game, profiler, "spawn")
         if do_spawn_step:
@@ -949,17 +960,6 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 player.targeting_skill = None
             if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
-        do_telegraphs, telegraph_dt = _runtime_interval_step(game, runtime, "_sched_lvl_telegraphs", dt, 1.0 / 30.0)
-        do_enemy_paint, enemy_paint_dt = _runtime_interval_step(game, runtime, "_sched_lvl_enemy_paint", dt, 1.0 / 24.0)
-        do_vuln, vuln_dt = _runtime_interval_step(game, runtime, "_sched_lvl_vuln", dt, 0.10)
-        do_pickups, pickup_dt = _runtime_interval_step(game, runtime, "_sched_lvl_pickups", dt, 1.0 / 30.0)
-        do_damage_texts, dmg_text_dt = _runtime_interval_step(game, runtime, "_sched_lvl_dmg_text", dt, 1.0 / 24.0)
-        do_aegis, aegis_dt = _runtime_interval_step(game, runtime, "_sched_lvl_aegis", dt, 1.0 / 24.0)
-        do_ground_spikes, ground_spike_dt = _runtime_interval_step(game, runtime, "_sched_lvl_ground", dt, 1.0 / 20.0)
-        do_curing_paint, curing_paint_dt = _runtime_interval_step(game, runtime, "_sched_lvl_curing", dt, 1.0 / 20.0)
-        do_dot_rounds, dot_rounds_dt = _runtime_interval_step(game, runtime, "_sched_lvl_dot_rounds", dt, 1.0 / 20.0)
-        do_enemy_specials, enemy_special_dt = _runtime_interval_step(game, runtime, "_sched_lvl_enemy_special", dt, 1.0 / 24.0)
-        do_spawn_step, _ = _runtime_interval_step(game, runtime, "_sched_lvl_wave_step", dt, 1.0 / 30.0)
         _profile_mark(profiler, "update")
         _web_diag_trace(game, profiler, "update")
         if not bool(getattr(game, "WEB_SKIP_UPDATE", False)):
