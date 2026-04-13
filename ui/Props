@@ -1,4 +1,63 @@
-﻿Great, the game can now proceed as normal only one thing is still missing, the wave renew within each level is missing, now the enemy only shown for the first wave never spawn again, and also there is some memory mistake for the game but we can resolve it later.
+﻿2) world_runtime.py and/or shared runtime helpers
+- Extend spatial support beyond enemies if appropriate.
+- Add lightweight local query helpers for obstacles, spoils, heals.
+- Improve query efficiency while keeping code simple.
+
+3) game_state.py
+- Add local buckets/spatial indexing for spoils and heals.
+- Make spoil/heal update and collection local rather than full-list scanning.
+- Keep web spoil bundling but make it more effective for burst drops.
+- Reduce/update paint-active processing in batches or at lower frequency.
+- Reuse cached/static visual state where possible.
+- Add unified per-frame caps/budgets for transient entities like dmg texts / particles / telegraphs if appropriate.
+
+4) enemy_core.py
+- Add enemy LOD/update throttling:
+  - near player/on-screen = full update
+  - mid distance = reduced decision frequency
+  - far distance = minimal simulation
+- Cache paint intensity/debuff lookups for enemies instead of querying every frame.
+- Throttle expensive aura/shield/bandit/steal/special logic where safe.
+- Reduce obstacle bypass/path reconsideration frequency.
+- Keep gameplay feel intact.
+
+5) app_flow.py
+- Introduce lightweight subsystem scheduling / frequency separation in the main loop.
+- Keep player input/movement responsive every frame.
+- Run heavier systems at reduced frequency when possible.
+- Integrate per-frame spawn/effect budgets cleanly.
+
+6) render_runtime.py
+- Tighten visible-object filtering before drawing.
+- Apply caps after visibility filtering, not before.
+- Reuse cached text/surfaces/background layers aggressively.
+- Reduce dynamic paint/fx rendering cost in web lite mode while preserving readability.
+- Keep current static web background cache strategy and extend it where useful.
+
+7) paint.py
+- Avoid unnecessary refresh_visuals rebuilds.
+- Rebuild cached blob/static visuals only when visual identity truly changes.
+- Preserve gameplay, reduce visual recomputation.
+
+8) turrets.py
+- Use local spatial queries to acquire targets instead of scanning all enemies.
+- Separate retarget frequency from orbit/follow behavior.
+
+9) spawn_logic.py
+- Avoid expensive full candidate construction where possible.
+- Keep existing wave-plan batching and improve it if helpful.
+- Ensure burst spawns respect frame budgets.
+
+10) Lower-priority files (screens.py, shop_ui.py, menu_flow.py, menu_visuals.py, shop_support.py, persistence.py, ZGame.py)
+- Only apply lightweight caching/throttling/config cleanup.
+- Do not spend much effort here compared to combat-path modules.
+
+Output requirements:
+- Make the actual code changes directly.
+- Keep comments concise and useful.
+- Preserve existing APIs unless clearly necessary.
+- Add new constants/config values in central config locations if needed.
+- Prefer small, surgical changes over broad rewrites.   
 =================================================   
 Executive Summary
 This document is the master working specification for Z Game's prop system, path identity, balance rules, UX readability, and release-readiness requirements.

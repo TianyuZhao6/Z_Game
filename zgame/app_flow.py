@@ -443,6 +443,10 @@ async def _preload_web_gameplay_assets(game, screen, runtime=None) -> None:
     runtime = runtime or rs.runtime(game)
     if runtime.get("_web_gameplay_assets_ready", False):
         return
+    preserve_transition = bool(
+        runtime.get("_menu_transition_frame") is not None
+        or runtime.get("_web_hex_transition_state") is not None
+    )
     base_size = int(game.CELL_SIZE * 0.6)
     player_target = (
         int(base_size * 2.0 * game.PLAYER_SPRITE_SCALE),
@@ -461,7 +465,10 @@ async def _preload_web_gameplay_assets(game, screen, runtime=None) -> None:
             load()
         except Exception:
             pass
-        await _show_web_boot_surface(game, screen, runtime, count=1)
+        if preserve_transition:
+            await asyncio.sleep(0)
+        else:
+            await _show_web_boot_surface(game, screen, runtime, count=1)
     runtime["_web_gameplay_assets_ready"] = True
 
 
@@ -716,7 +723,6 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     last_frame = None
     has_rendered_frame = False
     render_cooldown = 0.0
-    web_transition_guard_t = 0.65 if game.IS_WEB else 0.0
     profiler = _web_profiler(game)
     clock.tick(game.WEB_TARGET_FPS if game.IS_WEB else 60)
     entry_freeze = 0.4
@@ -734,13 +740,6 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             continue
         profiler = _profile_begin(game, dt)
         render_cooldown = max(0.0, render_cooldown - dt)
-        if web_transition_guard_t > 0.0:
-            web_transition_guard_t = max(0.0, web_transition_guard_t - dt)
-            if web_transition_guard_t <= 0.0 and (
-                runtime.get("_web_hex_transition_state") is not None
-                or runtime.get("_menu_transition_frame") is not None
-            ):
-                game.clear_menu_transition_state()
         if entry_freeze > 0:
             entry_freeze = max(0.0, entry_freeze - dt)
             _profile_mark(profiler, "events")
@@ -1394,7 +1393,6 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         z._flash_prev_hp = int(getattr(z, 'hp', 0))
     _web_snapshot_autosave(game, runtime, game_state, player, enemies, level_idx, chosen_enemy_type, bullets, force=True)
     render_cooldown = 0.0
-    web_transition_guard_t = 0.65 if game.IS_WEB else 0.0
     profiler = _web_profiler(game)
     while running:
         dt = _frame_dt(game, clock)
@@ -1410,13 +1408,6 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             continue
         profiler = _profile_begin(game, dt)
         render_cooldown = max(0.0, render_cooldown - dt)
-        if web_transition_guard_t > 0.0:
-            web_transition_guard_t = max(0.0, web_transition_guard_t - dt)
-            if web_transition_guard_t <= 0.0 and (
-                runtime.get("_web_hex_transition_state") is not None
-                or runtime.get("_menu_transition_frame") is not None
-            ):
-                game.clear_menu_transition_state()
         if game.IS_WEB and (not combat_bgm_started):
             combat_bgm_delay = max(0.0, combat_bgm_delay - dt)
             if combat_bgm_delay <= 0.0:
