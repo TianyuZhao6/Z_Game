@@ -446,7 +446,32 @@ function show_infobox() {
 window.__zgame_bgm_audio = null;
 window.__zgame_bgm_pending = false;
 window.__zgame_bgm_last_play_ms = 0;
+window.__zgame_bgm_retry_timer = 0;
+window.__zgame_bgm_retry_attempts = 0;
 window.__zgame_fx_pool = Object.create(null);
+
+function zgameClearBgmRetry() {
+    try {
+        const timer = Number(window.__zgame_bgm_retry_timer || 0);
+        if (timer) {
+            window.clearTimeout(timer);
+        }
+    } catch (_) {}
+    window.__zgame_bgm_retry_timer = 0;
+}
+
+function zgameScheduleBgmRetry(delayMs) {
+    zgameClearBgmRetry();
+    const delay = Math.max(40, Number(delayMs || 120));
+    window.__zgame_bgm_retry_timer = window.setTimeout(() => {
+        window.__zgame_bgm_retry_timer = 0;
+        try {
+            const audio = window.__zgame_bgm_audio;
+            if (!audio) return;
+            window.__zgame_bgm_play(audio.loop ? -1 : 0, 0);
+        } catch (_) {}
+    }, delay);
+}
 
 window.__zgame_bgm_open = function(src, volume) {
     try {
@@ -454,6 +479,7 @@ window.__zgame_bgm_open = function(src, volume) {
         if (prev) {
             try { prev.pause(); } catch (_) {}
         }
+        zgameClearBgmRetry();
         const audio = new Audio(src);
         audio.preload = "auto";
         audio.autoplay = true;
@@ -463,20 +489,36 @@ window.__zgame_bgm_open = function(src, volume) {
         audio.muted = false;
         audio.volume = Math.max(0, Math.min(1, Number(volume || 0)));
         audio.crossOrigin = "anonymous";
-        audio.addEventListener("playing", () => { window.__zgame_bgm_pending = false; });
+        audio.addEventListener("playing", () => {
+            window.__zgame_bgm_pending = false;
+            window.__zgame_bgm_retry_attempts = 0;
+            zgameClearBgmRetry();
+        });
         audio.addEventListener("pause", () => { window.__zgame_bgm_pending = false; });
         audio.addEventListener("ended", () => { window.__zgame_bgm_pending = false; });
         window.__zgame_bgm_audio = audio;
         window.__zgame_bgm_pending = false;
         window.__zgame_bgm_last_play_ms = 0;
+        window.__zgame_bgm_retry_attempts = 0;
         const retryPlay = () => {
             if (window.__zgame_bgm_audio !== audio) return;
             window.__zgame_bgm_play(audio.loop ? -1 : 0, 0);
         };
         audio.addEventListener("loadeddata", retryPlay);
         audio.addEventListener("canplay", retryPlay);
+        audio.addEventListener("canplaythrough", retryPlay);
         try { audio.load(); } catch (_) {}
         retryPlay();
+        window.setTimeout(() => {
+            if (window.__zgame_bgm_audio === audio) {
+                retryPlay();
+            }
+        }, 140);
+        window.setTimeout(() => {
+            if (window.__zgame_bgm_audio === audio) {
+                retryPlay();
+            }
+        }, 420);
         return true;
     } catch (e) {
         console.warn("[Audio] html bgm open failed", e);
@@ -495,7 +537,11 @@ window.__zgame_bgm_play = function(loops, fade_ms) {
         if ((!audio.paused && !audio.ended) || window.__zgame_bgm_pending) {
             return true;
         }
-        if ((now - Number(window.__zgame_bgm_last_play_ms || 0)) < 250) {
+        const sinceLast = now - Number(window.__zgame_bgm_last_play_ms || 0);
+        if (sinceLast < 250) {
+            if (audio.paused || audio.ended) {
+                zgameScheduleBgmRetry(260 - sinceLast);
+            }
             return true;
         }
         window.__zgame_bgm_pending = true;
@@ -512,12 +558,21 @@ window.__zgame_bgm_play = function(loops, fade_ms) {
         if (playPromise && typeof playPromise.catch === "function") {
             playPromise.catch((e) => {
                 window.__zgame_bgm_pending = false;
+                window.__zgame_bgm_last_play_ms = 0;
                 console.warn("[Audio] html bgm play failed", e);
+                if (!zgameIgnoreAutoplayMessage(e)) {
+                    const attempts = Number(window.__zgame_bgm_retry_attempts || 0);
+                    if (attempts < 4) {
+                        window.__zgame_bgm_retry_attempts = attempts + 1;
+                        zgameScheduleBgmRetry(160 + attempts * 180);
+                    }
+                }
             });
         }
         return true;
     } catch (e) {
         window.__zgame_bgm_pending = false;
+        window.__zgame_bgm_last_play_ms = 0;
         console.warn("[Audio] html bgm play exception", e);
         return false;
     }
@@ -530,6 +585,8 @@ window.__zgame_bgm_stop = function() {
         audio.pause();
         audio.currentTime = 0;
         window.__zgame_bgm_pending = false;
+        window.__zgame_bgm_retry_attempts = 0;
+        zgameClearBgmRetry();
         return true;
     } catch (e) {
         console.warn("[Audio] html bgm stop failed", e);
@@ -543,6 +600,7 @@ window.__zgame_bgm_pause = function() {
         if (!audio) return false;
         audio.pause();
         window.__zgame_bgm_pending = false;
+        zgameClearBgmRetry();
         return true;
     } catch (e) {
         console.warn("[Audio] html bgm pause failed", e);
@@ -554,9 +612,13 @@ window.__zgame_bgm_resume = function() {
     try {
         const audio = window.__zgame_bgm_audio;
         if (!audio) return false;
+        window.__zgame_bgm_last_play_ms = 0;
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.catch === "function") {
-            playPromise.catch((e) => console.warn("[Audio] html bgm resume failed", e));
+            playPromise.catch((e) => {
+                window.__zgame_bgm_last_play_ms = 0;
+                console.warn("[Audio] html bgm resume failed", e);
+            });
         }
         return true;
     } catch (e) {
@@ -605,8 +667,10 @@ window.__zgame_audio_stop_all = function() {
             try { audio.currentTime = 0; } catch (_) {}
             try { audio.src = ""; } catch (_) {}
         }
+        zgameClearBgmRetry();
         window.__zgame_bgm_audio = null;
         window.__zgame_bgm_pending = false;
+        window.__zgame_bgm_retry_attempts = 0;
         const pool = window.__zgame_fx_pool || {};
         for (const key of Object.keys(pool)) {
             for (const audioEl of (pool[key] || [])) {
