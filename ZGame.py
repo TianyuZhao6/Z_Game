@@ -3975,6 +3975,7 @@ HexCell, HexTransition, NeuroParticle, CometCorpse, CometBlast, AegisPulseRing =
     ensure_hex_transition,
     ensure_hex_background,
     queue_menu_transition,
+    prime_menu_transition_target,
     clear_menu_transition_state,
     run_pending_menu_transition,
     play_hex_transition,
