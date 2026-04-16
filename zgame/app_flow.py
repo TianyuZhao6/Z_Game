@@ -449,6 +449,15 @@ async def _show_web_boot_surface(game, screen, runtime=None, *, count: int = 1) 
         screen.blit(game.ensure_hex_background(), (0, 0))
     except Exception:
         screen.fill((0, 0, 0))
+    if (
+        runtime is not None
+        and runtime.get("_menu_transition_frame") is not None
+        and runtime.get("_menu_transition_target_frame") is None
+    ):
+        try:
+            game.prime_menu_transition_target(screen.copy())
+        except Exception:
+            pass
     await _yield_web_boot_frame(game, screen, runtime, fill_black=False, count=count)
 
 
@@ -462,6 +471,8 @@ async def _preload_web_gameplay_assets(game, screen, runtime=None) -> None:
         runtime.get("_menu_transition_frame") is not None
         or runtime.get("_web_hex_transition_state") is not None
     )
+    if preserve_transition and runtime.get("_menu_transition_target_frame") is None:
+        await _show_web_boot_surface(game, screen, runtime, count=1)
     base_size = int(game.CELL_SIZE * 0.6)
     player_target = (
         int(base_size * 2.0 * game.PLAYER_SPRITE_SCALE),
@@ -1026,6 +1037,8 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         player.update_bone_plating(dt)
         game.tick_aegis_pulse(player, game_state, enemies, dt)
         while getattr(player, 'levelup_pending', 0) > 0:
+            _profile_mark(profiler, "levelup")
+            _web_diag_trace(game, profiler, f"levelup pending={int(getattr(player, 'levelup_pending', 0))}")
             if game.IS_WEB and bool(getattr(game, "WEB_DIAG_MODE", False)):
                 print(
                     f"[WebLevelUp] pending={int(getattr(player, 'levelup_pending', 0))} "
