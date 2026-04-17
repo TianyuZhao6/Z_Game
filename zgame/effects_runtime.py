@@ -10,7 +10,7 @@ import pygame
 
 def install(game):
     class HexCell:
-        __slots__ = ("cx", "cy", "max_r", "trigger_delay", "current_scale", "points")
+        __slots__ = ("cx", "cy", "max_r", "trigger_delay", "current_scale", "points", "band_factor")
 
         def __init__(self, cx, cy, r):
             self.cx = float(cx)
@@ -19,6 +19,8 @@ def install(game):
             self.trigger_delay = 0.0
             self.current_scale = 0.0
             self.points = game.hex_points_flat(self.cx, self.cy, self.max_r)
+            dist_center = math.hypot(self.cx - game.VIEW_W // 2, self.cy - game.VIEW_H // 2)
+            self.band_factor = 1.0 - min(1.0, dist_center / max(1.0, game.VIEW_H * 0.6))
 
     class HexTransition:
         def __init__(self, grid: list[HexCell]):
@@ -32,6 +34,20 @@ def install(game):
             self.timer = 0.0
             self.state = "IDLE"
             self.midpoint_triggered = False
+            self._overlay = None
+            self._veil = None
+            self._surface_size = (0, 0)
+
+        def _ensure_surfaces(self) -> tuple[pygame.Surface, pygame.Surface]:
+            size = (int(game.VIEW_W), int(game.VIEW_H))
+            if self._overlay is None or self._veil is None or self._surface_size != size:
+                self._overlay = pygame.Surface(size, pygame.SRCALPHA)
+                self._veil = pygame.Surface(size, pygame.SRCALPHA)
+                self._surface_size = size
+            else:
+                self._overlay.fill((0, 0, 0, 0))
+                self._veil.fill((0, 0, 0, 0))
+            return self._overlay, self._veil
 
         def _get_delay(self, cell):
             if random.random() < 0.5:
@@ -102,9 +118,7 @@ def install(game):
         def draw(self, screen: pygame.Surface):
             if self.state == "IDLE":
                 return
-            angles = [math.radians(a) for a in (0, 60, 120, 180, 240, 300)]
-            overlay = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
-            veil = pygame.Surface((game.VIEW_W, game.VIEW_H), pygame.SRCALPHA)
+            overlay, veil = self._ensure_surfaces()
             if self.state == "CLOSING":
                 cover_alpha = 230
             elif self.state == "HOLDING":
@@ -119,13 +133,11 @@ def install(game):
                 cx, cy = cell.cx, cell.cy
                 outline_points = cell.points
                 draw_scale = max(0.0, min(1.0, cell.current_scale)) * 0.92
-                fill_points = []
-                for ang in angles:
-                    px = cx + cell.max_r * math.cos(ang)
-                    py = cy + cell.max_r * math.sin(ang)
-                    fill_points.append((cx + (px - cx) * draw_scale, cy + (py - cy) * draw_scale))
-                dist_center = math.hypot(cell.cx - game.VIEW_W // 2, cell.cy - game.VIEW_H // 2)
-                band_factor = 1.0 - min(1.0, dist_center / (game.VIEW_H * 0.6))
+                fill_points = [
+                    (cx + (px - cx) * draw_scale, cy + (py - cy) * draw_scale)
+                    for px, py in outline_points
+                ]
+                band_factor = float(getattr(cell, "band_factor", 1.0))
                 fill_alpha = int(max(0, min(255, 255 * max(0.6, draw_scale))))
                 pygame.draw.polygon(overlay, (*self.COLOR_FILL, fill_alpha), fill_points)
                 outline_alpha = int(
