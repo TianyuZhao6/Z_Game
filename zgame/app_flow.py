@@ -165,7 +165,14 @@ def _web_profiler(game) -> WebRuntimeProfiler | None:
 def _profile_begin(game, dt_s: float) -> WebRuntimeProfiler | None:
     profiler = _web_profiler(game)
     if profiler is not None:
-        raw_dt_s = float(rs.runtime(game).get("_last_raw_frame_dt_s", dt_s) or dt_s)
+        runtime = rs.runtime(game)
+        raw_dt_s = float(runtime.get("_last_raw_frame_dt_s", dt_s) or dt_s)
+        profiler.set_context(
+            scenario=str(runtime.get("_diag_scenario", getattr(game, "WEB_DIAG_SCENARIO", "")) or ""),
+            quality=str(getattr(game, "WEB_DEFAULT_QUALITY", "")),
+            forced_level=int(getattr(game, "WEB_DIAG_FORCE_LEVEL", -1) or -1),
+            forced_biome=str(getattr(game, "WEB_DIAG_FORCE_BIOME", "") or ""),
+        )
         profiler.begin_frame(dt_s, raw_dt_s=raw_dt_s)
     return profiler
 
@@ -188,8 +195,56 @@ def _web_diag_detail(game, phase: str, detail: str) -> None:
         pass
 
 
+def _apply_web_diag_bootstrap(game, runtime, screen=None) -> None:
+    if not getattr(game, "IS_WEB", False):
+        return
+    scenario = str(getattr(game, "WEB_DIAG_SCENARIO", "") or "").strip().lower()
+    if scenario:
+        runtime["_diag_scenario"] = scenario
+    forced_level = int(getattr(game, "WEB_DIAG_FORCE_LEVEL", -1) or -1)
+    if forced_level >= 0:
+        game.current_level = forced_level
+        runtime["current_level"] = forced_level
+    forced_biome = str(getattr(game, "WEB_DIAG_FORCE_BIOME", "") or "").strip()
+    if forced_biome:
+        runtime["_next_biome"] = forced_biome
+        runtime["_diag_forced_biome"] = forced_biome
+    if bool(getattr(game, "WEB_DIAG_FORCE_TRANSITION", False)) and runtime.get("_menu_transition_frame") is None:
+        try:
+            from_surf = game.render_start_menu_surface(game.has_save())
+            game.queue_menu_transition(from_surf)
+        except Exception:
+            pass
+    profiler = _web_profiler(game)
+    if profiler is not None:
+        profiler.set_context(
+            scenario=runtime.get("_diag_scenario", ""),
+            quality=str(getattr(game, "WEB_DEFAULT_QUALITY", "")),
+            forced_level=forced_level,
+            forced_biome=forced_biome,
+            duration_s=float(getattr(game, "WEB_DIAG_DURATION_S", 0.0) or 0.0),
+            tag=str(getattr(game, "WEB_DIAG_TAG", "") or ""),
+        )
+
+
+def _apply_web_diag_level_state(game, runtime, player, game_state) -> None:
+    if not getattr(game, "IS_WEB", False):
+        return
+    if bool(getattr(game, "WEB_DIAG_FORCE_ULTIMATE", False)):
+        try:
+            game.activate_ultimate_mode(player, game_state)
+        except Exception:
+            pass
+    profiler = _web_profiler(game)
+    if profiler is not None:
+        profiler.set_context(
+            current_level=int(getattr(game_state, "current_level", runtime.get("current_level", 0)) or 0),
+            biome=str(getattr(game_state, "biome_active", "") or ""),
+        )
+
+
 def _profile_set_counters(game, profiler: WebRuntimeProfiler | None, game_state, enemies, bullets, enemy_shots,
-                          *, wave_index: int = 0, rendered: bool = False) -> None:
+                          player=None, *, wave_index: int = 0, rendered: bool = False) -> None:
     if profiler is None:
         return
     profiler.counter("obs", len(getattr(game_state, "obstacles", {}) or {}))
@@ -197,14 +252,34 @@ def _profile_set_counters(game, profiler: WebRuntimeProfiler | None, game_state,
     profiler.counter("b", len(bullets or ()))
     profiler.counter("es", len(enemy_shots or ()))
     profiler.counter("sp", len(getattr(game_state, "spoils", ()) or ()))
+    profiler.counter("heal", len(getattr(game_state, "heals", ()) or ()))
     profiler.counter("txt", len(getattr(game_state, "dmg_texts", ()) or ()))
     profiler.counter("fx", len(getattr(getattr(game_state, "fx", None), "particles", ()) or ()))
+    profiler.counter("acid", len(getattr(game_state, "acids", ()) or ()))
+    profiler.counter("spike", len(getattr(game_state, "ground_spikes", ()) or ()))
+    profiler.counter("curing", len(getattr(game_state, "curing_paint", ()) or ()))
+    profiler.counter("tg", len(getattr(game_state, "telegraphs", ()) or ()))
+    profiler.counter("pulse", len(getattr(game_state, "aegis_pulses", ()) or ()))
+    profiler.counter("ghost", len(getattr(game_state, "ghosts", ()) or ()))
+    profiler.counter("wind", len(getattr(game_state, "hurricanes", ()) or ()))
+    profiler.counter("paint", len(getattr(game_state, "paint_active", ()) or ()))
+    biome_name = str(getattr(game_state, "biome_active", "") or "")
+    profiler.counter("biome", biome_name or "none")
+    profiler.counter("mist", int(biome_name == "Misty Forest"))
+    profiler.counter("hell", int(biome_name == "Scorched Hell"))
+    profiler.counter("fog", int(bool(getattr(game_state, "fog_on", False) or getattr(game_state, "fog_enabled", False))))
     profiler.counter("wave", int(wave_index))
+    profiler.counter("lvl", int(getattr(game_state, "current_level", 0) or 0))
+    profiler.counter("hp", int(getattr(player, "hp", 0) or 0))
     runtime = rs.runtime(game)
+    transition_diag = runtime.get("_web_transition_diag", {}) if isinstance(runtime.get("_web_transition_diag", {}), dict) else {}
     profiler.counter(
         "trans",
         int(bool(runtime.get("_web_hex_transition_state") is not None or runtime.get("_menu_transition_frame") is not None)),
     )
+    profiler.counter("trans_stall", int(transition_diag.get("stall_count", 0) or 0))
+    profiler.counter("trans_zero", int(transition_diag.get("zero_dt_frames", 0) or 0))
+    profiler.counter("trans_prog", int(transition_diag.get("no_progress_frames", 0) or 0))
     profiler.counter("rendered", int(bool(rendered)))
     bgm = runtime.get("_bgm")
     if bgm is None:
@@ -219,10 +294,16 @@ def _profile_set_counters(game, profiler: WebRuntimeProfiler | None, game_state,
             track = "other"
         backend = "html" if bool(getattr(bgm, "_native_web_audio", False)) else "mixer"
         profiler.counter("audio", f"{backend}:{track}")
+    profiler.set_context(
+        current_level=int(getattr(game_state, "current_level", runtime.get("current_level", 0)) or 0),
+        biome=biome_name,
+        quality=str(getattr(game, "WEB_DEFAULT_QUALITY", "")),
+        transition_stalls=int(transition_diag.get("stall_count", 0) or 0),
+    )
 
 
 def _profile_finish(game, profiler: WebRuntimeProfiler | None, game_state, enemies, bullets, enemy_shots,
-                    *, wave_index: int = 0, rendered: bool = False) -> None:
+                    player=None, *, wave_index: int = 0, rendered: bool = False) -> None:
     if profiler is None:
         return
     _profile_set_counters(
@@ -232,6 +313,7 @@ def _profile_finish(game, profiler: WebRuntimeProfiler | None, game_state, enemi
         enemies,
         bullets,
         enemy_shots,
+        player,
         wave_index=wave_index,
         rendered=rendered,
     )
@@ -521,6 +603,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     runtime = rs.runtime(game)
     meta = rs.meta(game)
     _clear_pending_wave_spawn(runtime)
+    _apply_web_diag_bootstrap(game, runtime, pygame.display.get_surface())
     pygame.display.set_caption(game.GAME_TITLE)
     screen = pygame.display.get_surface()
     clock = pygame.time.Clock()
@@ -600,6 +683,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         if isinstance(baseline, dict) and baseline.get('biome') is not None:
             runtime['_next_biome'] = baseline.get('biome')
     game.apply_domain_buffs_for_level(game_state, player)
+    _apply_web_diag_level_state(game, runtime, player, game_state)
     if hasattr(player, 'on_level_start'):
         player.on_level_start()
     runtime['_next_biome'] = None
@@ -807,6 +891,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 enemies,
                 bullets,
                 enemy_shots,
+                player,
                 wave_index=wave_index,
                 rendered=rendered,
             )
@@ -1230,11 +1315,17 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             enemies,
             bullets,
             enemy_shots,
+            player,
             wave_index=wave_index,
             rendered=should_render,
         )
         if game.IS_WEB:
             await _yield_web_frame(game)
+    if profiler is not None and hasattr(profiler, "_publish_export"):
+        try:
+            profiler._publish_export(force=True)
+        except Exception:
+            pass
     return (game_result, config.get('reward', None), last_frame or screen.copy())
 
 async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], pygame.Surface]:
@@ -1774,11 +1865,17 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             enemies,
             bullets,
             enemy_shots,
+            player,
             wave_index=wave_index,
             rendered=should_render,
         )
         if game.IS_WEB:
             await _yield_web_frame(game)
+    if profiler is not None and hasattr(profiler, "_publish_export"):
+        try:
+            profiler._publish_export(force=True)
+        except Exception:
+            pass
     return ('home', None, last_frame or screen.copy())
 
 async def app_main(game) -> None:
@@ -1809,6 +1906,7 @@ async def app_main(game) -> None:
         game.VIEW_W, game.VIEW_H = (info.current_w, info.current_h)
     pygame.display.set_caption(game.GAME_TITLE)
     game.resize_world_to_view()
+    _apply_web_diag_bootstrap(game, runtime, screen)
     if getattr(game, "IS_WEB", False):
         try:
             _set_browser_profiler_phase("startup:bgm")
@@ -1862,6 +1960,7 @@ async def app_main(game) -> None:
 
     if getattr(game, "IS_WEB", False) and bool(getattr(game, "WEB_AUTOSTART", False)):
         game._reset_active_run_state(clear_save_file=True)
+        _apply_web_diag_bootstrap(game, runtime, screen)
     else:
         selection = await game.show_start_menu(screen)
         if apply_menu_selection(selection) == "__exit__":

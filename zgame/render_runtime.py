@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import sys
+import time
 from typing import List, Optional
 
 import pygame
@@ -518,6 +519,29 @@ def install(game):
         mx = max(0, int(margin))
         return (-mx <= int(x) <= int(game.VIEW_W) + mx) and ((INFO_BAR_HEIGHT - mx) <= int(y) <= int(game.VIEW_H) + mx)
 
+    def _web_profiler():
+        profiler = getattr(game, "_web_profiler", None)
+        if not getattr(game, "IS_WEB", False):
+            return None
+        return profiler if profiler is not None and hasattr(profiler, "counter") else None
+
+    def _render_counter(profiler, name: str, started_at: float) -> None:
+        if profiler is None:
+            return
+        elapsed_ms = max(0.0, (time.perf_counter() - started_at) * 1000.0)
+        profiler.counter(str(name), round(elapsed_ms, 3))
+
+    def _transition_ready_for_short_circuit() -> bool:
+        if not getattr(game, "IS_WEB", False):
+            return False
+        runtime = _runtime()
+        web_state = runtime.get("_web_hex_transition_state")
+        if isinstance(web_state, dict):
+            return True
+        if runtime.get("_menu_transition_frame") is None:
+            return False
+        return runtime.get("_menu_transition_target_frame") is not None
+
     def _screen_visible_circle(x: float, y: float, radius: float, *, margin: int = 0) -> bool:
         return _screen_visible_point(x, y, margin=max(int(margin), int(radius)))
 
@@ -772,6 +796,14 @@ def install(game):
                                  copy_frame: bool = True) -> pygame.Surface | None:
         obstacles = obstacles if obstacles is not None else getattr(game_state, "obstacles", {})
         screen, display_surface, prev_view = _begin_web_gameplay_render(screen)
+        profiler = _web_profiler()
+        if _transition_ready_for_short_circuit():
+            transition_started = time.perf_counter()
+            screen.fill(MAP_BG)
+            run_pending_menu_transition(screen)
+            _render_counter(profiler, "r_transition_ms", transition_started)
+            _draw_web_profiler_overlay(screen)
+            return _present_gameplay_render(screen, display_surface, prev_view, copy_frame=copy_frame)
         pickup_cap = int(getattr(game, "WEB_LITE_RENDER_PICKUP_CAP", 0) or 0)
         turret_cap = int(getattr(game, "WEB_LITE_RENDER_TURRET_CAP", 0) or 0)
         enemy_cap = int(getattr(game, "WEB_LITE_RENDER_ENEMY_CAP", 0) or 0)
@@ -794,8 +826,10 @@ def install(game):
         player_cx = float(player.rect.centerx)
         player_cy = float(player.rect.centery)
         view_world_rect = _iso_view_world_rect(camx, camy, pad_px=int(CELL_SIZE * 2))
+        segment_started = time.perf_counter()
         screen.fill(MAP_BG)
         _blit_web_static_background(screen, game_state, camx, camy, wall_h=max(12, int(ISO_WALL_Z * 0.7)))
+        _render_counter(profiler, "r_bg_ms", segment_started)
         margin = 2
         gx_min = max(0, int(px_grid - game.VIEW_W // max(1, ISO_CELL_W)) - margin)
         gx_max = min(GRID_SIZE - 1, int(px_grid + game.VIEW_W // max(1, ISO_CELL_W)) + margin)
@@ -911,6 +945,7 @@ def install(game):
         actors.append((psy, "player", player, psx, psy))
         actors.sort(key=lambda item: item[0])
 
+        segment_started = time.perf_counter()
         for _, kind, obj, sx, sy in actors:
             cx = int(sx)
             cy = int(sy)
@@ -1002,7 +1037,9 @@ def install(game):
                             overlay = pygame.Surface((body_r * 2 + 4, body_r * 2 + 4), pygame.SRCALPHA)
                             overlay.fill((255, 255, 255, flash_alpha))
                             screen.blit(overlay, overlay.get_rect(center=(cx, body_y)).topleft)
+        _render_counter(profiler, "r_actor_ms", segment_started)
 
+        segment_started = time.perf_counter()
         visible_bullets = []
         for bullet in (bullets or ()):
             wx = bullet.x / CELL_SIZE
@@ -1036,7 +1073,9 @@ def install(game):
                 (int(sx), int(sy)),
                 max(2, int(getattr(shot, "r", BULLET_RADIUS))),
             )
+        _render_counter(profiler, "r_projectile_ms", segment_started)
 
+        segment_started = time.perf_counter()
         if _web_feature_enabled("WEB_ENABLE_DAMAGE_TEXTS"):
             for d in getattr(game_state, "dmg_texts", []):
                 wx = d.x / CELL_SIZE
@@ -1046,7 +1085,9 @@ def install(game):
                 if not _screen_visible_point(sx, sy, margin=24):
                     continue
                 d.draw_iso(screen, sx, sy)
+        _render_counter(profiler, "r_overlay_ms", segment_started)
 
+        segment_started = time.perf_counter()
         _draw_web_lite_ui_topbar(
             screen,
             game_state,
@@ -1058,7 +1099,10 @@ def install(game):
             draw_boss_hp_bars_twin(screen, bosses[:2])
         elif len(bosses) == 1:
             draw_boss_hp_bar(screen, bosses[0])
+        _render_counter(profiler, "r_ui_ms", segment_started)
+        segment_started = time.perf_counter()
         run_pending_menu_transition(screen)
+        _render_counter(profiler, "r_transition_ms", segment_started)
         _draw_web_profiler_overlay(screen)
         return _present_gameplay_render(screen, display_surface, prev_view, copy_frame=copy_frame)
 
@@ -1077,6 +1121,14 @@ def install(game):
                 copy_frame=copy_frame,
             )
         screen, display_surface, prev_view = _begin_web_gameplay_render(screen)
+        profiler = _web_profiler()
+        if _transition_ready_for_short_circuit():
+            transition_started = time.perf_counter()
+            screen.fill(MAP_BG)
+            run_pending_menu_transition(screen)
+            _render_counter(profiler, "r_transition_ms", transition_started)
+            _draw_web_profiler_overlay(screen)
+            return _present_gameplay_render(screen, display_surface, prev_view, copy_frame=copy_frame)
         px_grid = (player.x + player.size / 2) / CELL_SIZE
         py_grid = (player.y + player.size / 2) / CELL_SIZE
         pxs, pys = iso_world_to_screen(px_grid, py_grid, 0, 0, 0)
@@ -1091,6 +1143,7 @@ def install(game):
             dx, dy = game_state.camera_shake_offset()
             camx += dx
             camy += dy
+        segment_started = time.perf_counter()
         screen.fill(MAP_BG)
         margin = 3
         gx_min = max(0, int(px_grid - game.VIEW_W // ISO_CELL_W) - margin)
@@ -1104,8 +1157,10 @@ def install(game):
             for gx in range(gx_min, gx_max + 1):
                 for gy in range(gy_min, gy_max + 1):
                     _blit_cached_iso_tile(screen, gx, gy, grid_col, camx, camy, border=1)
+        _render_counter(profiler, "r_bg_ms", segment_started)
         view_margin = max(int(CELL_SIZE), int(ISO_CELL_W))
         view_world_rect = _iso_view_world_rect(camx, camy, pad_px=int(CELL_SIZE * 2))
+        segment_started = time.perf_counter()
         for t in getattr(game_state, "telegraphs", []):
             sx, sy = iso_world_to_screen(t.x / CELL_SIZE, (t.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
             if not _screen_visible_circle(sx, sy, float(getattr(t, "r", 0.0)), margin=view_margin):
@@ -1133,7 +1188,9 @@ def install(game):
                 draw_iso_ground_ellipse(screen, tx, ty, BLAST_RADIUS * 0.4, col, 80 if valid else 50, camx, camy, fill=True)
             else:
                 draw_iso_ground_ellipse(screen, tx, ty, max(20, player.size), col, 80 if valid else 50, camx, camy, fill=False, width=4)
+        _render_counter(profiler, "r_targeting_ms", segment_started)
 
+        segment_started = time.perf_counter()
         if _web_feature_enabled("WEB_ENABLE_HURRICANES"):
             for h in getattr(game_state, "hurricanes", []):
                 hsx, hsy = iso_world_to_screen(h.x / CELL_SIZE, (h.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
@@ -1152,7 +1209,9 @@ def install(game):
                 else:
                     hx, hy = float(h.get("x", 0)), float(h.get("y", 0))
                     draw_iso_ground_ellipse(screen, hx, hy, 40, (100, 100, 100), 200, camx, camy)
+        _render_counter(profiler, "r_hurricane_ms", segment_started)
 
+        segment_started = time.perf_counter()
         if _web_feature_enabled("WEB_ENABLE_AEGIS_PULSES"):
             for p in getattr(game_state, "aegis_pulses", []):
                 age = max(0.0, float(getattr(p, "age", 0.0)))
@@ -1188,8 +1247,10 @@ def install(game):
                 camx=camx, camy=camy,
                 fill=True
             )
+        _render_counter(profiler, "r_ground_ms", segment_started)
         player_rect = getattr(player, "rect", None)
         enemy_rects = [getattr(z, "rect", None) for z in enemies if getattr(z, "rect", None)]
+        segment_started = time.perf_counter()
         visible_ghosts = []
         for g in getattr(game_state, "ghosts", []):
             gsx, gsy = iso_world_to_screen(
@@ -1220,8 +1281,11 @@ def install(game):
         )
         for _, g in visible_ghosts:
             g.draw_iso(screen, camx, camy)
+        _render_counter(profiler, "r_ghost_ms", segment_started)
+        segment_started = time.perf_counter()
         if _web_feature_enabled("WEB_ENABLE_ENEMY_PAINT") and hasattr(game_state, "draw_paint_iso"):
             game_state.draw_paint_iso(screen, camx, camy)
+        _render_counter(profiler, "r_paint_ms", segment_started)
         drawables = []
         wall_drawables = []
         if IS_WEB:
@@ -1243,7 +1307,12 @@ def install(game):
                 top_pts = iso_tile_points(gx, gy, camx, camy)
                 sort_y = top_pts[2][1] + (ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
                 drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": _wall_visual_color(ob)}))
-        for s in getattr(game_state, "spoils", []):
+        spoil_iter = (
+            game_state.query_spoils_near_rect(view_world_rect, pad_px=CELL_SIZE)
+            if hasattr(game_state, "query_spoils_near_rect")
+            else getattr(game_state, "spoils", ())
+        )
+        for s in spoil_iter:
             wx, wy = s.base_x / CELL_SIZE, (s.base_y - s.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             if not _screen_visible_point(sx, sy, margin=view_margin):
@@ -1255,7 +1324,12 @@ def install(game):
             if not _screen_visible_point(sx, sy, margin=view_margin):
                 continue
             drawables.append(("turret", sy, {"cx": sx, "cy": sy, "obj": t}))
-        for h in getattr(game_state, "heals", []):
+        heal_iter = (
+            game_state.query_heals_near_rect(view_world_rect, pad_px=CELL_SIZE)
+            if hasattr(game_state, "query_heals_near_rect")
+            else getattr(game_state, "heals", ())
+        )
+        for h in heal_iter:
             wx, wy = h.base_x / CELL_SIZE, (h.base_y - h.h - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
             if not _screen_visible_point(sx, sy, margin=view_margin):
@@ -1268,7 +1342,12 @@ def install(game):
             if not _screen_visible_point(sx, sy, margin=view_margin):
                 continue
             drawables.append(("item", sy, {"cx": sx, "cy": sy, "r": it.radius, "main": it.is_main}))
-        for z in enemies:
+        enemy_iter = (
+            getattr(game_state, "spatial").query_rect(view_world_rect, pad_px=CELL_SIZE * 2)
+            if getattr(game_state, "spatial", None) is not None
+            else enemies
+        )
+        for z in enemy_iter:
             wx = z.rect.centerx / CELL_SIZE
             wy = (z.rect.bottom - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
@@ -1326,6 +1405,7 @@ def install(game):
         hell = (getattr(game_state, "biome_active", "") == "Scorched Hell")
         COL_PLAYER_BULLET = (199, 68, 12) if hell else (120, 204, 121)
         COL_ENEMY_SHOT = (255, 80, 80) if hell else (255, 120, 50)
+        segment_started = time.perf_counter()
         for kind, _, data in drawables:
             if kind == "wall":
                 gx, gy, col = data["gx"], data["gy"], data["color"]
@@ -1804,6 +1884,8 @@ def install(game):
                             (cx - 3, cy)
                         ]
                         pygame.draw.polygon(screen, BONE_PLATING_COLOR, sparkle, width=1)
+        _render_counter(profiler, "r_actor_ms", segment_started)
+        segment_started = time.perf_counter()
         if _web_feature_enabled("WEB_ENABLE_DAMAGE_TEXTS"):
             visible_dmg_texts = []
             for d in getattr(game_state, "dmg_texts", []):
@@ -1823,18 +1905,30 @@ def install(game):
             )
             for _, d, sx, sy in visible_dmg_texts:
                 d.draw_iso(screen, sx, sy)
+        _render_counter(profiler, "r_text_ms", segment_started)
         _draw_skill_overlay(screen, player, camx, camy)
-        game_state.draw_hazards_iso(screen, camx, camy)
+        segment_started = time.perf_counter()
+        for s in list(getattr(game_state, "ground_spikes", [])):
+            sx, sy = iso_world_to_screen(s.x / CELL_SIZE, (s.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
+            if not _screen_visible_circle(sx, sy, float(getattr(s, "r", 0.0)), margin=view_margin):
+                continue
+            draw_ground_spike_iso(screen, s, camx, camy)
         if hasattr(game_state, "draw_comet_blasts"):
             game_state.draw_comet_blasts(screen, camx, camy)
         if hasattr(game_state, "draw_comet_corpses"):
             game_state.draw_comet_corpses(screen, camx, camy)
+        _render_counter(profiler, "r_hazard_ms", segment_started)
+        segment_started = time.perf_counter()
         if getattr(game_state, "fog_enabled", False) and _web_feature_enabled("WEB_ENABLE_FOG"):
             game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)
+        _render_counter(profiler, "r_fog_ms", segment_started)
+        segment_started = time.perf_counter()
         if USE_ISO:
             game_state.draw_lanterns_iso(screen, camx, camy)
         else:
             game_state.draw_lanterns_topdown(screen, camx, camy)
+        _render_counter(profiler, "r_lantern_ms", segment_started)
+        segment_started = time.perf_counter()
         if hasattr(game_state, "fx"):
             visible_particles = []
             for p in game_state.fx.particles:
@@ -1856,6 +1950,7 @@ def install(game):
             for _, p, sx, sy in visible_particles:
                 glow = GlowCache.get_glow_surf(p.size, p.color)
                 screen.blit(glow, (sx - p.size, sy - p.size), special_flags=pygame.BLEND_ADD)
+        _render_counter(profiler, "r_fx_ms", segment_started)
         vignette_t = float(getattr(player, "_enemy_paint_vignette_t", 0.0))
         if vignette_t > 0.0:
             ratio = max(0.0, min(1.0, vignette_t / 0.18))
@@ -1870,6 +1965,7 @@ def install(game):
                 pygame.draw.rect(overlay, (10, 40, 20, alpha), pygame.Rect(0, 0, edge, h))
                 pygame.draw.rect(overlay, (10, 40, 20, alpha), pygame.Rect(w - edge, 0, edge, h))
                 screen.blit(overlay, (0, 0))
+        segment_started = time.perf_counter()
         draw_ui_topbar(
             screen,
             game_state,
@@ -1882,7 +1978,10 @@ def install(game):
             draw_boss_hp_bars_twin(screen, bosses[:2])
         elif len(bosses) == 1:
             draw_boss_hp_bar(screen, bosses[0])
+        _render_counter(profiler, "r_ui_ms", segment_started)
+        segment_started = time.perf_counter()
         run_pending_menu_transition(screen)
+        _render_counter(profiler, "r_transition_ms", segment_started)
         _draw_web_profiler_overlay(screen)
         return _present_gameplay_render(screen, display_surface, prev_view, copy_frame=copy_frame)
 

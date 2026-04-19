@@ -54,6 +54,18 @@ def install(game):
             return acquire(x, y, vx, vy, max_dist=max_dist, damage=damage, source=source)
         return game.Bullet(x, y, vx, vy, max_dist=max_dist, damage=damage, source=source)
 
+    def _swept_hits_rect(rect: pygame.Rect, x0: float, y0: float, x1: float, y1: float, radius: int, *, pad: int = 0) -> bool:
+        if rect is None:
+            return False
+        inflate_px = max(0, int(radius) + int(pad))
+        target = rect.inflate(inflate_px * 2, inflate_px * 2)
+        if target.collidepoint(int(x1), int(y1)):
+            return True
+        try:
+            return bool(target.clipline((int(x0), int(y0)), (int(x1), int(y1))))
+        except Exception:
+            return target.collidepoint(int(x0), int(y0)) or target.collidepoint(int(x1), int(y1))
+
     class Bullet:
         __slots__ = (
             'x',
@@ -97,9 +109,11 @@ def install(game):
                 return
             if hasattr(game, "verify_bullet_runtime") and (not game.verify_bullet_runtime(self, player)):
                 return
-            nx = self.x + self.vx * dt
-            ny = self.y + self.vy * dt
-            self.traveled += ((nx - self.x) ** 2 + (ny - self.y) ** 2) ** 0.5
+            x0 = float(self.x)
+            y0 = float(self.y)
+            nx = x0 + self.vx * dt
+            ny = y0 + self.vy * dt
+            self.traveled += ((nx - x0) ** 2 + (ny - y0) ** 2) ** 0.5
             self.x, self.y = (nx, ny)
             if self.traveled >= self.max_dist:
                 self.alive = False
@@ -157,7 +171,8 @@ def install(game):
                 self.ricochet_left = remaining - 1
                 return True
             for z in list(nearby_enemies):
-                if r.colliderect(z.rect):
+                hit_pad = max(2, int(getattr(z, 'radius', max(z.rect.width, z.rect.height) * 0.25) * 0.12))
+                if r.colliderect(z.rect) or _swept_hits_rect(z.rect, x0, y0, self.x, self.y, _rr, pad=hit_pad):
                     crit_p = float(getattr(player, 'crit_chance', game.CRIT_CHANCE_BASE))
                     crit_m = float(getattr(player, 'crit_mult', game.CRIT_MULT_BASE))
                     is_crit = random.random() < max(0.0, min(0.99, crit_p))
@@ -340,7 +355,7 @@ def install(game):
                             self.alive = False
                             return
             for gp, ob in _query_local_obstacles(game_state, r):
-                if r.colliderect(ob.rect):
+                if r.colliderect(ob.rect) or _swept_hits_rect(ob.rect, x0, y0, self.x, self.y, _rr):
                     hit_x, hit_y = (self.x, self.y)
                     if ob.type == 'Lantern':
                         if getattr(self, 'source', 'player') == 'player' and try_ricochet(hit_x, hit_y):

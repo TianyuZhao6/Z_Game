@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import math
+import json
 import sys
 import time
 from typing import Callable, Mapping, Optional
+from urllib.parse import parse_qs
 
 import pygame
 
@@ -43,6 +45,58 @@ def _web_location_marker() -> str:
         return ""
 
 
+def _web_query_params() -> dict[str, str]:
+    if not IS_WEB:
+        return {}
+    marker = _web_location_marker()
+    if not marker:
+        return {}
+    cleaned = marker.replace("#", "&").replace("?", "&").lstrip("&")
+    if not cleaned:
+        return {}
+    try:
+        parsed = parse_qs(cleaned, keep_blank_values=True)
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for key, values in parsed.items():
+        if not key:
+            continue
+        try:
+            out[str(key).strip().lower()] = str(values[-1] if values else "").strip()
+        except Exception:
+            continue
+    return out
+
+
+def _web_query_value(*names: str, default: str = "") -> str:
+    params = _web_query_params()
+    for name in names:
+        key = str(name or "").strip().lower()
+        if not key:
+            continue
+        value = str(params.get(key, "") or "").strip()
+        if value:
+            return value
+    return str(default or "")
+
+
+def _web_query_int(*names: str, default: int = 0) -> int:
+    raw = _web_query_value(*names, default="")
+    try:
+        return int(float(raw))
+    except Exception:
+        return int(default)
+
+
+def _web_query_float(*names: str, default: float = 0.0) -> float:
+    raw = _web_query_value(*names, default="")
+    try:
+        return float(raw)
+    except Exception:
+        return float(default)
+
+
 def _detect_web_autostart() -> bool:
     marker = _web_location_marker()
     return any(token in marker for token in ("autostart=1", "debug_start=1", "start=1"))
@@ -58,6 +112,23 @@ def _detect_web_flag(*tokens: str) -> bool:
     return any(str(token or "").lower() in marker for token in tokens)
 
 
+def _normalize_diag_biome(value: str | None) -> str:
+    raw = str(value or "").strip().lower().replace("_", " ").replace("-", " ")
+    aliases = {
+        "wind": "Domain of Wind",
+        "domain of wind": "Domain of Wind",
+        "mist": "Misty Forest",
+        "misty": "Misty Forest",
+        "misty forest": "Misty Forest",
+        "hell": "Scorched Hell",
+        "scorched hell": "Scorched Hell",
+        "stone": "Bastion of Stone",
+        "bastion": "Bastion of Stone",
+        "bastion of stone": "Bastion of Stone",
+    }
+    return aliases.get(raw, "")
+
+
 WEB_WINDOW_SIZE = (1280, 720)
 WEB_MAX_FRAME_DT = 0.05
 WEB_AUTOSAVE_INTERVAL = 0.0
@@ -69,6 +140,15 @@ WEB_NATIVE_BGM = IS_WEB and (not _detect_web_flag("mixbgm=1", "mixerbgm=1", "non
 WEB_NATIVE_FX_AUDIO = IS_WEB and bool(WEB_NATIVE_BGM) and (not _detect_web_flag("mixfx=1", "mixerfx=1", "nonativefx=1"))
 WEB_AUTOSTART = _detect_web_autostart()
 WEB_DIAG_MODE = _detect_web_diag()
+WEB_DIAG_SCENARIO = _web_query_value("scenario", "diagscenario", default="").strip().lower()
+WEB_DIAG_FORCE_LEVEL = _web_query_int("level", "diaglevel", default=-1)
+WEB_DIAG_FORCE_BIOME = _normalize_diag_biome(_web_query_value("biome", "diagbiome", default=""))
+WEB_DIAG_FORCE_TRANSITION = IS_WEB and _detect_web_flag("transition=1", "menutrans=1", "hextrans=1")
+WEB_DIAG_FORCE_ULTIMATE = IS_WEB and _detect_web_flag("god=1", "ultimate=1")
+WEB_DIAG_DURATION_S = max(0.0, _web_query_float("duration", "diagdur", default=0.0))
+WEB_DIAG_CAPTURE_MAX_FRAMES = max(300, _web_query_int("diagframes", default=4800)) if IS_WEB else 0
+WEB_DIAG_EXPORT_INTERVAL = max(15, _web_query_int("diagexport", default=45)) if IS_WEB else 0
+WEB_DIAG_TAG = _web_query_value("tag", "diagtag", default="")
 WEB_PAINT_RENDER_REFRESH_MS = 50 if IS_WEB else 0
 WEB_LITE_RENDER_PICKUP_CAP = 12
 WEB_LITE_RENDER_TURRET_CAP = 8
@@ -276,6 +356,24 @@ def _window_call(fn_name: str, *args):
         return fn(*args)
     except Exception:
         return None
+
+
+def _publish_browser_diag_export(payload: dict[str, object]) -> None:
+    if not IS_WEB:
+        return
+    try:
+        text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    except Exception:
+        return
+    try:
+        _window_call("__zgame_diag_push", text)
+    except Exception:
+        pass
+    if WEB_DIAG_MODE:
+        try:
+            print(f"__ZGAME_PY_DIAG__{text}")
+        except Exception:
+            pass
 
 
 def _quality_payload(profile_name: str) -> dict[str, object]:
@@ -522,9 +620,14 @@ def _set_browser_profiler_metrics(
     dt_ms: float | None = None,
     raw_dt_ms: float | None = None,
     total_ms: float | None = None,
+    update_ms: float | None = None,
+    render_ms: float | None = None,
+    browser_gap_ms: float | None = None,
     rendered: bool | None = None,
     idle_loops: int | None = None,
     accum_ms: float | None = None,
+    phase_json: str | None = None,
+    counts_json: str | None = None,
 ) -> None:
     if not IS_WEB:
         return
@@ -542,12 +645,22 @@ def _set_browser_profiler_metrics(
             setattr(window, "__zgame_py_raw_dt_ms", round(float(raw_dt_ms), 2))
         if total_ms is not None:
             setattr(window, "__zgame_py_total_ms", round(float(total_ms), 2))
+        if update_ms is not None:
+            setattr(window, "__zgame_py_update_ms", round(float(update_ms), 2))
+        if render_ms is not None:
+            setattr(window, "__zgame_py_render_ms", round(float(render_ms), 2))
+        if browser_gap_ms is not None:
+            setattr(window, "__zgame_py_browser_gap_ms", round(float(browser_gap_ms), 2))
         if rendered is not None:
             setattr(window, "__zgame_py_rendered", int(bool(rendered)))
         if idle_loops is not None:
             setattr(window, "__zgame_py_idle_loops", int(idle_loops))
         if accum_ms is not None:
             setattr(window, "__zgame_py_accum_ms", round(float(accum_ms), 2))
+        if phase_json is not None:
+            setattr(window, "__zgame_py_phase_json", str(phase_json or ""))
+        if counts_json is not None:
+            setattr(window, "__zgame_py_counts_json", str(counts_json or ""))
         setattr(window, "__zgame_py_heartbeat_ms", round(float(time.perf_counter()) * 1000.0, 1))
     except Exception:
         pass
@@ -571,8 +684,28 @@ def report_web_runtime_error(context: str, err) -> None:
         pass
 
 
+def _percentiles(values: list[float], *ps: int) -> dict[str, float]:
+    cleaned = sorted(float(v) for v in values if math.isfinite(float(v)))
+    if not cleaned:
+        return {f"p{int(p)}": 0.0 for p in ps}
+    out: dict[str, float] = {}
+    last = len(cleaned) - 1
+    for p in ps:
+        if last <= 0:
+            out[f"p{int(p)}"] = round(cleaned[0], 3)
+            continue
+        q = max(0.0, min(100.0, float(p))) / 100.0
+        idx = q * last
+        lo = int(math.floor(idx))
+        hi = min(last, lo + 1)
+        frac = idx - lo
+        val = cleaned[lo] * (1.0 - frac) + cleaned[hi] * frac
+        out[f"p{int(p)}"] = round(val, 3)
+    return out
+
+
 class WebRuntimeProfiler:
-    """Small web-only frame profiler for spotting the last hot gameplay phase."""
+    """Web-only frame profiler with exportable hitch and transition diagnostics."""
 
     def __init__(self) -> None:
         self.enabled = bool(WEB_PROFILER_ENABLED)
@@ -591,6 +724,9 @@ class WebRuntimeProfiler:
         self.last_dt_ms = 0.0
         self.last_raw_dt_ms = 0.0
         self.max_raw_dt_ms = 0.0
+        self.last_update_ms = 0.0
+        self.last_render_ms = 0.0
+        self.last_browser_gap_ms = 0.0
         self.last_rendered = False
         self.last_heap_mb = None
         self.peak_heap_mb = 0.0
@@ -600,6 +736,32 @@ class WebRuntimeProfiler:
         self._last_console_log_s = -999.0
         self._hot_phase_threshold_ms = 16.0
         self._hot_total_threshold_ms = 33.0
+        self.rendered_frames = 0
+        self.skipped_frames = 0
+        self.hitch_counts = {25: 0, 33: 0, 50: 0, 100: 0}
+        self.worst_hitch_ms = 0.0
+        self.current_hitch_streak_33 = 0
+        self.longest_hitch_streak_33 = 0
+        self.samples: list[dict[str, object]] = []
+        self.events: list[dict[str, object]] = []
+        self.session_started_s = browser_now_s()
+        self.session_meta: dict[str, object] = {
+            "scenario": WEB_DIAG_SCENARIO,
+            "tag": WEB_DIAG_TAG,
+            "forced_level": WEB_DIAG_FORCE_LEVEL,
+            "forced_biome": WEB_DIAG_FORCE_BIOME,
+            "quality": WEB_DEFAULT_QUALITY,
+        }
+        self._export_interval = max(0, int(WEB_DIAG_EXPORT_INTERVAL or 0))
+        self._capture_limit = max(0, int(WEB_DIAG_CAPTURE_MAX_FRAMES or 0))
+
+    def set_context(self, **values) -> None:
+        if not self.enabled:
+            return
+        for key, value in values.items():
+            if value is None:
+                continue
+            self.session_meta[str(key)] = value
 
     def begin_frame(self, dt_s: float, *, raw_dt_s: float | None = None) -> None:
         if not self.enabled:
@@ -610,6 +772,8 @@ class WebRuntimeProfiler:
         self._phase_order = []
         self._phase_last = {}
         self._counters = {}
+        self.last_hot_label = ""
+        self.last_hot_ms = 0.0
         self.last_dt_ms = max(0.0, float(dt_s) * 1000.0)
         raw_s = float(raw_dt_s if raw_dt_s is not None else dt_s)
         self.last_raw_dt_ms = max(0.0, raw_s * 1000.0)
@@ -636,6 +800,28 @@ class WebRuntimeProfiler:
             return
         self._counters[str(name)] = value
 
+    def event(self, kind: str, **data) -> None:
+        if not self.enabled:
+            return
+        item = {
+            "kind": str(kind or ""),
+            "frame": int(self.frame_index),
+            "t_s": round(browser_now_s() - self.session_started_s, 4),
+        }
+        for key, value in data.items():
+            if value is None:
+                continue
+            item[str(key)] = value
+        self.events.append(item)
+        if len(self.events) > 256:
+            del self.events[:-256]
+        self._publish_export(force=True)
+
+    def transition_event(self, kind: str, **data) -> None:
+        payload = dict(data)
+        payload["transition"] = True
+        self.event(f"transition:{kind}", **payload)
+
     def finish(self, *, rendered: bool) -> None:
         if not self.enabled:
             return
@@ -643,11 +829,23 @@ class WebRuntimeProfiler:
         if self.current_phase:
             self._record(self.current_phase, (now - self._phase_started_at) * 1000.0)
         total_ms = sum(self._phase_last.values())
+        render_ms = float(self._phase_last.get("render", 0.0) or 0.0)
+        update_ms = max(0.0, total_ms - render_ms)
+        browser_gap_ms = max(0.0, self.last_raw_dt_ms - total_ms)
         self.last_total_ms = total_ms
+        self.last_update_ms = update_ms
+        self.last_render_ms = render_ms
+        self.last_browser_gap_ms = browser_gap_ms
         self.avg_total_ms = total_ms if self.frame_index <= 1 else (self.avg_total_ms * 0.92 + total_ms * 0.08)
         self.max_total_ms = max(self.max_total_ms, total_ms)
         self.last_rendered = bool(rendered)
+        if rendered:
+            self.rendered_frames += 1
+        else:
+            self.skipped_frames += 1
+        self._update_hitch_stats(total_ms)
         self._refresh_heap()
+        self._capture_sample(rendered=rendered)
         self._maybe_log_hot_frame(now)
         _set_browser_profiler_phase(
             "render" if rendered else "update",
@@ -658,8 +856,14 @@ class WebRuntimeProfiler:
             dt_ms=self.last_dt_ms,
             raw_dt_ms=self.last_raw_dt_ms,
             total_ms=self.last_total_ms,
+            update_ms=self.last_update_ms,
+            render_ms=self.last_render_ms,
+            browser_gap_ms=self.last_browser_gap_ms,
             rendered=rendered,
+            phase_json=json.dumps({name: round(float(ms), 3) for name, ms in self._phase_last.items()}, ensure_ascii=False, separators=(",", ":")),
+            counts_json=json.dumps(dict(self._counters), ensure_ascii=False, separators=(",", ":")),
         )
+        self._publish_export(force=False)
         self.current_phase = ""
         self._phase_started_at = now
 
@@ -678,6 +882,38 @@ class WebRuntimeProfiler:
             self.last_hot_ms = elapsed_ms
             self.last_hot_label = phase
 
+    def _update_hitch_stats(self, frame_ms: float) -> None:
+        frame_ms = max(0.0, float(frame_ms))
+        self.worst_hitch_ms = max(self.worst_hitch_ms, frame_ms)
+        for threshold in tuple(self.hitch_counts.keys()):
+            if frame_ms > float(threshold):
+                self.hitch_counts[threshold] += 1
+        if frame_ms > 33.0:
+            self.current_hitch_streak_33 += 1
+            self.longest_hitch_streak_33 = max(self.longest_hitch_streak_33, self.current_hitch_streak_33)
+        else:
+            self.current_hitch_streak_33 = 0
+
+    def _capture_sample(self, *, rendered: bool) -> None:
+        if self._capture_limit <= 0:
+            return
+        sample = {
+            "frame": int(self.frame_index),
+            "t_s": round(browser_now_s() - self.session_started_s, 4),
+            "raw_dt_ms": round(self.last_raw_dt_ms, 3),
+            "dt_ms": round(self.last_dt_ms, 3),
+            "frame_ms": round(self.last_total_ms, 3),
+            "update_ms": round(self.last_update_ms, 3),
+            "render_ms": round(self.last_render_ms, 3),
+            "browser_gap_ms": round(self.last_browser_gap_ms, 3),
+            "rendered": int(bool(rendered)),
+            "phase_ms": {name: round(float(ms), 3) for name, ms in self._phase_last.items()},
+            "counts": dict(self._counters),
+        }
+        self.samples.append(sample)
+        if len(self.samples) > self._capture_limit:
+            del self.samples[:-self._capture_limit]
+
     def _maybe_log_hot_frame(self, now_s: float) -> None:
         hot_name = ""
         hot_ms = 0.0
@@ -695,13 +931,14 @@ class WebRuntimeProfiler:
         self._last_console_log_s = now_s
         counts = " ".join(
             f"{key}={self._counters[key]}"
-            for key in ("obs", "en", "b", "es", "sp", "txt", "fx", "spawn", "rendered")
+            for key in ("obs", "en", "b", "es", "sp", "txt", "fx", "rendered")
             if key in self._counters
         )
         print(
             f"[WebProfiler] frame={self.frame_index} dt={self.last_dt_ms:.1f}ms "
-            f"total={self.last_total_ms:.1f}ms hot={hot_name}:{hot_ms:.1f}ms "
-            f"heap={self.last_heap_mb if self.last_heap_mb is not None else 'n/a'}MB {counts}".rstrip()
+            f"total={self.last_total_ms:.1f}ms update={self.last_update_ms:.1f}ms "
+            f"render={self.last_render_ms:.1f}ms gap={self.last_browser_gap_ms:.1f}ms "
+            f"hot={hot_name}:{hot_ms:.1f}ms heap={self.last_heap_mb if self.last_heap_mb is not None else 'n/a'}MB {counts}".rstrip()
         )
 
     def _refresh_heap(self) -> None:
@@ -723,13 +960,74 @@ class WebRuntimeProfiler:
         self.last_heap_mb = heap_mb
         if heap_mb is not None:
             self.peak_heap_mb = max(self.peak_heap_mb, heap_mb)
-        self._counters["jserr"] = browser_error[:96] if browser_error else ""
+        self._counters["jserr"] = browser_error[:128] if browser_error else ""
+
+    def summary(self) -> dict[str, object]:
+        frame_values = [float(sample.get("frame_ms", 0.0) or 0.0) for sample in self.samples]
+        raw_values = [float(sample.get("raw_dt_ms", 0.0) or 0.0) for sample in self.samples]
+        render_values = [float(sample.get("render_ms", 0.0) or 0.0) for sample in self.samples]
+        update_values = [float(sample.get("update_ms", 0.0) or 0.0) for sample in self.samples]
+        browser_gap_values = [float(sample.get("browser_gap_ms", 0.0) or 0.0) for sample in self.samples]
+        return {
+            "frames": int(self.frame_index),
+            "rendered_frames": int(self.rendered_frames),
+            "skipped_frames": int(self.skipped_frames),
+            "avg_frame_ms": round(float(sum(frame_values) / max(1, len(frame_values))), 3) if frame_values else 0.0,
+            "avg_render_ms": round(float(sum(render_values) / max(1, len(render_values))), 3) if render_values else 0.0,
+            "avg_update_ms": round(float(sum(update_values) / max(1, len(update_values))), 3) if update_values else 0.0,
+            "avg_browser_gap_ms": round(float(sum(browser_gap_values) / max(1, len(browser_gap_values))), 3) if browser_gap_values else 0.0,
+            "worst_hitch_ms": round(self.worst_hitch_ms, 3),
+            "longest_hitch_streak_33": int(self.longest_hitch_streak_33),
+            "hitch_counts": {str(key): int(value) for key, value in self.hitch_counts.items()},
+            "frame_percentiles_ms": _percentiles(frame_values, 50, 90, 95, 99),
+            "raw_dt_percentiles_ms": _percentiles(raw_values, 50, 90, 95, 99),
+            "render_percentiles_ms": _percentiles(render_values, 50, 90, 95, 99),
+            "update_percentiles_ms": _percentiles(update_values, 50, 90, 95, 99),
+            "browser_gap_percentiles_ms": _percentiles(browser_gap_values, 50, 90, 95, 99),
+            "phase_avg_ms": {key: round(val, 3) for key, val in self._phase_avg.items()},
+            "phase_max_ms": {key: round(val, 3) for key, val in self._phase_max.items()},
+        }
+
+    def export_payload(self) -> dict[str, object]:
+        return {
+            "source": "python-web-profiler",
+            "session": dict(self.session_meta),
+            "summary": self.summary(),
+            "last_frame": {
+                "frame": int(self.frame_index),
+                "dt_ms": round(self.last_dt_ms, 3),
+                "raw_dt_ms": round(self.last_raw_dt_ms, 3),
+                "frame_ms": round(self.last_total_ms, 3),
+                "update_ms": round(self.last_update_ms, 3),
+                "render_ms": round(self.last_render_ms, 3),
+                "browser_gap_ms": round(self.last_browser_gap_ms, 3),
+                "rendered": int(self.last_rendered),
+                "hot_phase": self.last_hot_label,
+                "hot_phase_ms": round(self.last_hot_ms, 3),
+                "heap_mb": self.last_heap_mb,
+                "peak_heap_mb": self.peak_heap_mb,
+            },
+            "events": list(self.events),
+            "samples": list(self.samples),
+        }
+
+    def _publish_export(self, *, force: bool) -> None:
+        if not self.enabled:
+            return
+        if (not force) and self._export_interval > 0 and (self.frame_index % self._export_interval) != 0:
+            return
+        _publish_browser_diag_export(self.export_payload())
 
     def overlay_lines(self) -> list[str]:
         if (not self.enabled) or (not self.overlay_enabled):
             return []
+        summary = self.summary()
+        frame_p95 = float(summary.get("frame_percentiles_ms", {}).get("p95", 0.0) or 0.0)
+        raw_p95 = float(summary.get("raw_dt_percentiles_ms", {}).get("p95", 0.0) or 0.0)
         lines = [
-            f"WEB PROFILER  f:{self.frame_index}  dt:{self.last_dt_ms:.1f} raw:{self.last_raw_dt_ms:.1f}  total:{self.last_total_ms:.1f}/{self.avg_total_ms:.1f}/{self.max_total_ms:.1f}",
+            f"WEB PROFILER  f:{self.frame_index}  dt:{self.last_dt_ms:.1f} raw:{self.last_raw_dt_ms:.1f}  frame:{self.last_total_ms:.1f}/{summary.get('avg_frame_ms', 0.0):.1f}/{self.max_total_ms:.1f}",
+            f"upd:{self.last_update_ms:.1f}  rnd:{self.last_render_ms:.1f}  gap:{self.last_browser_gap_ms:.1f}  p95:{frame_p95:.1f}/{raw_p95:.1f}",
+            f"hitch >25:{self.hitch_counts[25]}  >33:{self.hitch_counts[33]}  >50:{self.hitch_counts[50]}  worst:{self.worst_hitch_ms:.1f}  streak33:{self.longest_hitch_streak_33}",
             f"hot {self.last_hot_label or '-'}  {self.last_hot_ms:.1f} ms  rendered:{int(self.last_rendered)}",
         ]
         preferred = ("pre", "events", "focus", "update", "bullets", "spawn", "flow", "enemy_move", "enemy_special", "enemy_shots", "render")
@@ -741,7 +1039,7 @@ class WebRuntimeProfiler:
             max_ms = self._phase_max.get(phase_name, 0.0)
             lines.append(f"{phase_name:<13} {last_ms:>5.1f} / {avg_ms:>5.1f} / {max_ms:>5.1f}")
         counter_parts = []
-        for key in ("obs", "en", "b", "es", "sp", "txt", "fx", "spawn", "wave", "trans"):
+        for key in ("obs", "en", "b", "es", "sp", "hp", "txt", "fx", "wind", "hell", "fog", "wave", "trans", "trans_stall"):
             if key in self._counters:
                 counter_parts.append(f"{key}:{self._counters[key]}")
         if counter_parts:
@@ -756,8 +1054,6 @@ class WebRuntimeProfiler:
         js_err = str(self._counters.get("jserr", "") or "").strip()
         if js_err:
             lines.append(f"jserr:{js_err[:72]}")
-        if self.last_raw_dt_ms > self.last_total_ms + 8.0:
-            lines.append(f"browser_gap {max(0.0, self.last_raw_dt_ms - self.last_total_ms):.1f} ms")
         return lines
 
 

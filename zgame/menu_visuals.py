@@ -36,6 +36,46 @@ def install(game):
     def _view_size() -> tuple[int, int]:
         return int(game.VIEW_W), int(game.VIEW_H)
 
+    def _web_profiler():
+        profiler = getattr(game, "_web_profiler", None)
+        return profiler if profiler is not None and hasattr(profiler, "transition_event") else None
+
+    def _transition_event(kind: str, **data) -> None:
+        runtime = _runtime()
+        diag = runtime.setdefault(
+            "_web_transition_diag",
+            {
+                "count": 0,
+                "active": False,
+                "events": [],
+                "stall_count": 0,
+                "zero_dt_frames": 0,
+                "no_progress_frames": 0,
+                "last_state": "",
+            },
+        )
+        item = {"kind": str(kind or ""), "t_ms": int(pygame.time.get_ticks())}
+        item.update({str(k): v for k, v in data.items() if v is not None})
+        diag["events"].append(item)
+        if len(diag["events"]) > 64:
+            del diag["events"][:-64]
+        if kind == "start":
+            diag["count"] = int(diag.get("count", 0) or 0) + 1
+            diag["active"] = True
+            diag["zero_dt_frames"] = 0
+            diag["no_progress_frames"] = 0
+        elif kind == "end":
+            diag["active"] = False
+        elif kind == "stall":
+            diag["stall_count"] = int(diag.get("stall_count", 0) or 0) + 1
+        diag["last_state"] = str(data.get("state", diag.get("last_state", "")) or "")
+        profiler = _web_profiler()
+        if profiler is not None:
+            try:
+                profiler.transition_event(kind, **data)
+            except Exception:
+                pass
+
     def _ensure_neuro_log_seed() -> int:
         runtime = _runtime()
         seed = runtime.get("_neuro_log_seed")
@@ -143,12 +183,36 @@ def install(game):
         """Cache a menu frame so the next scene can transition from it."""
         runtime = _runtime()
         runtime["_menu_transition_frame"] = frame
+        runtime["_menu_transition_target_frame"] = None
         runtime["_web_hex_transition_state"] = None
+        runtime["_web_transition_diag"] = {
+            "count": 0,
+            "active": False,
+            "events": [],
+            "stall_count": 0,
+            "zero_dt_frames": 0,
+            "no_progress_frames": 0,
+            "last_state": "",
+        }
+
+    def prime_menu_transition_target(frame: pygame.Surface | None):
+        runtime = _runtime()
+        runtime["_menu_transition_target_frame"] = frame
 
     def clear_menu_transition_state():
         runtime = _runtime()
         runtime["_menu_transition_frame"] = None
+        runtime["_menu_transition_target_frame"] = None
         runtime["_web_hex_transition_state"] = None
+        runtime["_web_transition_diag"] = {
+            "count": 0,
+            "active": False,
+            "events": [],
+            "stall_count": 0,
+            "zero_dt_frames": 0,
+            "no_progress_frames": 0,
+            "last_state": "",
+        }
 
     def run_pending_menu_transition(screen: pygame.Surface):
         """Play a queued menu transition onto the already-rendered screen frame."""
@@ -165,14 +229,28 @@ def install(game):
                 trans.duration_in = max(0.20, float(getattr(trans, "duration_in", 0.25)))
                 trans.duration_hold = max(0.08, float(getattr(trans, "duration_hold", 0.10)))
                 trans.duration_out = max(0.22, float(getattr(trans, "duration_out", 0.25)))
-                to_surf = screen.copy()
+                to_surf = runtime.get("_menu_transition_target_frame")
+                if to_surf is None:
+                    to_surf = screen.copy()
                 web_state = {
                     "transition": trans,
                     "from_surface": from_surf,
                     "to_surface": to_surf,
                     "last_tick_ms": now_ms,
+                    "last_state": str(getattr(trans, "state", "") or ""),
+                    "last_timer": float(getattr(trans, "timer", 0.0) or 0.0),
+                    "last_progress": round(sum(float(getattr(cell, "current_scale", 0.0) or 0.0) for cell in getattr(trans, "grid", [])[:12]), 4),
+                    "zero_dt_frames": 0,
+                    "no_progress_frames": 0,
+                    "stall_reported": False,
                 }
                 runtime["_web_hex_transition_state"] = web_state
+                _transition_event(
+                    "start",
+                    state=str(getattr(trans, "state", "") or ""),
+                    from_ready=int(from_surf is not None),
+                    to_ready=int(to_surf is not None),
+                )
             trans = web_state.get("transition")
             if trans is None:
                 runtime["_menu_transition_frame"] = None
@@ -181,12 +259,48 @@ def install(game):
             last_tick_ms = int(web_state.get("last_tick_ms", now_ms))
             dt = max(0.0, min(0.05, (now_ms - last_tick_ms) / 1000.0))
             web_state["last_tick_ms"] = now_ms
+            if dt <= 1e-6:
+                web_state["zero_dt_frames"] = int(web_state.get("zero_dt_frames", 0) or 0) + 1
+            else:
+                web_state["zero_dt_frames"] = 0
             trans.update(dt)
             swapped = trans.should_swap_screens()
+            progress = round(sum(float(getattr(cell, "current_scale", 0.0) or 0.0) for cell in getattr(trans, "grid", [])[:12]), 4)
+            if abs(progress - float(web_state.get("last_progress", progress))) <= 1e-4 and trans.is_active():
+                web_state["no_progress_frames"] = int(web_state.get("no_progress_frames", 0) or 0) + 1
+            else:
+                web_state["no_progress_frames"] = 0
+                web_state["stall_reported"] = False
+            state_name = str(getattr(trans, "state", "") or "")
+            if state_name != str(web_state.get("last_state", "") or ""):
+                _transition_event("state", state=state_name, dt_ms=round(dt * 1000.0, 3))
+                web_state["last_state"] = state_name
+            if swapped:
+                _transition_event("midpoint", state=state_name, dt_ms=round(dt * 1000.0, 3))
+            if (
+                trans.is_active()
+                and not bool(web_state.get("stall_reported", False))
+                and (
+                    int(web_state.get("zero_dt_frames", 0) or 0) >= 6
+                    or int(web_state.get("no_progress_frames", 0) or 0) >= 6
+                )
+            ):
+                web_state["stall_reported"] = True
+                _transition_event(
+                    "stall",
+                    state=state_name,
+                    zero_dt_frames=int(web_state.get("zero_dt_frames", 0) or 0),
+                    no_progress_frames=int(web_state.get("no_progress_frames", 0) or 0),
+                    progress=progress,
+                )
+            web_state["last_progress"] = progress
+            web_state["last_timer"] = float(getattr(trans, "timer", 0.0) or 0.0)
             from_bg = web_state.get("from_surface")
             to_bg = web_state.get("to_surface")
             if swapped and to_bg is None:
-                to_bg = screen.copy()
+                to_bg = runtime.get("_menu_transition_target_frame")
+                if to_bg is None:
+                    to_bg = screen.copy()
                 web_state["to_surface"] = to_bg
             if not getattr(trans, "midpoint_triggered", False):
                 if from_bg is not None:
@@ -195,7 +309,14 @@ def install(game):
                 screen.blit(to_bg, (0, 0))
             trans.draw(screen)
             if not trans.is_active():
+                _transition_event(
+                    "end",
+                    state=str(getattr(trans, "state", "") or ""),
+                    zero_dt_frames=int(web_state.get("zero_dt_frames", 0) or 0),
+                    no_progress_frames=int(web_state.get("no_progress_frames", 0) or 0),
+                )
                 runtime["_menu_transition_frame"] = None
+                runtime["_menu_transition_target_frame"] = None
                 runtime["_web_hex_transition_state"] = None
                 game.flush_events()
             return
@@ -204,6 +325,7 @@ def install(game):
         to_surf = screen.copy()
         play_hex_transition(screen, from_surf, to_surf, direction="down")
         runtime["_menu_transition_frame"] = None
+        runtime["_menu_transition_target_frame"] = None
 
     def play_hex_transition(screen: pygame.Surface, from_surface: pygame.Surface, to_surface: pygame.Surface, direction: str = "down"):
         """
@@ -881,6 +1003,7 @@ def install(game):
         ensure_hex_transition,
         ensure_hex_background,
         queue_menu_transition,
+        prime_menu_transition_target,
         clear_menu_transition_state,
         run_pending_menu_transition,
         play_hex_transition,

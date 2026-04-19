@@ -80,7 +80,16 @@ def install(game):
             self._cam_shake_t = 0.0
             self._cam_shake_total = 0.001
             self._cam_shake_mag = 0.0
+            self._hurricane_enemy_step_t = 0.0
             self._hurricane_shot_pull_t = 0.0
+            self._hurricane_slow_targets = set()
+            self._hurricane_trapped_targets = set()
+            self._fog_lantern_glow_surface = None
+            self._fog_lantern_glow_size = (0, 0)
+            self._fog_web_mask_surface = None
+            self._fog_web_edge_surface = None
+            self._fog_web_pulse_surface = None
+            self._fog_web_pulse_size = (0, 0)
 
         def count_destructible_obstacles(self) -> int:
             return sum((1 for obs in self.obstacles.values() if obs.type == 'Destructible'))
@@ -1112,14 +1121,30 @@ def install(game):
             return (pos_x + nx * step, pos_y + ny * step)
 
         def update_hurricanes(self, dt: float, player, enemies, bullets, enemy_shots=None):
-            for z in enemies:
-                if getattr(z, 'type', '') == 'bandit':
-                    z._wind_trapped = False
+            prev_slow = getattr(self, '_hurricane_slow_targets', set())
+            prev_trapped = getattr(self, '_hurricane_trapped_targets', set())
             if not getattr(self, 'hurricanes', None):
+                for z in tuple(prev_slow):
+                    z._hurricane_slow_mult = 1.0
+                for z in tuple(prev_trapped):
+                    z._wind_trapped = False
+                self._hurricane_slow_targets = set()
+                self._hurricane_trapped_targets = set()
                 return
+            process_enemy_pull = True
+            enemy_pull_dt = float(dt)
             process_shot_pull = True
             shot_pull_dt = float(dt)
             if getattr(game, 'IS_WEB', False):
+                enemy_interval = float(getattr(game, 'WEB_HURRICANE_ENEMY_SIM_INTERVAL', 0.0) or 0.0)
+                if enemy_interval > 0.0:
+                    accum = float(getattr(self, '_hurricane_enemy_step_t', 0.0)) + float(dt)
+                    if accum < enemy_interval:
+                        self._hurricane_enemy_step_t = accum
+                        process_enemy_pull = False
+                    else:
+                        enemy_pull_dt = accum
+                        self._hurricane_enemy_step_t = 0.0
                 interval = float(getattr(game, 'WEB_HURRICANE_SHOT_PULL_INTERVAL', 0.0) or 0.0)
                 if interval > 0.0:
                     accum = float(getattr(self, '_hurricane_shot_pull_t', 0.0)) + float(dt)
@@ -1130,7 +1155,13 @@ def install(game):
                         shot_pull_dt = accum
                         self._hurricane_shot_pull_t = 0.0
             else:
+                self._hurricane_enemy_step_t = 0.0
                 self._hurricane_shot_pull_t = 0.0
+            current_slow = set()
+            current_trapped = set()
+            obstacle_values = tuple(self.obstacles.values())
+            spatial = getattr(self, 'spatial', None)
+            max_targets = int(getattr(game, 'WEB_HURRICANE_MAX_AFFECTED_ENEMIES', 0) or 0) if getattr(game, 'IS_WEB', False) else 0
 
             def _vortex_resist(ent):
                 resist = 0.8
@@ -1159,20 +1190,31 @@ def install(game):
                 effect_radius = h.r * game.HURRICANE_RANGE_MULT
                 dx, dy = h.apply_vortex_physics(player, dt, resist_scale=_vortex_resist(player))
                 if dx or dy:
-                    game.collide_and_slide_circle(player, self.obstacles.values(), dx, dy)
-                for z in enemies:
-                    if getattr(z, 'type', '') == 'bandit':
-                        dist_bandit = math.hypot(h.x - z.rect.centerx, h.y - z.rect.centery)
-                        if dist_bandit <= effect_radius:
+                    game.collide_and_slide_circle(player, obstacle_values, dx, dy)
+                if process_enemy_pull:
+                    nearby = (
+                        list(spatial.query_circle(h.x, h.y, effect_radius + max(16.0, h.r * 0.25)))
+                        if spatial is not None
+                        else list(enemies)
+                    )
+                    if max_targets > 0 and len(nearby) > max_targets:
+                        nearby.sort(key=lambda z: ((float(z.rect.centerx) - h.x) ** 2 + (float(z.rect.centery) - h.y) ** 2))
+                        nearby = nearby[:max_targets]
+                    for z in nearby:
+                        zcx = float(z.rect.centerx)
+                        zcy = float(z.rect.centery)
+                        dist = math.hypot(h.x - zcx, h.y - zcy)
+                        if dist > effect_radius:
+                            continue
+                        if getattr(z, 'type', '') == 'bandit':
                             z._wind_trapped = True
-                    dx, dy = h.apply_vortex_physics(z, dt, resist_scale=_vortex_resist(z))
-                    if dx or dy:
-                        game.collide_and_slide_circle(z, self.obstacles.values(), dx, dy)
-                    dist = math.hypot(h.x - z.rect.centerx, h.y - z.rect.centery)
-                    if dist < h.r * 1.5:
-                        z._hurricane_slow_mult = 0.7
-                    else:
-                        z._hurricane_slow_mult = 1.0
+                            current_trapped.add(z)
+                        dx, dy = h.apply_vortex_physics(z, enemy_pull_dt, resist_scale=_vortex_resist(z))
+                        if dx or dy:
+                            game.collide_and_slide_circle(z, obstacle_values, dx, dy)
+                        if dist < h.r * 1.5:
+                            z._hurricane_slow_mult = 0.7
+                            current_slow.add(z)
                 if process_shot_pull:
                     all_shots = list(bullets)
                     if enemy_shots:
@@ -1191,6 +1233,8 @@ def install(game):
                             continue
                         dx = h.x - bx
                         dy = h.y - by
+                        if abs(dx) > effect_radius or abs(dy) > effect_radius:
+                            continue
                         dist = math.hypot(dx, dy)
                         if dist <= 0.0001 or dist > effect_radius:
                             continue
@@ -1208,6 +1252,15 @@ def install(game):
                         steer = delta_tan * game.HURRICANE_BULLET_SPIN_STEER * shot_pull_dt
                         b.vx += tx * steer
                         b.vy += ty * steer
+            if process_enemy_pull:
+                for z in tuple(prev_slow):
+                    if z not in current_slow:
+                        z._hurricane_slow_mult = 1.0
+                for z in tuple(prev_trapped):
+                    if z not in current_trapped:
+                        z._wind_trapped = False
+                self._hurricane_slow_targets = current_slow
+                self._hurricane_trapped_targets = current_trapped
 
         def update_vulnerability_marks(self, enemies, dt: float):
             lvl = int(meta.get('vuln_mark_level', 0))
@@ -1366,13 +1419,22 @@ def install(game):
                 self.obstacles[gx, gy] = lan
 
         def draw_lanterns_iso(self, screen, camx, camy):
+            glow_size = (int(game.CELL_SIZE * 2.2), int(game.CELL_SIZE * 1.4))
+            glow = getattr(self, '_fog_lantern_glow_surface', None)
+            if glow is None or getattr(self, '_fog_lantern_glow_size', (0, 0)) != glow_size:
+                glow = pygame.Surface(glow_size, pygame.SRCALPHA)
+                pygame.draw.ellipse(glow, (255, 240, 120, 90), glow.get_rect())
+                self._fog_lantern_glow_surface = glow
+                self._fog_lantern_glow_size = glow_size
             for lan in list(self.fog_lanterns):
                 if not lan.alive:
                     continue
                 gx, gy = lan.grid_pos
                 sx, sy = game.iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
-                glow = pygame.Surface((int(game.CELL_SIZE * 2.2), int(game.CELL_SIZE * 1.4)), pygame.SRCALPHA)
-                pygame.draw.ellipse(glow, (255, 240, 120, 90), glow.get_rect())
+                if sx < -glow_size[0] or sx > (screen.get_width() + glow_size[0]):
+                    continue
+                if sy < -glow_size[1] or sy > (screen.get_height() + glow_size[1]):
+                    continue
                 screen.blit(glow, glow.get_rect(center=(int(sx), int(sy + 6))).topleft)
                 body = pygame.Rect(0, 0, int(game.CELL_SIZE * 0.55), int(game.CELL_SIZE * 0.55))
                 body.center = (int(sx), int(sy - 4))
@@ -1506,22 +1568,28 @@ def install(game):
                 mask_w = max(96, int(round(w * scale)))
                 mask_h = max(54, int(round(h * scale)))
                 now_ms = pygame.time.get_ticks()
+                player_quant = max(1, int(getattr(game, "WEB_FOG_PLAYER_QUANT", 4) or 4))
+                lantern_quant = max(1, int(getattr(game, "WEB_FOG_LANTERN_QUANT", player_quant) or player_quant))
+                pulse_quant = max(1, int(getattr(game, "WEB_FOG_PULSE_QUANT", 3) or 3))
                 lantern_points = []
                 for lan in self.fog_lanterns:
                     if not lan.alive:
                         continue
                     gx, gy = lan.grid_pos
                     sx, sy = game.iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
+                    if sx < -game.FOG_LANTERN_CLEAR_RADIUS or sx > (w + game.FOG_LANTERN_CLEAR_RADIUS):
+                        continue
+                    if sy < -game.FOG_LANTERN_CLEAR_RADIUS or sy > (h + game.FOG_LANTERN_CLEAR_RADIUS):
+                        continue
                     lantern_points.append((int(sx * scale), int(sy * scale)))
                 cache_key = (
                     int(w),
                     int(h),
                     int(mask_w),
                     int(mask_h),
-                    int(psx * scale) // 4,
-                    int(psy * scale) // 4,
-                    tuple((lx // 4, ly // 4) for lx, ly in lantern_points),
-                    int(pulse // 3),
+                    int(psx * scale) // player_quant,
+                    int(psy * scale) // player_quant,
+                    tuple((lx // lantern_quant, ly // lantern_quant) for lx, ly in lantern_points),
                     int(game.FOG_OVERLAY_ALPHA),
                 )
                 refresh_ms = max(0, int(getattr(game, "WEB_FOG_REFRESH_MS", 80) or 80))
@@ -1529,21 +1597,29 @@ def install(game):
                 cached_surface = getattr(self, "_fog_web_cache_surface", None)
                 cached_at = int(getattr(self, "_fog_web_cache_at_ms", -999999) or -999999)
                 if cached_surface is None or cached_key != cache_key or (now_ms - cached_at) >= refresh_ms:
-                    mask = pygame.Surface((mask_w, mask_h), pygame.SRCALPHA)
+                    mask = getattr(self, "_fog_web_mask_surface", None)
+                    if mask is None or mask.get_size() != (mask_w, mask_h):
+                        mask = pygame.Surface((mask_w, mask_h), pygame.SRCALPHA)
+                        self._fog_web_mask_surface = mask
                     mask.fill((0, 0, 0, game.FOG_OVERLAY_ALPHA))
                     pygame.draw.circle(mask, (0, 0, 0, 0), (int(psx * scale), int(psy * scale)), max(8, int(clear_r * scale)))
                     lantern_clear_r = max(6, int(game.FOG_LANTERN_CLEAR_RADIUS * scale))
                     for lan_x, lan_y in lantern_points:
                         pygame.draw.circle(mask, (0, 0, 0, 0), (int(lan_x), int(lan_y)), lantern_clear_r)
-                    if pulse > 0:
-                        edge = pygame.Surface((mask_w, mask_h), pygame.SRCALPHA)
-                        edge.fill((220, 220, 240, pulse))
-                        mask.blit(edge, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
                     cached_surface = pygame.transform.scale(mask, (w, h))
                     self._fog_web_cache_surface = cached_surface
                     self._fog_web_cache_key = cache_key
                     self._fog_web_cache_at_ms = now_ms
                 screen.blit(cached_surface, (0, 0))
+                pulse_bucket = int(pulse // pulse_quant)
+                if pulse_bucket > 0:
+                    pulse_surf = getattr(self, "_fog_web_pulse_surface", None)
+                    if pulse_surf is None or getattr(self, "_fog_web_pulse_size", (0, 0)) != (w, h):
+                        pulse_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+                        self._fog_web_pulse_surface = pulse_surf
+                        self._fog_web_pulse_size = (w, h)
+                    pulse_surf.fill((220, 220, 240, pulse_bucket * pulse_quant))
+                    screen.blit(pulse_surf, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
                 return
             mask = pygame.Surface((w, h), pygame.SRCALPHA)
             mask.fill((0, 0, 0, game.FOG_OVERLAY_ALPHA))

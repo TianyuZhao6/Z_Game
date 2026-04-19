@@ -249,6 +249,7 @@ function zgameIgnoreAutoplayMessage(err) {
         return (
             lower.includes("play() failed because the user didn't interact") ||
             lower.includes("play() request was interrupted") ||
+            lower.includes("failed to load because no supported source was found") ||
             (lower.includes("rejection occurred:") && lower.includes("play() failed because the user didn't interact"))
         );
     } catch (_) {
@@ -337,6 +338,278 @@ window.__zgame_diag_dom = null;
 window.__zgame_js_frame = 0;
 window.__zgame_js_gap_ms = 0;
 window.__zgame_js_last_now = 0;
+window.__zgame_py_diag_export_json = "";
+window.__zgame_diag_last_post_ms = 0;
+window.__zgame_diag_last_post_reason = "";
+window.__zgame_diag_post_failures = 0;
+window.__zgame_diag_last_heartbeat_ms = 0;
+window.__zgame_diag_started_ms = Date.now();
+window.__zgame_py_live_last_frame = -1;
+window.__zgame_py_live_samples = [];
+window.__zgame_js_perf = {
+    gaps: [],
+    worstGapMs: 0,
+    hitch25: 0,
+    hitch33: 0,
+    hitch50: 0,
+    hitch100: 0,
+    currentStreak33: 0,
+    longestStreak33: 0,
+};
+
+function zgamePercentiles(values, points) {
+    const nums = (values || []).map((v) => Number(v || 0)).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+    const out = {};
+    if (!nums.length) {
+        for (const p of (points || [])) out["p" + p] = 0;
+        return out;
+    }
+    const last = nums.length - 1;
+    for (const p of (points || [])) {
+        if (last <= 0) {
+            out["p" + p] = Number(nums[0].toFixed(3));
+            continue;
+        }
+        const q = Math.max(0, Math.min(100, Number(p || 0))) / 100;
+        const idx = q * last;
+        const lo = Math.floor(idx);
+        const hi = Math.min(last, lo + 1);
+        const frac = idx - lo;
+        const val = nums[lo] * (1 - frac) + nums[hi] * frac;
+        out["p" + p] = Number(val.toFixed(3));
+    }
+    return out;
+}
+
+function zgameRecordJsGap(gapMs) {
+    const gap = Math.max(0, Number(gapMs || 0));
+    const perf = window.__zgame_js_perf;
+    perf.gaps.push(gap);
+    while (perf.gaps.length > 7200) {
+        perf.gaps.shift();
+    }
+    perf.worstGapMs = Math.max(Number(perf.worstGapMs || 0), gap);
+    if (gap > 25) perf.hitch25 += 1;
+    if (gap > 33) {
+        perf.hitch33 += 1;
+        perf.currentStreak33 += 1;
+        perf.longestStreak33 = Math.max(perf.longestStreak33, perf.currentStreak33);
+    } else {
+        perf.currentStreak33 = 0;
+    }
+    if (gap > 50) perf.hitch50 += 1;
+    if (gap > 100) perf.hitch100 += 1;
+}
+
+function zgameBuildJsPerfExport() {
+    const perf = window.__zgame_js_perf || {};
+    const gaps = Array.isArray(perf.gaps) ? perf.gaps.slice() : [];
+    return {
+        frames: Number(window.__zgame_js_frame || 0),
+        last_gap_ms: Number(window.__zgame_js_gap_ms || 0),
+        worst_gap_ms: Number(perf.worstGapMs || 0),
+        hitch_counts: {
+            "25": Number(perf.hitch25 || 0),
+            "33": Number(perf.hitch33 || 0),
+            "50": Number(perf.hitch50 || 0),
+            "100": Number(perf.hitch100 || 0),
+        },
+        longest_hitch_streak_33: Number(perf.longestStreak33 || 0),
+        gap_percentiles_ms: zgamePercentiles(gaps, [50, 90, 95, 99]),
+        samples_ms: gaps,
+    };
+}
+
+function zgameParseJsonText(text, fallback) {
+    try {
+        if (!text) return fallback;
+        const parsed = JSON.parse(String(text));
+        return (parsed && typeof parsed === "object") ? parsed : fallback;
+    } catch (_) {
+        return fallback;
+    }
+}
+
+function zgameCollectLivePySample() {
+    try {
+        const frame = Number(window.__zgame_py_frame || 0);
+        if (!Number.isFinite(frame) || frame <= 0) return;
+        const lastFrame = Number(window.__zgame_py_live_last_frame || -1);
+        if (frame === lastFrame) return;
+        window.__zgame_py_live_last_frame = frame;
+        const out = window.__zgame_py_live_samples;
+        out.push({
+            frame: frame,
+            t_s: Number(((Date.now() - Number(window.__zgame_diag_started_ms || Date.now())) / 1000).toFixed(4)),
+            raw_dt_ms: Number(window.__zgame_py_raw_dt_ms || 0),
+            dt_ms: Number(window.__zgame_py_dt_ms || 0),
+            frame_ms: Number(window.__zgame_py_total_ms || 0),
+            update_ms: Number(window.__zgame_py_update_ms || 0),
+            render_ms: Number(window.__zgame_py_render_ms || 0),
+            browser_gap_ms: Number(window.__zgame_py_browser_gap_ms || window.__zgame_js_gap_ms || 0),
+            rendered: Number(window.__zgame_py_rendered || 0),
+            phase_ms: zgameParseJsonText(window.__zgame_py_phase_json, {}),
+            counts: zgameParseJsonText(window.__zgame_py_counts_json, {}),
+        });
+        while (out.length > 4800) {
+            out.shift();
+        }
+    } catch (_) {}
+}
+
+function zgameBuildPyLiveSummary(samples) {
+    const frameMs = [];
+    const rawDtMs = [];
+    const updateMs = [];
+    const renderMs = [];
+    const gapMs = [];
+    const phaseAvg = Object.create(null);
+    const phaseMax = Object.create(null);
+    const phaseCount = Object.create(null);
+    const hitchCounts = { "25": 0, "33": 0, "50": 0, "100": 0 };
+    let renderedFrames = 0;
+    let skippedFrames = 0;
+    let worstHitchMs = 0;
+    let currentStreak33 = 0;
+    let longestStreak33 = 0;
+    for (const sample of (samples || [])) {
+        const frame = Number(sample.frame_ms || 0);
+        const raw = Number(sample.raw_dt_ms || 0);
+        const update = Number(sample.update_ms || 0);
+        const render = Number(sample.render_ms || 0);
+        const gap = Number(sample.browser_gap_ms || 0);
+        frameMs.push(frame);
+        rawDtMs.push(raw);
+        updateMs.push(update);
+        renderMs.push(render);
+        gapMs.push(gap);
+        if (Number(sample.rendered || 0)) renderedFrames += 1;
+        else skippedFrames += 1;
+        worstHitchMs = Math.max(worstHitchMs, frame);
+        if (frame > 25) hitchCounts["25"] += 1;
+        if (frame > 33) {
+            hitchCounts["33"] += 1;
+            currentStreak33 += 1;
+            longestStreak33 = Math.max(longestStreak33, currentStreak33);
+        } else {
+            currentStreak33 = 0;
+        }
+        if (frame > 50) hitchCounts["50"] += 1;
+        if (frame > 100) hitchCounts["100"] += 1;
+        for (const [name, value] of Object.entries(sample.phase_ms || {})) {
+            const ms = Number(value || 0);
+            phaseAvg[name] = Number(phaseAvg[name] || 0) + ms;
+            phaseMax[name] = Math.max(Number(phaseMax[name] || 0), ms);
+            phaseCount[name] = Number(phaseCount[name] || 0) + 1;
+        }
+    }
+    const phaseAvgOut = {};
+    for (const [name, total] of Object.entries(phaseAvg)) {
+        phaseAvgOut[name] = Number((Number(total || 0) / Math.max(1, Number(phaseCount[name] || 0))).toFixed(3));
+    }
+    const phaseMaxOut = {};
+    for (const [name, maxVal] of Object.entries(phaseMax)) {
+        phaseMaxOut[name] = Number(Number(maxVal || 0).toFixed(3));
+    }
+    return {
+        frames: Number(((samples || []).length ? (samples[samples.length - 1] || {}).frame : 0) || 0),
+        rendered_frames: renderedFrames,
+        skipped_frames: skippedFrames,
+        avg_frame_ms: Number((frameMs.reduce((a, b) => a + b, 0) / Math.max(1, frameMs.length)).toFixed(3)),
+        avg_render_ms: Number((renderMs.reduce((a, b) => a + b, 0) / Math.max(1, renderMs.length)).toFixed(3)),
+        avg_update_ms: Number((updateMs.reduce((a, b) => a + b, 0) / Math.max(1, updateMs.length)).toFixed(3)),
+        avg_browser_gap_ms: Number((gapMs.reduce((a, b) => a + b, 0) / Math.max(1, gapMs.length)).toFixed(3)),
+        worst_hitch_ms: Number(worstHitchMs.toFixed(3)),
+        longest_hitch_streak_33: longestStreak33,
+        hitch_counts: hitchCounts,
+        frame_percentiles_ms: zgamePercentiles(frameMs, [50, 90, 95, 99]),
+        raw_dt_percentiles_ms: zgamePercentiles(rawDtMs, [50, 90, 95, 99]),
+        render_percentiles_ms: zgamePercentiles(renderMs, [50, 90, 95, 99]),
+        update_percentiles_ms: zgamePercentiles(updateMs, [50, 90, 95, 99]),
+        browser_gap_percentiles_ms: zgamePercentiles(gapMs, [50, 90, 95, 99]),
+        phase_avg_ms: phaseAvgOut,
+        phase_max_ms: phaseMaxOut,
+    };
+}
+
+function zgamePostDiagExport(payload, reason) {
+    try {
+        const data = Object.assign({}, payload || {});
+        data.posted_at_ms = Date.now();
+        data.post_reason = String(reason || "");
+        const scenarioName =
+            String(
+                (((data.py || {}).session || {}).scenario) ||
+                data.scenario_name ||
+                ""
+            ).trim().toLowerCase();
+        const body = JSON.stringify(data);
+        const url = "/__zgame_diag" + (scenarioName ? ("?scenario=" + encodeURIComponent(scenarioName)) : "");
+        window.__zgame_diag_last_post_ms = Number(data.posted_at_ms || Date.now());
+        window.__zgame_diag_last_post_reason = String(reason || "");
+        fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: body,
+            keepalive: true,
+            credentials: "same-origin",
+            cache: "no-store",
+        }).catch(function() {
+            window.__zgame_diag_post_failures = Number(window.__zgame_diag_post_failures || 0) + 1;
+        });
+        return true;
+    } catch (_) {
+        window.__zgame_diag_post_failures = Number(window.__zgame_diag_post_failures || 0) + 1;
+        return false;
+    }
+}
+
+window.__zgame_diag_push = function(jsonText) {
+    try {
+        window.__zgame_py_diag_export_json = String(jsonText || "");
+        if (zgameDiagEnabled()) {
+            zgamePostDiagExport(window.__zgame_diag_collect_export(), "push");
+        }
+        return true;
+    } catch (_) {
+        return false;
+    }
+};
+
+window.__zgame_diag_collect_export = function() {
+    let pyExport = null;
+    try {
+        pyExport = window.__zgame_py_diag_export_json ? JSON.parse(window.__zgame_py_diag_export_json) : null;
+    } catch (_) {
+        pyExport = null;
+    }
+    const scenarioName = String(
+        ((((pyExport || {}).session || {}).scenario) ||
+        (new URLSearchParams(String((window.location && window.location.search) || "")).get("scenario")) ||
+        "")
+    );
+    if (!pyExport && Array.isArray(window.__zgame_py_live_samples) && window.__zgame_py_live_samples.length) {
+        const liveSamples = window.__zgame_py_live_samples.slice();
+        pyExport = {
+            source: "js-live-py-fallback",
+            session: { scenario: scenarioName },
+            summary: zgameBuildPyLiveSummary(liveSamples),
+            events: [],
+            samples: liveSamples,
+        };
+    }
+    return {
+        collected_at_ms: Date.now(),
+        location: String((window.location && window.location.href) || ""),
+        user_agent: String((navigator && navigator.userAgent) || ""),
+        scenario_name: scenarioName,
+        py_dead: Boolean(window.__zgame_py_dead),
+        py_error: String(window.__zgame_py_error || ""),
+        js_error: String(window.__zgame_last_error || ""),
+        js: zgameBuildJsPerfExport(),
+        py: pyExport,
+    };
+};
 
 function zgameDiagEnabled() {
     try {
@@ -381,10 +654,15 @@ function updateZGameDiagDom() {
     const node = ensureZGameDiagDom();
     if (!node) return;
     const lines = [];
+    const jsPerf = zgameBuildJsPerfExport();
     lines.push(`js frame:${Number(window.__zgame_js_frame || 0)} gap:${Number(window.__zgame_js_gap_ms || 0).toFixed(1)}ms`);
+    lines.push(`js p95:${Number((jsPerf.gap_percentiles_ms || {}).p95 || 0).toFixed(1)}  worst:${Number(jsPerf.worst_gap_ms || 0).toFixed(1)}  hitch33:${Number(((jsPerf.hitch_counts || {})["33"]) || 0)}`);
     lines.push(`py frame:${Number(window.__zgame_py_frame || 0)} dt:${Number(window.__zgame_py_dt_ms || 0).toFixed(1)} raw:${Number(window.__zgame_py_raw_dt_ms || 0).toFixed(1)} total:${Number(window.__zgame_py_total_ms || 0).toFixed(1)} rendered:${Number(window.__zgame_py_rendered || 0)}`);
     lines.push(`idle:${Number(window.__zgame_py_idle_loops || 0)} accum:${Number(window.__zgame_py_accum_ms || 0).toFixed(1)}ms`);
     lines.push(`phase:${String(window.__zgame_prof_phase || "-")}  detail:${String(window.__zgame_prof_detail || "")}`);
+    if (zgameDiagEnabled()) {
+        lines.push(`diag post:${String(window.__zgame_diag_last_post_reason || "-")} fail:${Number(window.__zgame_diag_post_failures || 0)}`);
+    }
     try {
         const mem = window.performance && window.performance.memory;
         const heapMb = mem && mem.usedJSHeapSize ? (Number(mem.usedJSHeapSize) / (1024 * 1024)) : null;
@@ -417,16 +695,37 @@ function zgameDiagTick(now) {
         const last = Number(window.__zgame_js_last_now || 0);
         if (last > 0) {
             window.__zgame_js_gap_ms = Math.max(0, Number(now || 0) - last);
+            zgameRecordJsGap(window.__zgame_js_gap_ms);
         }
         window.__zgame_js_last_now = Number(now || 0);
         window.__zgame_js_frame = Number(window.__zgame_js_frame || 0) + 1;
+        zgameCollectLivePySample();
     } catch (e) {}
     updateZGameDiagDom();
     window.requestAnimationFrame(zgameDiagTick);
 }
 
+function zgameMaybeHeartbeatPost() {
+    try {
+        if (!zgameDiagEnabled()) return;
+        const posted = Number(window.__zgame_diag_last_heartbeat_ms || 0);
+        const nowMs = Date.now();
+        if ((nowMs - posted) < 3000) return;
+        window.__zgame_diag_last_heartbeat_ms = nowMs;
+        zgamePostDiagExport(window.__zgame_diag_collect_export(), "heartbeat");
+    } catch (_) {}
+}
+
 window.requestAnimationFrame(zgameDiagTick);
 window.setInterval(updateZGameDiagDom, 250);
+window.setInterval(zgameMaybeHeartbeatPost, 1000);
+window.addEventListener("pagehide", function() {
+    try {
+        if (zgameDiagEnabled()) {
+            zgamePostDiagExport(window.__zgame_diag_collect_export(), "pagehide");
+        }
+    } catch (_) {}
+});
 
 function show_infobox() {
     infobox.style.display = "block";

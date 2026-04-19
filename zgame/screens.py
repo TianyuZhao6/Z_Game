@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 
 import pygame
 from zgame.browser import is_escape_event, is_web_interaction_event
@@ -265,7 +266,6 @@ async def show_settings_popup_web(game, screen, background_surf):
                         game.flush_events()
                         return "close"
 
-        clock.tick(60)
         await asyncio.sleep(0)
 
 
@@ -304,10 +304,15 @@ async def show_levelup_overlay_web(game, screen, background_surf, player):
             {"key": "range", "title": "+10% Range", "desc": "Longer effective range for shots."},
         ]
     cards = random.sample(pool, k=min(4, len(pool)))
+    if bool(getattr(game, "WEB_DIAG_MODE", False) or getattr(game, "WEB_AUTOSTART", False)):
+        return cards[0]["key"] if cards else None
     title_font = pygame.font.SysFont(None, 64)
     head_font = pygame.font.SysFont(None, 30)
     body_font = pygame.font.SysFont(None, 24)
     hover = -1
+    auto_pick_after = float(getattr(game, "WEB_LEVELUP_AUTO_PICK_SEC", 0.0) or 0.0)
+    start_s = time.perf_counter()
+    loop_count = 0
 
     def _layout():
         w, h = screen.get_size()
@@ -329,6 +334,7 @@ async def show_levelup_overlay_web(game, screen, background_surf, player):
         return rects, dim, title, title_rect
 
     while True:
+        loop_count += 1
         rects, dim, title, title_rect = _layout()
         mx, my = pygame.mouse.get_pos()
         hover = -1
@@ -373,6 +379,11 @@ async def show_levelup_overlay_web(game, screen, background_surf, player):
                     continue
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and hover != -1:
                 return cards[hover]["key"]
+        if auto_pick_after > 0.0:
+            elapsed_s = max(0.0, time.perf_counter() - start_s)
+            if elapsed_s >= auto_pick_after or loop_count >= max(1, int(auto_pick_after * 60.0)):
+                pick_idx = hover if 0 <= hover < len(cards) else 0
+                return cards[pick_idx]["key"]
         clock.tick(60)
         await asyncio.sleep(0)
 

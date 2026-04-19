@@ -167,6 +167,14 @@ def install(game):
             self._extra_particles = 30
             self.particles = [self._make_particle() for _ in range(self._base_particles)]
             self._ring_swooshes = [self._make_swoosh() for _ in range(9)]
+            self._zone_surface = None
+            self._zone_surface_size = (0, 0)
+            self._funnel_surface_cache = {}
+            self._draw_cache_surface = None
+            self._draw_cache_size = (0, 0)
+            self._draw_cache_anchor = (0, 0)
+            self._draw_cache_at_ms = -999999
+            self._draw_cache_stamp = None
 
         def _make_particle(self):
             return {
@@ -257,21 +265,20 @@ def install(game):
             vy *= 0.5
             return vx * dt * resist_scale, vy * dt * resist_scale
 
-        def draw(self, screen, camx, camy):
-            cx, cy = game.iso_world_to_screen(
-                self.x / game.CELL_SIZE,
-                (self.y - game.INFO_BAR_HEIGHT) / game.CELL_SIZE,
-                0,
-                camx,
-                camy,
-            )
+        def _draw_to_surface(self, screen, cx, cy):
             vis_dir = -self.spin_dir
             spin_growth = min(1.0, self.r / game.HURRICANE_MAX_RADIUS)
             vis_spin_scale = 0.6 + 0.9 * spin_growth
             base_w = self.r * 1.6
             effect_radius = self.r * game.HURRICANE_RANGE_MULT
             rx_zone, ry_zone = game.iso_circle_radii_screen(effect_radius)
-            zone = pygame.Surface((rx_zone * 2, ry_zone * 2), pygame.SRCALPHA)
+            zone_size = (rx_zone * 2, ry_zone * 2)
+            zone = getattr(self, "_zone_surface", None)
+            if zone is None or getattr(self, "_zone_surface_size", (0, 0)) != zone_size:
+                zone = pygame.Surface(zone_size, pygame.SRCALPHA)
+                self._zone_surface = zone
+                self._zone_surface_size = zone_size
+            zone.fill((0, 0, 0, 0))
             pygame.draw.ellipse(zone, (40, 60, 80, 50), zone.get_rect())
             pygame.draw.ellipse(zone, (120, 220, 255, 110), zone.get_rect(), width=3)
             streaks = 4 if getattr(game, "IS_WEB", False) else 8
@@ -329,9 +336,16 @@ def install(game):
                     int(game.TORNADO_EDGE_COLOR[1] + (game.TORNADO_CORE_COLOR[1] - game.TORNADO_EDGE_COLOR[1]) * ratio),
                     int(game.TORNADO_EDGE_COLOR[2] + (game.TORNADO_CORE_COLOR[2] - game.TORNADO_EDGE_COLOR[2]) * ratio),
                 )
-                surf = pygame.Surface((rx * 2, ry * 2), pygame.SRCALPHA)
-                pygame.draw.ellipse(surf, (*color, alpha), surf.get_rect())
-                pygame.draw.ellipse(surf, (120, 220, 255, int(alpha * 0.9)), surf.get_rect(), width=2)
+                cache = self._funnel_surface_cache
+                key = (int(rx), int(ry), color, int(alpha))
+                surf = cache.get(key)
+                if surf is None:
+                    surf = pygame.Surface((rx * 2, ry * 2), pygame.SRCALPHA)
+                    pygame.draw.ellipse(surf, (*color, alpha), surf.get_rect())
+                    pygame.draw.ellipse(surf, (120, 220, 255, int(alpha * 0.9)), surf.get_rect(), width=2)
+                    if len(cache) > 96:
+                        cache.clear()
+                    cache[key] = surf
                 screen.blit(surf, (draw_x - rx, draw_y - ry))
             ring_ratios = (0.3, 0.7) if getattr(game, "IS_WEB", False) else (0.2, 0.45, 0.7, 0.9)
             for r_ratio in ring_ratios:
@@ -373,6 +387,56 @@ def install(game):
                     color = (40, 50, 60) if is_behind else (200, 220, 230)
                     size = 2 if is_behind else 4
                     pygame.draw.circle(screen, color, (int(px), int(py)), size)
+
+        def draw(self, screen, camx, camy):
+            cx, cy = game.iso_world_to_screen(
+                self.x / game.CELL_SIZE,
+                (self.y - game.INFO_BAR_HEIGHT) / game.CELL_SIZE,
+                0,
+                camx,
+                camy,
+            )
+            refresh_ms = int(getattr(game, "WEB_HURRICANE_VISUAL_REFRESH_MS", 0) or 0)
+            if getattr(game, "IS_WEB", False) and refresh_ms > 0:
+                effect_radius = self.r * game.HURRICANE_RANGE_MULT
+                rx_zone, ry_zone = game.iso_circle_radii_screen(effect_radius)
+                margin = 24
+                surf_w = max(int(rx_zone * 2 + 80), int(self.r * 2.2), 160) + margin * 2
+                surf_h = int(game.TORNADO_FUNNEL_HEIGHT + ry_zone * 2 + 80) + margin * 2
+                anchor_x = surf_w // 2
+                anchor_y = margin + game.TORNADO_FUNNEL_HEIGHT + ry_zone
+                phase_bucket = int(self.t * 10.0)
+                cache_stamp = (
+                    int(self.r // 6),
+                    int(self.spin_dir),
+                    int(len(self.particles)),
+                    phase_bucket,
+                    int(surf_w),
+                    int(surf_h),
+                )
+                now_ms = pygame.time.get_ticks()
+                if (
+                    self._draw_cache_surface is None
+                    or self._draw_cache_size != (surf_w, surf_h)
+                    or self._draw_cache_stamp != cache_stamp
+                    or (now_ms - int(self._draw_cache_at_ms)) >= refresh_ms
+                ):
+                    surface = pygame.Surface((surf_w, surf_h), pygame.SRCALPHA)
+                    self._draw_to_surface(surface, anchor_x, anchor_y)
+                    self._draw_cache_surface = surface
+                    self._draw_cache_size = (surf_w, surf_h)
+                    self._draw_cache_anchor = (anchor_x, anchor_y)
+                    self._draw_cache_at_ms = now_ms
+                    self._draw_cache_stamp = cache_stamp
+                screen.blit(
+                    self._draw_cache_surface,
+                    (
+                        int(cx - self._draw_cache_anchor[0]),
+                        int(cy - self._draw_cache_anchor[1]),
+                    ),
+                )
+                return
+            self._draw_to_surface(screen, cx, cy)
 
     game.__dict__.update({"GridBuckets": GridBuckets, "SpatialHash": SpatialHash, "TornadoEntity": TornadoEntity})
     return SpatialHash, TornadoEntity
