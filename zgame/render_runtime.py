@@ -292,6 +292,7 @@ def install(game):
         cached = runtime.get("_iso_floor_cache")
         if isinstance(cached, dict) and cached.get("key") == key:
             return cached
+        started = time.perf_counter()
         half_w = ISO_CELL_W * 0.5
         half_h = ISO_CELL_H * 0.5
         min_x = max_x = min_y = max_y = None
@@ -314,18 +315,20 @@ def install(game):
         y0 = int(math.floor(float(min_y or 0.0))) - 2
         width = max(1, int(math.ceil(float(max_x or 0.0))) - x0 + 3)
         height = max(1, int(math.ceil(float(max_y or 0.0))) - y0 + 3)
-        surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        surface = pygame.Surface((width, height))
+        surface.fill(MAP_BG)
         tile = _cached_iso_tile_surface(MAP_GRID, border=1)
         for gx in range(GRID_SIZE):
             for gy in range(GRID_SIZE):
                 sx, sy = iso_world_to_screen(gx, gy, 0, 0, 0)
                 surface.blit(tile, (int(sx - ISO_CELL_W // 2 - 1 - x0), int(sy - 1 - y0)))
         try:
-            surface = surface.convert_alpha()
+            surface = surface.convert()
         except Exception:
             pass
         cached = {"key": key, "surface": surface, "x0": x0, "y0": y0}
         runtime["_iso_floor_cache"] = cached
+        _record_runtime_timing("iso_floor_build", (time.perf_counter() - started) * 1000.0)
         return cached
 
     def _blit_iso_floor(screen: pygame.Surface, camx: float, camy: float) -> None:
@@ -396,6 +399,7 @@ def install(game):
         cached = getattr(game_state, "_web_wall_layer_cache", None)
         if isinstance(cached, dict) and cached.get("key") == key:
             return cached
+        started = time.perf_counter()
         entries = _get_web_wall_order(game_state)
         blits: list[tuple[pygame.Surface, int, int]] = []
         min_x = min_y = max_x = max_y = None
@@ -435,6 +439,7 @@ def install(game):
             pass
         cached = {"key": key, "surface": surface, "x0": x0, "y0": y0}
         setattr(game_state, "_web_wall_layer_cache", cached)
+        _record_runtime_timing("web_wall_build", (time.perf_counter() - started) * 1000.0)
         return cached
 
     def _blit_web_wall_layer(screen: pygame.Surface, game_state, camx: float, camy: float, *, wall_h: int) -> None:
@@ -468,6 +473,7 @@ def install(game):
         cached = getattr(game_state, "_web_static_bg_cache", None)
         if isinstance(cached, dict) and cached.get("key") == key:
             return cached
+        started = time.perf_counter()
         if not isinstance(floor_surface, pygame.Surface):
             cached = {"key": key, "surface": None, "x0": 0, "y0": 0}
             setattr(game_state, "_web_static_bg_cache", cached)
@@ -483,16 +489,18 @@ def install(game):
             y0 = min(y0, wall_y0)
             max_x = max(max_x, wall_x0 + wall_surface.get_width())
             max_y = max(max_y, wall_y0 + wall_surface.get_height())
-        surface = pygame.Surface((max(1, max_x - x0), max(1, max_y - y0)), pygame.SRCALPHA)
+        surface = pygame.Surface((max(1, max_x - x0), max(1, max_y - y0)))
+        surface.fill(MAP_BG)
         surface.blit(floor_surface, (int(floor_cache.get("x0", 0)) - x0, int(floor_cache.get("y0", 0)) - y0))
         if isinstance(wall_surface, pygame.Surface):
             surface.blit(wall_surface, (int(wall_cache.get("x0", 0)) - x0, int(wall_cache.get("y0", 0)) - y0))
         try:
-            surface = surface.convert_alpha()
+            surface = surface.convert()
         except Exception:
             pass
         cached = {"key": key, "surface": surface, "x0": x0, "y0": y0}
         setattr(game_state, "_web_static_bg_cache", cached)
+        _record_runtime_timing("web_static_bg_build", (time.perf_counter() - started) * 1000.0)
         return cached
 
     def _blit_web_static_background(screen: pygame.Surface, game_state, camx: float, camy: float, *, wall_h: int) -> None:
@@ -530,6 +538,22 @@ def install(game):
             return
         elapsed_ms = max(0.0, (time.perf_counter() - started_at) * 1000.0)
         profiler.counter(str(name), round(elapsed_ms, 3))
+
+    def _record_runtime_timing(name: str, elapsed_ms: float) -> None:
+        runtime = _runtime()
+        runtime[f"_{name}_ms"] = max(0.0, float(elapsed_ms))
+        runtime[f"_{name}_at_ms"] = int(pygame.time.get_ticks())
+
+    def _emit_recent_runtime_timing(profiler, counter_name: str, runtime_name: str, *, ttl_ms: int = 250) -> None:
+        if profiler is None:
+            return
+        runtime = _runtime()
+        stamp = int(runtime.get(f"_{runtime_name}_at_ms", -999999) or -999999)
+        if (int(pygame.time.get_ticks()) - stamp) > int(ttl_ms):
+            return
+        value = runtime.get(f"_{runtime_name}_ms", None)
+        if isinstance(value, (int, float)):
+            profiler.counter(counter_name, round(float(value), 3))
 
     def _transition_ready_for_short_circuit() -> bool:
         if not getattr(game, "IS_WEB", False):
@@ -826,10 +850,17 @@ def install(game):
         player_cx = float(player.rect.centerx)
         player_cy = float(player.rect.centery)
         view_world_rect = _iso_view_world_rect(camx, camy, pad_px=int(CELL_SIZE * 2))
+        bg_total_started = time.perf_counter()
         segment_started = time.perf_counter()
         screen.fill(MAP_BG)
+        _render_counter(profiler, "r_bg_fill_ms", segment_started)
+        segment_started = time.perf_counter()
         _blit_web_static_background(screen, game_state, camx, camy, wall_h=max(12, int(ISO_WALL_Z * 0.7)))
-        _render_counter(profiler, "r_bg_ms", segment_started)
+        _render_counter(profiler, "r_bg_static_ms", segment_started)
+        _emit_recent_runtime_timing(profiler, "r_bg_floor_build_ms", "iso_floor_build")
+        _emit_recent_runtime_timing(profiler, "r_bg_wall_build_ms", "web_wall_build")
+        _emit_recent_runtime_timing(profiler, "r_bg_compose_build_ms", "web_static_bg_build")
+        _render_counter(profiler, "r_bg_ms", bg_total_started)
         margin = 2
         gx_min = max(0, int(px_grid - game.VIEW_W // max(1, ISO_CELL_W)) - margin)
         gx_max = min(GRID_SIZE - 1, int(px_grid + game.VIEW_W // max(1, ISO_CELL_W)) + margin)
@@ -1143,8 +1174,10 @@ def install(game):
             dx, dy = game_state.camera_shake_offset()
             camx += dx
             camy += dy
+        bg_total_started = time.perf_counter()
         segment_started = time.perf_counter()
         screen.fill(MAP_BG)
+        _render_counter(profiler, "r_bg_fill_ms", segment_started)
         margin = 3
         gx_min = max(0, int(px_grid - game.VIEW_W // ISO_CELL_W) - margin)
         gx_max = min(GRID_SIZE - 1, int(px_grid + game.VIEW_W // ISO_CELL_W) + margin)
@@ -1152,12 +1185,17 @@ def install(game):
         gy_max = min(GRID_SIZE - 1, int(py_grid + game.VIEW_H // ISO_CELL_H) + margin)
         grid_col = MAP_GRID
         if IS_WEB:
+            segment_started = time.perf_counter()
             _blit_iso_floor(screen, camx, camy)
+            _render_counter(profiler, "r_bg_floor_ms", segment_started)
+            _emit_recent_runtime_timing(profiler, "r_bg_floor_build_ms", "iso_floor_build")
         else:
+            segment_started = time.perf_counter()
             for gx in range(gx_min, gx_max + 1):
                 for gy in range(gy_min, gy_max + 1):
                     _blit_cached_iso_tile(screen, gx, gy, grid_col, camx, camy, border=1)
-        _render_counter(profiler, "r_bg_ms", segment_started)
+            _render_counter(profiler, "r_bg_floor_ms", segment_started)
+        _render_counter(profiler, "r_bg_ms", bg_total_started)
         view_margin = max(int(CELL_SIZE), int(ISO_CELL_W))
         view_world_rect = _iso_view_world_rect(camx, camy, pad_px=int(CELL_SIZE * 2))
         segment_started = time.perf_counter()
@@ -1196,19 +1234,26 @@ def install(game):
                 hsx, hsy = iso_world_to_screen(h.x / CELL_SIZE, (h.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
                 if not _screen_visible_circle(hsx, hsy, float(getattr(h, "r", 0.0)) * HURRICANE_RANGE_MULT, margin=view_margin):
                     continue
-                pulse = 0.6 + 0.4 * math.sin(pygame.time.get_ticks() * 0.008)
-                alpha = int(40 + 60 * pulse)
-                draw_iso_ground_ellipse(
-                    screen, h.x, h.y, h.r * HURRICANE_RANGE_MULT,
-                    color=(100, 120, 150), alpha=alpha,
-                    camx=camx, camy=camy,
-                    fill=False, width=2
-                )
+                hint_started = time.perf_counter()
+                if hasattr(h, "draw_range_hint"):
+                    h.draw_range_hint(screen, camx, camy)
+                else:
+                    pulse = 0.6 + 0.4 * math.sin(pygame.time.get_ticks() * 0.008)
+                    alpha = int(40 + 60 * pulse)
+                    draw_iso_ground_ellipse(
+                        screen, h.x, h.y, h.r * HURRICANE_RANGE_MULT,
+                        color=(100, 120, 150), alpha=alpha,
+                        camx=camx, camy=camy,
+                        fill=False, width=2
+                    )
+                _render_counter(profiler, "r_hurricane_hint_ms", hint_started)
+                draw_started = time.perf_counter()
                 if hasattr(h, "draw"):
                     h.draw(screen, camx, camy)
                 else:
                     hx, hy = float(h.get("x", 0)), float(h.get("y", 0))
                     draw_iso_ground_ellipse(screen, hx, hy, 40, (100, 100, 100), 200, camx, camy)
+                _render_counter(profiler, "r_hurricane_draw_ms", draw_started)
         _render_counter(profiler, "r_hurricane_ms", segment_started)
 
         segment_started = time.perf_counter()
@@ -1237,10 +1282,17 @@ def install(game):
                     fill_alpha=int(AEGIS_PULSE_FILL_ALPHA * fade),
                     width=2
                 )
+        visible_acids = []
+        max_visible_acids = int(getattr(game, "WEB_MAX_VISIBLE_ACIDS", 0) or 0) if IS_WEB else 0
         for a in getattr(game_state, "acids", []):
             sx, sy = iso_world_to_screen(a.x / CELL_SIZE, (a.y - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
             if not _screen_visible_circle(sx, sy, float(getattr(a, "r", 0.0)), margin=view_margin):
                 continue
+            dx = float(getattr(a, "x", 0.0)) - float(player.rect.centerx)
+            dy = float(getattr(a, "y", 0.0)) - float(player.rect.centery)
+            visible_acids.append((dx * dx + dy * dy, a))
+        _cap_visible_entries(visible_acids, max_visible_acids, key=lambda item: item[0])
+        for _, a in visible_acids:
             draw_iso_ground_ellipse(
                 screen, a.x, a.y, a.r,
                 color=(60, 200, 90), alpha=110,

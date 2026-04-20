@@ -356,6 +356,36 @@ def summarize_render_subpasses(samples: list[dict[str, Any]]) -> list[dict[str, 
         for key, value in counts.items():
             if not (isinstance(key, str) and key.startswith("r_") and key.endswith("_ms")):
                 continue
+            if "_build_" in key:
+                continue
+            if not isinstance(value, (int, float)):
+                continue
+            buckets.setdefault(key, []).append(float(value))
+    out = []
+    for key, values in buckets.items():
+        out.append(
+            {
+                "name": key,
+                "avg_ms": round(mean(values), 3),
+                "p95_ms": round(percentile(values, 95), 3),
+                "max_ms": round(max(values) if values else 0.0, 3),
+            }
+        )
+    out.sort(key=lambda item: float(item.get("avg_ms", 0.0)), reverse=True)
+    return out
+
+
+def summarize_render_build_costs(samples: list[dict[str, Any]]) -> list[dict[str, float | str]]:
+    buckets: dict[str, list[float]] = {}
+    for sample in samples:
+        counts = sample.get("counts") or {}
+        if not isinstance(counts, dict):
+            continue
+        for key, value in counts.items():
+            if not (isinstance(key, str) and key.startswith("r_") and key.endswith("_ms")):
+                continue
+            if "_build_" not in key:
+                continue
             if not isinstance(value, (int, float)):
                 continue
             buckets.setdefault(key, []).append(float(value))
@@ -624,6 +654,7 @@ def generate_report(all_exports: list[dict[str, Any]], out_dir: Path) -> tuple[P
             "late": summarize_segment(segment_samples(samples, "late")),
         }
         render_hotspots = summarize_render_subpasses(samples)
+        render_build_costs = summarize_render_build_costs(samples)
         counter_growth = summarize_counter_growth(samples)
         candidates = build_root_cause_candidates(export_data)
         recommendations = build_recommendations(str(scenario.get("name", "")), export_data)
@@ -643,6 +674,7 @@ def generate_report(all_exports: list[dict[str, Any]], out_dir: Path) -> tuple[P
             "transition_events": transition_events,
             "segments": segment_summary,
             "render_hotspots": render_hotspots,
+            "render_build_costs": render_build_costs,
             "counter_growth": counter_growth,
             "candidates": candidates,
             "recommendations": recommendations,
@@ -664,6 +696,11 @@ def generate_report(all_exports: list[dict[str, Any]], out_dir: Path) -> tuple[P
             if render_hotspots
             else "`n/a`"
         )
+        warmup_build_line = (
+            f"`{render_build_costs[0]['name']}` avg `{render_build_costs[0]['avg_ms']}` ms p95 `{render_build_costs[0]['p95_ms']}` ms"
+            if render_build_costs
+            else "`n/a`"
+        )
         md_lines.extend(
             [
                 f"### `{scenario.get('name', 'unknown')}`",
@@ -676,6 +713,7 @@ def generate_report(all_exports: list[dict[str, Any]], out_dir: Path) -> tuple[P
                 f"- Transition findings: `{len(transition_events)}` events, stalls `{len([e for e in transition_events if e.get('kind') == 'transition:stall'])}`",
                 f"- Early/Mid/Late avg frame ms: `{segment_summary['early']['avg_frame_ms']}` / `{segment_summary['mid']['avg_frame_ms']}` / `{segment_summary['late']['avg_frame_ms']}`",
                 f"- Hottest render subpass: {hottest_render_line}",
+                f"- Background/build warmup cost: {warmup_build_line}",
                 f"- Late-growing counters: {late_growth_line}",
                 f"- Measured candidates: {', '.join(c['candidate'] for c in candidates)}",
             ]

@@ -239,9 +239,9 @@ def install(game):
                 return
             max_spoils = int(getattr(game, "WEB_MAX_SPOILS_ON_FIELD", 0) or 0) if game.IS_WEB else 0
             if game.IS_WEB and self.spoils:
-                bundle_radius = max(18.0, float(game.CELL_SIZE) * 0.65)
+                bundle_radius = max(24.0, float(game.CELL_SIZE) * 0.9)
                 nearby = self.query_spoils_near_circle(x_px, y_px, bundle_radius)
-                if nearby and (remaining >= 4 or len(nearby) >= 2 or (max_spoils > 0 and len(self.spoils) >= max(1, max_spoils - 3))):
+                if nearby and (remaining >= 2 or len(nearby) >= 2 or (max_spoils > 0 and len(self.spoils) >= max(1, max_spoils - 3))):
                     nearest = min(
                         nearby,
                         key=lambda spoil: (spoil.base_x - float(x_px)) ** 2 + (spoil.base_y - float(y_px)) ** 2,
@@ -258,7 +258,8 @@ def install(game):
                     )
                     nearest.value += remaining
                     return
-                spawn_count = min(remaining, max(1, slots_left))
+                burst_cap = max(1, int(getattr(game, "WEB_SPOIL_BURST_CAP", 4) or 4))
+                spawn_count = min(remaining, max(1, min(slots_left, burst_cap)))
                 bundle = max(1, int(math.ceil(remaining / float(max(1, spawn_count)))))
             else:
                 spawn_count = remaining
@@ -451,6 +452,29 @@ def install(game):
                 slow_frac = slow
             if slow_frac is None:
                 slow_frac = game.ACID_SLOW_FRAC
+            if getattr(game, "IS_WEB", False) and self.acids:
+                merge_r = max(float(r), float(game.CELL_SIZE) * 0.75)
+                nearest = None
+                nearest_d2 = None
+                for existing in reversed(self.acids[-12:]):
+                    if getattr(existing, 'style', 'acid') != style:
+                        continue
+                    dx = float(getattr(existing, 'x', 0.0)) - float(x)
+                    dy = float(getattr(existing, 'y', 0.0)) - float(y)
+                    overlap_r = float(getattr(existing, 'r', 0.0)) + float(r) + merge_r
+                    d2 = dx * dx + dy * dy
+                    if d2 > overlap_r * overlap_r:
+                        continue
+                    if nearest is None or d2 < nearest_d2:
+                        nearest = existing
+                        nearest_d2 = d2
+                if nearest is not None:
+                    nearest.r = max(float(nearest.r), float(r))
+                    nearest.dps = max(float(nearest.dps), float(dps))
+                    nearest.slow_frac = max(float(nearest.slow_frac), float(slow_frac))
+                    nearest.t = max(float(nearest.t), float(life))
+                    setattr(nearest, 'life0', max(float(getattr(nearest, 'life0', 0.0) or 0.0), float(life)))
+                    return
             a = game.AcidPool(float(x), float(y), float(r), float(dps), float(slow_frac), float(life))
             setattr(a, 'style', style)
             setattr(a, 'life0', float(life))
@@ -999,6 +1023,29 @@ def install(game):
 
         def add_damage_text(self, x, y, amount, crit=False, kind='hp'):
             max_texts = int(getattr(game, "WEB_MAX_DAMAGE_TEXTS", 0) or 0) if game.IS_WEB else 0
+            if game.IS_WEB and isinstance(amount, (int, float)) and (not crit):
+                amount = int(amount)
+                if amount > 0:
+                    merge_r2 = (float(game.CELL_SIZE) * 0.75) ** 2
+                    for existing in reversed(self.dmg_texts[-8:]):
+                        if getattr(existing, 'crit', False):
+                            continue
+                        if getattr(existing, 'kind', '') != kind:
+                            continue
+                        if not isinstance(getattr(existing, 'amount', None), int):
+                            continue
+                        if float(getattr(existing, 't', 999.0)) > 0.12:
+                            continue
+                        dx = float(getattr(existing, 'x', 0.0)) - float(x)
+                        dy = float(getattr(existing, 'y', 0.0)) - float(y)
+                        if dx * dx + dy * dy > merge_r2:
+                            continue
+                        existing.amount = int(existing.amount) + amount
+                        existing.x = (float(existing.x) + float(x)) * 0.5
+                        existing.y = min(float(existing.y), float(y))
+                        existing._surf = None
+                        existing._last_alpha = -1
+                        return
             if max_texts > 0 and len(self.dmg_texts) >= max_texts:
                 if (not crit) and kind in {'dot', 'shield'}:
                     return
@@ -1044,6 +1091,10 @@ def install(game):
             max_ghosts = int(getattr(game, 'WEB_MAX_GHOSTS', 24) or 24)
             if max_ghosts > 0 and len(self.ghosts) > max_ghosts:
                 del self.ghosts[:-max_ghosts]
+            max_acids = int(getattr(game, 'WEB_MAX_ACIDS', 0) or 0)
+            if max_acids > 0 and len(self.acids) > max_acids:
+                self.acids.sort(key=lambda acid: (float(getattr(acid, 't', 0.0)), float(getattr(acid, 'r', 0.0))))
+                del self.acids[:-max_acids]
             max_corpses = int(getattr(game, 'WEB_MAX_COMET_CORPSES', 10) or 10)
             if max_corpses > 0 and len(self.comet_corpses) > max_corpses:
                 del self.comet_corpses[:-max_corpses]
@@ -1162,6 +1213,12 @@ def install(game):
             obstacle_values = tuple(self.obstacles.values())
             spatial = getattr(self, 'spatial', None)
             max_targets = int(getattr(game, 'WEB_HURRICANE_MAX_AFFECTED_ENEMIES', 0) or 0) if getattr(game, 'IS_WEB', False) else 0
+            all_shots = []
+            if process_shot_pull:
+                if bullets:
+                    all_shots.extend(list(bullets))
+                if enemy_shots:
+                    all_shots.extend(list(enemy_shots))
 
             def _vortex_resist(ent):
                 resist = 0.8
@@ -1216,9 +1273,6 @@ def install(game):
                             z._hurricane_slow_mult = 0.7
                             current_slow.add(z)
                 if process_shot_pull:
-                    all_shots = list(bullets)
-                    if enemy_shots:
-                        all_shots.extend(enemy_shots)
                     max_shots = int(getattr(game, 'WEB_HURRICANE_MAX_AFFECTED_SHOTS', 0) or 0) if getattr(game, 'IS_WEB', False) else 0
                     if max_shots > 0 and len(all_shots) > max_shots:
                         step = max(1, int(math.ceil(len(all_shots) / float(max_shots))))
@@ -1571,17 +1625,36 @@ def install(game):
                 player_quant = max(1, int(getattr(game, "WEB_FOG_PLAYER_QUANT", 4) or 4))
                 lantern_quant = max(1, int(getattr(game, "WEB_FOG_LANTERN_QUANT", player_quant) or player_quant))
                 pulse_quant = max(1, int(getattr(game, "WEB_FOG_PULSE_QUANT", 3) or 3))
-                lantern_points = []
-                for lan in self.fog_lanterns:
-                    if not lan.alive:
-                        continue
-                    gx, gy = lan.grid_pos
-                    sx, sy = game.iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
-                    if sx < -game.FOG_LANTERN_CLEAR_RADIUS or sx > (w + game.FOG_LANTERN_CLEAR_RADIUS):
-                        continue
-                    if sy < -game.FOG_LANTERN_CLEAR_RADIUS or sy > (h + game.FOG_LANTERN_CLEAR_RADIUS):
-                        continue
-                    lantern_points.append((int(sx * scale), int(sy * scale)))
+                camera_quant = max(1, int(getattr(game, "WEB_FOG_CAMERA_QUANT", player_quant) or player_quant))
+                max_lanterns = max(0, int(getattr(game, "WEB_FOG_MAX_LANTERNS", 0) or 0))
+                lantern_cache_key = (
+                    int(mask_w),
+                    int(mask_h),
+                    int(camx) // camera_quant,
+                    int(camy) // camera_quant,
+                    int(len(getattr(self, "fog_lanterns", ()) or ())),
+                )
+                lantern_cache = getattr(self, "_fog_web_lantern_cache", None)
+                if isinstance(lantern_cache, dict) and lantern_cache.get("key") == lantern_cache_key:
+                    lantern_points = list(lantern_cache.get("points", ()))
+                else:
+                    lantern_points = []
+                    for lan in self.fog_lanterns:
+                        if not lan.alive:
+                            continue
+                        gx, gy = lan.grid_pos
+                        sx, sy = game.iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
+                        if sx < -game.FOG_LANTERN_CLEAR_RADIUS or sx > (w + game.FOG_LANTERN_CLEAR_RADIUS):
+                            continue
+                        if sy < -game.FOG_LANTERN_CLEAR_RADIUS or sy > (h + game.FOG_LANTERN_CLEAR_RADIUS):
+                            continue
+                        lantern_points.append((int(sx * scale), int(sy * scale)))
+                    if max_lanterns > 0 and len(lantern_points) > max_lanterns:
+                        p_x = int(psx * scale)
+                        p_y = int(psy * scale)
+                        lantern_points.sort(key=lambda pt: (pt[0] - p_x) ** 2 + (pt[1] - p_y) ** 2)
+                        lantern_points = lantern_points[:max_lanterns]
+                    self._fog_web_lantern_cache = {"key": lantern_cache_key, "points": tuple(lantern_points)}
                 cache_key = (
                     int(w),
                     int(h),
@@ -1606,7 +1679,9 @@ def install(game):
                     lantern_clear_r = max(6, int(game.FOG_LANTERN_CLEAR_RADIUS * scale))
                     for lan_x, lan_y in lantern_points:
                         pygame.draw.circle(mask, (0, 0, 0, 0), (int(lan_x), int(lan_y)), lantern_clear_r)
-                    cached_surface = pygame.transform.scale(mask, (w, h))
+                    if cached_surface is None or cached_surface.get_size() != (w, h):
+                        cached_surface = pygame.Surface((w, h), pygame.SRCALPHA)
+                    pygame.transform.scale(mask, (w, h), cached_surface)
                     self._fog_web_cache_surface = cached_surface
                     self._fog_web_cache_key = cache_key
                     self._fog_web_cache_at_ms = now_ms
@@ -1618,7 +1693,11 @@ def install(game):
                         pulse_surf = pygame.Surface((w, h), pygame.SRCALPHA)
                         self._fog_web_pulse_surface = pulse_surf
                         self._fog_web_pulse_size = (w, h)
-                    pulse_surf.fill((220, 220, 240, pulse_bucket * pulse_quant))
+                        self._fog_web_pulse_alpha = -1
+                    pulse_alpha = int(pulse_bucket * pulse_quant)
+                    if int(getattr(self, "_fog_web_pulse_alpha", -1)) != pulse_alpha:
+                        pulse_surf.fill((220, 220, 240, pulse_alpha))
+                        self._fog_web_pulse_alpha = pulse_alpha
                     screen.blit(pulse_surf, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
                 return
             mask = pygame.Surface((w, h), pygame.SRCALPHA)

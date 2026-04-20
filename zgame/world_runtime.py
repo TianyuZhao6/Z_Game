@@ -169,6 +169,8 @@ def install(game):
             self._ring_swooshes = [self._make_swoosh() for _ in range(9)]
             self._zone_surface = None
             self._zone_surface_size = (0, 0)
+            self._range_hint_surface = None
+            self._range_hint_key = None
             self._funnel_surface_cache = {}
             self._draw_cache_surface = None
             self._draw_cache_size = (0, 0)
@@ -238,7 +240,7 @@ def install(game):
                 swoosh["t"] += dt
                 if swoosh["t"] >= swoosh["ttl"]:
                     self._ring_swooshes.remove(swoosh)
-            swoosh_target = 5 if getattr(game, "IS_WEB", False) else 9
+            swoosh_target = 3 if getattr(game, "IS_WEB", False) else 9
             if len(self._ring_swooshes) > swoosh_target:
                 self._ring_swooshes = self._ring_swooshes[:swoosh_target]
             while len(self._ring_swooshes) < swoosh_target:
@@ -265,6 +267,25 @@ def install(game):
             vy *= 0.5
             return vx * dt * resist_scale, vy * dt * resist_scale
 
+        def draw_range_hint(self, screen, camx, camy):
+            wx = self.x / game.CELL_SIZE
+            wy = (self.y - game.INFO_BAR_HEIGHT) / game.CELL_SIZE
+            cx, cy = game.iso_world_to_screen(wx, wy, 0, camx, camy)
+            effect_radius = self.r * game.HURRICANE_RANGE_MULT
+            rx_zone, ry_zone = game.iso_circle_radii_screen(effect_radius)
+            pulse = 0.6 + 0.4 * math.sin(pygame.time.get_ticks() * 0.008)
+            alpha = int(40 + 60 * pulse)
+            bucket = max(1, int(alpha // 12))
+            key = (int(rx_zone), int(ry_zone), bucket)
+            surf = self._range_hint_surface
+            if surf is None or self._range_hint_key != key:
+                surf = pygame.Surface((max(8, rx_zone * 2 + 6), max(8, ry_zone * 2 + 6)), pygame.SRCALPHA)
+                rect = surf.get_rect()
+                pygame.draw.ellipse(surf, (100, 120, 150, min(255, bucket * 12)), rect.inflate(-2, -2), width=2)
+                self._range_hint_surface = surf
+                self._range_hint_key = key
+            screen.blit(surf, (int(cx - surf.get_width() * 0.5), int(cy - surf.get_height() * 0.5)))
+
         def _draw_to_surface(self, screen, cx, cy):
             vis_dir = -self.spin_dir
             spin_growth = min(1.0, self.r / game.HURRICANE_MAX_RADIUS)
@@ -281,7 +302,7 @@ def install(game):
             zone.fill((0, 0, 0, 0))
             pygame.draw.ellipse(zone, (40, 60, 80, 50), zone.get_rect())
             pygame.draw.ellipse(zone, (120, 220, 255, 110), zone.get_rect(), width=3)
-            streaks = 4 if getattr(game, "IS_WEB", False) else 8
+            streaks = 3 if getattr(game, "IS_WEB", False) else 8
             for i in range(streaks):
                 ang = self.t * 0.6 * vis_spin_scale * vis_dir + i * (math.tau / streaks)
                 px = rx_zone + math.cos(ang) * rx_zone * 0.82
@@ -304,7 +325,7 @@ def install(game):
                 end = (x0 + tx * 0.5, y0 + ty * 0.5)
                 cx_mid = x0 + (-ty) * 0.2 + math.cos(arc_ang) * 4
                 cy_mid = y0 + (tx) * 0.2 + math.sin(arc_ang) * 2
-                steps = 6 if getattr(game, "IS_WEB", False) else 12
+                steps = 4 if getattr(game, "IS_WEB", False) else 12
                 color = swoosh["color"]
                 alpha = int(swoosh["alpha"] * fade)
                 for j in range(steps):
@@ -347,7 +368,8 @@ def install(game):
                         cache.clear()
                     cache[key] = surf
                 screen.blit(surf, (draw_x - rx, draw_y - ry))
-            ring_ratios = (0.3, 0.7) if getattr(game, "IS_WEB", False) else (0.2, 0.45, 0.7, 0.9)
+            ring_cap = int(getattr(game, "WEB_HURRICANE_MAX_VISIBLE_RINGS", 2) or 2)
+            ring_ratios = (0.3, 0.7)[:max(1, ring_cap)] if getattr(game, "IS_WEB", False) else (0.2, 0.45, 0.7, 0.9)
             for r_ratio in ring_ratios:
                 width = base_w * (0.25 + 0.75 * (r_ratio ** 1.5))
                 rx, ry = game.iso_circle_radii_screen(width * 0.5)
@@ -359,7 +381,12 @@ def install(game):
                     pygame.Rect(cx - rx, y - ry, rx * 2, ry * 2),
                     width=2,
                 )
-            particle_iter = self.particles[::2] if getattr(game, "IS_WEB", False) and len(self.particles) > 18 else self.particles
+            if getattr(game, "IS_WEB", False) and len(self.particles) > 12:
+                particle_iter = self.particles[::3]
+            elif getattr(game, "IS_WEB", False) and len(self.particles) > 6:
+                particle_iter = self.particles[::2]
+            else:
+                particle_iter = self.particles
             for particle in particle_iter:
                 h_px = particle["h"] * game.TORNADO_FUNNEL_HEIGHT
                 w_at_h = base_w * (0.25 + 0.8 * (particle["h"] ** 1.8)) * particle["dist"]
@@ -398,18 +425,20 @@ def install(game):
             )
             refresh_ms = int(getattr(game, "WEB_HURRICANE_VISUAL_REFRESH_MS", 0) or 0)
             if getattr(game, "IS_WEB", False) and refresh_ms > 0:
+                refresh_ms += int(min(60, max(0.0, self.r - game.HURRICANE_START_RADIUS) * 0.35))
                 effect_radius = self.r * game.HURRICANE_RANGE_MULT
                 rx_zone, ry_zone = game.iso_circle_radii_screen(effect_radius)
-                margin = 24
-                surf_w = max(int(rx_zone * 2 + 80), int(self.r * 2.2), 160) + margin * 2
-                surf_h = int(game.TORNADO_FUNNEL_HEIGHT + ry_zone * 2 + 80) + margin * 2
+                margin = 12
+                surf_w = max(int(rx_zone * 2 + 48), int(self.r * 1.9), 140) + margin * 2
+                surf_h = int(game.TORNADO_FUNNEL_HEIGHT + ry_zone * 2 + 48) + margin * 2
                 anchor_x = surf_w // 2
                 anchor_y = margin + game.TORNADO_FUNNEL_HEIGHT + ry_zone
-                phase_bucket = int(self.t * 10.0)
+                phase_buckets = max(3, int(getattr(game, "WEB_HURRICANE_PHASE_BUCKETS", 6) or 6))
+                phase_bucket = int(self.t * phase_buckets)
                 cache_stamp = (
                     int(self.r // 6),
                     int(self.spin_dir),
-                    int(len(self.particles)),
+                    int(min(len(self.particles), 24)),
                     phase_bucket,
                     int(surf_w),
                     int(surf_h),
