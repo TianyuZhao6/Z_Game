@@ -1524,17 +1524,17 @@ def install(game):
             gy_min = max(0, int((min_y - game.INFO_BAR_HEIGHT) // game.CELL_SIZE) - margin)
             gy_max = min(game.GRID_SIZE - 1, int((max_y - game.INFO_BAR_HEIGHT) // game.CELL_SIZE) + margin)
             hell = getattr(self, 'biome_active', None) == 'Scorched Hell'
-            static_enemy = hell and game.HELL_ENEMY_PAINT_STATIC
+            static_enemy = bool((hell and game.HELL_ENEMY_PAINT_STATIC) or getattr(game, 'IS_WEB', False))
             curing_paint = getattr(self, 'curing_paint', ())
             paint_active_entries = self._paint_active_entries() if hasattr(self, '_paint_active_entries') else tuple(getattr(self, 'paint_active', ()))
-            anim_start = 0
+            paint_bins = getattr(self, '_curing_paint_bins', {})
             recent_paints = None
-            if hell:
-                recent_seq = list(getattr(self, '_curing_paint_recent', ()) or ())
+            recent_seq = tuple(getattr(self, '_curing_paint_recent', ()) or ())
+            if hell or getattr(game, 'IS_WEB', False):
                 if recent_seq:
                     recent_paints = set(recent_seq)
 
-            def _draw_paint_layer(target_surface):
+            def _draw_enemy_paint_layer(target_surface):
                 if hasattr(self, 'paint_active') and hasattr(self, 'paint_grid'):
                     for gx, gy in paint_active_entries:
                         if gx < gx_min or gx > gx_max or gy < gy_min or (gy > gy_max):
@@ -1545,53 +1545,97 @@ def install(game):
                         if getattr(tile, 'paint_owner', 0) != 2:
                             continue
                         game.draw_enemy_paint_tile_iso(target_surface, gx, gy, tile, cam_x, cam_y, static=static_enemy)
-                paint_bins = getattr(self, '_curing_paint_bins', {})
+
+            def _draw_curing_paint_layer(target_surface, *, recent_only: bool | None):
                 if paint_bins:
                     for (gx, gy), paints in paint_bins.items():
                         if gx < gx_min or gx > gx_max or gy < gy_min or gy > gy_max:
                             continue
+                        tile = self.paint_grid[gy][gx] if (0 <= gx < game.GRID_SIZE and 0 <= gy < game.GRID_SIZE) else None
+                        if tile is not None and getattr(tile, 'paint_owner', 0) not in (0, 1):
+                            continue
                         for p in paints:
                             if p.x < min_x or p.x > max_x or p.y < min_y or (p.y > max_y):
                                 continue
-                            tile = self.paint_tile_at_world(p.x, p.y)
-                            if tile is not None and getattr(tile, 'paint_owner', 0) != 1:
+                            is_recent = bool(recent_paints is not None and (p in recent_paints))
+                            if recent_only is True and not is_recent:
                                 continue
-                            static_paint = bool(hell and recent_paints is not None and (p not in recent_paints))
+                            if recent_only is False and is_recent:
+                                continue
+                            static_paint = bool((hell or getattr(game, 'IS_WEB', False)) and not is_recent)
                             game.draw_curing_paint_iso(target_surface, p, cam_x, cam_y, static=static_paint)
                 else:
-                    for idx, p in enumerate(curing_paint):
+                    for p in curing_paint:
                         if p.x < min_x or p.x > max_x or p.y < min_y or (p.y > max_y):
                             continue
                         tile = self.paint_tile_at_world(p.x, p.y)
                         if tile is not None and getattr(tile, 'paint_owner', 0) != 1:
                             continue
-                        game.draw_curing_paint_iso(target_surface, p, cam_x, cam_y, static=hell and idx < anim_start)
+                        is_recent = bool(recent_paints is not None and (p in recent_paints))
+                        if recent_only is True and not is_recent:
+                            continue
+                        if recent_only is False and is_recent:
+                            continue
+                        game.draw_curing_paint_iso(
+                            target_surface,
+                            p,
+                            cam_x,
+                            cam_y,
+                            static=bool((hell or getattr(game, 'IS_WEB', False)) and not is_recent),
+                        )
 
             if getattr(game, 'IS_WEB', False):
                 refresh_ms = max(16, int(getattr(game, 'WEB_PAINT_RENDER_REFRESH_MS', 50) or 50))
+                dynamic_refresh_ms = max(refresh_ms, int(getattr(game, 'WEB_PAINT_DYNAMIC_REFRESH_MS', refresh_ms) or refresh_ms))
+                static_refresh_ms = max(dynamic_refresh_ms, int(getattr(game, 'WEB_PAINT_STATIC_REFRESH_MS', dynamic_refresh_ms * 2) or (dynamic_refresh_ms * 2)))
+                camera_quant = max(1, int(getattr(game, 'WEB_PAINT_CAMERA_QUANT', 16) or 16))
                 now_ms = pygame.time.get_ticks()
-                cache_key = (
+                cam_key = (int(cam_x) // camera_quant, int(cam_y) // camera_quant)
+                static_key = (
                     tuple(screen.get_size()),
-                    int(cam_x) // 8,
-                    int(cam_y) // 8,
-                    int(now_ms // refresh_ms),
+                    cam_key,
+                    int(now_ms // static_refresh_ms),
                     bool(hell),
                     int(len(paint_active_entries)),
-                    int(len(getattr(self, '_curing_paint_bins', {}) or {})),
+                    int(len(paint_bins or {})),
                     int(len(curing_paint or ())),
-                    int(len(getattr(self, '_curing_paint_recent', ()) or ())),
+                    int(len(recent_seq)),
                 )
-                cached_key = getattr(self, '_paint_web_cache_key', None)
-                cached_surface = getattr(self, '_paint_web_cache_surface', None)
-                if cached_surface is None or cached_key != cache_key or cached_surface.get_size() != screen.get_size():
-                    cached_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
-                    _draw_paint_layer(cached_surface)
-                    self._paint_web_cache_surface = cached_surface
-                    self._paint_web_cache_key = cache_key
-                screen.blit(cached_surface, (0, 0))
+                static_surface = getattr(self, '_paint_web_static_surface', None)
+                if (
+                    static_surface is None
+                    or getattr(self, '_paint_web_static_key', None) != static_key
+                    or static_surface.get_size() != screen.get_size()
+                ):
+                    static_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+                    _draw_enemy_paint_layer(static_surface)
+                    _draw_curing_paint_layer(static_surface, recent_only=False)
+                    self._paint_web_static_surface = static_surface
+                    self._paint_web_static_key = static_key
+                screen.blit(static_surface, (0, 0))
+                if recent_seq:
+                    dynamic_key = (
+                        tuple(screen.get_size()),
+                        cam_key,
+                        int(now_ms // dynamic_refresh_ms),
+                        int(len(recent_seq)),
+                        bool(hell),
+                    )
+                    dynamic_surface = getattr(self, '_paint_web_dynamic_surface', None)
+                    if (
+                        dynamic_surface is None
+                        or getattr(self, '_paint_web_dynamic_key', None) != dynamic_key
+                        or dynamic_surface.get_size() != screen.get_size()
+                    ):
+                        dynamic_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+                        _draw_curing_paint_layer(dynamic_surface, recent_only=True)
+                        self._paint_web_dynamic_surface = dynamic_surface
+                        self._paint_web_dynamic_key = dynamic_key
+                    screen.blit(dynamic_surface, (0, 0))
                 return
 
-            _draw_paint_layer(screen)
+            _draw_enemy_paint_layer(screen)
+            _draw_curing_paint_layer(screen, recent_only=None)
 
         def draw_hazards_iso(self, screen, cam_x, cam_y):
             for p in list(getattr(self, 'aegis_pulses', [])):
