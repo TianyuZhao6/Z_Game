@@ -31,6 +31,176 @@ def install(game):
     _iso_tile_surface_cache: dict[tuple[int, int, tuple[int, ...], int], pygame.Surface] = {}
     _iso_wall_surface_cache: dict[tuple[str, int, tuple[int, ...]], tuple[pygame.Surface, int, int]] = {}
     _text_surface_cache: dict[tuple[int, bool, tuple[int, ...], str], pygame.Surface] = {}
+    _filled_surface_cache: dict[tuple[int, int, tuple[int, ...]], pygame.Surface] = {}
+    _rounded_rect_surface_cache: dict[tuple[int, int, tuple[int, ...], int, int], pygame.Surface] = {}
+    _sprite_tint_surface_cache: dict[tuple[int, tuple[int, int], tuple[int, ...]], pygame.Surface] = {}
+    _sprite_outline_surface_cache: dict[tuple[int, tuple[int, int], tuple[int, ...], int], pygame.Surface] = {}
+    _ground_spike_icon_cache: dict[int, pygame.Surface] = {}
+    _vuln_mark_surface_cache: dict[tuple[int, tuple[int, int, int], int], pygame.Surface] = {}
+
+    def _normalize_rgba(color: tuple[int, ...], *, alpha_step: int = 1) -> tuple[int, ...]:
+        rgba = tuple(max(0, min(255, int(v))) for v in color)
+        if len(rgba) == 3:
+            rgba = (*rgba, 255)
+        if alpha_step > 1:
+            alpha = int(round(rgba[3] / float(alpha_step))) * int(alpha_step)
+            rgba = (rgba[0], rgba[1], rgba[2], max(0, min(255, alpha)))
+        return rgba
+
+    def _cached_filled_surface(size: tuple[int, int], color: tuple[int, ...]) -> pygame.Surface:
+        w = max(1, int(size[0]))
+        h = max(1, int(size[1]))
+        rgba = _normalize_rgba(color, alpha_step=12 if IS_WEB else 1)
+        key = (w, h, rgba)
+        surf = _filled_surface_cache.get(key)
+        if surf is None:
+            surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            surf.fill(rgba)
+            try:
+                surf = surf.convert_alpha()
+            except Exception:
+                pass
+            _filled_surface_cache[key] = surf
+        return surf
+
+    def _cached_rounded_rect_surface(
+        size: tuple[int, int],
+        color: tuple[int, ...],
+        *,
+        border_radius: int = 0,
+        line_width: int = 0,
+    ) -> pygame.Surface:
+        w = max(1, int(size[0]))
+        h = max(1, int(size[1]))
+        rgba = _normalize_rgba(color, alpha_step=12 if IS_WEB else 1)
+        border = max(0, int(border_radius))
+        line = max(0, int(line_width))
+        key = (w, h, rgba, border, line)
+        surf = _rounded_rect_surface_cache.get(key)
+        if surf is None:
+            surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.rect(surf, rgba, surf.get_rect(), width=line, border_radius=border)
+            try:
+                surf = surf.convert_alpha()
+            except Exception:
+                pass
+            _rounded_rect_surface_cache[key] = surf
+        return surf
+
+    def _cached_sprite_tint_surface(sprite: pygame.Surface | None, color: tuple[int, ...]) -> pygame.Surface | None:
+        if sprite is None:
+            return None
+        rgba = _normalize_rgba(color, alpha_step=12 if IS_WEB else 1)
+        key = (id(sprite), sprite.get_size(), rgba)
+        surf = _sprite_tint_surface_cache.get(key)
+        if surf is None:
+            surf = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+            surf.fill(rgba)
+            surf.blit(_sprite_alpha_mask(sprite), (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            try:
+                surf = surf.convert_alpha()
+            except Exception:
+                pass
+            _sprite_tint_surface_cache[key] = surf
+        return surf
+
+    def _blit_cached_sprite_tint(screen: pygame.Surface, sprite: pygame.Surface | None,
+                                 dest_pos: tuple[int, int], color: tuple[int, ...]) -> None:
+        tint = _cached_sprite_tint_surface(sprite, color)
+        if tint is not None:
+            screen.blit(tint, dest_pos)
+
+    def _cached_sprite_outline_surface(sprite: pygame.Surface | None, color: tuple[int, ...],
+                                       *, width: int = 3) -> pygame.Surface | None:
+        if sprite is None:
+            return None
+        pts = _sprite_outline_points(sprite)
+        if not pts:
+            return None
+        rgba = _normalize_rgba(color, alpha_step=12 if IS_WEB else 1)
+        outline_w = max(1, int(width))
+        key = (id(sprite), sprite.get_size(), rgba, outline_w)
+        surf = _sprite_outline_surface_cache.get(key)
+        if surf is None:
+            surf = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+            pygame.draw.lines(surf, rgba, True, pts, outline_w)
+            try:
+                surf = surf.convert_alpha()
+            except Exception:
+                pass
+            _sprite_outline_surface_cache[key] = surf
+        return surf
+
+    def _blit_cached_sprite_outline(screen: pygame.Surface, sprite: pygame.Surface | None,
+                                    dest_pos: tuple[int, int], color: tuple[int, ...], *,
+                                    width: int = 3) -> None:
+        outline = _cached_sprite_outline_surface(sprite, color, width=width)
+        if outline is not None:
+            screen.blit(outline, dest_pos)
+
+    def _cached_ground_spike_icon(alpha: int) -> pygame.Surface:
+        a = _normalize_rgba((255, 255, 255, alpha), alpha_step=12 if IS_WEB else 1)[3]
+        surf = _ground_spike_icon_cache.get(a)
+        if surf is None:
+            surf = pygame.Surface((12, 10), pygame.SRCALPHA)
+            arrow = [(6, 8), (2, 2), (10, 2)]
+            pygame.draw.polygon(
+                surf,
+                (GROUND_SPIKES_COLOR[0], GROUND_SPIKES_COLOR[1], GROUND_SPIKES_COLOR[2], a),
+                arrow,
+            )
+            pygame.draw.polygon(surf, (255, 255, 255, max(60, a - 80)), arrow, 1)
+            try:
+                surf = surf.convert_alpha()
+            except Exception:
+                pass
+            _ground_spike_icon_cache[a] = surf
+        return surf
+
+    def _draw_tapered_line_local(surf: pygame.Surface, color_rgba: tuple[int, ...],
+                                 p0: tuple[float, float], p1: tuple[float, float],
+                                 w0: float, w1: float) -> None:
+        dx, dy = (p1[0] - p0[0], p1[1] - p0[1])
+        length = (dx * dx + dy * dy) ** 0.5 or 1.0
+        nx, ny = -dy / length, dx / length
+        hw0 = w0 * 0.5
+        hw1 = w1 * 0.5
+        pts = [
+            (p0[0] + nx * hw0, p0[1] + ny * hw0),
+            (p0[0] - nx * hw0, p0[1] - ny * hw0),
+            (p1[0] - nx * hw1, p1[1] - ny * hw1),
+            (p1[0] + nx * hw1, p1[1] + ny * hw1),
+        ]
+        pygame.draw.polygon(surf, color_rgba, pts)
+
+    def _draw_tapered_x_local(surf: pygame.Surface, size_px: int,
+                              outline_col: tuple[int, ...], fill_col: tuple[int, ...]) -> None:
+        a = size_px * 0.2
+        b = size_px * 0.8
+        thick_center = max(3.0, size_px * 0.22)
+        thin_tip = max(1.5, thick_center * 0.35)
+        _draw_tapered_line_local(surf, outline_col, (a, a), (b, b), thin_tip * 1.8, thick_center * 1.85)
+        _draw_tapered_line_local(surf, outline_col, (b, a), (a, b), thin_tip * 1.8, thick_center * 1.85)
+        _draw_tapered_line_local(surf, fill_col, (a, a), (b, b), thin_tip, thick_center)
+        _draw_tapered_line_local(surf, fill_col, (b, a), (a, b), thin_tip, thick_center)
+
+    def _cached_vuln_mark_surface(size: int, fill_rgb: tuple[int, int, int], alpha: int) -> pygame.Surface | None:
+        size_px = max(8, int(size))
+        alpha_q = _normalize_rgba((0, 0, 0, alpha), alpha_step=12 if IS_WEB else 1)[3]
+        if alpha_q <= 0:
+            return None
+        rgb = tuple(max(0, min(255, int(round(c / 8.0) * 8))) for c in fill_rgb[:3])
+        key = (size_px, rgb, alpha_q)
+        surf = _vuln_mark_surface_cache.get(key)
+        if surf is None:
+            surf = pygame.Surface((size_px, size_px), pygame.SRCALPHA)
+            _draw_tapered_x_local(surf, size_px, (0, 0, 0, alpha_q), (rgb[0], rgb[1], rgb[2], alpha_q))
+            try:
+                surf = surf.convert_alpha()
+            except Exception:
+                pass
+            _vuln_mark_surface_cache[key] = surf
+        return surf
 
     def _cached_ellipse_surface(width: int, height: int, color: tuple[int, ...], *, line_width: int = 0) -> pygame.Surface:
         w = max(1, int(width))
@@ -1043,10 +1213,9 @@ def install(game):
                     flash_alpha = int(200 * flash_ratio)
                     if flash_alpha > 0:
                         if enemy_sprite:
-                            blit_sprite_tint(screen, enemy_sprite, rect.topleft, (255, 255, 255, flash_alpha))
+                            _blit_cached_sprite_tint(screen, enemy_sprite, rect.topleft, (255, 255, 255, flash_alpha))
                         else:
-                            overlay = pygame.Surface((body_r * 2 + 4, body_r * 2 + 4), pygame.SRCALPHA)
-                            overlay.fill((255, 255, 255, flash_alpha))
+                            overlay = _cached_filled_surface((body_r * 2 + 4, body_r * 2 + 4), (255, 255, 255, flash_alpha))
                             screen.blit(overlay, overlay.get_rect(center=(cx, body_y)).topleft)
             else:
                 if player_sprite:
@@ -1063,10 +1232,9 @@ def install(game):
                     flash_alpha = int(200 * flash_ratio)
                     if flash_alpha > 0:
                         if player_sprite:
-                            blit_sprite_tint(screen, player_sprite, rect.topleft, (255, 255, 255, flash_alpha))
+                            _blit_cached_sprite_tint(screen, player_sprite, rect.topleft, (255, 255, 255, flash_alpha))
                         else:
-                            overlay = pygame.Surface((body_r * 2 + 4, body_r * 2 + 4), pygame.SRCALPHA)
-                            overlay.fill((255, 255, 255, flash_alpha))
+                            overlay = _cached_filled_surface((body_r * 2 + 4, body_r * 2 + 4), (255, 255, 255, flash_alpha))
                             screen.blit(overlay, overlay.get_rect(center=(cx, body_y)).topleft)
         _render_counter(profiler, "r_actor_ms", segment_started)
 
@@ -1458,6 +1626,34 @@ def install(game):
         COL_PLAYER_BULLET = (199, 68, 12) if hell else (120, 204, 121)
         COL_ENEMY_SHOT = (255, 80, 80) if hell else (255, 120, 50)
         segment_started = time.perf_counter()
+        ticks_ms = pygame.time.get_ticks()
+        shield_pulse_t = ticks_ms * 0.006
+        comet_shake_t = ticks_ms * 0.02
+        dot_orbit_t = ticks_ms * 0.003
+        spike_icon_t = ticks_ms * 0.01
+        hit_blink_on = ((ticks_ms // 80) % 2 == 0)
+        runtime = _runtime()
+        mark_pulse_time = float(runtime.get("mark_pulse_time", 0.0) or 0.0)
+        paint_lookup_cache: dict[tuple[int, int, int], float] = {}
+
+        def _cached_paint_intensity_at_world(x_px: float, y_px: float, owner: int = 2) -> float:
+            gx = int(float(x_px) // CELL_SIZE)
+            gy = int((float(y_px) - INFO_BAR_HEIGHT) // CELL_SIZE)
+            key = (gx, gy, int(owner))
+            cached = paint_lookup_cache.get(key)
+            if cached is not None:
+                return cached
+            value = 0.0
+            if 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE:
+                try:
+                    tile = game_state.paint_grid[gy][gx]
+                    if getattr(tile, "paint_owner", 0) == int(owner):
+                        value = float(getattr(tile, "paint_intensity", 0.0))
+                except Exception:
+                    value = 0.0
+            paint_lookup_cache[key] = value
+            return value
+
         for kind, _, data in drawables:
             if kind == "wall":
                 gx, gy, col = data["gx"], data["gy"], data["color"]
@@ -1586,7 +1782,7 @@ def install(game):
                 shake = float(getattr(z, "_comet_shake", 0.0))
                 if shake > 0.0:
                     amp = min(6.0, 10.0 * shake)
-                    t = pygame.time.get_ticks() * 0.02 + z.rect.x * 0.03 + z.rect.y * 0.01
+                    t = comet_shake_t + z.rect.x * 0.03 + z.rect.y * 0.01
                     cx += math.sin(t) * amp
                     cy += math.cos(t * 1.4) * amp * 0.6
                 cx = int(round(cx))
@@ -1634,12 +1830,11 @@ def install(game):
                     flash_ratio = min(1.0, flash * 2.8)
                     flash_alpha = int(200 * flash_ratio)
                     if flash_alpha > 0:
-                        blit_sprite_tint(screen, enemy_sprite, sprite_rect.topleft, (255, 255, 255, flash_alpha))
+                        _blit_cached_sprite_tint(screen, enemy_sprite, sprite_rect.topleft, (255, 255, 255, flash_alpha))
                 if getattr(z, "shield_hp", 0) > 0:
-                    t = pygame.time.get_ticks() * 0.006
-                    a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
+                    a = 120 + int(80 * (0.5 + 0.5 * math.sin(shield_pulse_t)))
                     if enemy_sprite:
-                        draw_sprite_outline(
+                        _blit_cached_sprite_outline(
                             screen,
                             enemy_sprite,
                             sprite_rect.topleft,
@@ -1659,55 +1854,52 @@ def install(game):
                         pulse = 1.0
                     glow_alpha = int(120 * dot_ratio * pulse)
                     fill_alpha = int(55 * dot_ratio * pulse)
-                    glow = pygame.Surface((glow_w, glow_h), pygame.SRCALPHA)
-                    pygame.draw.ellipse(
-                        glow,
+                    glow_center = (cx, body.centery - 4)
+                    _blit_cached_ellipse(
+                        screen,
+                        glow_center,
+                        glow_w,
+                        glow_h,
                         (DOT_ROUNDS_GLOW_COLOR[0], DOT_ROUNDS_GLOW_COLOR[1], DOT_ROUNDS_GLOW_COLOR[2], fill_alpha),
-                        glow.get_rect(),
                     )
-                    pygame.draw.ellipse(
-                        glow,
+                    _blit_cached_ellipse(
+                        screen,
+                        glow_center,
+                        glow_w,
+                        glow_h,
                         (DOT_ROUNDS_GLOW_COLOR[0], DOT_ROUNDS_GLOW_COLOR[1], DOT_ROUNDS_GLOW_COLOR[2], glow_alpha),
-                        glow.get_rect(),
-                        width=2,
+                        line_width=2,
                     )
-                    glow_rect = glow.get_rect(center=(cx, body.centery - 4))
-                    screen.blit(glow, glow_rect)
                     orb_count = 0
                     if dot_count > 0:
                         orb_count = 2 if dot_count < 2 else 3
                     if orb_count > 0:
-                        orb_surf = pygame.Surface((glow_w, glow_h), pygame.SRCALPHA)
                         orb_alpha = int(190 * dot_ratio * pulse)
-                        ocx, ocy = glow_w // 2, glow_h // 2
                         orbit_r = max(6, int(draw_size * 0.45))
-                        t = pygame.time.get_ticks() * 0.003
                         for i in range(orb_count):
-                            ang = t + i * math.tau / max(1, orb_count)
+                            ang = dot_orbit_t + i * math.tau / max(1, orb_count)
                             ox = int(math.cos(ang) * orbit_r)
                             oy = int(math.sin(ang) * orbit_r * 0.6)
-                            pygame.draw.circle(
-                                orb_surf, (DOT_ROUNDS_GLOW_COLOR[0], DOT_ROUNDS_GLOW_COLOR[1], DOT_ROUNDS_GLOW_COLOR[2], orb_alpha),
-                                (ocx + ox, ocy + oy), 2,
+                            _blit_cached_ellipse(
+                                screen,
+                                (glow_center[0] + ox, glow_center[1] + oy),
+                                4,
+                                4,
+                                (DOT_ROUNDS_GLOW_COLOR[0], DOT_ROUNDS_GLOW_COLOR[1], DOT_ROUNDS_GLOW_COLOR[2], orb_alpha),
                             )
-                            pygame.draw.circle(
-                                orb_surf, (255, 255, 255, max(40, orb_alpha - 90)),
-                                (ocx + ox, ocy + oy), 1,
+                            _blit_cached_ellipse(
+                                screen,
+                                (glow_center[0] + ox, glow_center[1] + oy),
+                                2,
+                                2,
+                                (255, 255, 255, max(40, orb_alpha - 90)),
                             )
-                        screen.blit(orb_surf, glow_rect.topleft)
                 spike_slow_t = float(getattr(z, "_ground_spike_slow_t", 0.0))
                 if spike_slow_t > 0.0:
                     ratio = max(0.0, min(1.0, spike_slow_t / max(0.001, GROUND_SPIKES_SLOW_DURATION)))
                     alpha = int(200 * ratio)
-                    bob = int(2 * math.sin(pygame.time.get_ticks() * 0.01 + z.rect.x * 0.03))
-                    icon = pygame.Surface((12, 10), pygame.SRCALPHA)
-                    arrow = [(6, 8), (2, 2), (10, 2)]
-                    pygame.draw.polygon(
-                        icon,
-                        (GROUND_SPIKES_COLOR[0], GROUND_SPIKES_COLOR[1], GROUND_SPIKES_COLOR[2], alpha),
-                        arrow,
-                    )
-                    pygame.draw.polygon(icon, (255, 255, 255, max(60, alpha - 80)), arrow, 1)
+                    bob = int(2 * math.sin(spike_icon_t + z.rect.x * 0.03))
+                    icon = _cached_ground_spike_icon(alpha)
                     screen.blit(icon, icon.get_rect(center=(cx, body.top - 12 + bob)))
                 if getattr(z, "type", "") == "bandit":
                     bar_w = draw_size
@@ -1736,27 +1928,25 @@ def install(game):
                         min(1.0, (float(getattr(z, "_paint_contact_mult", 1.0)) - 1.0) / paint_bonus),
                     )
                 elif hasattr(game_state, "paint_intensity_at_world"):
-                    paint_intensity = game_state.paint_intensity_at_world(z.rect.centerx, z.rect.centery, owner=2)
+                    paint_intensity = _cached_paint_intensity_at_world(z.rect.centerx, z.rect.centery, owner=2)
                 if paint_intensity > 0.0:
                     tint_alpha = int(70 * paint_intensity)
                     if tint_alpha > 0:
                         tint_h = max(4, int(draw_size * 0.38))
-                        tint = pygame.Surface((draw_size, tint_h), pygame.SRCALPHA)
-                        tint.fill((20, 80, 50, tint_alpha))
+                        tint = _cached_filled_surface((draw_size, tint_h), (20, 80, 50, tint_alpha))
                         screen.blit(tint, (body.left, body.bottom - tint_h))
                 flash_t = float(getattr(z, "_hit_flash", 0.0))
                 if flash_t > 0.0 and HIT_FLASH_DURATION > 0:
                     flash_ratio = min(1.0, flash_t / HIT_FLASH_DURATION)
                     if enemy_sprite:
-                        blit_sprite_tint(
+                        _blit_cached_sprite_tint(
                             screen,
                             enemy_sprite,
                             sprite_rect.topleft,
                             (255, 255, 255, int(200 * flash_ratio)),
                         )
                     else:
-                        overlay = pygame.Surface(body.size, pygame.SRCALPHA)
-                        overlay.fill((255, 255, 255, int(200 * flash_ratio)))
+                        overlay = _cached_filled_surface(body.size, (255, 255, 255, int(200 * flash_ratio)))
                         screen.blit(overlay, body.topleft)
                 mark_t = float(getattr(z, "_vuln_mark_t", 0.0))
                 if mark_t > 0.0:
@@ -1765,7 +1955,7 @@ def install(game):
                     lvl_vis = max(1, min(lvl_vis, len(VULN_MARK_DURATIONS)))
                     dur_vis = VULN_MARK_DURATIONS[lvl_vis - 1]
                     rem_ratio = max(0.0, min(1.0, mark_t / max(0.001, dur_vis)))
-                    phase = (_runtime().get("mark_pulse_time", 0.0) % MARK_PULSE_PERIOD) / MARK_PULSE_PERIOD
+                    phase = (mark_pulse_time % MARK_PULSE_PERIOD) / MARK_PULSE_PERIOD
                     pulse = 0.5 + 0.5 * math.sin(phase * math.tau)
                     scale = MARK_PULSE_MIN_SCALE + (MARK_PULSE_MAX_SCALE - MARK_PULSE_MIN_SCALE) * pulse
                     base_size = max(18, int(draw_size * 0.9))
@@ -1777,46 +1967,18 @@ def install(game):
                     alpha = int(min(255, alpha + int(80 * min(1.0, flash))))
                     mark_rect = pygame.Rect(0, 0, size, size)
                     mark_rect.midbottom = (cx, body.top - 6)
-
-                    def draw_tapered_line(surf, color_rgba, p0, p1, w0, w1):
-                        dx, dy = (p1[0] - p0[0], p1[1] - p0[1])
-                        L = (dx * dx + dy * dy) ** 0.5 or 1.0
-                        nx, ny = -dy / L, dx / L
-                        hw0 = w0 * 0.5
-                        hw1 = w1 * 0.5
-                        pts = [
-                            (p0[0] + nx * hw0, p0[1] + ny * hw0),
-                            (p0[0] - nx * hw0, p0[1] - ny * hw0),
-                            (p1[0] - nx * hw1, p1[1] - ny * hw1),
-                            (p1[0] + nx * hw1, p1[1] + ny * hw1),
-                        ]
-                        pygame.draw.polygon(surf, color_rgba, pts)
-
-                    def draw_tapered_x(surf, size_px, outline_col, fill_col):
-                        a = size_px * 0.2
-                        b = size_px * 0.8
-                        thick_center = max(3.0, size_px * 0.22)
-                        thin_tip = max(1.5, thick_center * 0.35)
-                        draw_tapered_line(surf, outline_col, (a, a), (b, b), thin_tip * 1.8, thick_center * 1.85)
-                        draw_tapered_line(surf, outline_col, (b, a), (a, b), thin_tip * 1.8, thick_center * 1.85)
-                        draw_tapered_line(surf, fill_col, (a, a), (b, b), thin_tip, thick_center)
-                        draw_tapered_line(surf, fill_col, (b, a), (a, b), thin_tip, thick_center)
-
-                    red_col = (
+                    red_rgb = (
                         int(MARK_PULSE_DARK[0] + (MARK_PULSE_BRIGHT[0] - MARK_PULSE_DARK[0]) * pulse),
                         int(MARK_PULSE_DARK[1] + (MARK_PULSE_BRIGHT[1] - MARK_PULSE_DARK[1]) * pulse),
                         int(MARK_PULSE_DARK[2] + (MARK_PULSE_BRIGHT[2] - MARK_PULSE_DARK[2]) * pulse),
-                        max(0, min(255, alpha)),
                     )
-                    black_col = (0, 0, 0, max(0, min(255, alpha)))
-                    mark = pygame.Surface(mark_rect.size, pygame.SRCALPHA)
-                    draw_tapered_x(mark, size, black_col, red_col)
-                    screen.blit(mark, mark_rect)
+                    mark = _cached_vuln_mark_surface(size, red_rgb, alpha)
+                    if mark is not None:
+                        screen.blit(mark, mark_rect)
                 if getattr(z, "shield_hp", 0) > 0 and not enemy_sprite:
-                    t = pygame.time.get_ticks() * 0.006
-                    a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
+                    a = 120 + int(80 * (0.5 + 0.5 * math.sin(shield_pulse_t)))
                     shield_sprite = _rect_sprite(body.width, body.height)
-                    draw_sprite_outline(
+                    _blit_cached_sprite_outline(
                         screen,
                         shield_sprite,
                         body.topleft,
@@ -1834,7 +1996,7 @@ def install(game):
                         min(1.0, float(getattr(p, "_enemy_paint_slow", 0.0)) / slow_frac),
                     )
                 elif hasattr(game_state, "paint_intensity_at_world"):
-                    paint_intensity = game_state.paint_intensity_at_world(p.rect.centerx, p.rect.centery, owner=2)
+                    paint_intensity = _cached_paint_intensity_at_world(p.rect.centerx, p.rect.centery, owner=2)
                 if paint_intensity > 0.0:
                     aura_r = max(10, int(player_size * 0.6)) * (0.85 + 0.3 * paint_intensity)
                     aura_alpha = int(110 * paint_intensity)
@@ -1863,12 +2025,12 @@ def install(game):
                     allow_upscale=True,
                 )
                 sprite_rect = rect
-                hit_blink = (p.hit_cd > 0 and (pygame.time.get_ticks() // 80) % 2 == 0)
+                hit_blink = (p.hit_cd > 0 and hit_blink_on)
                 if player_sprite:
                     sprite_rect = player_sprite.get_rect(midbottom=rect.midbottom)
                     screen.blit(player_sprite, sprite_rect)
                     if hit_blink:
-                        blit_sprite_tint(screen, player_sprite, sprite_rect.topleft, (240, 80, 80, 120))
+                        _blit_cached_sprite_tint(screen, player_sprite, sprite_rect.topleft, (240, 80, 80, 120))
                 else:
                     col = (240, 80, 80) if hit_blink else (0, 255, 0)
                     pygame.draw.rect(screen, col, rect)
@@ -1876,22 +2038,20 @@ def install(game):
                 if flash_t > 0.0 and HIT_FLASH_DURATION > 0:
                     flash_ratio = min(1.0, flash_t / HIT_FLASH_DURATION)
                     if player_sprite:
-                        blit_sprite_tint(
+                        _blit_cached_sprite_tint(
                             screen,
                             player_sprite,
                             sprite_rect.topleft,
                             (255, 255, 255, int(200 * flash_ratio)),
                         )
                     else:
-                        overlay = pygame.Surface(sprite_rect.size, pygame.SRCALPHA)
-                        overlay.fill((255, 255, 255, int(200 * flash_ratio)))
+                        overlay = _cached_filled_surface(sprite_rect.size, (255, 255, 255, int(200 * flash_ratio)))
                         screen.blit(overlay, sprite_rect.topleft)
                 carapace_hp = int(getattr(p, "carapace_hp", 0))
                 total_shield = int(getattr(p, "shield_hp", 0)) + carapace_hp
                 if total_shield > 0 and player_sprite:
-                    t = pygame.time.get_ticks() * 0.006
-                    a = 120 + int(80 * (0.5 + 0.5 * math.sin(t)))
-                    draw_sprite_outline(
+                    a = 120 + int(80 * (0.5 + 0.5 * math.sin(shield_pulse_t)))
+                    _blit_cached_sprite_outline(
                         screen,
                         player_sprite,
                         sprite_rect.topleft,
@@ -1900,33 +2060,29 @@ def install(game):
                     )
                 if carapace_hp > 0:
                     glow_rect = rect.inflate(18, 18)
-                    glow = pygame.Surface(glow_rect.size, pygame.SRCALPHA)
                     alpha = min(200, 80 + carapace_hp * 3 // 2)
-                    pygame.draw.ellipse(glow, (70, 200, 255, max(60, alpha - 40)), glow.get_rect(), width=4)
                     fill_alpha = max(30, alpha - 100)
-                    pygame.draw.ellipse(glow, (40, 140, 255, fill_alpha), glow.get_rect())
-                    screen.blit(glow, glow_rect)
+                    _blit_cached_ellipse(screen, glow_rect.center, glow_rect.width, glow_rect.height, (40, 140, 255, fill_alpha))
+                    _blit_cached_ellipse(screen, glow_rect.center, glow_rect.width, glow_rect.height, (70, 200, 255, max(60, alpha - 40)), line_width=4)
                 plating_hp = int(getattr(p, "bone_plating_hp", 0))
                 if plating_hp > 0:
                     armor_rect = rect.inflate(16, 10)
-                    armor = pygame.Surface(armor_rect.size, pygame.SRCALPHA)
                     glow_ratio = max(0.43, min(1.0, float(getattr(p, "_bone_plating_glow", 0.0))))
                     edge_alpha = min(220, 80 + plating_hp // 2)
                     inner_alpha = int((BONE_PLATING_GLOW[3] if len(BONE_PLATING_GLOW) > 3 else 140) * glow_ratio)
-                    pygame.draw.rect(
-                        armor,
-                        (BONE_PLATING_COLOR[0], BONE_PLATING_COLOR[1], BONE_PLATING_COLOR[2], edge_alpha),
-                        armor.get_rect(),
-                        width=2,
-                        border_radius=10
-                    )
-                    pygame.draw.rect(
-                        armor,
+                    armor_fill = _cached_rounded_rect_surface(
+                        armor_rect.size,
                         (BONE_PLATING_GLOW[0], BONE_PLATING_GLOW[1], BONE_PLATING_GLOW[2], inner_alpha),
-                        armor.get_rect(),
-                        border_radius=10
+                        border_radius=10,
                     )
-                    screen.blit(armor, armor_rect)
+                    armor_outline = _cached_rounded_rect_surface(
+                        armor_rect.size,
+                        (BONE_PLATING_COLOR[0], BONE_PLATING_COLOR[1], BONE_PLATING_COLOR[2], edge_alpha),
+                        border_radius=10,
+                        line_width=2,
+                    )
+                    screen.blit(armor_fill, armor_rect)
+                    screen.blit(armor_outline, armor_rect)
                     if int(getattr(p, "bone_plating_level", 0)) >= BONE_PLATING_MAX_LEVEL:
                         cx, cy = rect.centerx, rect.top - 6
                         sparkle = [
