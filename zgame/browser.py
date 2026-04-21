@@ -150,6 +150,9 @@ WEB_DIAG_CAPTURE_MAX_FRAMES = max(300, _web_query_int("diagframes", default=4800
 WEB_DIAG_EXPORT_INTERVAL = max(15, _web_query_int("diagexport", default=45)) if IS_WEB else 0
 WEB_DIAG_TAG = _web_query_value("tag", "diagtag", default="")
 WEB_PAINT_RENDER_REFRESH_MS = 50 if IS_WEB else 0
+WEB_PAINT_DYNAMIC_REFRESH_MS = 66 if IS_WEB else 0
+WEB_PAINT_STATIC_REFRESH_MS = 140 if IS_WEB else 0
+WEB_PAINT_CAMERA_QUANT = 16 if IS_WEB else 1
 WEB_LITE_RENDER_PICKUP_CAP = 12
 WEB_LITE_RENDER_TURRET_CAP = 8
 WEB_LITE_RENDER_ENEMY_CAP = 10
@@ -412,6 +415,9 @@ def apply_web_quality_profile(game, profile_name: str | None, *, reason: str = "
         "WEB_NATIVE_BGM": bool(WEB_NATIVE_BGM),
         "WEB_NATIVE_FX_AUDIO": bool(WEB_NATIVE_FX_AUDIO),
         "WEB_PAINT_RENDER_REFRESH_MS": int(WEB_PAINT_RENDER_REFRESH_MS),
+        "WEB_PAINT_DYNAMIC_REFRESH_MS": int(WEB_PAINT_DYNAMIC_REFRESH_MS),
+        "WEB_PAINT_STATIC_REFRESH_MS": int(WEB_PAINT_STATIC_REFRESH_MS),
+        "WEB_PAINT_CAMERA_QUANT": int(WEB_PAINT_CAMERA_QUANT),
         "WEB_WINDOW_SIZE": (int(payload["max_render_width"]), int(payload["max_render_height"])),
         "WEB_TARGET_FPS": int(payload["target_fps"]),
         "WEB_FLOW_REFRESH_INTERVAL": float(payload["flow_refresh_interval"]),
