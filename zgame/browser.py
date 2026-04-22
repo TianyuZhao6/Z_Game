@@ -691,7 +691,7 @@ def report_web_runtime_error(context: str, err) -> None:
         msg = str(err or "").strip().replace("\r", " ").replace("\n", " | ")
         full = f"{context}: {msg}".strip(": ").strip()
         setattr(window, "__zgame_last_error", full[:240])
-        setattr(window, "__zgame_py_error", full[:512])
+        setattr(window, "__zgame_py_error", full[:4096])
         setattr(window, "__zgame_py_dead", True)
     except Exception:
         pass
