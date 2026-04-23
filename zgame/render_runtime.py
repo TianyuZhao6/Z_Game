@@ -632,6 +632,40 @@ def install(game):
             area=pygame.Rect(int(src_x), int(src_y), int(src_w), int(src_h)),
         )
 
+    def _blit_web_wall_layer_slice(
+        screen: pygame.Surface,
+        game_state,
+        camx: float,
+        camy: float,
+        *,
+        wall_h: int,
+        clip_top_px: int,
+        clip_bottom_px: int,
+    ) -> None:
+        cache = _get_web_wall_layer_cache(game_state, wall_h=wall_h)
+        surface = cache.get("surface")
+        if not isinstance(surface, pygame.Surface):
+            return
+        view_w, view_h = screen.get_size()
+        clip_top = max(0, min(int(view_h), int(clip_top_px)))
+        clip_bottom = max(clip_top, min(int(view_h), int(clip_bottom_px)))
+        if clip_bottom <= clip_top:
+            return
+        dest_x = int(cache.get("x0", 0) - camx)
+        dest_y = int(cache.get("y0", 0) - camy)
+        slice_rect = pygame.Rect(0, clip_top, int(view_w), int(clip_bottom - clip_top))
+        wall_rect = pygame.Rect(dest_x, dest_y, surface.get_width(), surface.get_height())
+        overlap = slice_rect.clip(wall_rect)
+        if overlap.width <= 0 or overlap.height <= 0:
+            return
+        src = pygame.Rect(
+            int(overlap.x - dest_x),
+            int(overlap.y - dest_y),
+            int(overlap.width),
+            int(overlap.height),
+        )
+        screen.blit(surface, overlap.topleft, area=src)
+
     def _get_web_static_background_cache(game_state, *, wall_h: int) -> dict[str, object]:
         floor_cache = _get_iso_floor_cache()
         wall_cache = _get_web_wall_layer_cache(game_state, wall_h=wall_h)
@@ -724,6 +758,21 @@ def install(game):
         value = runtime.get(f"_{runtime_name}_ms", None)
         if isinstance(value, (int, float)):
             profiler.counter(counter_name, round(float(value), 3))
+
+    def _emit_actor_subcounters(profiler, samples: dict[str, float]) -> None:
+        if profiler is None:
+            return
+        name_map = {
+            "wall": "r_wall_actor_ms",
+            "pickup": "r_pickup_actor_ms",
+            "turret": "r_turret_actor_ms",
+            "projectile": "r_projectile_actor_ms",
+            "enemy": "r_enemy_actor_ms",
+            "player": "r_player_actor_ms",
+        }
+        for key, counter_name in name_map.items():
+            value = float(samples.get(key, 0.0) or 0.0)
+            profiler.counter(counter_name, round(max(0.0, value), 3))
 
     def _transition_ready_for_short_circuit() -> bool:
         if not getattr(game, "IS_WEB", False):
@@ -990,6 +1039,7 @@ def install(game):
                                  copy_frame: bool = True) -> pygame.Surface | None:
         obstacles = obstacles if obstacles is not None else getattr(game_state, "obstacles", {})
         screen, display_surface, prev_view = _begin_web_gameplay_render(screen)
+        view_w, view_h = screen.get_size()
         profiler = _web_profiler()
         if _transition_ready_for_short_circuit():
             transition_started = time.perf_counter()
@@ -1056,8 +1106,11 @@ def install(game):
             dy = float(getattr(s, "base_y", 0.0)) - player_cy
             visible_spoils.append((dx * dx + dy * dy, sx, sy, s))
         _cap_visible_entries(visible_spoils, pickup_cap, key=lambda item: item[0])
+        pickup_draw_ms = 0.0
         for _, sx, sy, s in visible_spoils:
+            draw_started = time.perf_counter()
             pygame.draw.circle(screen, (255, 215, 80), (int(sx), int(sy)), int(s.r))
+            pickup_draw_ms += (time.perf_counter() - draw_started) * 1000.0
 
         heal_iter = (
             game_state.query_heals_near_rect(view_world_rect, pad_px=CELL_SIZE)
@@ -1076,7 +1129,9 @@ def install(game):
             visible_heals.append((dx * dx + dy * dy, sx, sy, h))
         _cap_visible_entries(visible_heals, pickup_cap, key=lambda item: item[0])
         for _, sx, sy, h in visible_heals:
+            draw_started = time.perf_counter()
             pygame.draw.circle(screen, (225, 225, 225), (int(sx), int(sy)), int(h.r))
+            pickup_draw_ms += (time.perf_counter() - draw_started) * 1000.0
 
         items = getattr(game_state, "items", ())
         visible_items = []
@@ -1091,8 +1146,10 @@ def install(game):
             visible_items.append((dx * dx + dy * dy, sx, sy, it))
         _cap_visible_entries(visible_items, pickup_cap, key=lambda item: item[0])
         for _, sx, sy, it in visible_items:
+            draw_started = time.perf_counter()
             col = (255, 224, 0) if getattr(it, "is_main", False) else (240, 210, 90)
             pygame.draw.circle(screen, col, (int(sx), int(sy)), int(it.radius))
+            pickup_draw_ms += (time.perf_counter() - draw_started) * 1000.0
 
         player_size = int(CELL_SIZE * 0.6)
         player_sprite = _load_shop_sprite(
@@ -1147,7 +1204,9 @@ def install(game):
         actors.sort(key=lambda item: item[0])
 
         segment_started = time.perf_counter()
+        actor_subsamples = {"wall": 0.0, "pickup": pickup_draw_ms, "turret": 0.0, "projectile": 0.0, "enemy": 0.0, "player": 0.0}
         for _, kind, obj, sx, sy in actors:
+            item_started = time.perf_counter()
             cx = int(sx)
             cy = int(sy)
             if kind == "turret":
@@ -1184,6 +1243,7 @@ def install(game):
                         pygame.draw.circle(screen, (80, 180, 255), (cx, cy - 6), max(7, CELL_SIZE // 5))
                 else:
                     pygame.draw.circle(screen, (80, 180, 255), (cx, cy - 6), max(7, CELL_SIZE // 5))
+                actor_subsamples["turret"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "enemy":
                 draw_size = max(int(CELL_SIZE * 0.6), int(getattr(obj, "rect", pygame.Rect(0, 0, CELL_SIZE, CELL_SIZE)).w))
                 if getattr(obj, "is_boss", False) or getattr(obj, "type", "") == "ravager":
@@ -1217,6 +1277,7 @@ def install(game):
                         else:
                             overlay = _cached_filled_surface((body_r * 2 + 4, body_r * 2 + 4), (255, 255, 255, flash_alpha))
                             screen.blit(overlay, overlay.get_rect(center=(cx, body_y)).topleft)
+                actor_subsamples["enemy"] += (time.perf_counter() - item_started) * 1000.0
             else:
                 if player_sprite:
                     rect = player_sprite.get_rect(midbottom=(cx, cy))
@@ -1236,7 +1297,9 @@ def install(game):
                         else:
                             overlay = _cached_filled_surface((body_r * 2 + 4, body_r * 2 + 4), (255, 255, 255, flash_alpha))
                             screen.blit(overlay, overlay.get_rect(center=(cx, body_y)).topleft)
+                actor_subsamples["player"] += (time.perf_counter() - item_started) * 1000.0
         _render_counter(profiler, "r_actor_ms", segment_started)
+        _emit_actor_subcounters(profiler, actor_subsamples)
 
         segment_started = time.perf_counter()
         visible_bullets = []
@@ -1251,8 +1314,10 @@ def install(game):
             visible_bullets.append((dx * dx + dy * dy, sx, sy, bullet))
         _cap_visible_entries(visible_bullets, bullet_cap, key=lambda item: item[0])
         for _, sx, sy, bullet in visible_bullets:
+            draw_started = time.perf_counter()
             col = (0, 255, 255) if getattr(bullet, "source", "player") == "turret" else (120, 204, 121)
             pygame.draw.circle(screen, col, (int(sx), int(sy)), max(2, int(getattr(bullet, "r", BULLET_RADIUS))))
+            actor_subsamples["projectile"] += (time.perf_counter() - draw_started) * 1000.0
 
         visible_enemy_shots = []
         for shot in (enemy_shots or ()):
@@ -1266,12 +1331,15 @@ def install(game):
             visible_enemy_shots.append((dx * dx + dy * dy, sx, sy, shot))
         _cap_visible_entries(visible_enemy_shots, enemy_shot_cap, key=lambda item: item[0])
         for _, sx, sy, shot in visible_enemy_shots:
+            draw_started = time.perf_counter()
             pygame.draw.circle(
                 screen,
                 getattr(shot, "color", (255, 120, 50)),
                 (int(sx), int(sy)),
                 max(2, int(getattr(shot, "r", BULLET_RADIUS))),
             )
+            actor_subsamples["projectile"] += (time.perf_counter() - draw_started) * 1000.0
+        _emit_actor_subcounters(profiler, actor_subsamples)
         _render_counter(profiler, "r_projectile_ms", segment_started)
 
         segment_started = time.perf_counter()
@@ -1320,6 +1388,7 @@ def install(game):
                 copy_frame=copy_frame,
             )
         screen, display_surface, prev_view = _begin_web_gameplay_render(screen)
+        view_w, view_h = screen.get_size()
         profiler = _web_profiler()
         if _transition_ready_for_short_circuit():
             transition_started = time.perf_counter()
@@ -1506,6 +1575,7 @@ def install(game):
         if _web_feature_enabled("WEB_ENABLE_ENEMY_PAINT") and hasattr(game_state, "draw_paint_iso"):
             game_state.draw_paint_iso(screen, camx, camy)
         _render_counter(profiler, "r_paint_ms", segment_started)
+        wall_h_current = ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0)
         drawables = []
         wall_drawables = []
         if IS_WEB:
@@ -1525,7 +1595,7 @@ def install(game):
                 if getattr(ob, "type", "") == "StationaryTurret":
                     continue
                 top_pts = iso_tile_points(gx, gy, camx, camy)
-                sort_y = top_pts[2][1] + (ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
+                sort_y = top_pts[2][1] + wall_h_current
                 drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": _wall_visual_color(ob)}))
         spoil_iter = (
             game_state.query_spoils_near_rect(view_world_rect, pad_px=CELL_SIZE)
@@ -1608,7 +1678,32 @@ def install(game):
                         "r": int(getattr(es, "r", BULLET_RADIUS))
                     }))
         drawables.sort(key=lambda x: x[1])
+        web_wall_static_top: tuple[int, int] | None = None
+        web_wall_static_bottom: tuple[int, int] | None = None
         if wall_drawables:
+            if IS_WEB:
+                core_sorts = [
+                    int(sy)
+                    for kind, sy, _ in drawables
+                    if kind in ("enemy", "player", "turret", "item")
+                ]
+                if not core_sorts:
+                    core_sorts = [int(sy) for _, sy, _ in drawables]
+                if core_sorts:
+                    wall_band_margin = max(144, int(CELL_SIZE * 3), int(wall_h_current + ISO_CELL_H * 3))
+                    band_top = max(int(INFO_BAR_HEIGHT), int(min(core_sorts)) - wall_band_margin)
+                    band_bottom = min(int(view_h), int(max(core_sorts)) + wall_band_margin)
+                else:
+                    band_top = int(INFO_BAR_HEIGHT)
+                    band_bottom = int(view_h)
+                wall_drawables = [
+                    item for item in wall_drawables
+                    if band_top <= int(item[1]) <= band_bottom
+                ]
+                if band_top > int(INFO_BAR_HEIGHT):
+                    web_wall_static_top = (int(INFO_BAR_HEIGHT), band_top)
+                if band_bottom < int(view_h):
+                    web_wall_static_bottom = (band_bottom, int(view_h))
             merged = []
             wall_idx = 0
             dyn_idx = 0
@@ -1635,6 +1730,20 @@ def install(game):
         runtime = _runtime()
         mark_pulse_time = float(runtime.get("mark_pulse_time", 0.0) or 0.0)
         paint_lookup_cache: dict[tuple[int, int, int], float] = {}
+        actor_subsamples = {"wall": 0.0, "pickup": 0.0, "turret": 0.0, "projectile": 0.0, "enemy": 0.0, "player": 0.0}
+
+        if IS_WEB and web_wall_static_top is not None:
+            wall_started = time.perf_counter()
+            _blit_web_wall_layer_slice(
+                screen,
+                game_state,
+                camx,
+                camy,
+                wall_h=wall_h_current,
+                clip_top_px=web_wall_static_top[0],
+                clip_bottom_px=web_wall_static_top[1],
+            )
+            actor_subsamples["wall"] += (time.perf_counter() - wall_started) * 1000.0
 
         def _cached_paint_intensity_at_world(x_px: float, y_px: float, owner: int = 2) -> float:
             gx = int(float(x_px) // CELL_SIZE)
@@ -1655,26 +1764,31 @@ def install(game):
             return value
 
         for kind, _, data in drawables:
+            item_started = time.perf_counter()
             if kind == "wall":
                 gx, gy, col = data["gx"], data["gy"], data["color"]
                 _blit_cached_iso_wall(screen, gx, gy, col, camx, camy)
+                actor_subsamples["wall"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "coin":
                 cx, cy, r = data["cx"], data["cy"], data["r"]
                 _blit_cached_ellipse(screen, (cx, cy + 6), r * 4, r * 2, (0, 0, 0, ISO_SHADOW_ALPHA))
                 pygame.draw.circle(screen, (255, 215, 80), (cx, cy), r)
                 pygame.draw.circle(screen, (255, 245, 200), (cx, cy), r, 1)
+                actor_subsamples["pickup"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "heal":
                 cx, cy, r = data["cx"], data["cy"], data["r"]
                 _blit_cached_ellipse(screen, (cx, cy + 6), r * 4, r * 2, (0, 0, 0, ISO_SHADOW_ALPHA))
                 pygame.draw.circle(screen, (225, 225, 225), (cx, cy), r)
                 pygame.draw.rect(screen, (220, 60, 60), pygame.Rect(cx - 2, cy - r + 3, 4, r * 2 - 6))
                 pygame.draw.rect(screen, (200, 40, 40), pygame.Rect(cx - r + 3, cy - 2, r * 2 - 6, 4))
+                actor_subsamples["pickup"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "item":
                 cx, cy, r = data["cx"], data["cy"], data["r"]
                 _blit_cached_ellipse(screen, (cx, cy + 6), r * 4, r * 2, (0, 0, 0, ISO_SHADOW_ALPHA))
                 _blit_cached_ellipse(screen, (cx, cy + 6), r * 4, r * 2, (255, 240, 120, 90))
                 pygame.draw.circle(screen, (255, 224, 0), (cx, cy), r)
                 pygame.draw.circle(screen, (255, 255, 180), (cx, cy), r, 2)
+                actor_subsamples["pickup"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "turret":
                 cx, cy = int(data["cx"]), int(data["cy"])
                 obj = data.get("obj")
@@ -1728,20 +1842,24 @@ def install(game):
                     base_r = 10
                     pygame.draw.circle(screen, (80, 180, 255), (cx, cy), base_r)
                     pygame.draw.circle(screen, (250, 250, 255), (cx, cy), base_r - 4, 2)
+                actor_subsamples["turret"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "bullet":
                 cx, cy = data["cx"], data["cy"]
                 rad = int(data.get("r", BULLET_RADIUS))
                 src = data.get("src", "player")
                 color = (0, 255, 255) if src == "turret" else COL_PLAYER_BULLET
                 pygame.draw.circle(screen, color, (cx, cy), rad)
+                actor_subsamples["projectile"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "eshot":
                 rad = int(data.get("r", BULLET_RADIUS))
                 pygame.draw.circle(screen, COL_ENEMY_SHOT, (data["cx"], data["cy"]), rad)
+                actor_subsamples["projectile"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "mistshot":
                 es = data.get("obj")
                 rad = int(getattr(es, "r", BULLET_RADIUS))
                 col = getattr(es, "color", HAZARD_STYLES["mist"]["ring"])
                 pygame.draw.circle(screen, col, (data["cx"], data["cy"]), rad)
+                actor_subsamples["projectile"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "enemy":
                 z, cx, cy = data["z"], float(data["cx"]), float(data["cy"])
                 if getattr(z, "type", "") == "bandit" and getattr(z, "radar_tagged", False):
@@ -1985,6 +2103,7 @@ def install(game):
                         (90, 180, 255, a),
                         width=3,
                     )
+                actor_subsamples["enemy"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "player":
                 p, cx, cy = data["p"], data["cx"], data["cy"]
                 player_size = int(CELL_SIZE * 0.6)
@@ -2092,7 +2211,21 @@ def install(game):
                             (cx - 3, cy)
                         ]
                         pygame.draw.polygon(screen, BONE_PLATING_COLOR, sparkle, width=1)
+                actor_subsamples["player"] += (time.perf_counter() - item_started) * 1000.0
+        if IS_WEB and web_wall_static_bottom is not None:
+            wall_started = time.perf_counter()
+            _blit_web_wall_layer_slice(
+                screen,
+                game_state,
+                camx,
+                camy,
+                wall_h=wall_h_current,
+                clip_top_px=web_wall_static_bottom[0],
+                clip_bottom_px=web_wall_static_bottom[1],
+            )
+            actor_subsamples["wall"] += (time.perf_counter() - wall_started) * 1000.0
         _render_counter(profiler, "r_actor_ms", segment_started)
+        _emit_actor_subcounters(profiler, actor_subsamples)
         segment_started = time.perf_counter()
         if _web_feature_enabled("WEB_ENABLE_DAMAGE_TEXTS"):
             visible_dmg_texts = []
