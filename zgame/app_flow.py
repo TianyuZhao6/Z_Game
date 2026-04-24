@@ -512,6 +512,20 @@ def _web_simple_enemy_move(game, enemy, player, game_state, obstacles, *, dt: fl
     # without pulling in the full desktop move/attack stack.
 
 
+def _use_web_simple_enemy_move(game, enemy, player) -> bool:
+    if not getattr(game, "IS_WEB", False):
+        return False
+    if getattr(enemy, "is_boss", False) or getattr(enemy, "type", "") == "bandit":
+        return False
+    radius_cells = max(0.0, float(getattr(game, "WEB_SIMPLE_ENEMY_FULL_MOVE_RADIUS_CELLS", 0.0) or 0.0))
+    if radius_cells <= 0.0:
+        return True
+    radius_px = radius_cells * float(game.CELL_SIZE)
+    dx = float(enemy.rect.centerx - player.rect.centerx)
+    dy = float(enemy.rect.centery - player.rect.centery)
+    return (dx * dx + dy * dy) > (radius_px * radius_px)
+
+
 async def _yield_web_boot_frame(game, screen, runtime=None, *, fill_black: bool = True, count: int = 1) -> None:
     if not getattr(game, "IS_WEB", False):
         return
@@ -986,18 +1000,11 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if game.is_action_event(event, 'blast') and getattr(player, 'targeting_skill', None) == 'blast':
-                player.targeting_skill = None
-                player.skill_target_origin = None
-                continue
             if event.type == pygame.KEYDOWN and event.key == pygame.K_t:
                 game.activate_ultimate_mode(player, game_state)
-            if game.is_action_event(event, 'teleport') and getattr(player, 'targeting_skill', None) == 'teleport':
-                player.targeting_skill = None
-                player.skill_target_origin = None
-                continue
             if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
+                player.skill_target_origin = None
                 continue
             if is_escape_event(event):
                 bg = last_frame or game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=game_state.obstacles)
@@ -1025,15 +1032,17 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                     return ('exit', config.get('reward', None), bg)
             if game.is_action_event(event, 'blast'):
                 if getattr(player, 'blast_cd', 0.0) <= 0.0:
-                    player.targeting_skill = 'blast'
-                    player.skill_target_origin = None
+                    if getattr(player, 'targeting_skill', None) != 'blast':
+                        player.targeting_skill = 'blast'
+                        player.skill_target_origin = None
                     game._update_skill_target(player, game_state)
                 else:
                     player.skill_flash['blast'] = 0.35
             if game.is_action_event(event, 'teleport'):
                 if getattr(player, 'teleport_cd', 0.0) <= 0.0:
-                    player.targeting_skill = 'teleport'
-                    player.skill_target_origin = None
+                    if getattr(player, 'targeting_skill', None) != 'teleport':
+                        player.targeting_skill = 'teleport'
+                        player.skill_target_origin = None
                     game._update_skill_target(player, game_state)
                 else:
                     player.skill_flash['teleport'] = 0.35
@@ -1054,6 +1063,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                         player.skill_flash['teleport'] = 0.35
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
+                player.skill_target_origin = None
             if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
         _profile_mark(profiler, "update")
@@ -1190,11 +1200,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         obstacle_values = tuple(game_state.obstacles.values())
         if not bool(getattr(game, "WEB_SKIP_ENEMY_MOVE", False)):
             for enemy in list(enemies):
-                if (
-                    game.IS_WEB
-                    and not getattr(enemy, "is_boss", False)
-                    and getattr(enemy, "type", "") != "bandit"
-                ):
+                if _use_web_simple_enemy_move(game, enemy, player):
                     _web_simple_enemy_move(game, enemy, player, game_state, obstacle_values, dt=dt)
                 else:
                     enemy.move_and_attack(player, obstacle_values, game_state, dt=dt)
@@ -1569,16 +1575,11 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if game.is_action_event(event, 'blast') and getattr(player, 'targeting_skill', None) == 'blast':
-                player.targeting_skill = None
-                continue
             if event.type == pygame.KEYDOWN and event.key == pygame.K_t:
                 game.activate_ultimate_mode(player, game_state)
-            if game.is_action_event(event, 'teleport') and getattr(player, 'targeting_skill', None) == 'teleport':
-                player.targeting_skill = None
-                continue
             if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
+                player.skill_target_origin = None
                 continue
             if is_escape_event(event):
                 bg = last_frame or game.render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots, obstacles=game_state.obstacles)
@@ -1606,13 +1607,17 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                     return ('exit', None, bg)
             if game.is_action_event(event, 'blast'):
                 if getattr(player, 'blast_cd', 0.0) <= 0.0:
-                    player.targeting_skill = 'blast'
+                    if getattr(player, 'targeting_skill', None) != 'blast':
+                        player.targeting_skill = 'blast'
+                        player.skill_target_origin = None
                     game._update_skill_target(player, game_state)
                 else:
                     player.skill_flash['blast'] = 0.35
             if game.is_action_event(event, 'teleport'):
                 if getattr(player, 'teleport_cd', 0.0) <= 0.0:
-                    player.targeting_skill = 'teleport'
+                    if getattr(player, 'targeting_skill', None) != 'teleport':
+                        player.targeting_skill = 'teleport'
+                        player.skill_target_origin = None
                     game._update_skill_target(player, game_state)
                 else:
                     player.skill_flash['teleport'] = 0.35
@@ -1632,8 +1637,10 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                         player.skill_flash['teleport'] = 0.35
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
+                player.skill_target_origin = None
             if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
+                player.skill_target_origin = None
         do_telegraphs, telegraph_dt = _runtime_interval_step(game, runtime, "_sched_resume_telegraphs", dt, 1.0 / 30.0)
         do_enemy_paint, enemy_paint_dt = _runtime_interval_step(game, runtime, "_sched_resume_enemy_paint", dt, 1.0 / 24.0)
         do_vuln, vuln_dt = _runtime_interval_step(game, runtime, "_sched_resume_vuln", dt, 0.10)
@@ -1745,11 +1752,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         obstacle_values = tuple(game_state.obstacles.values())
         _profile_mark(profiler, "enemy_move")
         for enemy in list(enemies):
-            if (
-                game.IS_WEB
-                and not getattr(enemy, "is_boss", False)
-                and getattr(enemy, "type", "") != "bandit"
-            ):
+            if _use_web_simple_enemy_move(game, enemy, player):
                 _web_simple_enemy_move(game, enemy, player, game_state, obstacle_values, dt=dt)
             else:
                 enemy.move_and_attack(player, obstacle_values, game_state, dt=dt)
