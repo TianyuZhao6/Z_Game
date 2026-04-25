@@ -263,8 +263,8 @@ def install(game):
             dx = float(self.rect.centerx - player.rect.centerx)
             dy = float(self.rect.centery - player.rect.centery)
             d2 = dx * dx + dy * dy
-            near_r = float(getattr(game, 'WEB_ENEMY_NEAR_RADIUS', game.CELL_SIZE * 8) or (game.CELL_SIZE * 8))
-            mid_r = float(getattr(game, 'WEB_ENEMY_MID_RADIUS', game.CELL_SIZE * 16) or (game.CELL_SIZE * 16))
+            near_r = float(getattr(game, 'WEB_ENEMY_NEAR_RADIUS', game.CELL_SIZE * 10) or (game.CELL_SIZE * 10))
+            mid_r = float(getattr(game, 'WEB_ENEMY_MID_RADIUS', game.CELL_SIZE * 20) or (game.CELL_SIZE * 20))
             if getattr(self, 'is_boss', False):
                 near_r *= 1.35
                 mid_r *= 1.4
