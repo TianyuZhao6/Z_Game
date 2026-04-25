@@ -562,7 +562,7 @@ def install(game):
                 elif owner == 2:
                     life0 = float(game.ENEMY_PAINT_LIFETIME)
             color_key = tuple((int(c) for c in paint_color[:3])) if paint_color else None
-            skip_hell_refresh = bool(getattr(game, 'IS_WEB', False) and int(owner) == 2 and paint_type == 'hell_trail')
+            skip_hell_refresh = False
             for gx in range(min_gx, max_gx + 1):
                 for gy in range(min_gy, max_gy + 1):
                     cx = gx * game.CELL_SIZE + game.CELL_SIZE * 0.5
@@ -1524,7 +1524,7 @@ def install(game):
             gy_min = max(0, int((min_y - game.INFO_BAR_HEIGHT) // game.CELL_SIZE) - margin)
             gy_max = min(game.GRID_SIZE - 1, int((max_y - game.INFO_BAR_HEIGHT) // game.CELL_SIZE) + margin)
             hell = getattr(self, 'biome_active', None) == 'Scorched Hell'
-            static_enemy = bool((hell and game.HELL_ENEMY_PAINT_STATIC) or getattr(game, 'IS_WEB', False))
+            static_enemy = bool(hell and game.HELL_ENEMY_PAINT_STATIC)
             curing_paint = getattr(self, 'curing_paint', ())
             paint_active_entries = self._paint_active_entries() if hasattr(self, '_paint_active_entries') else tuple(getattr(self, 'paint_active', ()))
             paint_bins = getattr(self, '_curing_paint_bins', {})
@@ -1562,7 +1562,7 @@ def install(game):
                                 continue
                             if recent_only is False and is_recent:
                                 continue
-                            static_paint = bool((hell or getattr(game, 'IS_WEB', False)) and not is_recent)
+                            static_paint = bool(hell and not is_recent)
                             game.draw_curing_paint_iso(target_surface, p, cam_x, cam_y, static=static_paint)
                 else:
                     for p in curing_paint:
@@ -1581,10 +1581,14 @@ def install(game):
                             p,
                             cam_x,
                             cam_y,
-                            static=bool((hell or getattr(game, 'IS_WEB', False)) and not is_recent),
+                            static=bool(hell and not is_recent),
                         )
 
             if getattr(game, 'IS_WEB', False):
+                if hell:
+                    _draw_enemy_paint_layer(screen)
+                    _draw_curing_paint_layer(screen, recent_only=None)
+                    return
                 refresh_ms = max(16, int(getattr(game, 'WEB_PAINT_RENDER_REFRESH_MS', 50) or 50))
                 dynamic_refresh_ms = max(refresh_ms, int(getattr(game, 'WEB_PAINT_DYNAMIC_REFRESH_MS', refresh_ms) or refresh_ms))
                 static_refresh_ms = max(dynamic_refresh_ms, int(getattr(game, 'WEB_PAINT_STATIC_REFRESH_MS', dynamic_refresh_ms * 2) or (dynamic_refresh_ms * 2)))
@@ -1668,7 +1672,6 @@ def install(game):
                 now_ms = pygame.time.get_ticks()
                 player_quant = max(1, int(getattr(game, "WEB_FOG_PLAYER_QUANT", 4) or 4))
                 lantern_quant = max(1, int(getattr(game, "WEB_FOG_LANTERN_QUANT", player_quant) or player_quant))
-                pulse_quant = max(1, int(getattr(game, "WEB_FOG_PULSE_QUANT", 3) or 3))
                 camera_quant = max(1, int(getattr(game, "WEB_FOG_CAMERA_QUANT", player_quant) or player_quant))
                 max_lanterns = max(0, int(getattr(game, "WEB_FOG_MAX_LANTERNS", 0) or 0))
                 lantern_cache_key = (
@@ -1704,8 +1707,6 @@ def install(game):
                     int(h),
                     int(mask_w),
                     int(mask_h),
-                    int(psx * scale) // player_quant,
-                    int(psy * scale) // player_quant,
                     tuple((lx // lantern_quant, ly // lantern_quant) for lx, ly in lantern_points),
                     int(game.FOG_OVERLAY_ALPHA),
                 )
@@ -1719,7 +1720,6 @@ def install(game):
                         mask = pygame.Surface((mask_w, mask_h), pygame.SRCALPHA)
                         self._fog_web_mask_surface = mask
                     mask.fill((0, 0, 0, game.FOG_OVERLAY_ALPHA))
-                    pygame.draw.circle(mask, (0, 0, 0, 0), (int(psx * scale), int(psy * scale)), max(8, int(clear_r * scale)))
                     lantern_clear_r = max(6, int(game.FOG_LANTERN_CLEAR_RADIUS * scale))
                     for lan_x, lan_y in lantern_points:
                         pygame.draw.circle(mask, (0, 0, 0, 0), (int(lan_x), int(lan_y)), lantern_clear_r)
@@ -1729,20 +1729,18 @@ def install(game):
                     self._fog_web_cache_surface = cached_surface
                     self._fog_web_cache_key = cache_key
                     self._fog_web_cache_at_ms = now_ms
-                screen.blit(cached_surface, (0, 0))
-                pulse_bucket = int(pulse // pulse_quant)
-                if pulse_bucket > 0:
-                    pulse_surf = getattr(self, "_fog_web_pulse_surface", None)
-                    if pulse_surf is None or getattr(self, "_fog_web_pulse_size", (0, 0)) != (w, h):
-                        pulse_surf = pygame.Surface((w, h), pygame.SRCALPHA)
-                        self._fog_web_pulse_surface = pulse_surf
-                        self._fog_web_pulse_size = (w, h)
-                        self._fog_web_pulse_alpha = -1
-                    pulse_alpha = int(pulse_bucket * pulse_quant)
-                    if int(getattr(self, "_fog_web_pulse_alpha", -1)) != pulse_alpha:
-                        pulse_surf.fill((220, 220, 240, pulse_alpha))
-                        self._fog_web_pulse_alpha = pulse_alpha
-                    screen.blit(pulse_surf, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+                frame_surface = getattr(self, "_fog_web_frame_surface", None)
+                if frame_surface is None or frame_surface.get_size() != (w, h):
+                    frame_surface = pygame.Surface((w, h), pygame.SRCALPHA)
+                    self._fog_web_frame_surface = frame_surface
+                frame_surface.blit(cached_surface, (0, 0))
+                pygame.draw.circle(
+                    frame_surface,
+                    (0, 0, 0, 0),
+                    (int(psx), int(psy)),
+                    int(clear_r),
+                )
+                screen.blit(frame_surface, (0, 0))
                 return
             mask = pygame.Surface((w, h), pygame.SRCALPHA)
             mask.fill((0, 0, 0, game.FOG_OVERLAY_ALPHA))
