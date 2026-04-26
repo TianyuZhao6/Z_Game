@@ -9,6 +9,7 @@ def install(game):
             self.x, self.y, self.r = x, y, r
             self.dps, self.slow_frac = dps, slow_frac
             self.t = life
+            self.life0 = life
 
         def contains(self, px, py):
             return (px - self.x) ** 2 + (py - self.y) ** 2 <= self.r ** 2
