@@ -20,6 +20,11 @@
 
 ## Fixes Applied
 
+- Added automatic obstacle-cache invalidation to the runtime obstacle map, so direct obstacle adds/removals now bump the navigation/render revision used by browser wall caches.
+- Expanded the browser diagnostic harness to cover normal level 1, level-1 checks for wind/mist/hell/stone, longer biome checks, and wind boss coverage.
+- Added a diagnostic `--scenario` filter so targeted browser regressions can be re-run without repeating the full matrix.
+- Reduced wind-biome browser render cost by skipping the duplicate hurricane range hint when the cached tornado surface already contains the wind zone.
+- Disabled only the enemy-paint render layer during the web wind biome; gameplay paint state still updates, but wind no longer pays for both tornado visuals and paint-surface rendering on the browser path.
 - Removed the forced `single_bgm` behavior from the web quality payload so combat can switch to `ZGAME.ogg`.
 - Removed the extra combat-BGM startup delay on web.
 - Ignored known autoplay rejection strings in the browser error recorder so non-fatal audio policy failures do not appear as engine crashes.
@@ -41,6 +46,14 @@
 
 ## Notes
 
+- Biome/obstacle validation was run through headless Chrome against the rebuilt pygbag bundle:
+  - Full matrix report: `build/diagnostics/biome_obstacle_wind/browser_runtime_diag_report.md`
+  - Final focused wind report: `build/diagnostics/wind_skip_paint/browser_runtime_diag_report.md`
+- Full matrix coverage included `normal_level1`, `wind_level1`, `mist_level1`, `hell_level1`, `stone_level1`, longer wind/mist/hell/stone runs, menu transition, and wind boss.
+- The full matrix reported `py_dead=False`, empty Python/JS error strings, and no transition stalls for the tested normal/biome runs. Obstacle counts did not show material late-session growth, which points away from the earlier invisible-obstacle symptom being live obstacle accumulation.
+- Initial wind level-1 pacing was still rough: avg `50.73ms`, p95 `69.455ms`, with `r_hurricane_ms` and `r_paint_ms` as the major render costs.
+- After the wind web-render changes, focused wind level-1 improved to avg `45.751ms`, p95 `61.305ms`; `r_hurricane_hint_ms` dropped from `8.271ms` to `0.006ms`, and `r_paint_ms` from `16.359ms` to `0.006ms`.
+- Wind is improved but not perfect. The remaining hotspot is `r_hurricane_ms` itself, so further smoothing should target tornado surface size/rebuild cost rather than obstacle rendering.
 - One automated repro that looked like a browser freeze was actually the fail/death screen, not a JS/Python crash.
 - The most useful browser signals were `__zgame_py_frame`, `__zgame_py_heartbeat_ms`, `__zgame_prof_phase`, and whether Chrome showed a real dialog versus only a diagnostic error string.
 - The autoplay popup and the long-run freeze were separate problems. The popup came from Chrome media policy. The browser dead-run issue showed up later with steady `py_frame`/heartbeat stalls and no matching JS exception.
