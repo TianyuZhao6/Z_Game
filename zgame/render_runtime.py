@@ -935,9 +935,6 @@ def install(game):
         targets: list of (x_px, y_px) world-pixel centers (e.g., rect.centerx, rect.centery).
         Plays boss -> boss -> ... -> player (once).
         """
-        if IS_WEB:
-            flush_events()
-            return
         last_cam = None
         for i, pos in enumerate(targets):
             fx, fy = pos
@@ -970,9 +967,10 @@ def install(game):
         - 相机从 start_cam(若无则玩家) -> 焦点；可选 焦点 -> 玩家。
         - 冻结时间与世界更新，仅渲染。
         """
-        if IS_WEB:
-            flush_events()
-            return
+        web_focus = bool(IS_WEB)
+        if web_focus:
+            duration_each = min(float(duration_each), float(getattr(game, "WEB_FOCUS_PAN_DURATION", 0.18) or 0.18))
+            hold_time = min(float(hold_time), float(getattr(game, "WEB_FOCUS_HOLD_TIME", 0.08) or 0.08))
 
         def _cam_for_world_px(wx: float, wy: float) -> tuple[int, int]:
             gx = wx / CELL_SIZE
@@ -990,6 +988,32 @@ def install(game):
             return a + (b - a) * max(0.0, min(1.0, t))
 
         def _do_pan(cam_a: tuple[int, int], cam_b: tuple[int, int], dur: float):
+            if web_focus:
+                steps = max(2, min(6, int(round(max(0.06, dur) * 24.0))))
+                for idx in range(steps + 1):
+                    for ev in pygame.event.get():
+                        if ev.type == pygame.QUIT:
+                            pygame.quit()
+                            sys.exit()
+                    t = float(idx) / float(max(1, steps))
+                    camx = int(_lerp(cam_a[0], cam_b[0], t))
+                    camy = int(_lerp(cam_a[1], cam_b[1], t))
+                    render_game_iso(
+                        screen,
+                        game_state,
+                        player,
+                        enemies,
+                        bullets,
+                        enemy_shots,
+                        game_state.obstacles,
+                        override_cam=(camx, camy),
+                    )
+                    if label:
+                        font = pygame.font.SysFont(None, 42)
+                        txt = font.render(label, True, (255, 230, 120))
+                        screen.blit(txt, txt.get_rect(center=(game.VIEW_W // 2, INFO_BAR_HEIGHT + 50)))
+                        pygame.display.flip()
+                return
             start = pygame.time.get_ticks()
             while True:
                 for ev in pygame.event.get():
@@ -1016,20 +1040,31 @@ def install(game):
         focus_cam = _cam_for_world_px(fx, fy)
         start_from = start_cam if start_cam is not None else player_cam
         _do_pan(start_from, focus_cam, duration_each)
-        hold_start = pygame.time.get_ticks()
-        while (pygame.time.get_ticks() - hold_start) < int(hold_time * 1000):
-            for ev in pygame.event.get():
-                if ev.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-            render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots,
-                            game_state.obstacles, override_cam=focus_cam)
-            if label:
-                font = pygame.font.SysFont(None, 42)
-                txt = font.render(label, True, (255, 230, 120))
-                screen.blit(txt, txt.get_rect(center=(game.VIEW_W // 2, INFO_BAR_HEIGHT + 50)))
-                pygame.display.flip()
-            clock.tick(60)
+        if web_focus:
+            hold_frames = max(0, min(2, int(round(hold_time * 20.0))))
+            for _ in range(hold_frames):
+                render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots,
+                                game_state.obstacles, override_cam=focus_cam)
+                if label:
+                    font = pygame.font.SysFont(None, 42)
+                    txt = font.render(label, True, (255, 230, 120))
+                    screen.blit(txt, txt.get_rect(center=(game.VIEW_W // 2, INFO_BAR_HEIGHT + 50)))
+                    pygame.display.flip()
+        else:
+            hold_start = pygame.time.get_ticks()
+            while (pygame.time.get_ticks() - hold_start) < int(hold_time * 1000):
+                for ev in pygame.event.get():
+                    if ev.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit()
+                render_game_iso(screen, game_state, player, enemies, bullets, enemy_shots,
+                                game_state.obstacles, override_cam=focus_cam)
+                if label:
+                    font = pygame.font.SysFont(None, 42)
+                    txt = font.render(label, True, (255, 230, 120))
+                    screen.blit(txt, txt.get_rect(center=(game.VIEW_W // 2, INFO_BAR_HEIGHT + 50)))
+                    pygame.display.flip()
+                clock.tick(60)
         if return_to_player:
             _do_pan(focus_cam, player_cam, duration_each)
         flush_events()
@@ -1682,6 +1717,9 @@ def install(game):
         web_wall_static_bottom: tuple[int, int] | None = None
         if wall_drawables:
             if IS_WEB:
+                player_gx = int(player.rect.centerx // CELL_SIZE)
+                player_gy = int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE)
+                near_wall_cells = max(0, int(getattr(game, "WEB_WALL_NEAR_RADIUS_CELLS", 0) or 0))
                 core_sorts = [
                     int(sy)
                     for kind, sy, _ in drawables
@@ -1698,7 +1736,16 @@ def install(game):
                     band_bottom = int(view_h)
                 wall_drawables = [
                     item for item in wall_drawables
-                    if band_top <= int(item[1]) <= band_bottom
+                    if (
+                        band_top <= int(item[1]) <= band_bottom
+                        or (
+                            near_wall_cells > 0
+                            and max(
+                                abs(int(item[2]["gx"]) - player_gx),
+                                abs(int(item[2]["gy"]) - player_gy),
+                            ) <= near_wall_cells
+                        )
+                    )
                 ]
                 if band_top > int(INFO_BAR_HEIGHT):
                     web_wall_static_top = (int(INFO_BAR_HEIGHT), band_top)
