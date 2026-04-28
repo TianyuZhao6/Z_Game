@@ -33,6 +33,20 @@ class Scenario:
 
 SCENARIOS: tuple[Scenario, ...] = (
     Scenario(
+        name="normal_level1",
+        duration_s=30,
+        params={
+            "start": "1",
+            "diag": "1",
+            "profile": "1",
+            "diagexport": "90",
+            "scenario": "normal_level1",
+            "level": "0",
+            "god": "1",
+        },
+        notes="Baseline level 1 run with no forced biome, focused on normal obstacle rendering and frame pacing.",
+    ),
+    Scenario(
         name="menu_transition_short",
         duration_s=12,
         params={
@@ -63,6 +77,21 @@ SCENARIOS: tuple[Scenario, ...] = (
         notes="Non-boss wind biome run focused on hurricane progression and late-session pacing.",
     ),
     Scenario(
+        name="wind_level1",
+        duration_s=30,
+        params={
+            "start": "1",
+            "diag": "1",
+            "profile": "1",
+            "diagexport": "90",
+            "scenario": "wind_level1",
+            "biome": "wind",
+            "level": "0",
+            "god": "1",
+        },
+        notes="Level 1 wind biome check focused on early-stage hurricane smoothness and obstacle visibility.",
+    ),
+    Scenario(
         name="mist_long",
         duration_s=45,
         params={
@@ -78,6 +107,21 @@ SCENARIOS: tuple[Scenario, ...] = (
         notes="Non-boss mist biome run focused on fog/filter progression over time.",
     ),
     Scenario(
+        name="mist_level1",
+        duration_s=30,
+        params={
+            "start": "1",
+            "diag": "1",
+            "profile": "1",
+            "diagexport": "90",
+            "scenario": "mist_level1",
+            "biome": "mist",
+            "level": "0",
+            "god": "1",
+        },
+        notes="Level 1 mist biome check focused on fog interaction with obstacle visibility.",
+    ),
+    Scenario(
         name="hell_long",
         duration_s=45,
         params={
@@ -91,6 +135,51 @@ SCENARIOS: tuple[Scenario, ...] = (
             "god": "1",
         },
         notes="Non-boss scorched hell biome run focused on paint/fire accumulation.",
+    ),
+    Scenario(
+        name="hell_level1",
+        duration_s=30,
+        params={
+            "start": "1",
+            "diag": "1",
+            "profile": "1",
+            "diagexport": "90",
+            "scenario": "hell_level1",
+            "biome": "hell",
+            "level": "0",
+            "god": "1",
+        },
+        notes="Level 1 scorched hell biome check focused on paint/fire interaction with obstacle visibility.",
+    ),
+    Scenario(
+        name="stone_long",
+        duration_s=45,
+        params={
+            "start": "1",
+            "diag": "1",
+            "profile": "1",
+            "diagexport": "90",
+            "scenario": "stone_long",
+            "biome": "stone",
+            "level": "2",
+            "god": "1",
+        },
+        notes="Non-boss stone biome run focused on boosted obstacle pressure and browser pacing.",
+    ),
+    Scenario(
+        name="stone_level1",
+        duration_s=30,
+        params={
+            "start": "1",
+            "diag": "1",
+            "profile": "1",
+            "diagexport": "90",
+            "scenario": "stone_level1",
+            "biome": "stone",
+            "level": "0",
+            "god": "1",
+        },
+        notes="Level 1 stone biome check focused on obstacle visibility after biome setup.",
     ),
     Scenario(
         name="wind_boss_long",
@@ -765,6 +854,12 @@ def main() -> None:
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
     parser.add_argument("--server-port", type=int, default=8765)
     parser.add_argument("--chrome-debug-port", type=int, default=9222)
+    parser.add_argument(
+        "--scenario",
+        action="append",
+        default=[],
+        help="Run only the named scenario. Can be provided multiple times.",
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir).resolve()
@@ -778,7 +873,13 @@ def main() -> None:
         wait_http(f"http://127.0.0.1:{server_port}/")
         all_exports: list[dict[str, Any]] = []
         base_url = f"http://127.0.0.1:{server_port}/"
-        for scenario in SCENARIOS:
+        selected = {str(name).strip().lower() for name in args.scenario if str(name).strip()}
+        scenarios = tuple(s for s in SCENARIOS if not selected or s.name.lower() in selected)
+        if selected and len(scenarios) != len(selected):
+            known = ", ".join(s.name for s in SCENARIOS)
+            missing = ", ".join(sorted(selected - {s.name.lower() for s in scenarios}))
+            raise ValueError(f"Unknown scenario(s): {missing}. Known scenarios: {known}")
+        for scenario in scenarios:
             debug_port = find_free_port(int(args.chrome_debug_port))
             export_data = run_scenario(chrome, scenario, base_url, debug_port)
             raw_path = raw_dir / f"{scenario.name}.json"
