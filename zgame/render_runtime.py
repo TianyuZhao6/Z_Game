@@ -1507,7 +1507,11 @@ def install(game):
                 if not _screen_visible_circle(hsx, hsy, float(getattr(h, "r", 0.0)) * HURRICANE_RANGE_MULT, margin=view_margin):
                     continue
                 hint_started = time.perf_counter()
-                if hasattr(h, "draw_range_hint"):
+                if IS_WEB and hasattr(h, "draw"):
+                    # The cached web tornado surface already includes the range zone.
+                    # Drawing a second large translucent hint costs several ms/frame.
+                    pass
+                elif hasattr(h, "draw_range_hint"):
                     h.draw_range_hint(screen, camx, camy)
                 else:
                     pulse = 0.6 + 0.4 * math.sin(pygame.time.get_ticks() * 0.008)
@@ -1607,7 +1611,8 @@ def install(game):
             g.draw_iso(screen, camx, camy)
         _render_counter(profiler, "r_ghost_ms", segment_started)
         segment_started = time.perf_counter()
-        if _web_feature_enabled("WEB_ENABLE_ENEMY_PAINT") and hasattr(game_state, "draw_paint_iso"):
+        wind_web = bool(IS_WEB and getattr(game_state, "biome_active", "") == "Domain of Wind")
+        if (not wind_web) and _web_feature_enabled("WEB_ENABLE_ENEMY_PAINT") and hasattr(game_state, "draw_paint_iso"):
             game_state.draw_paint_iso(screen, camx, camy)
         _render_counter(profiler, "r_paint_ms", segment_started)
         wall_h_current = ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0)
