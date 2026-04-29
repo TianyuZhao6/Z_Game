@@ -10,10 +10,61 @@ def install(game):
     meta = rs.meta(game)
     runtime = rs.runtime(game)
 
+    class ObstacleDict(dict):
+        """Dict that invalidates navigation/render caches when obstacle cells change."""
+
+        def __init__(self, *args, on_change=None, **kwargs):
+            self._on_change = on_change
+            super().__init__(*args, **kwargs)
+
+        def _changed(self) -> None:
+            callback = getattr(self, "_on_change", None)
+            if callable(callback):
+                callback()
+
+        def __setitem__(self, key, value):
+            previous = self.get(key, None)
+            super().__setitem__(key, value)
+            if previous is not value:
+                self._changed()
+
+        def __delitem__(self, key):
+            super().__delitem__(key)
+            self._changed()
+
+        _missing = object()
+
+        def pop(self, key, default=_missing):
+            sentinel = object()
+            value = super().pop(key, sentinel)
+            if value is sentinel:
+                if default is self._missing:
+                    raise KeyError(key)
+                return default
+            self._changed()
+            return value
+
+        def popitem(self):
+            item = super().popitem()
+            self._changed()
+            return item
+
+        def clear(self):
+            if self:
+                super().clear()
+                self._changed()
+
+        def update(self, *args, **kwargs):
+            before = dict(self)
+            super().update(*args, **kwargs)
+            if before != self:
+                self._changed()
+
     class GameState:
 
         def __init__(self, obstacles: Dict, items: Set, main_item_pos: List[Tuple[int, int]], decorations: list):
-            self.obstacles = obstacles
+            self._obstacle_revision = 0
+            self.obstacles = ObstacleDict(obstacles, on_change=self.mark_nav_dirty)
             self.items = items
             self.destructible_count = self.count_destructible_obstacles()
             self.main_item_pos = main_item_pos
@@ -58,7 +109,6 @@ def install(game):
             self.ff_next = None
             self._ff_goal = None
             self._ff_dirty = True
-            self._obstacle_revision = 0
             self._ff_timer = 0.0
             self._ff_tacc = 0.0
             self.projectiles = []
