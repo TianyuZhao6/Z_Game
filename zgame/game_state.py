@@ -1716,6 +1716,8 @@ def install(game):
             pulse = int(14 * (0.5 + 0.5 * math.sin(self._fog_pulse_t * math.tau)))
             clear_r = game.FOG_VIEW_TILES * game.CELL_SIZE
             if game.IS_WEB:
+                fog_alpha = max(40, min(200, int(getattr(game, "WEB_FOG_OVERLAY_ALPHA", game.FOG_OVERLAY_ALPHA) or game.FOG_OVERLAY_ALPHA)))
+                fog_fill = (0, 0, 0, fog_alpha)
                 scale = max(0.25, min(1.0, float(getattr(game, "WEB_FOG_RENDER_SCALE", 0.5) or 0.5)))
                 mask_w = max(96, int(round(w * scale)))
                 mask_h = max(54, int(round(h * scale)))
@@ -1724,6 +1726,8 @@ def install(game):
                 lantern_quant = max(1, int(getattr(game, "WEB_FOG_LANTERN_QUANT", player_quant) or player_quant))
                 camera_quant = max(1, int(getattr(game, "WEB_FOG_CAMERA_QUANT", player_quant) or player_quant))
                 max_lanterns = max(0, int(getattr(game, "WEB_FOG_MAX_LANTERNS", 0) or 0))
+                player_clear_scale = max(0.8, float(getattr(game, "WEB_FOG_PLAYER_CLEAR_SCALE", 1.0) or 1.0))
+                lantern_clear_scale = max(0.8, float(getattr(game, "WEB_FOG_LANTERN_CLEAR_SCALE", 1.0) or 1.0))
                 lantern_cache_key = (
                     int(mask_w),
                     int(mask_h),
@@ -1758,7 +1762,7 @@ def install(game):
                     int(mask_w),
                     int(mask_h),
                     tuple((lx // lantern_quant, ly // lantern_quant) for lx, ly in lantern_points),
-                    int(game.FOG_OVERLAY_ALPHA),
+                    int(fog_alpha),
                 )
                 refresh_ms = max(0, int(getattr(game, "WEB_FOG_REFRESH_MS", 80) or 80))
                 cached_key = getattr(self, "_fog_web_cache_key", None)
@@ -1769,8 +1773,8 @@ def install(game):
                     if mask is None or mask.get_size() != (mask_w, mask_h):
                         mask = pygame.Surface((mask_w, mask_h), pygame.SRCALPHA)
                         self._fog_web_mask_surface = mask
-                    mask.fill((0, 0, 0, game.FOG_OVERLAY_ALPHA))
-                    lantern_clear_r = max(6, int(game.FOG_LANTERN_CLEAR_RADIUS * scale))
+                    mask.fill(fog_fill)
+                    lantern_clear_r = max(8, int(game.FOG_LANTERN_CLEAR_RADIUS * scale * lantern_clear_scale))
                     for lan_x, lan_y in lantern_points:
                         pygame.draw.circle(mask, (0, 0, 0, 0), (int(lan_x), int(lan_y)), lantern_clear_r)
                     if cached_surface is None or cached_surface.get_size() != (w, h):
@@ -1784,12 +1788,29 @@ def install(game):
                     frame_surface = pygame.Surface((w, h), pygame.SRCALPHA)
                     self._fog_web_frame_surface = frame_surface
                 frame_surface.blit(cached_surface, (0, 0))
+                player_clear_r = max(14, int(clear_r * player_clear_scale))
                 pygame.draw.circle(
                     frame_surface,
                     (0, 0, 0, 0),
                     (int(psx), int(psy)),
-                    int(clear_r),
+                    int(player_clear_r),
                 )
+                lantern_clear_r_full = max(10, int(game.FOG_LANTERN_CLEAR_RADIUS * lantern_clear_scale))
+                for lan in self.fog_lanterns:
+                    if not getattr(lan, "alive", False):
+                        continue
+                    gx, gy = lan.grid_pos
+                    sx, sy = game.iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
+                    if sx < -lantern_clear_r_full or sx > (w + lantern_clear_r_full):
+                        continue
+                    if sy < -lantern_clear_r_full or sy > (h + lantern_clear_r_full):
+                        continue
+                    pygame.draw.circle(
+                        frame_surface,
+                        (0, 0, 0, 0),
+                        (int(sx), int(sy)),
+                        lantern_clear_r_full,
+                    )
                 screen.blit(frame_surface, (0, 0))
                 return
             mask = pygame.Surface((w, h), pygame.SRCALPHA)
