@@ -1721,7 +1721,7 @@ def install(game):
         web_wall_static_top: tuple[int, int] | None = None
         web_wall_static_bottom: tuple[int, int] | None = None
         if wall_drawables:
-            if IS_WEB:
+            if IS_WEB and bool(getattr(game, "WEB_USE_WALL_BAND_OPT", False)):
                 player_gx = int(player.rect.centerx // CELL_SIZE)
                 player_gy = int((player.rect.centery - INFO_BAR_HEIGHT) // CELL_SIZE)
                 near_wall_cells = max(0, int(getattr(game, "WEB_WALL_NEAR_RADIUS_CELLS", 0) or 0))
