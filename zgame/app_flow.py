@@ -1000,7 +1000,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_t:
+            if event.type == pygame.KEYDOWN and event.key == getattr(pygame, "K_t", ord("t")):
                 game.activate_ultimate_mode(player, game_state)
             if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
@@ -1575,7 +1575,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_t:
+            if event.type == pygame.KEYDOWN and event.key == getattr(pygame, "K_t", ord("t")):
                 game.activate_ultimate_mode(player, game_state)
             if is_escape_event(event) and getattr(player, 'targeting_skill', None):
                 player.targeting_skill = None
