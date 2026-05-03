@@ -1711,121 +1711,45 @@ def install(game):
             if not self.fog_enabled:
                 return
             w, h = screen.get_size()
-            psx, psy = game.iso_world_to_screen(player.rect.centerx / game.CELL_SIZE, (player.rect.centery - game.INFO_BAR_HEIGHT) / game.CELL_SIZE, 0, camx, camy)
-            self._fog_pulse_t = (self._fog_pulse_t + 0.016) % 1.0
-            pulse = int(14 * (0.5 + 0.5 * math.sin(self._fog_pulse_t * math.tau)))
-            clear_r = game.FOG_VIEW_TILES * game.CELL_SIZE
+            fog_rgb = getattr(game, "FOG_OVERLAY_RGB", (175, 190, 198))
             if game.IS_WEB:
-                fog_alpha = max(40, min(200, int(getattr(game, "WEB_FOG_OVERLAY_ALPHA", game.FOG_OVERLAY_ALPHA) or game.FOG_OVERLAY_ALPHA)))
-                fog_fill = (0, 0, 0, fog_alpha)
-                scale = max(0.25, min(1.0, float(getattr(game, "WEB_FOG_RENDER_SCALE", 0.5) or 0.5)))
-                mask_w = max(96, int(round(w * scale)))
-                mask_h = max(54, int(round(h * scale)))
-                now_ms = pygame.time.get_ticks()
-                player_quant = max(1, int(getattr(game, "WEB_FOG_PLAYER_QUANT", 4) or 4))
-                lantern_quant = max(1, int(getattr(game, "WEB_FOG_LANTERN_QUANT", player_quant) or player_quant))
-                camera_quant = max(1, int(getattr(game, "WEB_FOG_CAMERA_QUANT", player_quant) or player_quant))
-                max_lanterns = max(0, int(getattr(game, "WEB_FOG_MAX_LANTERNS", 0) or 0))
-                player_clear_scale = max(0.8, float(getattr(game, "WEB_FOG_PLAYER_CLEAR_SCALE", 1.0) or 1.0))
-                lantern_clear_scale = max(0.8, float(getattr(game, "WEB_FOG_LANTERN_CLEAR_SCALE", 1.0) or 1.0))
-                lantern_cache_key = (
-                    int(mask_w),
-                    int(mask_h),
-                    int(camx) // camera_quant,
-                    int(camy) // camera_quant,
-                    int(len(getattr(self, "fog_lanterns", ()) or ())),
-                )
-                lantern_cache = getattr(self, "_fog_web_lantern_cache", None)
-                if isinstance(lantern_cache, dict) and lantern_cache.get("key") == lantern_cache_key:
-                    lantern_points = list(lantern_cache.get("points", ()))
-                else:
-                    lantern_points = []
-                    for lan in self.fog_lanterns:
-                        if not lan.alive:
-                            continue
-                        gx, gy = lan.grid_pos
-                        sx, sy = game.iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
-                        if sx < -game.FOG_LANTERN_CLEAR_RADIUS or sx > (w + game.FOG_LANTERN_CLEAR_RADIUS):
-                            continue
-                        if sy < -game.FOG_LANTERN_CLEAR_RADIUS or sy > (h + game.FOG_LANTERN_CLEAR_RADIUS):
-                            continue
-                        lantern_points.append((int(sx * scale), int(sy * scale)))
-                    if max_lanterns > 0 and len(lantern_points) > max_lanterns:
-                        p_x = int(psx * scale)
-                        p_y = int(psy * scale)
-                        lantern_points.sort(key=lambda pt: (pt[0] - p_x) ** 2 + (pt[1] - p_y) ** 2)
-                        lantern_points = lantern_points[:max_lanterns]
-                    self._fog_web_lantern_cache = {"key": lantern_cache_key, "points": tuple(lantern_points)}
-                cache_key = (
-                    int(w),
-                    int(h),
-                    int(mask_w),
-                    int(mask_h),
-                    tuple((lx // lantern_quant, ly // lantern_quant) for lx, ly in lantern_points),
-                    int(fog_alpha),
-                )
-                refresh_ms = max(0, int(getattr(game, "WEB_FOG_REFRESH_MS", 80) or 80))
-                cached_key = getattr(self, "_fog_web_cache_key", None)
-                cached_surface = getattr(self, "_fog_web_cache_surface", None)
-                cached_at = int(getattr(self, "_fog_web_cache_at_ms", -999999) or -999999)
-                if cached_surface is None or cached_key != cache_key or (now_ms - cached_at) >= refresh_ms:
-                    mask = getattr(self, "_fog_web_mask_surface", None)
-                    if mask is None or mask.get_size() != (mask_w, mask_h):
-                        mask = pygame.Surface((mask_w, mask_h), pygame.SRCALPHA)
-                        self._fog_web_mask_surface = mask
-                    mask.fill(fog_fill)
-                    lantern_clear_r = max(8, int(game.FOG_LANTERN_CLEAR_RADIUS * scale * lantern_clear_scale))
-                    for lan_x, lan_y in lantern_points:
-                        pygame.draw.circle(mask, (0, 0, 0, 0), (int(lan_x), int(lan_y)), lantern_clear_r)
-                    if cached_surface is None or cached_surface.get_size() != (w, h):
-                        cached_surface = pygame.Surface((w, h), pygame.SRCALPHA)
-                    pygame.transform.scale(mask, (w, h), cached_surface)
-                    self._fog_web_cache_surface = cached_surface
-                    self._fog_web_cache_key = cache_key
-                    self._fog_web_cache_at_ms = now_ms
-                frame_surface = getattr(self, "_fog_web_frame_surface", None)
-                if frame_surface is None or frame_surface.get_size() != (w, h):
-                    frame_surface = pygame.Surface((w, h), pygame.SRCALPHA)
-                    self._fog_web_frame_surface = frame_surface
-                frame_surface.blit(cached_surface, (0, 0))
-                player_clear_r = max(14, int(clear_r * player_clear_scale))
-                pygame.draw.circle(
-                    frame_surface,
-                    (0, 0, 0, 0),
-                    (int(psx), int(psy)),
-                    int(player_clear_r),
-                )
-                lantern_clear_r_full = max(10, int(game.FOG_LANTERN_CLEAR_RADIUS * lantern_clear_scale))
-                for lan in self.fog_lanterns:
-                    if not getattr(lan, "alive", False):
-                        continue
-                    gx, gy = lan.grid_pos
-                    sx, sy = game.iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
-                    if sx < -lantern_clear_r_full or sx > (w + lantern_clear_r_full):
-                        continue
-                    if sy < -lantern_clear_r_full or sy > (h + lantern_clear_r_full):
-                        continue
-                    pygame.draw.circle(
-                        frame_surface,
-                        (0, 0, 0, 0),
-                        (int(sx), int(sy)),
-                        lantern_clear_r_full,
-                    )
-                screen.blit(frame_surface, (0, 0))
+                setattr(self, "_fog_render_mode", "web_haze_bands")
+                band_h = max(10, int(h * 0.018))
+                gap = max(72, int(h * 0.11))
+                alpha = 38
+                phase = int((pygame.time.get_ticks() * 0.012) % gap)
+                key = (int(w), int(band_h), (*fog_rgb[:3], alpha))
+                cache = getattr(self, "_fog_web_band_cache", None)
+                if not isinstance(cache, dict):
+                    cache = {}
+                    self._fog_web_band_cache = cache
+                band = cache.get(key)
+                if band is None:
+                    band = pygame.Surface((w, band_h), pygame.SRCALPHA)
+                    band.fill((*fog_rgb[:3], alpha))
+                    cache.clear()
+                    cache[key] = band
+                y = game.INFO_BAR_HEIGHT - gap + phase
+                while y < h:
+                    if y + band_h > game.INFO_BAR_HEIGHT:
+                        screen.blit(band, (0, int(y)))
+                    y += gap
                 return
-            mask = pygame.Surface((w, h), pygame.SRCALPHA)
-            mask.fill((0, 0, 0, game.FOG_OVERLAY_ALPHA))
-            pygame.draw.circle(mask, (0, 0, 0, 0), (int(psx), int(psy)), int(clear_r))
-            for lan in self.fog_lanterns:
-                if not lan.alive:
-                    continue
-                gx, gy = lan.grid_pos
-                sx, sy = game.iso_world_to_screen(gx + 0.5, gy + 0.5, 0, camx, camy)
-                pygame.draw.circle(mask, (0, 0, 0, 0), (int(sx), int(sy)), int(game.FOG_LANTERN_CLEAR_RADIUS))
-            if pulse > 0:
-                edge = pygame.Surface((w, h), pygame.SRCALPHA)
-                edge.fill((220, 220, 240, pulse))
-                mask.blit(edge, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
-            screen.blit(mask, (0, 0))
+            setattr(self, "_fog_render_mode", "flat_haze")
+            fog_alpha = max(24, min(120, int(getattr(game, "FOG_OVERLAY_ALPHA", 72) or 72)))
+            fog_fill = (*fog_rgb[:3], fog_alpha)
+            cache_key = (int(w), int(h), fog_fill)
+            cached = getattr(self, "_fog_flat_overlay_cache", None)
+            if not isinstance(cached, dict):
+                cached = {}
+                self._fog_flat_overlay_cache = cached
+            overlay = cached.get(cache_key)
+            if overlay is None:
+                overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+                overlay.fill(fog_fill)
+                cached.clear()
+                cached[cache_key] = overlay
+            screen.blit(overlay, (0, 0))
+            return
     game.__dict__.update({'GameState': GameState})
     return GameState
