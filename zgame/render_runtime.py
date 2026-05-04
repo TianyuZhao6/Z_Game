@@ -1390,6 +1390,11 @@ def install(game):
         _render_counter(profiler, "r_overlay_ms", segment_started)
 
         segment_started = time.perf_counter()
+        if getattr(game_state, "fog_enabled", False) and _web_feature_enabled("WEB_ENABLE_FOG"):
+            game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)
+        _render_counter(profiler, "r_fog_ms", segment_started)
+
+        segment_started = time.perf_counter()
         _draw_web_lite_ui_topbar(
             screen,
             game_state,
@@ -1612,7 +1617,8 @@ def install(game):
         _render_counter(profiler, "r_ghost_ms", segment_started)
         segment_started = time.perf_counter()
         wind_web = bool(IS_WEB and getattr(game_state, "biome_active", "") == "Domain of Wind")
-        if (not wind_web) and _web_feature_enabled("WEB_ENABLE_ENEMY_PAINT") and hasattr(game_state, "draw_paint_iso"):
+        mist_web = bool(IS_WEB and getattr(game_state, "fog_enabled", False))
+        if (not wind_web) and (not mist_web) and _web_feature_enabled("WEB_ENABLE_ENEMY_PAINT") and hasattr(game_state, "draw_paint_iso"):
             game_state.draw_paint_iso(screen, camx, camy)
         _render_counter(profiler, "r_paint_ms", segment_started)
         wall_h_current = ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0)
