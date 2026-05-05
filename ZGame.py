@@ -26,6 +26,13 @@ from zgame.browser import (
     WEB_ENABLE_ENEMY_PAINT,
     WEB_ENABLE_FOG,
     WEB_ENABLE_GROUND_SPIKES,
+    WEB_FOG_CAMERA_QUANT,
+    WEB_FOG_LANTERN_CLEAR_SCALE,
+    WEB_FOG_LANTERN_QUANT,
+    WEB_FOG_MAX_LANTERNS,
+    WEB_FOG_OVERLAY_ALPHA,
+    WEB_FOG_PLAYER_CLEAR_SCALE,
+    WEB_FOG_PLAYER_QUANT,
     WEB_HELL_TRAIL_DIST_MULT,
     WEB_HELL_TRAIL_INTERVAL_MULT,
     WEB_HURRICANE_MAX_AFFECTED_SHOTS,
@@ -34,6 +41,7 @@ from zgame.browser import (
     WEB_ENABLE_VULNERABILITY_MARKS,
     WEB_FOG_REFRESH_MS,
     WEB_FOG_RENDER_SCALE,
+    WEB_FOG_SIMPLE_BANDS,
     WEB_LIMIT_SPAWN_TYPES,
     WEB_NATIVE_BGM,
     WEB_NATIVE_FX_AUDIO,
@@ -376,7 +384,7 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
     # 字体
     font_timer = cached_sys_font(28)
     mono_small = mono_font(22)
-    font_hp = mono_font(22)
+    font_hp = mono_font(24)
     # ===== 计时器（居中） =====
     runtime = _runtime_state()
     meta = _meta_state()
@@ -398,7 +406,7 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
     bdg_x = center_x + timer_txt.get_width() // 2 + 12
     screen.blit(bdg_img, (bdg_x, 10))
     # ===== HP 条（左上角）=====
-    bar_w, bar_h = 220, 12
+    bar_w, bar_h = 280, 12
     bx, by = 16, 14
     ratio = 0.0 if max(1, getattr(player, "max_hp", 1)) == 0 else max(
         0.0, min(1.0, float(getattr(player, "hp", 0)) / float(max(1, getattr(player, "max_hp", 1)))))
@@ -438,8 +446,9 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
     pygame.draw.rect(screen, (40, 40, 40), (xp_bx, xp_by, xp_bar_w, xp_bar_h), border_radius=3)
     pygame.draw.rect(screen, (120, 110, 255), (xp_bx, xp_by, int(xp_bar_w * xp_ratio), xp_bar_h), border_radius=3)
     # 小标签（在条右侧显示等级）
-    xp_label = mono_small.render(f"Lv {int(getattr(player, 'level', 1))}", True, (210, 210, 230))
-    screen.blit(xp_label, (xp_bx + xp_bar_w + 8, xp_by - 6))
+    xp_label_font = cached_sys_font(26, bold=True)
+    xp_label = xp_label_font.render(f"Lv {int(getattr(player, 'level', 1))}", True, (210, 210, 230))
+    screen.blit(xp_label, (xp_bx + xp_bar_w + 8, xp_by - 11))
     # Bone Plating tracker
     plating_lvl = int(getattr(player, "bone_plating_level", 0))
     if plating_lvl > 0:
@@ -487,9 +496,9 @@ def draw_ui_topbar(screen, game_state, player, time_left: float | None = None,
             pygame.draw.circle(glyph, palette["accent_dim"], (w // 2, h // 2), 10, 2)
         base.blit(glyph, (0, 0))
         # labels
-        lfont = cached_sys_font(14, name="Consolas", bold=True)
-        keyfont = cached_sys_font(14, name="Consolas", bold=True)
-        base.blit(lfont.render(label, True, palette["text"]), (8, h - 30))
+        lfont = cached_sys_font(15, name="Consolas", bold=True)
+        keyfont = cached_sys_font(15, name="Consolas", bold=True)
+        base.blit(lfont.render(label, True, palette["text"]), (8, h - 31))
         base.blit(keyfont.render(key_txt, True, palette["key"]), (8, h - 16))
         # cooldown overlay
         if cd > 0 and cd_total > 0:
@@ -1421,7 +1430,8 @@ HAZARD_STYLES = {
 }
 # Fog field (被动视野压缩)
 FOG_VIEW_TILES = 6  # 约 6 格视距
-FOG_OVERLAY_ALPHA = 190  # 覆雾不透明度
+FOG_OVERLAY_RGB = (175, 190, 198)
+FOG_OVERLAY_ALPHA = 72  # translucent mist, not blackout
 FOG_LANTERN_COUNT = 3  # 地图生成 3 个“驱雾灯笼”
 FOG_LANTERN_HP = 60
 FOG_LANTERN_CLEAR_RADIUS = int(CELL_SIZE * 3.2)  # 灯笼清雾半径（~3~4格）
@@ -3181,21 +3191,27 @@ LEVELS = [
      "reward": "enemy_strong"},
 ]
 # 方向向量
+KEY_A = getattr(pygame, "K_a", ord("a"))
+KEY_D = getattr(pygame, "K_d", ord("d"))
+KEY_W = getattr(pygame, "K_w", ord("w"))
+KEY_S = getattr(pygame, "K_s", ord("s"))
+KEY_Q = getattr(pygame, "K_q", ord("q"))
+KEY_E = getattr(pygame, "K_e", ord("e"))
 DIRECTIONS = {
-    pygame.K_a: (-1, 0),
-    pygame.K_d: (1, 0),
-    pygame.K_w: (0, -1),
-    pygame.K_s: (0, 1),
+    KEY_A: (-1, 0),
+    KEY_D: (1, 0),
+    KEY_W: (0, -1),
+    KEY_S: (0, 1),
 }
 
 # === Input bindings (customizable) ===
 DEFAULT_BINDINGS = {
-    "move_up": pygame.K_w,
-    "move_down": pygame.K_s,
-    "move_left": pygame.K_a,
-    "move_right": pygame.K_d,
-    "blast": pygame.K_q,
-    "teleport": pygame.K_e,
+    "move_up": KEY_W,
+    "move_down": KEY_S,
+    "move_left": KEY_A,
+    "move_right": KEY_D,
+    "blast": KEY_Q,
+    "teleport": KEY_E,
 }
 # Live bindings the game uses
 BINDINGS = dict(DEFAULT_BINDINGS)
