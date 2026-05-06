@@ -1713,30 +1713,11 @@ def install(game):
             w, h = screen.get_size()
             fog_rgb = getattr(game, "FOG_OVERLAY_RGB", (175, 190, 198))
             if game.IS_WEB:
-                setattr(self, "_fog_render_mode", "web_haze_bands")
-                band_h = max(10, int(h * 0.018))
-                gap = max(72, int(h * 0.11))
-                alpha = 38
-                phase = int((pygame.time.get_ticks() * 0.012) % gap)
-                key = (int(w), int(band_h), (*fog_rgb[:3], alpha))
-                cache = getattr(self, "_fog_web_band_cache", None)
-                if not isinstance(cache, dict):
-                    cache = {}
-                    self._fog_web_band_cache = cache
-                band = cache.get(key)
-                if band is None:
-                    band = pygame.Surface((w, band_h), pygame.SRCALPHA)
-                    band.fill((*fog_rgb[:3], alpha))
-                    cache.clear()
-                    cache[key] = band
-                y = game.INFO_BAR_HEIGHT - gap + phase
-                while y < h:
-                    if y + band_h > game.INFO_BAR_HEIGHT:
-                        screen.blit(band, (0, int(y)))
-                    y += gap
-                return
-            setattr(self, "_fog_render_mode", "flat_haze")
-            fog_alpha = max(24, min(120, int(getattr(game, "FOG_OVERLAY_ALPHA", 72) or 72)))
+                setattr(self, "_fog_render_mode", "web_flat_haze")
+                fog_alpha = max(18, min(70, int(getattr(game, "WEB_FOG_OVERLAY_ALPHA", 46) or 46)))
+            else:
+                setattr(self, "_fog_render_mode", "flat_haze")
+                fog_alpha = max(24, min(120, int(getattr(game, "FOG_OVERLAY_ALPHA", 72) or 72)))
             fog_fill = (*fog_rgb[:3], fog_alpha)
             cache_key = (int(w), int(h), fog_fill)
             cached = getattr(self, "_fog_flat_overlay_cache", None)
