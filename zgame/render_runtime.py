@@ -1165,7 +1165,11 @@ def install(game):
         _cap_visible_entries(visible_heals, pickup_cap, key=lambda item: item[0])
         for _, sx, sy, h in visible_heals:
             draw_started = time.perf_counter()
-            pygame.draw.circle(screen, (225, 225, 225), (int(sx), int(sy)), int(h.r))
+            cx, cy, r = int(sx), int(sy), int(h.r)
+            pygame.draw.circle(screen, (255, 92, 112), (cx, cy), r)
+            pygame.draw.circle(screen, (255, 178, 188), (cx, cy), r, 2)
+            pygame.draw.rect(screen, (255, 235, 238), pygame.Rect(cx - 2, cy - r + 3, 4, r * 2 - 6))
+            pygame.draw.rect(screen, (255, 235, 238), pygame.Rect(cx - r + 3, cy - 2, r * 2 - 6, 4))
             pickup_draw_ms += (time.perf_counter() - draw_started) * 1000.0
 
         items = getattr(game_state, "items", ())
@@ -1836,9 +1840,10 @@ def install(game):
             elif kind == "heal":
                 cx, cy, r = data["cx"], data["cy"], data["r"]
                 _blit_cached_ellipse(screen, (cx, cy + 6), r * 4, r * 2, (0, 0, 0, ISO_SHADOW_ALPHA))
-                pygame.draw.circle(screen, (225, 225, 225), (cx, cy), r)
-                pygame.draw.rect(screen, (220, 60, 60), pygame.Rect(cx - 2, cy - r + 3, 4, r * 2 - 6))
-                pygame.draw.rect(screen, (200, 40, 40), pygame.Rect(cx - r + 3, cy - 2, r * 2 - 6, 4))
+                pygame.draw.circle(screen, (255, 92, 112), (cx, cy), r)
+                pygame.draw.circle(screen, (255, 178, 188), (cx, cy), r, 2)
+                pygame.draw.rect(screen, (255, 235, 238), pygame.Rect(cx - 2, cy - r + 3, 4, r * 2 - 6))
+                pygame.draw.rect(screen, (255, 235, 238), pygame.Rect(cx - r + 3, cy - 2, r * 2 - 6, 4))
                 actor_subsamples["pickup"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "item":
                 cx, cy, r = data["cx"], data["cy"], data["r"]
