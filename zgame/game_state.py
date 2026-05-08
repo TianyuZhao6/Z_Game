@@ -1711,13 +1711,19 @@ def install(game):
             if not self.fog_enabled:
                 return
             w, h = screen.get_size()
-            fog_rgb = getattr(game, "FOG_OVERLAY_RGB", (175, 190, 198))
+            fog_rgb = getattr(game, "FOG_MASK_RGB", (0, 0, 0))
             if game.IS_WEB:
-                setattr(self, "_fog_render_mode", "web_flat_haze")
-                fog_alpha = max(18, min(70, int(getattr(game, "WEB_FOG_OVERLAY_ALPHA", 46) or 46)))
+                setattr(self, "_fog_render_mode", "web_circle_mask")
+                fog_alpha = max(148, min(230, int(getattr(game, "FOG_OVERLAY_ALPHA", 184) or 184)))
+                player_scale = 1.0
+                lantern_scale = 1.0
+                max_lanterns = 0
             else:
-                setattr(self, "_fog_render_mode", "flat_haze")
-                fog_alpha = max(24, min(120, int(getattr(game, "FOG_OVERLAY_ALPHA", 72) or 72)))
+                setattr(self, "_fog_render_mode", "circle_mask")
+                fog_alpha = max(148, min(230, int(getattr(game, "FOG_OVERLAY_ALPHA", 184) or 184)))
+                player_scale = 1.0
+                lantern_scale = 1.0
+                max_lanterns = 0
             fog_fill = (*fog_rgb[:3], fog_alpha)
             cache_key = (int(w), int(h), fog_fill)
             cached = getattr(self, "_fog_flat_overlay_cache", None)
@@ -1730,7 +1736,66 @@ def install(game):
                 overlay.fill(fog_fill)
                 cached.clear()
                 cached[cache_key] = overlay
-            screen.blit(overlay, (0, 0))
+            mask = overlay.copy()
+
+            def screen_pos_world(px, py):
+                if getattr(game, "USE_ISO", False):
+                    return game.iso_world_to_screen(
+                        float(px) / game.CELL_SIZE,
+                        (float(py) - game.INFO_BAR_HEIGHT) / game.CELL_SIZE,
+                        0,
+                        camx,
+                        camy,
+                    )
+                return int(float(px) - camx), int(float(py) - camy)
+
+            def screen_pos_cell(gx, gy):
+                if getattr(game, "USE_ISO", False):
+                    return game.iso_world_to_screen(float(gx) + 0.5, float(gy) + 0.5, 0, camx, camy)
+                return (
+                    int(float(gx) * game.CELL_SIZE + game.CELL_SIZE * 0.5 - camx),
+                    int(float(gy) * game.CELL_SIZE + game.CELL_SIZE * 0.5 + game.INFO_BAR_HEIGHT - camy),
+                )
+
+            def cut_soft_circle(cx, cy, radius, inner_ratio=0.58, bands=7):
+                radius = max(8, int(radius))
+                if cx < -radius or cx > w + radius or cy < -radius or cy > h + radius:
+                    return
+                inner = max(4, int(radius * inner_ratio))
+                size = radius * 2 + 2
+                light = pygame.Surface((size, size), pygame.SRCALPHA)
+                center = (radius + 1, radius + 1)
+                if bands <= 1 or radius <= inner:
+                    pygame.draw.circle(light, (0, 0, 0, fog_alpha), center, radius)
+                    mask.blit(light, (int(cx) - radius - 1, int(cy) - radius - 1), special_flags=pygame.BLEND_RGBA_SUB)
+                    return
+                step = max(1, int((radius - inner) / max(1, bands - 1)))
+                for i in range(bands):
+                    r = radius - i * step
+                    if r <= inner:
+                        break
+                    t = (r - inner) / max(1, radius - inner)
+                    covered_alpha = int(fog_alpha * max(0.0, min(1.0, t)))
+                    reveal_alpha = max(0, fog_alpha - covered_alpha)
+                    pygame.draw.circle(light, (0, 0, 0, reveal_alpha), center, int(r))
+                pygame.draw.circle(light, (0, 0, 0, fog_alpha), center, inner)
+                mask.blit(light, (int(cx) - radius - 1, int(cy) - radius - 1), special_flags=pygame.BLEND_RGBA_SUB)
+
+            if player is not None and hasattr(player, "rect"):
+                px, py = screen_pos_world(player.rect.centerx, player.rect.centery)
+                cut_soft_circle(px, py, self.fog_radius_px * player_scale, inner_ratio=0.56, bands=8)
+
+            lanterns = [lan for lan in list(getattr(self, "fog_lanterns", ())) if getattr(lan, "alive", False)]
+            if max_lanterns > 0:
+                lanterns = lanterns[:max_lanterns]
+            for lan in lanterns:
+                gx, gy = getattr(lan, "grid_pos", (None, None))
+                if gx is None or gy is None:
+                    continue
+                lx, ly = screen_pos_cell(gx, gy)
+                cut_soft_circle(lx, ly, game.FOG_LANTERN_CLEAR_RADIUS * lantern_scale, inner_ratio=0.48, bands=7)
+
+            screen.blit(mask, (0, 0))
             return
     game.__dict__.update({'GameState': GameState})
     return GameState
