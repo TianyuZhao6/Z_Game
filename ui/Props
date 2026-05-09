@@ -1,4 +1,6 @@
-﻿2) world_runtime.py and/or shared runtime helpers
+﻿1) 
+
+2) world_runtime.py and/or shared runtime helpers
 - Extend spatial support beyond enemies if appropriate.
 - Add lightweight local query helpers for obstacles, spoils, heals.
 - Improve query efficiency while keeping code simple.
