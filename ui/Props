@@ -1,4 +1,8 @@
-﻿1) 
+﻿1) Baseline and shared performance targets
+- Profile the current combat loop before changing behavior.
+- Keep player-visible gameplay rules intact unless a tuning change is explicitly needed.
+- Prefer small runtime wins that reduce full-list scans, repeated surface rebuilds, and uncapped transient effects.
+- Verify changes on desktop and web-lite paths where practical.
 
 2) world_runtime.py and/or shared runtime helpers
 - Extend spatial support beyond enemies if appropriate.
