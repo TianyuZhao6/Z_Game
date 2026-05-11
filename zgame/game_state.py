@@ -1708,12 +1708,26 @@ def install(game):
 
         def draw_fog_overlay(self, screen, camx, camy, player, obstacles):
             """在世界层上方绘制一层‘黑雾’，对玩家与灯笼的范围挖透明洞。"""
-            if not self.fog_enabled:
+            web_fog_active = bool(
+                getattr(game, "IS_WEB", False)
+                and (
+                    getattr(self, "biome_active", None) == "Misty Forest"
+                    or getattr(self, "fog_on", False)
+                    or any(getattr(lan, "alive", False) for lan in getattr(self, "fog_lanterns", ()) or ())
+                    or any(
+                        getattr(ob, "type", "") == "Lantern" and getattr(ob, "alive", True)
+                        for ob in getattr(self, "obstacles", {}).values()
+                    )
+                )
+            )
+            if not self.fog_enabled and not web_fog_active:
                 return
+            if web_fog_active:
+                self.fog_enabled = True
             w, h = screen.get_size()
             fog_rgb = getattr(game, "FOG_MASK_RGB", (0, 0, 0))
             if game.IS_WEB:
-                setattr(self, "_fog_render_mode", "web_circle_mask")
+                setattr(self, "_fog_render_mode", "web_direct_mask")
                 fog_alpha = max(148, min(230, int(getattr(game, "FOG_OVERLAY_ALPHA", 184) or 184)))
                 player_scale = 1.0
                 lantern_scale = 1.0
@@ -1725,18 +1739,22 @@ def install(game):
                 lantern_scale = 1.0
                 max_lanterns = 0
             fog_fill = (*fog_rgb[:3], fog_alpha)
-            cache_key = (int(w), int(h), fog_fill)
-            cached = getattr(self, "_fog_flat_overlay_cache", None)
-            if not isinstance(cached, dict):
-                cached = {}
-                self._fog_flat_overlay_cache = cached
-            overlay = cached.get(cache_key)
-            if overlay is None:
-                overlay = pygame.Surface((w, h), pygame.SRCALPHA)
-                overlay.fill(fog_fill)
-                cached.clear()
-                cached[cache_key] = overlay
-            mask = overlay.copy()
+            if game.IS_WEB:
+                mask = pygame.Surface((w, h), pygame.SRCALPHA)
+                mask.fill(fog_fill)
+            else:
+                cache_key = (int(w), int(h), fog_fill)
+                cached = getattr(self, "_fog_flat_overlay_cache", None)
+                if not isinstance(cached, dict):
+                    cached = {}
+                    self._fog_flat_overlay_cache = cached
+                overlay = cached.get(cache_key)
+                if overlay is None:
+                    overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+                    overlay.fill(fog_fill)
+                    cached.clear()
+                    cached[cache_key] = overlay
+                mask = overlay.copy()
 
             def screen_pos_world(px, py):
                 if getattr(game, "USE_ISO", False):
@@ -1762,6 +1780,20 @@ def install(game):
                 if cx < -radius or cx > w + radius or cy < -radius or cy > h + radius:
                     return
                 inner = max(4, int(radius * inner_ratio))
+                if game.IS_WEB:
+                    if bands <= 1 or radius <= inner:
+                        pygame.draw.circle(mask, (*fog_rgb[:3], 0), (int(cx), int(cy)), radius)
+                        return
+                    step = max(1, int((radius - inner) / max(1, bands - 1)))
+                    for i in range(bands):
+                        r = radius - i * step
+                        if r <= inner:
+                            break
+                        t = (r - inner) / max(1, radius - inner)
+                        covered_alpha = int(fog_alpha * max(0.0, min(1.0, t)))
+                        pygame.draw.circle(mask, (*fog_rgb[:3], covered_alpha), (int(cx), int(cy)), int(r))
+                    pygame.draw.circle(mask, (*fog_rgb[:3], 0), (int(cx), int(cy)), inner)
+                    return
                 size = radius * 2 + 2
                 light = pygame.Surface((size, size), pygame.SRCALPHA)
                 center = (radius + 1, radius + 1)
@@ -1786,6 +1818,16 @@ def install(game):
                 cut_soft_circle(px, py, self.fog_radius_px * player_scale, inner_ratio=0.56, bands=8)
 
             lanterns = [lan for lan in list(getattr(self, "fog_lanterns", ())) if getattr(lan, "alive", False)]
+            if game.IS_WEB:
+                seen = {getattr(lan, "grid_pos", None) for lan in lanterns}
+                for ob in getattr(self, "obstacles", {}).values():
+                    if getattr(ob, "type", "") != "Lantern" or not getattr(ob, "alive", True):
+                        continue
+                    gp = getattr(ob, "grid_pos", None)
+                    if gp in seen:
+                        continue
+                    lanterns.append(ob)
+                    seen.add(gp)
             if max_lanterns > 0:
                 lanterns = lanterns[:max_lanterns]
             for lan in lanterns:
