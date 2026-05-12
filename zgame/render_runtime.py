@@ -27,6 +27,29 @@ def install(game):
             return True
         return bool(getattr(game, flag_name, False))
 
+    def _should_draw_fog_overlay(game_state, player) -> bool:
+        if not _web_feature_enabled("WEB_ENABLE_FOG"):
+            return False
+        if getattr(game_state, "fog_enabled", False):
+            return True
+        if not getattr(game, "IS_WEB", False):
+            return False
+        mist_active = getattr(game_state, "biome_active", None) == "Misty Forest"
+        lanterns_active = any(
+            getattr(lan, "alive", False)
+            for lan in getattr(game_state, "fog_lanterns", ()) or ()
+        )
+        obstacle_lanterns_active = any(
+            getattr(ob, "type", "") == "Lantern" and getattr(ob, "alive", True)
+            for ob in getattr(game_state, "obstacles", {}).values()
+        )
+        if not (mist_active or getattr(game_state, "fog_on", False) or lanterns_active or obstacle_lanterns_active):
+            return False
+        if mist_active and hasattr(game_state, "request_fog_field"):
+            game_state.request_fog_field(player)
+        setattr(game_state, "fog_enabled", True)
+        return True
+
     _ellipse_surface_cache: dict[tuple[int, int, tuple[int, ...], int], pygame.Surface] = {}
     _iso_tile_surface_cache: dict[tuple[int, int, tuple[int, ...], int], pygame.Surface] = {}
     _iso_wall_surface_cache: dict[tuple[str, int, tuple[int, ...]], tuple[pygame.Surface, int, int]] = {}
@@ -1394,7 +1417,7 @@ def install(game):
         _render_counter(profiler, "r_overlay_ms", segment_started)
 
         segment_started = time.perf_counter()
-        if getattr(game_state, "fog_enabled", False) and _web_feature_enabled("WEB_ENABLE_FOG"):
+        if _should_draw_fog_overlay(game_state, player):
             game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)
         _render_counter(profiler, "r_fog_ms", segment_started)
 
@@ -2323,7 +2346,7 @@ def install(game):
             game_state.draw_comet_corpses(screen, camx, camy)
         _render_counter(profiler, "r_hazard_ms", segment_started)
         segment_started = time.perf_counter()
-        if getattr(game_state, "fog_enabled", False) and _web_feature_enabled("WEB_ENABLE_FOG"):
+        if _should_draw_fog_overlay(game_state, player):
             game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)
         _render_counter(profiler, "r_fog_ms", segment_started)
         segment_started = time.perf_counter()
