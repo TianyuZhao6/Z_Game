@@ -44,6 +44,8 @@ def budget_for_level(game, level_idx_zero_based: int) -> int:
 
 def pick_type_by_budget(game, rem: int, level_idx_zero_based: int):
     def _unlocked(enemy_type: str) -> bool:
+        if enemy_type == "ravager" and getattr(game, "IS_WEB", False):
+            return level_idx_zero_based >= 2
         if enemy_type == "splinter":
             return level_idx_zero_based >= game.SPLINTER_UNLOCK_LEVEL
         return True
