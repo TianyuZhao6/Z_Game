@@ -70,6 +70,42 @@ This document is the master working specification for Z Game's prop system, path
 Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and production guidance.
 Current intent: keep prop data consistent, make builds easier to read in-game, and align the current version toward a more polished Steam-ready release.
 
+Design North Star
+Props should create readable build identities, not only larger numbers.
+Every prop should answer four questions quickly:
+1. What does this make the player do differently?
+2. Which path or hybrid path does it support?
+3. What exact number changes now and on the next upgrade?
+4. What risk, cap, or encounter weakness keeps it from becoming automatic?
+
+Primary build fantasies:
+- Ballistic: bullets gain routing, chaining, piercing, and burst-clearing behavior.
+- Paint / Control: the floor becomes a tactical resource for slowing, reclaiming, damaging, and zoning.
+- Crit / Element: hits become conditional payoff events with clear timing windows.
+- Defense: shields, plating, and emergency tools convert mistakes into counterplay without deleting danger.
+- Economy: greed changes shop tempo and pickup routing while preserving debt and bandit pressure.
+- Summon / Turret: extra actors multiply pressure, but positioning and target access still matter.
+
+Documentation Standard For Each Prop
+Each detailed prop entry should include:
+- Gameplay promise: one sentence describing the player-facing outcome.
+- Trigger and runtime hook: passive, on hit, on kill, on damage, on move, consumable, or shop-only.
+- Level table: exact values for every level, including duration, radius, damage, cooldown, cap, and chance.
+- Scaling source: bullet_base, enemy max HP, current coins, player max HP, movement state, shield state, or fixed value.
+- Synergy notes: 2-3 intended pairings, including at least one same-path and one bridge-path pairing where possible.
+- Tradeoff or limiter: drawback, boss modifier, internal cooldown, entity cap, performance cap, or opportunity cost.
+- UI requirement: card pitch, current value text, next upgrade text, path tag, VFX/readability note, and any warning text.
+- QA case: one minimum scenario that proves the prop works and one scenario that proves the limiter works.
+
+Runtime Detail Checklist
+Before marking a prop implemented, verify:
+1. It has a stable `prop_id`, save key, max level, base cost, rarity, and path tag.
+2. Shop purchase, save/load reset, pause tooltip, and card tooltip all read the same level source.
+3. Trigger order is deterministic when multiple props fire from the same event.
+4. Boss, elite, web-lite, and high-density wave behavior are specified.
+5. VFX and audio have budget limits and do not hide enemy telegraphs.
+6. The prop has at least one focused QA case in this file or the test plan.
+
 Z Game Systems and Props Specification
 Status: Working Draft
 Purpose: Consolidated design, balance, UX, and production reference for the current version.
@@ -1013,7 +1049,9 @@ Effect:
 Periodically mark a high-priority enemy,
 causing that target to take increased damage from all sources.
 Synergy:
-None specified yet.
+Pairs with high single-target DPS because every source benefits from the mark.
+Strong with turrets, DoT, and Aegis Pulse because passive damage keeps value flowing during the mark window.
+Bridge value: helps economy/control builds kill bandits and elites before they escape or overwhelm space.
 Rarity: 3
 Base Price: $25
 Max Level: 3
@@ -1031,7 +1069,9 @@ Effect:
 Spawn a small AoE explosion centered on that enemy.
 Explosion damage uses player base bullet damage only (pre-crit).
 Synergy:
-None specified yet.
+Strong with piercing and ricochet because clustered hits create more kill centers.
+Pairs with Mark of Vulnerability to turn priority-target kills into splash payoff.
+Bridge value: supports paint/control builds by clearing enemies held in choke points.
 Rarity: 2
 Base Price: $18
 Max Level: 3
@@ -1055,7 +1095,9 @@ Effect:
 On bullet hit, apply a DoT that ticks every 0.5s and scales from bullet_base (pre-crit).
 Bosses take 70% of listed DoT damage.
 Synergy:
-None specified yet.
+Scales with fire rate, ricochet, and turret shots if secondary sources are allowed to apply status.
+Pairs with Mark of Vulnerability for boss pressure while the player is kiting.
+Bridge value: supports control builds that keep enemies inside DoT windows longer.
 Rarity: 2
 Base Price: $20
 Max Level: 3
@@ -1074,7 +1116,9 @@ Effect:
 While moving, leave temporary spikes at your position. Each spike hits once and slows 5% for 1.0s.
 Trade-off: each purchase reduces move speed by approximately 4% (multiplicative).
 Synergy:
-None specified yet.
+Pairs with Curing Paint, Sticky Tar Flask, and Time Dilation Boots to punish enemies that chase through controlled space.
+Works with Coin Magnet by making pickup routes safer while leaving traps behind.
+Bridge value: helps turret builds create a defensive lane around static positions.
 Rarity: 2
 Base Price: $18
 Max Level: 3
@@ -1174,7 +1218,9 @@ Safety cap: pulse damage to bosses can be clamped to avoid one-cycle kills.
 Effect:
 Add a persistent reserve shield layer.
 Synergy:
-None specified yet.
+Pairs with Aegis Pulse and Mirror Shell by extending shield uptime for shield-gated effects.
+Works as an early survival anchor for Blood Pact or economy-first builds.
+Bridge value: gives summon/turret builds a buffer while they set up positioning.
 Rarity: 1
 Base Price: $6
 Max Level: None (stackable by purchases)
@@ -1189,7 +1235,9 @@ When you collect a heal at full HP,
 convert a portion of that heal into temporary shield HP.
 Higher levels increase overheal conversion.
 Synergy:
-None specified yet.
+Pairs with Coin Magnet because safer pickup routing increases full-HP heal collection.
+Strong with Aegis Pulse, Mirror Shell, and Shardstorm because overheal becomes shield uptime.
+Bridge value: rewards defensive economy builds that already invest in pickup control.
 Rarity: 2 (common/uncommon)
 Base Price: $15
 Max Level: 3
@@ -1331,7 +1379,9 @@ Visual: high-contrast outline + minimap ping pulse every 0.6s while effect is ac
 Effect:
 Permanently decrease shop prices by 5% per level.
 Synergy:
-None specified yet.
+Pairs with Coupon and VIP Punchcard by making repeated purchases and rerolls cheaper.
+Supports pivot builds because lower prices reduce the penalty for changing paths mid-run.
+Bridge value: lets defense/economy runs buy survival now while still reaching late scaling.
 Rarity: 1
 Base Price: $10
 Max Level: 4
@@ -1343,7 +1393,9 @@ Rule: applies to normal offers and reroll cost; price floor is 1 coin.
 Effect:
 Take a loan: gain +80/+120/+160 coins immediately, then repay over 3/4/5 waves after Golden Interest. Multiple loans stack debt, use the longest timer, and force a final repayment attempt; failure costs 30% / 35% / 40% max HP.
 Synergy:
-None specified yet.
+Pairs with Coupon and Black Market Pass by turning borrowed money into immediate premium offers.
+Pairs with Golden Interest only if the loan creates enough surplus to survive repayment timing.
+Bridge value: enables risky early power spikes for weak-starting paths, but debt must remain visible.
 Rarity: 3
 Base Price: 5
 Max Level: 3
@@ -1358,7 +1410,9 @@ Gain access to a black-market shop variant.
 The next shop upgrades offer quality at a price premium.
 Next shop prices increase by 20%, and all standard offers are rarity 3 or higher.
 Synergy:
-None specified yet.
+Pairs with Shady Loan and VIP Punchcard because it converts temporary buying power into higher-rarity choices.
+Strong after a boss reward or coin-heavy level when the player can afford the premium.
+Bridge value: helps committed builds find rare capstones while keeping prices high enough to preserve risk.
 Rarity: 3
 Base Price: $30
 Max Level: Single-use consumable
@@ -1395,7 +1449,9 @@ Every time you pick up a coin, you have a level-scaled chance to spawn +1 extra 
 (chance scales with level, e.g., 10/20/30/40/50%).
 Does not trigger on synthetic coin sources (e.g., bank interest); only on ground pickups.
 Synergy:
-None specified yet.
+Pairs with Coin Magnet because larger pickup radius increases coin pickup count and splitter opportunities.
+Pairs with Golden Interest by turning extra pickups into larger future interest bases.
+Bridge value: supports mobile control builds that sweep the arena instead of camping.
 Rarity: 2 (uncommon)
 Base Price: $16
 Max Level: 5
@@ -1591,7 +1647,9 @@ status_debuff_window = apply only if standing >= 0.8s continuously on enemy pain
 Effect:
 Your movement leaves a short trail of Player Paint ("curing ink") on the ground.
 Synergy:
-None specified yet.
+Pairs with Ground Spikes and Sticky Tar Flask because movement trails stack into a territorial control lane.
+Works with Coin Magnet by making wide pickup routes productive instead of purely risky.
+Bridge value: supports turret builds by painting fallback paths around static defenses.
 Rarity: 2 (Common / Uncommon)
 Base Price: $12
 Max Level: 3
@@ -1610,7 +1668,9 @@ Ownership rule: only latest paint owner controls tile effects.
 Effect:
 When an enemy dies on player-owned paint, convert paint intensity into bonus rewards.
 Synergy:
-None specified yet.
+Pairs with Curing Paint and Ground Spikes because enemies dying inside controlled zones become extra income.
+Pairs with Coin Magnet so bonus coins can be collected without breaking combat routing.
+Bridge value: turns paint control into economy scaling without adding direct damage.
 Rarity: 3
 Base Price: $20
 Max Level: 3
@@ -1625,7 +1685,9 @@ Rule: cannot trigger from summoned fake-coin entities.
 Effect:
 Moving over enemy paint converts it toward neutral or player-owned paint.
 Synergy:
-None specified yet.
+Pairs with Curing Paint by reclaiming enemy zones and replacing them with player-safe lanes.
+Supports shield and survival builds by reducing slow pressure during retreats.
+Bridge value: keeps paint/control builds viable in biomes or boss fights that contest floor ownership.
 Rarity: 2
 Base Price: $16
 Max Level: 3
