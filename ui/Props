@@ -106,6 +106,22 @@ Before marking a prop implemented, verify:
 5. VFX and audio have budget limits and do not hide enemy telegraphs.
 6. The prop has at least one focused QA case in this file or the test plan.
 
+Current Game Context
+Z Game currently plays as a wave-based survival shooter where the player clears timed levels, collects coins and heals, then spends coins in the shop between levels. Props are the main way a run becomes distinct: they change bullet behavior, add shield layers, alter coin flow, create paint trails, or deploy turrets. The current implemented loop already supports boss levels every 5 stages, selectable biome/domain modifiers, bandit encounters, projectile upgrades, economy upgrades, defensive shields, paint damage, and auto/stationary turrets.
+
+Current runtime-facing prop priorities:
+- Keep early props readable in the shop because players make choices quickly between short combat waves.
+- Make every implemented prop visible in combat through either behavior, tooltip text, card path color, or HUD/pause summary.
+- Favor props that create clear tactical routes: kite through paint, hold a turret zone, chase a bandit, save for interest, or burst a marked elite.
+- Preserve performance on late waves by capping spawned projectiles, paint tiles, turret actors, and large VFX flashes.
+- Make boss levels test build weaknesses: wave-clear props should still help, but single-target pressure, survival timing, and positioning must matter.
+
+Current implemented prop families:
+- Ballistic: Piercing Rounds, Ricochet Scope, Shrapnel Shells, Explosive Rounds, DOT Rounds, and Mark of Vulnerability.
+- Defense: Carapace, Bone Plating, and Aegis Pulse.
+- Economy / Bandit: Coin Magnet, Coupon, Golden Interest, Lockbox, Shady Loan, Bandit Radar, and Wanted Poster.
+- Control / Paint / Summon: Ground Spikes, Curing Paint, Auto-Turret, and Stationary Turret.
+
 Z Game Systems and Props Specification
 Status: Working Draft
 Purpose: Consolidated design, balance, UX, and production reference for the current version.
