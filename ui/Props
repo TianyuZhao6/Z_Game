@@ -122,6 +122,49 @@ Current implemented prop families:
 - Economy / Bandit: Coin Magnet, Coupon, Golden Interest, Lockbox, Shady Loan, Bandit Radar, and Wanted Poster.
 - Control / Paint / Summon: Ground Spikes, Curing Paint, Auto-Turret, and Stationary Turret.
 
+Browser Prototype Section
+The browser prototype is the playable web build of Z Game, packaged through pygbag and running under the browser/emscripten runtime. It should be treated as a real target, not only a demo export. Browser play keeps the same core loop as desktop: menu, timed combat level, coin and heal pickups, shop, biome selection, boss cadence, save/load, and pause/settings overlays. The browser version uses separate runtime limits so the game remains responsive inside Chrome even when desktop can handle more entities and effects.
+
+Browser prototype goals:
+- Let a new player start a run quickly from the browser without installing Python or Pygame.
+- Preserve the feel of the desktop combat loop while reducing render and simulation spikes.
+- Keep shop props, pause summaries, and tooltip text readable at smaller canvas sizes.
+- Make browser regressions measurable through diagnostics instead of relying on manual feel.
+- Use browser-safe audio and storage paths so music, SFX, and save data survive normal web play.
+
+Browser-specific runtime behavior:
+- Uses web-lite isometric rendering by default, including capped visible pickups, turrets, enemies, bullets, and enemy shots.
+- Uses cached wall/background layers so static map geometry is not rebuilt every frame.
+- Uses browser-native BGM and FX audio paths where possible to avoid pygame mixer crackle under web load.
+- Stores save data through browser localStorage with a primary key, backup key, and metadata key.
+- Supports diagnostic URL flags such as start, diag, scenario, biome, level, duration, and feature toggles.
+- Keeps enemy projectiles disabled by default on the safest browser route unless explicitly enabled for debugging.
+- Uses queued/batched timed spawns so renewed waves do not enter the simulation in one browser frame.
+
+Browser prop design rules:
+1. Any prop that creates extra actors must define a browser cap. Examples: turret count, shrapnel bullets, bonus coins, damage texts, paint tiles, and pulse VFX.
+2. Any prop that paints or redraws the floor must support lower refresh rates and cached visual layers.
+3. Any prop that spawns projectiles must have a clear drop rule when the web bullet cap is reached.
+4. Any prop that depends on enemy shots must still have a useful fallback while browser enemy shots are disabled.
+5. Any prop with persistent state must save and load through the same meta keys on desktop and web.
+6. Any prop with frequent audio feedback must use short, pooled, browser-safe SFX or degrade silently when FX audio is disabled.
+
+Browser prototype QA checklist:
+- Start a normal browser run and reach the first shop with no Python or JS error string.
+- Buy at least one ballistic, defense, economy, paint, and turret prop across test runs.
+- Verify card border color, path tag, current value text, and next upgrade text remain readable at 960x540 and 1280x720.
+- Verify the web profiler heartbeat continues during combat and shop transitions.
+- Run one wind, mist, hell, and stone biome browser scenario because each stresses a different subsystem.
+- Confirm save/load preserves prop levels after browser refresh.
+- Confirm late-wave prop bursts respect visible caps instead of freezing the browser frame.
+
+Browser prototype backlog:
+- Add a small browser-only "performance mode" note in settings that explains reduced VFX without exposing debug language.
+- Add a prop-card validation report for web text overflow at minimum canvas size.
+- Add web QA rows for the highest-risk props: Shrapnel Shells, Explosive Rounds, Ground Spikes, Curing Paint, Aegis Pulse, Auto-Turret, and Stationary Turret.
+- Add one browser-safe showcase build that intentionally demonstrates each current prop family in under 5 minutes.
+- Add browser diagnostics for prop-trigger counts per minute so runaway effects are visible before they become stalls.
+
 Z Game Systems and Props Specification
 Status: Working Draft
 Purpose: Consolidated design, balance, UX, and production reference for the current version.
