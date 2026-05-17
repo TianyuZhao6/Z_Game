@@ -125,6 +125,17 @@ Current implemented prop families:
 Browser Prototype Section
 The browser prototype is the playable web build of Z Game, packaged through pygbag and running under the browser/emscripten runtime. It should be treated as a real target, not only a demo export. Browser play keeps the same core loop as desktop: menu, timed combat level, coin and heal pickups, shop, biome selection, boss cadence, save/load, and pause/settings overlays. The browser version uses separate runtime limits so the game remains responsive inside Chrome even when desktop can handle more entities and effects.
 
+Browser version description:
+The browser version is the low-friction public entry point for Z Game. It should communicate the same prop fantasy and run structure as the desktop build, but with stricter budgets for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any player-facing prop description that changes behavior on web must explain the browser behavior in plain language, using "browser version" or "web build" rather than internal terms like emscripten, web-lite, or debug route. The goal is to make reduced effects feel intentional and readable, not like missing features.
+
+Browser version differences to document on props:
+- Props may use lower visual density, shorter effect lifetimes, or fewer simultaneous spawned actors.
+- Projectile, paint, turret, summon, coin, damage text, and VFX bursts must state the effective browser cap when it differs from desktop behavior.
+- Effects that are visually simplified in browser should keep the same gameplay result whenever possible.
+- Effects that must be mechanically reduced in browser should show the reduced value in tooltip current-value and next-upgrade text.
+- Props that rely on disabled browser systems, such as enemy projectiles on the safest route, need a fallback behavior written into the prop entry.
+- Browser-specific text should be short enough for 960x540 card layouts and should avoid technical implementation details.
+
 Browser prototype goals:
 - Let a new player start a run quickly from the browser without installing Python or Pygame.
 - Preserve the feel of the desktop combat loop while reducing render and simulation spikes.
@@ -148,6 +159,8 @@ Browser prop design rules:
 4. Any prop that depends on enemy shots must still have a useful fallback while browser enemy shots are disabled.
 5. Any prop with persistent state must save and load through the same meta keys on desktop and web.
 6. Any prop with frequent audio feedback must use short, pooled, browser-safe SFX or degrade silently when FX audio is disabled.
+7. Any prop entry with browser-specific behavior must include a "Browser version" note that names the cap, fallback, or simplified effect.
+8. Browser version notes should distinguish visual-only reductions from gameplay reductions so QA can verify the correct expectation.
 
 Browser prototype QA checklist:
 - Start a normal browser run and reach the first shop with no Python or JS error string.
