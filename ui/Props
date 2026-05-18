@@ -94,6 +94,7 @@ Each detailed prop entry should include:
 - Scaling source: bullet_base, enemy max HP, current coins, player max HP, movement state, shield state, or fixed value.
 - Synergy notes: 2-3 intended pairings, including at least one same-path and one bridge-path pairing where possible.
 - Tradeoff or limiter: drawback, boss modifier, internal cooldown, entity cap, performance cap, or opportunity cost.
+- Browser version behavior: state whether the prop is identical to desktop, visually simplified, capped, or mechanically reduced in the web build.
 - UI requirement: card pitch, current value text, next upgrade text, path tag, VFX/readability note, and any warning text.
 - QA case: one minimum scenario that proves the prop works and one scenario that proves the limiter works.
 
@@ -104,7 +105,8 @@ Before marking a prop implemented, verify:
 3. Trigger order is deterministic when multiple props fire from the same event.
 4. Boss, elite, web-lite, and high-density wave behavior are specified.
 5. VFX and audio have budget limits and do not hide enemy telegraphs.
-6. The prop has at least one focused QA case in this file or the test plan.
+6. Browser version current-value text and next-upgrade text match the actual browser cap or fallback if it differs from desktop.
+7. The prop has at least one focused QA case in this file or the test plan.
 
 Current Game Context
 Z Game currently plays as a wave-based survival shooter where the player clears timed levels, collects coins and heals, then spends coins in the shop between levels. Props are the main way a run becomes distinct: they change bullet behavior, add shield layers, alter coin flow, create paint trails, or deploy turrets. The current implemented loop already supports boss levels every 5 stages, selectable biome/domain modifiers, bandit encounters, projectile upgrades, economy upgrades, defensive shields, paint damage, and auto/stationary turrets.
@@ -135,6 +137,12 @@ Browser version differences to document on props:
 - Effects that must be mechanically reduced in browser should show the reduced value in tooltip current-value and next-upgrade text.
 - Props that rely on disabled browser systems, such as enemy projectiles on the safest route, need a fallback behavior written into the prop entry.
 - Browser-specific text should be short enough for 960x540 card layouts and should avoid technical implementation details.
+
+Recommended prop entry wording:
+- Browser version: Same gameplay as desktop; visual effect is shorter and capped to 8 active bursts.
+- Browser version: Max 3 active turrets on web. Extra turret triggers refresh the oldest turret instead of spawning another.
+- Browser version: Enemy-shot trigger becomes a timed shield pulse while browser enemy projectiles are disabled.
+- Browser version: Uses the same damage values as desktop, but damage text may be hidden during dense waves.
 
 Browser prototype goals:
 - Let a new player start a run quickly from the browser without installing Python or Pygame.
@@ -2606,6 +2614,17 @@ current_value_text
 next_upgrade_text
 synergy_tags
 risk_note (if the prop has a drawback or tradeoff)
+browser_version_note (only when the browser version has a different cap, fallback, visual density, or mechanical value)
+
+37.1a. Browser version note format
+Use browser_version_note for player-facing differences only. Keep it short, factual, and non-technical.
+Preferred format:
+Browser: [what changes] + [what stays true].
+Examples:
+Browser: caps shards at 12, damage stays unchanged.
+Browser: refreshes oldest turret after 3 active turrets.
+Browser: uses a shield pulse fallback while enemy shots are off.
+Do not mention implementation names such as web-lite, emscripten, pygbag, render cache, or debug flags in card text.
 
 37.2. Naming rules
 Names should be short, distinct, and scannable in under 1 second.
