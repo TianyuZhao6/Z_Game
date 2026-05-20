@@ -515,6 +515,8 @@ def _web_simple_enemy_move(game, enemy, player, game_state, obstacles, *, dt: fl
 def _use_web_simple_enemy_move(game, enemy, player) -> bool:
     if not getattr(game, "IS_WEB", False):
         return False
+    if not bool(getattr(game, "WEB_USE_SIMPLE_ENEMY_MOVE", False)):
+        return False
     if getattr(enemy, "is_boss", False) or getattr(enemy, "type", "") == "bandit":
         return False
     radius_cells = max(0.0, float(getattr(game, "WEB_SIMPLE_ENEMY_FULL_MOVE_RADIUS_CELLS", 0.0) or 0.0))
