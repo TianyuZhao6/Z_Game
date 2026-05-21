@@ -156,6 +156,7 @@ WEB_PAINT_CAMERA_QUANT = 16 if IS_WEB else 1
 WEB_WALL_NEAR_RADIUS_CELLS = 10 if IS_WEB else 0
 WEB_USE_WALL_BAND_OPT = False
 WEB_SIMPLE_ENEMY_FULL_MOVE_RADIUS_CELLS = 10 if IS_WEB else 0
+WEB_USE_SIMPLE_ENEMY_MOVE = IS_WEB and _detect_web_flag("simpleenemies=1", "simplemove=1")
 WEB_FOCUS_PAN_DURATION = 0.18 if IS_WEB else 0.70
 WEB_FOCUS_HOLD_TIME = 0.08 if IS_WEB else 0.35
 WEB_LITE_RENDER_PICKUP_CAP = 12
@@ -188,7 +189,7 @@ WEB_QUALITY_PRESETS = {
         "spawn_interval_mult": 1.0,
         "use_lite_render": True,
         "disable_fx_audio": False,
-        "enable_astar_recovery": False,
+        "enable_astar_recovery": True,
     },
     "balanced": {
         "target_fps": 18,
