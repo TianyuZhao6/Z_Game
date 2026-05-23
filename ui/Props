@@ -144,6 +144,21 @@ Recommended prop entry wording:
 - Browser version: Enemy-shot trigger becomes a timed shield pulse while browser enemy projectiles are disabled.
 - Browser version: Uses the same damage values as desktop, but damage text may be hidden during dense waves.
 
+Browser version prop checklist:
+- State whether web behavior is same, capped, fallback, or visual-only simplified.
+- Name the exact cap when the prop spawns bullets, turrets, summons, paint, coins, damage text, pulses, or particles.
+- Explain what happens when the cap is reached: drop the new effect, refresh the oldest effect, merge into damage, or convert into a stat bonus.
+- Keep desktop and browser level tables separate only when the gameplay numbers differ.
+- If only VFX changes, say the gameplay values stay unchanged.
+- If browser behavior affects balance, include one QA case at 960x540 and one late-wave density case.
+
+Browser version prop family expectations:
+- Ballistic props should prioritize deterministic projectile caps and clear drop rules over unlimited chains.
+- Paint props should prioritize tile reuse, lower refresh cadence, and readable ownership colors.
+- Turret and summon props should convert extra copies into quality stats once browser actor caps are reached.
+- Defense pulses and reactive effects should keep survival timing consistent even if the pulse visual is simplified.
+- Economy props should cap visible coin bundles but preserve the intended reward value through merged pickups.
+
 Browser prototype goals:
 - Let a new player start a run quickly from the browser without installing Python or Pygame.
 - Preserve the feel of the desktop combat loop while reducing render and simulation spikes.
@@ -1123,6 +1138,7 @@ Level 3: proc_chance = 45%, shard_count = 4, shard_damage = 44% bullet_base
 Shard travel range: 2.2 / 2.6 / 3.0 tiles
 Chain guard: shrapnel kills cannot trigger another shrapnel proc more than 2 generations deep.
 Performance cap: max 36 live shrapnel bullets at once; excess shards are dropped.
+Browser version: cap live shrapnel bullets at 24. Excess shards are dropped, damage values stay unchanged, and dense waves may hide shard impact text.
 
 1.5. Mark of Vulnerability
 Effect:
@@ -1169,6 +1185,7 @@ Chain behavior rule:
 chain_depth_cap = 3 (original kill + 2 chained explosions)
 same_target_rehit_lockout = 0.20s
 Visual budget: max 12 concurrent explosive flash VFX instances.
+Browser version: cap active explosion flashes at 8 and chain resolution at the same depth cap. Gameplay damage stays unchanged unless the browser bullet/effect cap is already saturated; saturated secondary flashes are skipped instead of queued.
 
 1.7. DOT Rounds
 Effect:
@@ -1206,6 +1223,7 @@ Rules:
 Level 1: spike_damage = 0.30 * bullet_base, lifetime = 3.0s, max_active = 6
 Level 2: spike_damage = 0.40 * bullet_base, lifetime = 4.0s, max_active = 10
 Level 3: spike_damage = 0.50 * bullet_base, lifetime = 5.0s, max_active = 14
+Browser version: keep the same damage and slow values, but reuse the oldest spike when the active spike cap is reached. Spike visuals may refresh at a lower rate so the trail stays readable on small canvas sizes.
 
 2. Defense & Survival Props
 
@@ -1293,6 +1311,7 @@ cooldown = 4.0 / 3.375 / 2.75 / 2.125 / 1.5 s
 damage = 30% / 45% / 60% / 80% / 100% of enemy max HP
 Wave behavior: one expanding pulse; high levels may add visual ripple layers only (no extra hidden damage ticks).
 Safety cap: pulse damage to bosses can be clamped to avoid one-cycle kills.
+Browser version: keep shield timing, cooldown, radius, and damage rules the same as desktop. Render one simplified pulse ring with capped hit text; extra ripple layers are visual-only and may be omitted.
 
 2.6. Carapace
 Effect:
@@ -1610,6 +1629,7 @@ L2: damage_ratio 0.35, interval 0.86s, range_mult 0.82
 L3: damage_ratio 0.37, interval 0.82s, range_mult 0.84
 L4: damage_ratio 0.39, interval 0.78s, range_mult 0.86
 L5: damage_ratio 0.42, interval 0.74s, range_mult 0.88
+Browser version: max 3 follower turrets as visible actors. Levels above the browser actor cap convert into the listed damage, interval, and range quality scaling so the purchase still feels valuable without adding more moving units.
 
 4.5. Stationary Turret
 Effect:
@@ -1623,6 +1643,7 @@ Rules:
 Per purchase: +1 stationary turret spawn each level at valid clear tile.
 Suggested tuning: same bullet damage as auto turret, +15% range, -10% fire interval to reward setup play.
 Hard safety cap suggestion: max 8 active stationary turrets on map; extra copies become +6% turret damage each.
+Browser version: max 5 active stationary turrets. Extra purchases become +6% turret damage each and should be shown as "Browser: extra copies increase turret damage after 5 active turrets."
 
 5. Crit, Element, and Synergy Props
 
@@ -1743,6 +1764,7 @@ Level 3: damage_per_tick = 0.08 * bullet_base, lifetime = 4.0s, radius = 0.90 ti
 Boss rule: paint DoT deals 70% damage to bosses.
 Spawn cadence: leave footprint every 0.25s while moving.
 Ownership rule: only latest paint owner controls tile effects.
+Browser version: keep damage, lifetime, radius, and boss modifier the same, but merge nearby footprints into existing paint tiles when the browser paint budget is high. Visual refresh may run at a lower cadence; ownership color and damage timing must remain correct.
 
 6.2. Paint Converter
 Effect:
