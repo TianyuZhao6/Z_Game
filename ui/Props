@@ -159,6 +159,20 @@ Browser version prop family expectations:
 - Defense pulses and reactive effects should keep survival timing consistent even if the pulse visual is simplified.
 - Economy props should cap visible coin bundles but preserve the intended reward value through merged pickups.
 
+Browser version description levels:
+- Card text: one short player-facing note only when browser behavior changes a number, cap, or trigger. Keep it under one line at 960x540.
+- Tooltip text: include the exact cap or fallback and the unchanged part of the effect, such as damage, cooldown, or reward value.
+- Detailed prop spec: describe the runtime rule, cap behavior, VFX simplification, save/load impact, and QA scenario.
+- QA/test plan: verify the cap is visible in diagnostics, the card text matches runtime behavior, and the effect does not freeze late-wave combat.
+
+Browser version description template:
+- Browser version:
+  - Classification: same as desktop / visual-only simplified / capped / fallback / mechanically reduced.
+  - Runtime rule: exact cap, refresh rule, merge rule, drop rule, or conversion rule.
+  - Player text: short card or tooltip sentence.
+  - QA: minimum canvas check, late-wave density check, and save/load check if stateful.
+  - Risk: what would make this prop feel worse on browser, such as hidden procs, delayed audio, or reduced actor count.
+
 Browser prototype goals:
 - Let a new player start a run quickly from the browser without installing Python or Pygame.
 - Preserve the feel of the desktop combat loop while reducing render and simulation spikes.
@@ -189,10 +203,23 @@ Browser prototype QA checklist:
 - Start a normal browser run and reach the first shop with no Python or JS error string.
 - Buy at least one ballistic, defense, economy, paint, and turret prop across test runs.
 - Verify card border color, path tag, current value text, and next upgrade text remain readable at 960x540 and 1280x720.
+- Verify any browser_version_note appears only when browser behavior actually differs from desktop.
+- Verify browser_version_note text matches the active cap, fallback, or conversion rule in runtime diagnostics.
 - Verify the web profiler heartbeat continues during combat and shop transitions.
 - Run one wind, mist, hell, and stone biome browser scenario because each stresses a different subsystem.
 - Confirm save/load preserves prop levels after browser refresh.
 - Confirm late-wave prop bursts respect visible caps instead of freezing the browser frame.
+
+Browser prop QA rows to add per high-risk prop:
+| qa_id | prop | browser behavior under test | minimum check |
+| --- | --- | --- | --- |
+| WEB-PROP-01 | Shrapnel Shells | live shard cap and dropped excess shards | dense kill wave does not exceed cap or chain infinitely |
+| WEB-PROP-02 | Explosive Rounds | active flash cap and skipped saturated secondary flashes | chain explosion clears enemies without queued VFX backlog |
+| WEB-PROP-03 | Ground Spikes | oldest-spike reuse at cap | player trail remains readable and damage/slow still apply |
+| WEB-PROP-04 | Curing Paint | footprint merge and lower visual refresh | ownership color and tick timing remain correct |
+| WEB-PROP-05 | Aegis Pulse | simplified pulse ring with unchanged timing | shield-gated cooldown and boss clamp match desktop rules |
+| WEB-PROP-06 | Auto-Turret | follower actor cap converts to quality scaling | level 4+ improves turret stats without adding visible actors |
+| WEB-PROP-07 | Stationary Turret | active turret cap converts extra copies to damage | purchases above cap update tooltip and damage value |
 
 Browser prototype backlog:
 - Add a small browser-only "performance mode" note in settings that explains reduced VFX without exposing debug language.
@@ -2647,6 +2674,19 @@ Browser: caps shards at 12, damage stays unchanged.
 Browser: refreshes oldest turret after 3 active turrets.
 Browser: uses a shield pulse fallback while enemy shots are off.
 Do not mention implementation names such as web-lite, emscripten, pygbag, render cache, or debug flags in card text.
+
+Browser note placement rules:
+Use card text only for mechanical differences players may plan around.
+Use tooltip text for exact caps, conversion rules, and fallback triggers.
+Use pause summary text only for persistent state such as turret cap conversions or browser-only quality scaling.
+Do not show a browser note for invisible renderer optimizations when damage, timing, cooldown, and reward values are unchanged.
+
+Browser note writing rules:
+- Start with the changed behavior, then state what remains unchanged.
+- Prefer exact numbers over vague wording.
+- Use "caps", "refreshes", "merges", "converts", or "uses fallback" as the main verb.
+- Keep the sentence useful without knowing the desktop version.
+- Avoid apology language such as "reduced", "limited", or "weaker" unless the gameplay value is actually lower.
 
 37.2. Naming rules
 Names should be short, distinct, and scannable in under 1 second.
