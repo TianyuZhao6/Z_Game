@@ -268,6 +268,29 @@ Roster Rules
 4. implementation_status should change whenever tuning or behavior changes.
 5. Add notes only for blockers, edge cases, or special UI/runtime requirements.
 
+Browser roster annotation standard:
+Use the existing notes column for quick browser status when a prop has web-specific behavior.
+Preferred short tags:
+- web:same - gameplay values match desktop; no card note needed.
+- web:visual - gameplay values match desktop, but browser simplifies VFX or text density.
+- web:cap - browser uses a lower actor, projectile, paint, pickup, text, or VFX cap.
+- web:fallback - browser replaces a disabled trigger or subsystem with another behavior.
+- web:reduced - browser changes a gameplay number and must show browser-specific values.
+
+Roster browser note examples:
+- web:cap live shards 24, excess dropped
+- web:visual one pulse ring, same damage
+- web:cap 3 visible turrets, extra levels become quality
+- web:fallback enemy-shot trigger becomes timed pulse
+- web:same values match desktop, QA dense waves only
+
+Roster browser rules:
+1. If notes already contain implementation context, append the browser tag after a semicolon.
+2. Use web:same only for high-density or stateful props worth browser QA; omit it for simple stat props.
+3. Use web:reduced only when damage, cooldown, radius, chance, duration, or reward value differs.
+4. Keep roster browser text short; the detailed prop entry must hold the full cap, fallback, and QA case.
+5. Any prop marked web:cap, web:fallback, or web:reduced must have a matching Browser version line in its detailed entry.
+
 Current Prop Roster (Seed Rows)
 These rows are draft roster entries for the current defined prop list in sections 1-6. Keep them synchronized with the detailed entries below.
 
@@ -283,20 +306,20 @@ Section Scan Guide (Table Order)
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | piercing_rounds | Piercing Rounds | Core Offense | BALLISTIC | NONE | Pierce scaler | 1 | $12 | 5 | passive | +1 to +5 pierce, up to 16% falloff | pierce,wave_clear,projectile | none | OFF | implemented | Core Ballistic baseline |
 | ricochet_scope | Ricochet Scope | Core Offense | BALLISTIC | NONE | Bounce scaler | 2 | $14 | 3 | passive | 1 to 3 ricochets, 90% to 75% bounce damage | ricochet,crit,wave_clear | lower single-target value in open maps | OFF | implemented | Core Ballistic baseline |
-| shrapnel_shells | Shrapnel Shells | Core Offense | BALLISTIC | NONE | Death burst | 3 | $16 | 3 | on_kill | 25% to 45% proc, 3 to 4 shards | shrapnel,wave_clear,crit | performance-capped secondary spawns | OFF | implemented | Core Ballistic baseline |
-| ground_spikes | Ground Spikes | Core Offense | CONTROL | OFFENSE | Trail trap | 2 | $18 | 3 | on_move | 0.30 to 0.50 bullet_base, 6 to 14 active spikes | trail,slow,area_denial | move speed penalty per purchase | CTL | implemented | Existing runtime constants mapped |
+| shrapnel_shells | Shrapnel Shells | Core Offense | BALLISTIC | NONE | Death burst | 3 | $16 | 3 | on_kill | 25% to 45% proc, 3 to 4 shards | shrapnel,wave_clear,crit | performance-capped secondary spawns | OFF | implemented | Core Ballistic baseline; web:cap live shards 24, excess dropped |
+| ground_spikes | Ground Spikes | Core Offense | CONTROL | OFFENSE | Trail trap | 2 | $18 | 3 | on_move | 0.30 to 0.50 bullet_base, 6 to 14 active spikes | trail,slow,area_denial | move speed penalty per purchase | CTL | implemented | Existing runtime constants mapped; web:cap reuse oldest spike |
 | bleeding_edge | Bleeding Edge | Core Offense | OFFENSE | STATUS | Bleed applicator | 2 | $17 | 3 | on_hit | 24% to 52% bleed total over 3s | bleed,bossing,damage_over_time | lower burst without setup | OFF | planned | Add if bleed package is active |
 | dot_rounds | DOT Rounds | Core Offense | OFFENSE | STATUS | Generic DoT | 2 | $20 | 3 | on_hit | 0.10 to 0.22 bullet_base per tick, 1 to 2 stacks | dot,status,bossing | capped DPS and reduced boss value | OFF | implemented | Existing runtime constants mapped |
-| explosive_rounds | Explosive Rounds | Core Offense | OFFENSE | AOE | Chain explosion | 2 | $18 | 3 | on_kill | 25% to 45% splash, radius 0.65 to 0.95 tiles | explosion,aoe,chain | boss damage reduced to 50% | OFF | implemented | Existing runtime constants mapped |
+| explosive_rounds | Explosive Rounds | Core Offense | OFFENSE | AOE | Chain explosion | 2 | $18 | 3 | on_kill | 25% to 45% splash, radius 0.65 to 0.95 tiles | explosion,aoe,chain | boss damage reduced to 50% | OFF | implemented | Existing runtime constants mapped; web:visual cap flashes 8 |
 | mark_vulnerability | Mark of Vulnerability | Core Offense | OFFENSE | CONTROL | Priority mark | 3 | $25 | 3 | passive | 3s to 5s mark cadence, +15% to +30% damage taken | mark,elite_focus,bossing | no direct damage on its own | OFF | implemented | UI pulse marker required |
 | cleanse_step | Cleanse Step | Core Paint System | PAINT | DEFENSE | Paint reclaim | 2 | $16 | 3 | on_move | 0.20 to 0.45 intensity conversion, +6% to +12% slow resist | paint,reclaim,slow_resist | depends on enemy paint presence | PNT | planned | Defensive paint utility |
-| curing_paint | Curing Paint | Core Paint System | PAINT | OFFENSE | Paint trail | 2 | $12 | 3 | on_move | 0.04 to 0.08 bullet_base tick, 2.0s to 4.0s life | paint,trail,control | boss DoT reduced | PNT | implemented | Existing runtime constants mapped |
+| curing_paint | Curing Paint | Core Paint System | PAINT | OFFENSE | Paint trail | 2 | $12 | 3 | on_move | 0.04 to 0.08 bullet_base tick, 2.0s to 4.0s life | paint,trail,control | boss DoT reduced | PNT | implemented | Existing runtime constants mapped; web:visual merge nearby footprints |
 | paint_converter | Paint Converter | Core Paint System | PAINT | ECONOMY | Paint reward converter | 3 | $20 | 3 | on_kill | +8% to +16% bonus coin chance on owned paint | paint,econ,reward | requires owned paint kill zone | PNT | planned | Intensity-consuming reward effect |
 | explosive_crits | Explosive Crits | Crit / Element / Synergy | CRIT | AOE | Crit splash | 3 | $24 | 3 | on_hit | 30% to 55% splash on crit, 0.60 to 0.90 tile radius | crit,aoe,splash | reduced boss splash | CRT | planned | Strong combo bridge with Ballistic |
 | razor_focus | Razor Focus | Crit / Element / Synergy | CRIT | NONE | Crit tradeoff | 2 | $18 | 3 | passive | +8% to +20% crit, -6% to -15% fire rate | crit,risk,burst | fire rate penalty | CRT | planned | Straight crit conversion |
 | frost_brand | Frost Brand | Crit / Element / Synergy | STATUS | CRIT | Chill re-hit | 2 | $16 | 3 | on_hit | 14% to 28% chill chance, +12% to +26% re-hit bonus | chill,control,re_hit | boss slow reduced | CRT | planned | Element bridge prop |
 | shock_relay | Shock Relay | Crit / Element / Synergy | STATUS | AOE | Chain lightning | 2 | $19 | 3 | on_hit | every 8th to 5th hit chains, 30% to 50% damage | shock,chain,wave_clear | weaker in single-target fights | CRT | planned | Element bridge prop |
-| aegis_pulse | Aegis Pulse | Defense & Survival | DEFENSE | AOE | Shield pulse | 3 | $28 | 5 | passive | 100 to 180 px pulse, 4.0s to 1.5s cooldown | shield,aoe,pulse | shield-gated activation | DEF | implemented | Existing runtime constants mapped |
+| aegis_pulse | Aegis Pulse | Defense & Survival | DEFENSE | AOE | Shield pulse | 3 | $28 | 5 | passive | 100 to 180 px pulse, 4.0s to 1.5s cooldown | shield,aoe,pulse | shield-gated activation | DEF | implemented | Existing runtime constants mapped; web:visual one pulse ring |
 | blood_pact | Blood Pact | Defense & Survival | DEFENSE | OFFENSE | Risk conversion | 3 | $20 | 3 | passive | +18% to +45% damage, -12% to -28% max HP | risk,damage,glass_cannon | max HP penalty | DEF | planned | Safety floor required |
 | bone_plating | Bone Plating | Defense & Survival | DEFENSE | NONE | Layered mitigation | 2 | $12 | 5 | passive | +2 plating HP per tick per level, cap effect at L5 | plating,survival,contact | minor move speed reduction per purchase | DEF | implemented | Current implementation note present |
 | carapace | Carapace | Defense & Survival | DEFENSE | NONE | Reserve shield | 1 | $6 | None | passive | +20 persistent reserve shield per purchase | shield,stacking,survival | none | DEF | implemented | Working baseline shield layer |
@@ -319,8 +342,8 @@ Section Scan Guide (Table Order)
 | phantom_dash | Phantom Dash (if you ever add dash / evade) | Utility / Control | CONTROL | MOVEMENT | Dash contact strike | 3 | $22 | 3 | on_move | 0.55 to 1.00 bullet_base dash hit, 20% to 30% slow | dash,contact,burst | depends on dash system | CTL | planned | Future-only if dash is added |
 | sticky_tar_flask | Sticky Tar Flask | Utility / Control | CONTROL | STATUS | Puddle control | 2 | $14 | 3 | on_move | 0.9 to 1.3 tile puddle, 15% to 25% slow | puddle,slow,area_denial | indirect damage only | CTL | planned | Supports choke-point play |
 | time_dilation_boots | Time Dilation Boots | Utility / Control | CONTROL | NONE | Standstill aura | 2 | $16 | 3 | on_move | 1.8 to 2.6 tile slow pulse while stationary | slow,aura,positioning | requires standing still | CTL | planned | Counter-pattern to run-and-gun |
-| auto_turret | Auto-Turret | Utility / Control | SUMMON | CONTROL | Follower turret | 2 | $14 | 5 | passive | +1 turret per level, 0.33 to 0.42 damage ratio | turret,summon,sustained | count converts to quality after cap | SUM | implemented | Baseline turret path |
-| stationary_turret | Stationary Turret | Utility / Control | SUMMON | CONTROL | Static turret | 1 | $14 | 99 | passive | +1 static turret per purchase, max 8 active suggested | turret,holdout,zone_control | immobile placement | SUM | implemented | Baseline stationary turret variant |
+| auto_turret | Auto-Turret | Utility / Control | SUMMON | CONTROL | Follower turret | 2 | $14 | 5 | passive | +1 turret per level, 0.33 to 0.42 damage ratio | turret,summon,sustained | count converts to quality after cap | SUM | implemented | Baseline turret path; web:cap 3 visible, extra levels quality |
+| stationary_turret | Stationary Turret | Utility / Control | SUMMON | CONTROL | Static turret | 1 | $14 | 99 | passive | +1 static turret per purchase, max 8 active suggested | turret,holdout,zone_control | immobile placement | SUM | implemented | Baseline stationary turret variant; web:cap 5 active, extras damage |
 
 Set Bonus and Non-Shop Systems Roster
 Use this second roster to track systems that are not purchased directly in the shop but still define build identity, pacing, readability, and run difficulty.
