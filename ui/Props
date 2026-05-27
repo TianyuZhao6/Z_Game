@@ -1,7 +1,273 @@
+﻿1) Baseline and shared performance targets
+- Profile the current combat loop before changing behavior.
+- Keep player-visible gameplay rules intact unless a tuning change is explicitly needed.
+- Prefer small runtime wins that reduce full-list scans, repeated surface rebuilds, and uncapped transient effects.
+- Verify changes on desktop and web-lite paths where practical.
+
+2) world_runtime.py and/or shared runtime helpers
+- Extend spatial support beyond enemies if appropriate.
+- Add lightweight local query helpers for obstacles, spoils, heals.
+- Improve query efficiency while keeping code simple.
+
+3) game_state.py
+- Add local buckets/spatial indexing for spoils and heals.
+- Make spoil/heal update and collection local rather than full-list scanning.
+- Keep web spoil bundling but make it more effective for burst drops.
+- Reduce/update paint-active processing in batches or at lower frequency.
+- Reuse cached/static visual state where possible.
+- Add unified per-frame caps/budgets for transient entities like dmg texts / particles / telegraphs if appropriate.
+
+4) enemy_core.py
+- Add enemy LOD/update throttling:
+  - near player/on-screen = full update
+  - mid distance = reduced decision frequency
+  - far distance = minimal simulation
+- Cache paint intensity/debuff lookups for enemies instead of querying every frame.
+- Throttle expensive aura/shield/bandit/steal/special logic where safe.
+- Reduce obstacle bypass/path reconsideration frequency.
+- Keep gameplay feel intact.
+
+5) app_flow.py
+- Introduce lightweight subsystem scheduling / frequency separation in the main loop.
+- Keep player input/movement responsive every frame.
+- Run heavier systems at reduced frequency when possible.
+- Integrate per-frame spawn/effect budgets cleanly.
+
+6) render_runtime.py
+- Tighten visible-object filtering before drawing.
+- Apply caps after visibility filtering, not before.
+- Reuse cached text/surfaces/background layers aggressively.
+- Reduce dynamic paint/fx rendering cost in web lite mode while preserving readability.
+- Keep current static web background cache strategy and extend it where useful.
+
+7) paint.py
+- Avoid unnecessary refresh_visuals rebuilds.
+- Rebuild cached blob/static visuals only when visual identity truly changes.
+- Preserve gameplay, reduce visual recomputation.
+
+8) turrets.py
+- Use local spatial queries to acquire targets instead of scanning all enemies.
+- Separate retarget frequency from orbit/follow behavior.
+
+9) spawn_logic.py
+- Avoid expensive full candidate construction where possible.
+- Keep existing wave-plan batching and improve it if helpful.
+- Ensure burst spawns respect frame budgets.
+
+10) Lower-priority files (screens.py, shop_ui.py, menu_flow.py, menu_visuals.py, shop_support.py, persistence.py, ZGame.py)
+- Only apply lightweight caching/throttling/config cleanup.
+- Do not spend much effort here compared to combat-path modules.
+
+Output requirements:
+- Make the actual code changes directly.
+- Keep comments concise and useful.
+- Preserve existing APIs unless clearly necessary.
+- Add new constants/config values in central config locations if needed.
+- Prefer small, surgical changes over broad rewrites.   
+=================================================   
 Executive Summary
 This document is the master working specification for Z Game's prop system, path identity, balance rules, UX readability, and release-readiness requirements.
 Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and production guidance.
 Current intent: keep prop data consistent, make builds easier to read in-game, and align the current version toward a more polished Steam-ready release.
+
+Design North Star
+Props should create readable build identities, not only larger numbers.
+Every prop should answer four questions quickly:
+1. What does this make the player do differently?
+2. Which path or hybrid path does it support?
+3. What exact number changes now and on the next upgrade?
+4. What risk, cap, or encounter weakness keeps it from becoming automatic?
+
+Primary build fantasies:
+- Ballistic: bullets gain routing, chaining, piercing, and burst-clearing behavior.
+- Paint / Control: the floor becomes a tactical resource for slowing, reclaiming, damaging, and zoning.
+- Crit / Element: hits become conditional payoff events with clear timing windows.
+- Defense: shields, plating, and emergency tools convert mistakes into counterplay without deleting danger.
+- Economy: greed changes shop tempo and pickup routing while preserving debt and bandit pressure.
+- Summon / Turret: extra actors multiply pressure, but positioning and target access still matter.
+
+Documentation Standard For Each Prop
+Each detailed prop entry should include:
+- Gameplay promise: one sentence describing the player-facing outcome.
+- Trigger and runtime hook: passive, on hit, on kill, on damage, on move, consumable, or shop-only.
+- Level table: exact values for every level, including duration, radius, damage, cooldown, cap, and chance.
+- Scaling source: bullet_base, enemy max HP, current coins, player max HP, movement state, shield state, or fixed value.
+- Synergy notes: 2-3 intended pairings, including at least one same-path and one bridge-path pairing where possible.
+- Tradeoff or limiter: drawback, boss modifier, internal cooldown, entity cap, performance cap, or opportunity cost.
+- Browser version behavior: state whether the prop is identical to desktop, visually simplified, capped, or mechanically reduced in the web build.
+- UI requirement: card pitch, current value text, next upgrade text, path tag, VFX/readability note, and any warning text.
+- QA case: one minimum scenario that proves the prop works and one scenario that proves the limiter works.
+
+Runtime Detail Checklist
+Before marking a prop implemented, verify:
+1. It has a stable `prop_id`, save key, max level, base cost, rarity, and path tag.
+2. Shop purchase, save/load reset, pause tooltip, and card tooltip all read the same level source.
+3. Trigger order is deterministic when multiple props fire from the same event.
+4. Boss, elite, web-lite, and high-density wave behavior are specified.
+5. VFX and audio have budget limits and do not hide enemy telegraphs.
+6. Browser version current-value text and next-upgrade text match the actual browser cap or fallback if it differs from desktop.
+7. The prop has at least one focused QA case in this file or the test plan.
+
+Current Game Context
+Z Game currently plays as a wave-based survival shooter where the player clears timed levels, collects coins and heals, then spends coins in the shop between levels. Props are the main way a run becomes distinct: they change bullet behavior, add shield layers, alter coin flow, create paint trails, or deploy turrets. The current implemented loop already supports boss levels every 5 stages, selectable biome/domain modifiers, bandit encounters, projectile upgrades, economy upgrades, defensive shields, paint damage, and auto/stationary turrets.
+
+Current runtime-facing prop priorities:
+- Keep early props readable in the shop because players make choices quickly between short combat waves.
+- Make every implemented prop visible in combat through either behavior, tooltip text, card path color, or HUD/pause summary.
+- Favor props that create clear tactical routes: kite through paint, hold a turret zone, chase a bandit, save for interest, or burst a marked elite.
+- Preserve performance on late waves by capping spawned projectiles, paint tiles, turret actors, and large VFX flashes.
+- Make boss levels test build weaknesses: wave-clear props should still help, but single-target pressure, survival timing, and positioning must matter.
+
+Current implemented prop families:
+- Ballistic: Piercing Rounds, Ricochet Scope, Shrapnel Shells, Explosive Rounds, DOT Rounds, and Mark of Vulnerability.
+- Defense: Carapace, Bone Plating, and Aegis Pulse.
+- Economy / Bandit: Coin Magnet, Coupon, Golden Interest, Lockbox, Shady Loan, Bandit Radar, and Wanted Poster.
+- Control / Paint / Summon: Ground Spikes, Curing Paint, Auto-Turret, and Stationary Turret.
+
+Browser Prototype Section
+The browser prototype is the playable web build of Z Game, packaged through pygbag and running under the browser/emscripten runtime. It should be treated as a real target, not only a demo export. Browser play keeps the same core loop as desktop: menu, timed combat level, coin and heal pickups, shop, biome selection, boss cadence, save/load, and pause/settings overlays. The browser version uses separate runtime limits so the game remains responsive inside Chrome even when desktop can handle more entities and effects.
+
+Browser version description:
+The browser version is the low-friction public entry point for Z Game. It should communicate the same prop fantasy and run structure as the desktop build, but with stricter budgets for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any player-facing prop description that changes behavior on web must explain the browser behavior in plain language, using "browser version" or "web build" rather than internal terms like emscripten, web-lite, or debug route. The goal is to make reduced effects feel intentional and readable, not like missing features.
+
+Browser version differences to document on props:
+- Props may use lower visual density, shorter effect lifetimes, or fewer simultaneous spawned actors.
+- Projectile, paint, turret, summon, coin, damage text, and VFX bursts must state the effective browser cap when it differs from desktop behavior.
+- Effects that are visually simplified in browser should keep the same gameplay result whenever possible.
+- Effects that must be mechanically reduced in browser should show the reduced value in tooltip current-value and next-upgrade text.
+- Props that rely on disabled browser systems, such as enemy projectiles on the safest route, need a fallback behavior written into the prop entry.
+- Browser-specific text should be short enough for 960x540 card layouts and should avoid technical implementation details.
+
+Recommended prop entry wording:
+- Browser version: Same gameplay as desktop; FX is trimmed by the global browser particle budget.
+- Browser version: Same turret count as desktop; lite renderer shows the nearest 8 turrets when many are active.
+- Browser version: Enemy-shot trigger becomes a timed shield pulse while browser enemy projectiles are disabled.
+- Browser version: Uses the same damage values as desktop, but damage text may be hidden during dense waves.
+
+Browser version prop checklist:
+- State whether web behavior is same, capped, fallback, or visual-only simplified.
+- Name the exact cap when the prop spawns bullets, turrets, summons, paint, coins, damage text, pulses, or particles.
+- Explain what happens when the cap is reached: drop the new effect, refresh the oldest effect, merge into damage, or convert into a stat bonus.
+- Keep desktop and browser level tables separate only when the gameplay numbers differ.
+- If only VFX changes, say the gameplay values stay unchanged.
+- If browser behavior affects balance, include one QA case at 960x540 and one late-wave density case.
+
+Browser version prop family expectations:
+- Ballistic props should respect the browser pending-bullet soft cap and visible bullet render cap instead of adding separate per-prop hard caps.
+- Paint props should prioritize tile reuse, lower refresh cadence, and readable ownership colors.
+- Turret and summon props should distinguish simulation count from render count; current browser code can simulate more actors than the lite renderer draws.
+- Defense pulses and reactive effects should keep survival timing consistent even if the pulse visual is simplified.
+- Economy props should cap visible coin bundles but preserve the intended reward value through merged pickups.
+
+Current browser implementation snapshot:
+- Default browser quality profile is `full`: target 24 FPS, render interval 1/24s, render scale 1.0, enemy cap 30, max damage texts 4, max FX particles 16, max spoils on field 8, simulated enemy-shot cap 12.
+- Lite-render visible caps are pickups 12, turrets 8, enemies 10, player bullets 28, and enemy shots 16.
+- Browser enemy shots are disabled on the normal route unless `enemyshots=1` or `allowenemyshots=1` is present in the URL.
+- Browser update scheduling separates heavy systems: vulnerability marks every 0.10s, damage texts/aegis pulse lists at 24 Hz, ground spikes/curing paint/DOT rounds at 20 Hz, pickups at 30 Hz.
+- Browser paint rendering uses cached static/dynamic surfaces, camera quantization, and refresh windows rather than rebuilding every frame. Wind and mist browser routes can skip the paint render layer while gameplay state still updates.
+- Browser audio uses native HTML audio for BGM and skill FX by default; pygame mixer audio remains a debug fallback.
+- Browser saves use localStorage through the web save path; prop levels and persistent prop state read from the same META keys as desktop.
+
+Implementation-backed browser prop behavior:
+| area | current implementation | prop documentation impact |
+| --- | --- | --- |
+| Feature gates | WEB_ENABLE_AEGIS_PULSES, WEB_ENABLE_GROUND_SPIKES, WEB_ENABLE_CURING_PAINT, WEB_ENABLE_DOT_ROUNDS, and WEB_ENABLE_VULNERABILITY_MARKS default true in the web quality payload | These props are active on browser unless a future profile disables the gate |
+| Shrapnel bullets | Browser uses pending-bullet headroom from WEB_LITE_RENDER_BULLET_CAP * 2, not a fixed shrapnel-only cap | Describe soft burst reduction, not a hard live-shard limit |
+| Explosive rounds | Damage and chain behavior use desktop stats; FX particles are controlled by the global WEB_MAX_FX_PARTICLES budget | Mark as visual-budgeted, not mechanically reduced |
+| Ground Spikes | Browser updates the system at 20 Hz and uses the same max_active table 6/10/14 | Mark gameplay as same, with scheduled browser updates |
+| Curing Paint | Browser updates the system at 20 Hz; rendering uses cached paint layers and may skip paint rendering in wind/mist browser routes | Mark gameplay as same, visual render as cached/throttled |
+| Aegis Pulse | Trigger and stats match desktop; active pulse list updates at 24 Hz and damage text is capped/merged | Mark gameplay as same, feedback text as budgeted |
+| Turrets | Auto and stationary turrets simulate from saved META counts; lite render draws nearest 8 visible turrets | Do not document browser-only turret count conversion unless implementation changes |
+| Damage text | WEB_MAX_DAMAGE_TEXTS caps visible/active text and merges nearby non-crit numeric text | Browser notes should mention hidden/merged feedback only when it affects readability |
+
+Browser version description levels:
+- Card text: one short player-facing note only when browser behavior changes a number, cap, or trigger. Keep it under one line at 960x540.
+- Tooltip text: include the exact cap or fallback and the unchanged part of the effect, such as damage, cooldown, or reward value.
+- Detailed prop spec: describe the runtime rule, cap behavior, VFX simplification, save/load impact, and QA scenario.
+- QA/test plan: verify the cap is visible in diagnostics, the card text matches runtime behavior, and the effect does not freeze late-wave combat.
+
+Browser version description template:
+- Browser version:
+  - Classification: same as desktop / visual-only simplified / capped / fallback / mechanically reduced.
+  - Runtime rule: exact cap, refresh rule, merge rule, drop rule, or conversion rule.
+  - Player text: short card or tooltip sentence.
+  - QA: minimum canvas check, late-wave density check, and save/load check if stateful.
+  - Risk: what would make this prop feel worse on browser, such as hidden procs, delayed audio, or reduced actor count.
+
+Browser version classification guide:
+| classification | meaning | player-facing note needed | example |
+| --- | --- | --- | --- |
+| same as desktop | damage, timing, caps, triggers, and reward value match desktop | no card note; optional detailed spec note | DOT damage ticks at the same values |
+| visual-only simplified | gameplay matches desktop but particles, flashes, text, or ripples are reduced | tooltip note only if the missing visual could confuse players | explosive particles trim to the browser FX budget |
+| capped | browser has a lower live actor, projectile, tile, text, or VFX cap | yes, if the cap changes planning or stacking value | lite renderer shows nearest 8 turrets |
+| fallback | a disabled browser subsystem is replaced by another trigger or effect | yes, always | enemy-shot trigger becomes timed shield pulse |
+| mechanically reduced | browser changes damage, duration, cooldown, radius, chance, or reward value | yes, card and tooltip must show browser numbers | splash radius or summon count is lower on web |
+
+Same-as-desktop policy:
+- If a prop is identical in gameplay and only benefits from generic browser optimizations, write "Browser version: same gameplay values as desktop" in the detailed spec only.
+- Do not add a browser_version_note to the shop card for same-as-desktop props.
+- Do not create separate browser level tables unless at least one gameplay number differs.
+- Still include browser QA if the prop can generate high entity density, frequent audio, persistent state, or large visual bursts.
+- If later tuning introduces a browser-only cap, update the classification from same-as-desktop to capped and add player-facing text.
+
+Browser prototype goals:
+- Let a new player start a run quickly from the browser without installing Python or Pygame.
+- Preserve the feel of the desktop combat loop while reducing render and simulation spikes.
+- Keep shop props, pause summaries, and tooltip text readable at smaller canvas sizes.
+- Make browser regressions measurable through diagnostics instead of relying on manual feel.
+- Use browser-safe audio and storage paths so music, SFX, and save data survive normal web play.
+
+Browser-specific runtime behavior:
+- Uses web-lite isometric rendering by default, including capped visible pickups, turrets, enemies, bullets, and enemy shots.
+- Uses cached wall/background layers so static map geometry is not rebuilt every frame.
+- Uses browser-native BGM and FX audio paths where possible to avoid pygame mixer crackle under web load.
+- Stores save data through browser localStorage with a primary key, backup key, and metadata key.
+- Supports diagnostic URL flags such as start, diag, scenario, biome, level, duration, and feature toggles.
+- Keeps enemy projectiles disabled by default on the safest browser route unless explicitly enabled for debugging.
+- Uses queued/batched timed spawns so renewed waves do not enter the simulation in one browser frame.
+
+Browser prop design rules:
+1. Any prop that creates extra actors must define a browser cap. Examples: turret count, shrapnel bullets, bonus coins, damage texts, paint tiles, and pulse VFX.
+2. Any prop that paints or redraws the floor must support lower refresh rates and cached visual layers.
+3. Any prop that spawns projectiles must have a clear drop rule when the web bullet cap is reached.
+4. Any prop that depends on enemy shots must still have a useful fallback while browser enemy shots are disabled.
+5. Any prop with persistent state must save and load through the same meta keys on desktop and web.
+6. Any prop with frequent audio feedback must use short, pooled, browser-safe SFX or degrade silently when FX audio is disabled.
+7. Any prop entry with browser-specific behavior must include a "Browser version" note that names the cap, fallback, or simplified effect.
+8. Browser version notes should distinguish visual-only reductions from gameplay reductions so QA can verify the correct expectation.
+9. Any browser-only quality conversion must be visible in current-value and next-upgrade text, not hidden in backend tuning. Current turret implementation does not use browser-only quality conversion.
+10. Any browser-only cap must define what happens to overflow value: dropped, refreshed, merged, converted, or delayed.
+11. Any browser-only mechanical reduction must be treated as a balance change and listed in the detailed level table.
+12. Any browser-only visual simplification must preserve threat readability before preserving decorative feedback.
+
+Browser prototype QA checklist:
+- Start a normal browser run and reach the first shop with no Python or JS error string.
+- Buy at least one ballistic, defense, economy, paint, and turret prop across test runs.
+- Verify card border color, path tag, current value text, and next upgrade text remain readable at 960x540 and 1280x720.
+- Verify any browser_version_note appears only when browser behavior actually differs from desktop.
+- Verify browser_version_note text matches the active cap, fallback, or conversion rule in runtime diagnostics.
+- Verify the web profiler heartbeat continues during combat and shop transitions.
+- Run one wind, mist, hell, and stone biome browser scenario because each stresses a different subsystem.
+- Confirm save/load preserves prop levels after browser refresh.
+- Confirm late-wave prop bursts respect visible caps instead of freezing the browser frame.
+
+Browser prop QA rows to add per high-risk prop:
+| qa_id | prop | browser behavior under test | minimum check |
+| --- | --- | --- | --- |
+| WEB-PROP-01 | Shrapnel Shells | pending-bullet soft cap and visible bullet render cap | dense kill wave respects pending headroom and does not flood rendered bullets |
+| WEB-PROP-02 | Explosive Rounds | FX particle budget and chain resolution | chain explosion clears enemies while FX trims to the browser particle budget |
+| WEB-PROP-03 | Ground Spikes | 20 Hz browser update cadence and max_active 6/10/14 | player trail remains readable and damage/slow still apply |
+| WEB-PROP-04 | Curing Paint | 20 Hz browser update cadence plus cached paint rendering | ownership color and tick timing remain correct even when render refresh is lower |
+| WEB-PROP-05 | Aegis Pulse | 24 Hz pulse-list update with unchanged shield-gated trigger | shield-gated cooldown and radius/damage values match desktop rules |
+| WEB-PROP-06 | Auto-Turret | desktop simulation count with lite-render visible turret cap 8 | all owned turrets still fire while renderer prioritizes nearest visible turrets |
+| WEB-PROP-07 | Stationary Turret | desktop simulation count with lite-render visible turret cap 8 | saved turret count restores and offscreen/overflow turrets still participate in combat |
+
+Browser prototype backlog:
+- Add a small browser-only "performance mode" note in settings that explains reduced VFX without exposing debug language.
+- Add a prop-card validation report for web text overflow at minimum canvas size.
+- Add web QA rows for the highest-risk props: Shrapnel Shells, Explosive Rounds, Ground Spikes, Curing Paint, Aegis Pulse, Auto-Turret, and Stationary Turret.
+- Add one browser-safe showcase build that intentionally demonstrates each current prop family in under 5 minutes.
+- Add browser diagnostics for prop-trigger counts per minute so runaway effects are visible before they become stalls.
 
 Z Game Systems and Props Specification
 Status: Working Draft
@@ -23,6 +289,29 @@ Roster Rules
 4. implementation_status should change whenever tuning or behavior changes.
 5. Add notes only for blockers, edge cases, or special UI/runtime requirements.
 
+Browser roster annotation standard:
+Use the existing notes column for quick browser status when a prop has web-specific behavior.
+Preferred short tags:
+- web:same - gameplay values match desktop; no card note needed.
+- web:visual - gameplay values match desktop, but browser simplifies VFX or text density.
+- web:cap - browser uses a lower actor, projectile, paint, pickup, text, or VFX cap.
+- web:fallback - browser replaces a disabled trigger or subsystem with another behavior.
+- web:reduced - browser changes a gameplay number and must show browser-specific values.
+
+Roster browser note examples:
+- web:cap pending bullets by headroom, visible bullets 28
+- web:same trigger, pulse list updates 24 Hz
+- web:visual nearest 8 turrets drawn, all owned turrets simulate
+- web:fallback enemy-shot trigger becomes timed pulse
+- web:same values match desktop, QA dense waves only
+
+Roster browser rules:
+1. If notes already contain implementation context, append the browser tag after a semicolon.
+2. Use web:same only for high-density or stateful props worth browser QA; omit it for simple stat props.
+3. Use web:reduced only when damage, cooldown, radius, chance, duration, or reward value differs.
+4. Keep roster browser text short; the detailed prop entry must hold the full cap, fallback, and QA case.
+5. Any prop marked web:cap, web:fallback, or web:reduced must have a matching Browser version line in its detailed entry.
+
 Current Prop Roster (Seed Rows)
 These rows are draft roster entries for the current defined prop list in sections 1-6. Keep them synchronized with the detailed entries below.
 
@@ -38,20 +327,20 @@ Section Scan Guide (Table Order)
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | piercing_rounds | Piercing Rounds | Core Offense | BALLISTIC | NONE | Pierce scaler | 1 | $12 | 5 | passive | +1 to +5 pierce, up to 16% falloff | pierce,wave_clear,projectile | none | OFF | implemented | Core Ballistic baseline |
 | ricochet_scope | Ricochet Scope | Core Offense | BALLISTIC | NONE | Bounce scaler | 2 | $14 | 3 | passive | 1 to 3 ricochets, 90% to 75% bounce damage | ricochet,crit,wave_clear | lower single-target value in open maps | OFF | implemented | Core Ballistic baseline |
-| shrapnel_shells | Shrapnel Shells | Core Offense | BALLISTIC | NONE | Death burst | 3 | $16 | 3 | on_kill | 25% to 45% proc, 3 to 4 shards | shrapnel,wave_clear,crit | performance-capped secondary spawns | OFF | implemented | Core Ballistic baseline |
-| ground_spikes | Ground Spikes | Core Offense | CONTROL | OFFENSE | Trail trap | 2 | $18 | 3 | on_move | 0.30 to 0.50 bullet_base, 6 to 14 active spikes | trail,slow,area_denial | move speed penalty per purchase | CTL | implemented | Existing runtime constants mapped |
+| shrapnel_shells | Shrapnel Shells | Core Offense | BALLISTIC | NONE | Death burst | 3 | $16 | 3 | on_kill | 25% to 45% proc, 3 to 4 shards | shrapnel,wave_clear,crit | performance-capped secondary spawns | OFF | implemented | Core Ballistic baseline; web:cap pending bullets by headroom, visible bullets 28 |
+| ground_spikes | Ground Spikes | Core Offense | CONTROL | OFFENSE | Trail trap | 2 | $18 | 3 | on_move | 0.30 to 0.50 bullet_base, 6 to 14 active spikes | trail,slow,area_denial | move speed penalty per purchase | CTL | implemented | Existing runtime constants mapped; web:same gameplay, 20 Hz update |
 | bleeding_edge | Bleeding Edge | Core Offense | OFFENSE | STATUS | Bleed applicator | 2 | $17 | 3 | on_hit | 24% to 52% bleed total over 3s | bleed,bossing,damage_over_time | lower burst without setup | OFF | planned | Add if bleed package is active |
 | dot_rounds | DOT Rounds | Core Offense | OFFENSE | STATUS | Generic DoT | 2 | $20 | 3 | on_hit | 0.10 to 0.22 bullet_base per tick, 1 to 2 stacks | dot,status,bossing | capped DPS and reduced boss value | OFF | implemented | Existing runtime constants mapped |
-| explosive_rounds | Explosive Rounds | Core Offense | OFFENSE | AOE | Chain explosion | 2 | $18 | 3 | on_kill | 25% to 45% splash, radius 0.65 to 0.95 tiles | explosion,aoe,chain | boss damage reduced to 50% | OFF | implemented | Existing runtime constants mapped |
+| explosive_rounds | Explosive Rounds | Core Offense | OFFENSE | AOE | Chain explosion | 2 | $18 | 3 | on_kill | 25% to 45% splash, radius 0.65 to 0.95 tiles | explosion,aoe,chain | boss damage reduced to 50% | OFF | implemented | Existing runtime constants mapped; web:visual FX budget 16 particles |
 | mark_vulnerability | Mark of Vulnerability | Core Offense | OFFENSE | CONTROL | Priority mark | 3 | $25 | 3 | passive | 3s to 5s mark cadence, +15% to +30% damage taken | mark,elite_focus,bossing | no direct damage on its own | OFF | implemented | UI pulse marker required |
 | cleanse_step | Cleanse Step | Core Paint System | PAINT | DEFENSE | Paint reclaim | 2 | $16 | 3 | on_move | 0.20 to 0.45 intensity conversion, +6% to +12% slow resist | paint,reclaim,slow_resist | depends on enemy paint presence | PNT | planned | Defensive paint utility |
-| curing_paint | Curing Paint | Core Paint System | PAINT | OFFENSE | Paint trail | 2 | $12 | 3 | on_move | 0.04 to 0.08 bullet_base tick, 2.0s to 4.0s life | paint,trail,control | boss DoT reduced | PNT | implemented | Existing runtime constants mapped |
+| curing_paint | Curing Paint | Core Paint System | PAINT | OFFENSE | Paint trail | 2 | $12 | 3 | on_move | 0.04 to 0.08 bullet_base tick, 2.0s to 4.0s life | paint,trail,control | boss DoT reduced | PNT | implemented | Existing runtime constants mapped; web:visual cached paint render, 20 Hz update |
 | paint_converter | Paint Converter | Core Paint System | PAINT | ECONOMY | Paint reward converter | 3 | $20 | 3 | on_kill | +8% to +16% bonus coin chance on owned paint | paint,econ,reward | requires owned paint kill zone | PNT | planned | Intensity-consuming reward effect |
 | explosive_crits | Explosive Crits | Crit / Element / Synergy | CRIT | AOE | Crit splash | 3 | $24 | 3 | on_hit | 30% to 55% splash on crit, 0.60 to 0.90 tile radius | crit,aoe,splash | reduced boss splash | CRT | planned | Strong combo bridge with Ballistic |
 | razor_focus | Razor Focus | Crit / Element / Synergy | CRIT | NONE | Crit tradeoff | 2 | $18 | 3 | passive | +8% to +20% crit, -6% to -15% fire rate | crit,risk,burst | fire rate penalty | CRT | planned | Straight crit conversion |
 | frost_brand | Frost Brand | Crit / Element / Synergy | STATUS | CRIT | Chill re-hit | 2 | $16 | 3 | on_hit | 14% to 28% chill chance, +12% to +26% re-hit bonus | chill,control,re_hit | boss slow reduced | CRT | planned | Element bridge prop |
 | shock_relay | Shock Relay | Crit / Element / Synergy | STATUS | AOE | Chain lightning | 2 | $19 | 3 | on_hit | every 8th to 5th hit chains, 30% to 50% damage | shock,chain,wave_clear | weaker in single-target fights | CRT | planned | Element bridge prop |
-| aegis_pulse | Aegis Pulse | Defense & Survival | DEFENSE | AOE | Shield pulse | 3 | $28 | 5 | passive | 100 to 180 px pulse, 4.0s to 1.5s cooldown | shield,aoe,pulse | shield-gated activation | DEF | implemented | Existing runtime constants mapped |
+| aegis_pulse | Aegis Pulse | Defense & Survival | DEFENSE | AOE | Shield pulse | 3 | $28 | 5 | passive | 100 to 180 px pulse, 4.0s to 1.5s cooldown | shield,aoe,pulse | shield-gated activation | DEF | implemented | Existing runtime constants mapped; web:same trigger, pulse list updates 24 Hz |
 | blood_pact | Blood Pact | Defense & Survival | DEFENSE | OFFENSE | Risk conversion | 3 | $20 | 3 | passive | +18% to +45% damage, -12% to -28% max HP | risk,damage,glass_cannon | max HP penalty | DEF | planned | Safety floor required |
 | bone_plating | Bone Plating | Defense & Survival | DEFENSE | NONE | Layered mitigation | 2 | $12 | 5 | passive | +2 plating HP per tick per level, cap effect at L5 | plating,survival,contact | minor move speed reduction per purchase | DEF | implemented | Current implementation note present |
 | carapace | Carapace | Defense & Survival | DEFENSE | NONE | Reserve shield | 1 | $6 | None | passive | +20 persistent reserve shield per purchase | shield,stacking,survival | none | DEF | implemented | Working baseline shield layer |
@@ -74,8 +363,8 @@ Section Scan Guide (Table Order)
 | phantom_dash | Phantom Dash (if you ever add dash / evade) | Utility / Control | CONTROL | MOVEMENT | Dash contact strike | 3 | $22 | 3 | on_move | 0.55 to 1.00 bullet_base dash hit, 20% to 30% slow | dash,contact,burst | depends on dash system | CTL | planned | Future-only if dash is added |
 | sticky_tar_flask | Sticky Tar Flask | Utility / Control | CONTROL | STATUS | Puddle control | 2 | $14 | 3 | on_move | 0.9 to 1.3 tile puddle, 15% to 25% slow | puddle,slow,area_denial | indirect damage only | CTL | planned | Supports choke-point play |
 | time_dilation_boots | Time Dilation Boots | Utility / Control | CONTROL | NONE | Standstill aura | 2 | $16 | 3 | on_move | 1.8 to 2.6 tile slow pulse while stationary | slow,aura,positioning | requires standing still | CTL | planned | Counter-pattern to run-and-gun |
-| auto_turret | Auto-Turret | Utility / Control | SUMMON | CONTROL | Follower turret | 2 | $14 | 5 | passive | +1 turret per level, 0.33 to 0.42 damage ratio | turret,summon,sustained | count converts to quality after cap | SUM | implemented | Baseline turret path |
-| stationary_turret | Stationary Turret | Utility / Control | SUMMON | CONTROL | Static turret | 1 | $14 | 99 | passive | +1 static turret per purchase, max 8 active suggested | turret,holdout,zone_control | immobile placement | SUM | implemented | Baseline stationary turret variant |
+| auto_turret | Auto-Turret | Utility / Control | SUMMON | CONTROL | Follower turret | 2 | $14 | 5 | passive | +1 turret per level, 0.33 to 0.42 damage ratio | turret,summon,sustained | count converts to quality after cap | SUM | implemented | Baseline turret path; web:visual nearest 8 turrets drawn, all owned turrets simulate |
+| stationary_turret | Stationary Turret | Utility / Control | SUMMON | CONTROL | Static turret | 1 | $14 | 99 | passive | +1 static turret per purchase, max 8 active suggested | turret,holdout,zone_control | immobile placement | SUM | implemented | Baseline stationary turret variant; web:visual nearest 8 turrets drawn, all owned turrets simulate |
 
 Set Bonus and Non-Shop Systems Roster
 Use this second roster to track systems that are not purchased directly in the shop but still define build identity, pacing, readability, and run difficulty.
@@ -286,8 +575,7 @@ A9. Telemetry Specification
 | run_completed | victory/exit | run_id, final_level, total_time_s, key_props |
 
 A10. Change Log Template
-Entry Header
-[YYYY-MM-DD] [build_tag] [owner] [scope: prop/system/economy/ui]
+
 
 Entry Body Fields
 1. Intent: one sentence for why this change exists.
@@ -300,6 +588,234 @@ Change Log Row Template
 | date | build | owner | ids_affected | change_summary | intent | validation_ref | rollback_ref |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | YYYY-MM-DD | vX.Y.Z | name | comma-separated ids | one-line change | one-line intent | qa case or metric id | commit or patch id |
+
+A11. Planned Prop Onboarding Checklist (Detailed)
+Use this checklist to move each planned prop from design-only into runtime-ready implementation.
+
+Checklist Columns
+prop_id | required_meta_keys | required_runtime_hooks | required_ui_or_vfx | minimum_qa_case
+
+| prop_id | required_meta_keys | required_runtime_hooks | required_ui_or_vfx | minimum_qa_case |
+| --- | --- | --- | --- | --- |
+| bleeding_edge | bleeding_edge_level, bleed_stack_cap | bullet hit apply + enemy bleed tick update | bleed stack icon + hit tint | verify stack cap and boss modifier |
+| cleanse_step | cleanse_step_level, cleanse_buffer | move tick conversion + paint ownership check | reclaim pulse ring + HUD resist indicator | verify no gain without hostile paint |
+| paint_converter | paint_converter_level, paint_bonus_cd | kill event hook + owned-paint zone validator | coin bonus popup + paint consume FX | verify bonus only in owned paint zone |
+| explosive_crits | explosive_crits_level | crit resolution hook + splash damage resolver | crit splash burst FX + radius ring | verify non-crit shots do not trigger |
+| razor_focus | razor_focus_level | fire-rate recompute + crit stat recompute | stat delta tooltip (crit up, speed down) | verify additive abuse is prevented |
+| frost_brand | frost_brand_level, chill_timer | on-hit chill apply + re-hit bonus resolver | chill icon + slow shader tint | verify boss slow reduction path |
+| shock_relay | shock_relay_level, relay_counter | hit counter + chain target selection | chain beam FX + jump count text | verify no infinite jump loops |
+| blood_pact | blood_pact_level | max-HP penalty apply + damage bonus apply | risk warning badge in shop card | verify HP floor guard on purchase |
+| guardian_charm | guardian_charm_level, guardian_cd | low-HP trigger + emergency shield apply | emergency proc banner + cooldown ring | verify cooldown lockout enforcement |
+| mirror_shell | mirror_shell_level | shield-state check + ranged reflect resolver | reflect arc FX + shield-state cue | verify disabled behavior without shield |
+| retaliation_core | retaliation_core_level, retaliate_timer | on-damage buff apply + timed decay | reactive buff icon + pulse outline | verify refresh behavior under rapid hits |
+| retaliation_thorns | retaliation_thorns_level | contact hit detector + reflect calculation | thorn flash FX on contact | verify boss reflect reduction rule |
+| shardstorm | shardstorm_level | shield-break event hook + shard spawn | shield-break burst FX + shard trails | verify single trigger per break instance |
+| shield_capacitor | shield_capacitor_level, temp_shield_cap | overheal convert pipeline + temp shield decay | temp shield bar segment + convert popup | verify cap enforcement at max HP |
+| black_market_pass | black_market_pass_charges | next-shop offer override + expiration clear | special shop frame + timer label | verify one-shop duration only |
+| spoil_splitter | spoil_splitter_level, split_proc_cd | coin pickup proc hook + anti-loop throttle | extra coin proc text + sparkle FX | verify proc cap under magnet farming |
+| vip_punchcard | vip_punchcard_level, cashback_bank | purchase event cashback accrual + payout | cashback meter in shop UI | verify payout cap and reset timing |
+| phantom_dash | phantom_dash_level | dash state event + contact strike resolver | dash trail FX + impact ring | verify no trigger when dash unavailable |
+| sticky_tar_flask | sticky_tar_flask_level | puddle spawn manager + slow aura tick | puddle decal + edge fade FX | verify duration cleanup on room reset |
+| time_dilation_boots | time_dilation_boots_level | stationary detector + periodic slow pulse | aura ring + standstill charge meter | verify movement cancels pulse build-up |
+
+Implementation Exit Criteria (for each planned prop)
+1. Added to shop catalog with max_level, rarity, and tooltip text.
+2. Added to META defaults and save/load serialization path.
+3. Added to runtime update loop with deterministic trigger conditions.
+4. Added to UI feedback layer (icon, tooltip, or event text).
+5. Added to at least one QA regression case and one telemetry event.
+
+A12. Shop Card Readability and Presentation Spec
+This section defines how prop cards should communicate path identity, risk, rarity, and purchase value in under one second of player attention.
+
+Card Information Priority
+1. Display Name
+2. Path Identity
+3. Immediate Effect
+4. Cost
+5. Level / Max Level
+6. Tradeoff or restriction
+
+Required Card Fields
+| field | requirement | notes |
+| --- | --- | --- |
+| title | exact roster display_name | do not shorten unless UI overflow requires approved alias |
+| path_label | primary path or dual-path label | use runtime path tags where possible |
+| border_color | path-derived border | use path primary color or mixed color for bridge props |
+| rarity_marker | numeric rarity plus icon treatment | rarity must be legible without reading description |
+| current_level | owned level if any | show `Lv X/Y` or `Owned` for non-level props |
+| effect_line | single-sentence summary | front-load numeric value before flavor wording |
+| tradeoff_line | explicit drawback if present | red or amber emphasis; never hide drawbacks in tooltip only |
+| status_marker | planned/prototype/implemented only in dev tools, not shipping UI | useful for debug shop or editor panels |
+
+Card Copy Rules
+1. The first line of effect copy must explain what happens, not lore.
+2. Use numbers before adjectives: `+20 shield`, not `small shield gain`.
+3. If a prop has a condition, state the condition first: `On hit`, `On kill`, `While moving`.
+4. If a prop has a drawback, reserve a dedicated tradeoff line.
+5. If boss behavior differs, include boss rule in tooltip or expanded inspect panel.
+
+Color and Outline Rules
+| path | base outline intent | readability note |
+| --- | --- | --- |
+| BALLISTIC | warm orange | reads as direct damage / projectile aggression |
+| OFFENSE | vivid red-orange | reserved for raw damage and marked kill pressure |
+| CONTROL | cyan-teal | used for slows, traps, pulse zones, and positional effects |
+| DEFENSE | steel blue | used for shields, mitigation, and survival tools |
+| ECONOMY | gold | used for coin, savings, discount, and bounty systems |
+| STATUS | toxic green | used for DoT, debuff, chill, shock, and paint status effects |
+| SUMMON | violet | used for turret and future summoner packages |
+| PAINT | lime-green / ink-accent | keep visually distinct from generic status when possible |
+| CRIT | bright amber-white accent | should read as precision / burst identity |
+| RISK | crimson accent overlay | add secondary warning trim, not full-card replacement |
+
+Dual-Path Card Rules
+1. Mixed-path props should blend border colors or use split-corner accents.
+2. The primary path controls the border; the secondary path controls a badge, stripe, or icon.
+3. Do not use more than two path colors on a single card.
+4. If a prop is economy plus risk, the risk warning must visually outrank the economy color.
+
+Card Hover / Inspect Requirements
+1. Base card must be readable at a glance without hover.
+2. Hover panel should show current value and next-level value.
+3. Hover panel should show trigger type and boss modifier if applicable.
+4. Hover panel should show synergy tags in a compact chip list.
+5. Hover panel should not exceed three short paragraphs or equivalent rows.
+
+A13. Path Balance Targets and Build Identity Benchmarks
+This section defines the intended gameplay promise of each path so future props do not drift into generic stat inflation.
+
+| path | player promise | strength window | main weakness | required counter-pressure |
+| --- | --- | --- | --- | --- |
+| BALLISTIC | reliable projectile scaling and clean wave clear | early to late if line tools stack well | can become too linear without utility | armor, spread enemies, angle checks |
+| OFFENSE | burst and kill-speed acceleration | mid-run spike | fragile if overcommitted to damage | contact pressure and boss sustain phases |
+| CONTROL | safer space management and tempo denial | early to mid stability | lower raw DPS ceiling | ranged enemies and mobility checks |
+| DEFENSE | mistake forgiveness and sustain | all-run consistency | can over-stall fights | anti-stall bosses and shield breakers |
+| ECONOMY | stronger long-run scaling through resource advantage | mid to late payoff | weak short-term combat tempo | fast pressure waves and debt risk |
+| STATUS | compounding value over time and on crowded waves | mid to late | boss tuning can invalidate it if over-nerfed | cleanse enemies or burst windows |
+| SUMMON | distributed damage and positional pressure | mid to late | AI failure or pathing loss | hazard-heavy arenas and target priority checks |
+| CRIT | explosive spikes and elite deletion | mid burst peaks | high variance and overkill waste | crit resistance, pressure during downtime |
+| PAINT | territory control and layered attrition | early to mid space control | weak if enemies never stay in zone | jumpers, ranged pressure, forced movement |
+| RISK | high reward through deliberate downside | depends on player mastery | can feel unfair if downside is hidden | transparent UI, predictable penalties |
+
+Path Tuning Benchmarks
+1. Every primary path should have one early anchor prop, two mid-run scaling props, and one late-run payoff prop.
+2. No path should require one exact prop to become functional by wave 3.
+3. Economy path must recover combat tempo by mid-run or it becomes a trap.
+4. Defense path must preserve survivability without producing unkillable stall loops.
+5. Status path must retain boss relevance through capped but meaningful conversion rules.
+6. Summon path must maintain uptime targets even in hazard-dense encounters.
+
+Run Health Benchmarks
+1. A weak but coherent build should still clear standard waves on pace.
+2. A strong build should feel dominant without deleting all boss mechanics instantly.
+3. Two-path bridge builds should be viable, not only pure mono-path stacks.
+4. High-risk props must pay back quickly enough to feel intentional, not bait.
+
+A14. Prop Synergy Matrix and Anti-Synergy Rules
+This section defines which prop combinations should be intentionally supported, which should remain neutral, and which require hard guardrails.
+
+Synergy Rating Legend
+- primary: intended signature combo that should be discoverable and satisfying.
+- support: useful connection that improves consistency but is not build-defining alone.
+- bridge: cross-path relationship that helps mixed builds stay viable.
+- guarded: allowed combo with explicit cap or anti-loop rule.
+
+Current and Planned Synergy Matrix
+| combo_id | props_or_paths | synergy_rating | design intent | runtime caution |
+| --- | --- | --- | --- | --- |
+| SYN-01 | piercing_rounds + ricochet_scope | primary | supports projectile routing and wave clear without requiring AoE | prevent multi-hit room wipe in narrow corridors |
+| SYN-02 | shrapnel_shells + explosive_rounds | guarded | turns kills into chained cleanup moments | cap recursive splash and secondary spawn density |
+| SYN-03 | dot_rounds + mark_vulnerability | primary | marked targets should reward sustained pressure builds | bonus applies to hit damage; avoid double-dipping DoT unless explicitly intended |
+| SYN-04 | curing_paint + ground_spikes | support | reinforces movement-based area denial play | overlap readability must stay clear on busy floors |
+| SYN-05 | curing_paint + paint_converter | primary | paint ownership becomes both combat and reward engine | reward proc must validate owned-paint condition only |
+| SYN-06 | bone_plating + aegis_pulse | primary | defensive stack enables repeated shield-gated pulse windows | pulse uptime must not become permanent stall loop |
+| SYN-07 | carapace + mirror_shell | support | reserve shield sustains reflect viability | disable reflect once reserve shield is fully spent |
+| SYN-08 | carapace + shardstorm | support | reserve shield increases chance of meaningful shield-break burst | single break event should only trigger once |
+| SYN-09 | lockbox + shady_loan | primary | coin protection reduces economic punishment of loan failure states | lockbox cannot trivialize loan risk entirely |
+| SYN-10 | wanted_poster + bandit_radar | support | radar increases bounty consistency without guaranteeing free payout | bandit spawn chance remains unchanged |
+| SYN-11 | coupon + golden_interest | bridge | enables disciplined economy runs with better long-term conversion | early combat weakness must remain visible |
+| SYN-12 | auto_turret + stationary_turret | primary | mixed summon setup covers both follow and holdout use cases | total turret count still needs performance gate |
+| SYN-13 | explosive_crits + razor_focus | primary | crit specialization turns fewer shots into meaningful burst | overkill waste should remain a balancing factor |
+| SYN-14 | frost_brand + shock_relay | bridge | layered elemental control into chain-clear package | target churn must remain readable in large waves |
+| SYN-15 | sticky_tar_flask + time_dilation_boots | primary | combines forced slowdown with standstill punishment zone | area stacking must use diminishing returns |
+| SYN-16 | guardian_charm + blood_pact | guarded | creates comeback windows for risky glass-cannon play | emergency survivability must not erase pact downside |
+
+Anti-Synergy and Guardrail Rules
+1. Never allow the same kill event to recursively trigger unlimited kill events.
+2. On-hit amplification and damage-over-time amplification must declare whether they stack multiplicatively or not.
+3. Dual-area denial props must share visual priority rules so the floor never becomes unreadable.
+4. Economy props may improve stability, but may not delete the intended risk of debt, bandits, or greedy holds.
+5. Summon-count props must convert excess quantity into quality before performance collapses.
+
+A15. Boss Modifier Policy and Performance Safety Rules
+This section defines how prop effects should be reduced, capped, or reformatted in boss encounters and high-density late-wave situations.
+
+Boss Modifier Policy
+| effect_family | default boss treatment | reason |
+| --- | --- | --- |
+| splash_damage | 40% to 60% effectiveness unless explicitly exempt | prevents wave-clear tools from becoming free boss delete buttons |
+| damage_over_time | reduced tick value or capped stack count | keeps DoT relevant without replacing mechanical execution |
+| hard_control | duration reduction or control immunity windows | bosses must remain readable and interactive |
+| coin_economy | no direct boss payout inflation beyond explicit reward rules | prevents boss farming exploits |
+| reflect_damage | capped by boss-facing multiplier or trigger cooldown | avoids passive kill loops |
+| summon_pressure | maintain uptime target, but reduce AI abuse around boss hazards | preserves path identity without cheese |
+
+Late-Wave Performance Safety Rules
+1. Any prop that spawns secondary projectiles must define a hard concurrent cap.
+2. Any trail or puddle system must define both a lifetime and maximum active count.
+3. Any chain effect must define max jumps, retarget filters, and duplicate-target lockout.
+4. Any periodic scan aura must define scan interval and maximum affected targets per tick.
+5. Any visually persistent floor effect must define z-order priority and fade behavior.
+
+Recommended Runtime Safety Checklist
+| system_type | required safety control | example |
+| --- | --- | --- |
+| projectile burst | max active secondary projectiles | shrapnel_shells, shardstorm |
+| chain logic | unique target list per trigger | shock_relay |
+| area decals | max active instances plus pooled cleanup | sticky_tar_flask, curing_paint |
+| pulse/aura | fixed tick interval and target cap | time_dilation_boots, aegis_pulse |
+| summon counts | soft cap with quality conversion | auto_turret, stationary_turret, future summoner props |
+
+Boss Design Compatibility Rules
+1. Every prop family should still matter in boss fights, but not at full trash-wave value.
+2. Boss nerfs must be surfaced in tooltip or inspect copy when the difference is material.
+3. If a prop is weak on bosses by design, it must be strong enough on waves to justify the slot.
+4. No boss should fully invalidate an entire path unless that path has alternative payoff elsewhere in the run.
+
+A16. Naming and Tooltip Standards
+Use these rules to keep prop names and descriptions clean, readable, and consistent across shop, pause, and debug UI.
+
+Naming Rules
+1. Prefer 2-3 word names unless a longer name is clearly more readable.
+2. Avoid duplicate fantasy words that do not explain gameplay role.
+3. If a prop is risk-based, the name should imply danger or sacrifice.
+4. If a prop is economy-based, the name should imply value, debt, saving, bounty, or trade.
+
+Tooltip Rules
+1. First sentence: trigger plus outcome.
+2. Second sentence: scaling or level-up gain.
+3. Third sentence only if needed: tradeoff, boss modifier, or cap.
+4. Keep base tooltip under 140 characters when possible.
+5. Expanded tooltip may show formulas, but the first line must stay plain English.
+
+A17. Abbreviation and Tag Standards
+Use short tags consistently so debug screens, compact HUD elements, and shop cards do not drift into conflicting naming.
+
+UI Tag Meanings
+- OFF = offense
+- DEF = defense
+- ECO = economy
+- CTL = control
+- CRT = crit / burst
+- PNT = paint
+- SUM = summon
+
+Tag Rules
+1. A short tag should never replace the full path name in expanded UI.
+2. A short tag may appear on card corners, debug panels, or compact possession lists.
+3. If a prop bridges two paths, show one primary short tag and one secondary icon, not two equal tags.
+4. Rarity and path tag must remain visually distinct.
 
 0. Full-Game Professional To-Do (Modify/Add)
 
@@ -713,13 +1229,16 @@ Level 3: proc_chance = 45%, shard_count = 4, shard_damage = 44% bullet_base
 Shard travel range: 2.2 / 2.6 / 3.0 tiles
 Chain guard: shrapnel kills cannot trigger another shrapnel proc more than 2 generations deep.
 Performance cap: max 36 live shrapnel bullets at once; excess shards are dropped.
+Browser version: gameplay chance and shard damage match desktop. Shard count is passed through the browser pending-bullet soft cap: current implementation uses max(10, WEB_LITE_RENDER_BULLET_CAP * 2) pending headroom, with WEB_LITE_RENDER_BULLET_CAP currently 28. If there is no headroom, extra shards are not spawned; if headroom is tight, the shard burst is reduced. The lite renderer draws at most 28 visible player bullets nearest the player.
 
 1.5. Mark of Vulnerability
 Effect:
 Periodically mark a high-priority enemy,
 causing that target to take increased damage from all sources.
 Synergy:
-None specified yet.
+Pairs with high single-target DPS because every source benefits from the mark.
+Strong with turrets, DoT, and Aegis Pulse because passive damage keeps value flowing during the mark window.
+Bridge value: helps economy/control builds kill bandits and elites before they escape or overwhelm space.
 Rarity: 3
 Base Price: $25
 Max Level: 3
@@ -737,7 +1256,9 @@ Effect:
 Spawn a small AoE explosion centered on that enemy.
 Explosion damage uses player base bullet damage only (pre-crit).
 Synergy:
-None specified yet.
+Strong with piercing and ricochet because clustered hits create more kill centers.
+Pairs with Mark of Vulnerability to turn priority-target kills into splash payoff.
+Bridge value: supports paint/control builds by clearing enemies held in choke points.
 Rarity: 2
 Base Price: $18
 Max Level: 3
@@ -755,13 +1276,16 @@ Chain behavior rule:
 chain_depth_cap = 3 (original kill + 2 chained explosions)
 same_target_rehit_lockout = 0.20s
 Visual budget: max 12 concurrent explosive flash VFX instances.
+Browser version: explosion damage, radius, boss multiplier, and chain resolution match desktop. Browser does not use a separate prop-level flash cap; explosive particles are trimmed by the global WEB_MAX_FX_PARTICLES budget, currently 16 in the default full profile. Death explosions also use a soft particle count helper so large bursts keep a small minimum flash while avoiding unbounded particle growth.
 
 1.7. DOT Rounds
 Effect:
 On bullet hit, apply a DoT that ticks every 0.5s and scales from bullet_base (pre-crit).
 Bosses take 70% of listed DoT damage.
 Synergy:
-None specified yet.
+Scales with fire rate, ricochet, and turret shots if secondary sources are allowed to apply status.
+Pairs with Mark of Vulnerability for boss pressure while the player is kiting.
+Bridge value: supports control builds that keep enemies inside DoT windows longer.
 Rarity: 2
 Base Price: $20
 Max Level: 3
@@ -780,7 +1304,9 @@ Effect:
 While moving, leave temporary spikes at your position. Each spike hits once and slows 5% for 1.0s.
 Trade-off: each purchase reduces move speed by approximately 4% (multiplicative).
 Synergy:
-None specified yet.
+Pairs with Curing Paint, Sticky Tar Flask, and Time Dilation Boots to punish enemies that chase through controlled space.
+Works with Coin Magnet by making pickup routes safer while leaving traps behind.
+Bridge value: helps turret builds create a defensive lane around static positions.
 Rarity: 2
 Base Price: $18
 Max Level: 3
@@ -788,6 +1314,7 @@ Rules:
 Level 1: spike_damage = 0.30 * bullet_base, lifetime = 3.0s, max_active = 6
 Level 2: spike_damage = 0.40 * bullet_base, lifetime = 4.0s, max_active = 10
 Level 3: spike_damage = 0.50 * bullet_base, lifetime = 5.0s, max_active = 14
+Browser version: damage, slow, lifetime, radius, and max_active values match desktop. The browser combat loop updates ground spikes on a 20 Hz schedule when WEB_ENABLE_GROUND_SPIKES is enabled. When max_active is exceeded, the existing implementation removes the oldest spike, same as desktop behavior.
 
 2. Defense & Survival Props
 
@@ -875,12 +1402,15 @@ cooldown = 4.0 / 3.375 / 2.75 / 2.125 / 1.5 s
 damage = 30% / 45% / 60% / 80% / 100% of enemy max HP
 Wave behavior: one expanding pulse; high levels may add visual ripple layers only (no extra hidden damage ticks).
 Safety cap: pulse damage to bosses can be clamped to avoid one-cycle kills.
+Browser version: shield trigger, cooldown, radius, damage, wave count, and visual profile use the same Aegis constants as desktop. Browser updates active pulse rings on a 24 Hz schedule and damage text is capped/merged by WEB_MAX_DAMAGE_TEXTS, currently 4 in the default full profile.
 
 2.6. Carapace
 Effect:
 Add a persistent reserve shield layer.
 Synergy:
-None specified yet.
+Pairs with Aegis Pulse and Mirror Shell by extending shield uptime for shield-gated effects.
+Works as an early survival anchor for Blood Pact or economy-first builds.
+Bridge value: gives summon/turret builds a buffer while they set up positioning.
 Rarity: 1
 Base Price: $6
 Max Level: None (stackable by purchases)
@@ -895,7 +1425,9 @@ When you collect a heal at full HP,
 convert a portion of that heal into temporary shield HP.
 Higher levels increase overheal conversion.
 Synergy:
-None specified yet.
+Pairs with Coin Magnet because safer pickup routing increases full-HP heal collection.
+Strong with Aegis Pulse, Mirror Shell, and Shardstorm because overheal becomes shield uptime.
+Bridge value: rewards defensive economy builds that already invest in pickup control.
 Rarity: 2 (common/uncommon)
 Base Price: $15
 Max Level: 3
@@ -1037,7 +1569,9 @@ Visual: high-contrast outline + minimap ping pulse every 0.6s while effect is ac
 Effect:
 Permanently decrease shop prices by 5% per level.
 Synergy:
-None specified yet.
+Pairs with Coupon and VIP Punchcard by making repeated purchases and rerolls cheaper.
+Supports pivot builds because lower prices reduce the penalty for changing paths mid-run.
+Bridge value: lets defense/economy runs buy survival now while still reaching late scaling.
 Rarity: 1
 Base Price: $10
 Max Level: 4
@@ -1049,7 +1583,9 @@ Rule: applies to normal offers and reroll cost; price floor is 1 coin.
 Effect:
 Take a loan: gain +80/+120/+160 coins immediately, then repay over 3/4/5 waves after Golden Interest. Multiple loans stack debt, use the longest timer, and force a final repayment attempt; failure costs 30% / 35% / 40% max HP.
 Synergy:
-None specified yet.
+Pairs with Coupon and Black Market Pass by turning borrowed money into immediate premium offers.
+Pairs with Golden Interest only if the loan creates enough surplus to survive repayment timing.
+Bridge value: enables risky early power spikes for weak-starting paths, but debt must remain visible.
 Rarity: 3
 Base Price: 5
 Max Level: 3
@@ -1064,7 +1600,9 @@ Gain access to a black-market shop variant.
 The next shop upgrades offer quality at a price premium.
 Next shop prices increase by 20%, and all standard offers are rarity 3 or higher.
 Synergy:
-None specified yet.
+Pairs with Shady Loan and VIP Punchcard because it converts temporary buying power into higher-rarity choices.
+Strong after a boss reward or coin-heavy level when the player can afford the premium.
+Bridge value: helps committed builds find rare capstones while keeping prices high enough to preserve risk.
 Rarity: 3
 Base Price: $30
 Max Level: Single-use consumable
@@ -1101,7 +1639,9 @@ Every time you pick up a coin, you have a level-scaled chance to spawn +1 extra 
 (chance scales with level, e.g., 10/20/30/40/50%).
 Does not trigger on synthetic coin sources (e.g., bank interest); only on ground pickups.
 Synergy:
-None specified yet.
+Pairs with Coin Magnet because larger pickup radius increases coin pickup count and splitter opportunities.
+Pairs with Golden Interest by turning extra pickups into larger future interest bases.
+Bridge value: supports mobile control builds that sweep the arena instead of camping.
 Rarity: 2 (uncommon)
 Base Price: $16
 Max Level: 5
@@ -1180,6 +1720,7 @@ L2: damage_ratio 0.35, interval 0.86s, range_mult 0.82
 L3: damage_ratio 0.37, interval 0.82s, range_mult 0.84
 L4: damage_ratio 0.39, interval 0.78s, range_mult 0.86
 L5: damage_ratio 0.42, interval 0.74s, range_mult 0.88
+Browser version: auto turret simulation count matches the saved auto_turret_level, up to the normal max level 5. The lite renderer caps visible turrets to the nearest 8, but hidden/offscreen turrets still update and fire. There is currently no browser-only conversion from extra auto turret levels into quality stats.
 
 4.5. Stationary Turret
 Effect:
@@ -1193,6 +1734,7 @@ Rules:
 Per purchase: +1 stationary turret spawn each level at valid clear tile.
 Suggested tuning: same bullet damage as auto turret, +15% range, -10% fire interval to reward setup play.
 Hard safety cap suggestion: max 8 active stationary turrets on map; extra copies become +6% turret damage each.
+Browser version: stationary turret simulation count currently follows stationary_turret_count and save/load restoration, same as desktop. The lite renderer caps visible turrets to the nearest 8, but offscreen/overflow stationary turrets still exist, block their tile through StationaryTurretObstacle, and fire normally. There is currently no browser-only conversion from extra stationary turrets into damage.
 
 5. Crit, Element, and Synergy Props
 
@@ -1297,7 +1839,9 @@ status_debuff_window = apply only if standing >= 0.8s continuously on enemy pain
 Effect:
 Your movement leaves a short trail of Player Paint ("curing ink") on the ground.
 Synergy:
-None specified yet.
+Pairs with Ground Spikes and Sticky Tar Flask because movement trails stack into a territorial control lane.
+Works with Coin Magnet by making wide pickup routes productive instead of purely risky.
+Bridge value: supports turret builds by painting fallback paths around static defenses.
 Rarity: 2 (Common / Uncommon)
 Base Price: $12
 Max Level: 3
@@ -1311,12 +1855,15 @@ Level 3: damage_per_tick = 0.08 * bullet_base, lifetime = 4.0s, radius = 0.90 ti
 Boss rule: paint DoT deals 70% damage to bosses.
 Spawn cadence: leave footprint every 0.25s while moving.
 Ownership rule: only latest paint owner controls tile effects.
+Browser version: damage, lifetime, radius, boss modifier, ownership, and tick interval match desktop. The browser combat loop updates curing paint on a 20 Hz schedule when WEB_ENABLE_CURING_PAINT is enabled. Rendering uses cached static/dynamic paint surfaces, camera quantization, and lower refresh windows; wind and mist browser routes may skip the paint render layer while gameplay paint state still updates.
 
 6.2. Paint Converter
 Effect:
 When an enemy dies on player-owned paint, convert paint intensity into bonus rewards.
 Synergy:
-None specified yet.
+Pairs with Curing Paint and Ground Spikes because enemies dying inside controlled zones become extra income.
+Pairs with Coin Magnet so bonus coins can be collected without breaking combat routing.
+Bridge value: turns paint control into economy scaling without adding direct damage.
 Rarity: 3
 Base Price: $20
 Max Level: 3
@@ -1331,7 +1878,9 @@ Rule: cannot trigger from summoned fake-coin entities.
 Effect:
 Moving over enemy paint converts it toward neutral or player-owned paint.
 Synergy:
-None specified yet.
+Pairs with Curing Paint by reclaiming enemy zones and replacing them with player-safe lanes.
+Supports shield and survival builds by reducing slow pressure during retreats.
+Bridge value: keeps paint/control builds viable in biomes or boss fights that contest floor ownership.
 Rarity: 2
 Base Price: $16
 Max Level: 3
@@ -2178,6 +2727,42 @@ current_value_text
 next_upgrade_text
 synergy_tags
 risk_note (if the prop has a drawback or tradeoff)
+browser_version_note (only when the browser version has a different cap, fallback, visual density, or mechanical value)
+
+37.1a. Browser version note format
+Use browser_version_note for player-facing differences only. Keep it short, factual, and non-technical.
+Preferred format:
+Browser: [what changes] + [what stays true].
+Examples:
+Browser: caps shards at 12, damage stays unchanged.
+Browser: draws nearest 8 turrets; all owned turrets still fire.
+Browser: uses a shield pulse fallback while enemy shots are off.
+Do not mention implementation names such as web-lite, emscripten, pygbag, render cache, or debug flags in card text.
+
+Browser note placement rules:
+Use card text only for mechanical differences players may plan around.
+Use tooltip text for exact caps, conversion rules, and fallback triggers.
+Use pause summary text only for persistent state such as turret cap conversions or browser-only quality scaling.
+Do not show a browser note for invisible renderer optimizations when damage, timing, cooldown, and reward values are unchanged.
+
+Browser note writing rules:
+- Start with the changed behavior, then state what remains unchanged.
+- Prefer exact numbers over vague wording.
+- Use "caps", "refreshes", "merges", "converts", or "uses fallback" as the main verb.
+- Keep the sentence useful without knowing the desktop version.
+- Avoid apology language such as "reduced", "limited", or "weaker" unless the gameplay value is actually lower.
+
+Browser note examples by surface:
+Card:
+Browser: draws nearest 8 turrets; all owned turrets still fire.
+Browser: uses timed shield pulse while enemy shots are off.
+Tooltip:
+Browser: shard bursts use pending bullet headroom; shard damage stays unchanged.
+Browser: cached paint rendering; tick damage and ownership stay unchanged.
+Pause summary:
+Browser lite render: nearest 8 turrets drawn; all saved turrets remain active.
+Detailed spec:
+Browser version: classification = visual-only capped. Runtime rule = lite renderer draws nearest 8 turrets, while simulation still updates every owned auto/stationary turret. Player text = "Browser: draws nearest 8 turrets; all owned turrets still fire." QA = verify saved turret count restores and offscreen turrets keep firing even when not all are drawn.
 
 37.2. Naming rules
 Names should be short, distinct, and scannable in under 1 second.

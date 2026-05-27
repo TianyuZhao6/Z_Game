@@ -19,3 +19,6 @@ activate_zgame.bat
 /.vscode
 .vscode/settings.json
 
+.venv-web/
+build/
+TEMP/

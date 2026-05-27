@@ -1,0 +1,1420 @@
+﻿<html lang="en-us"><script src="https://pygame-web.github.io/cdn/0.9.3/pythons.js" type=module id="site" data-python="python3.12" data-LINES=42 data-COLUMNS=132 data-os="snd,gui" async defer>#<!--
+
+import sys
+import asyncio
+import platform
+import json
+from pathlib import Path
+
+# do not rename
+async def custom_site():
+    import embed
+    platform.document.documentElement.style.margin = "0"
+    platform.document.documentElement.style.width = "100vw"
+    platform.document.documentElement.style.height = "100vh"
+    platform.document.body.style.margin = "0"
+    platform.document.body.style.width = "100vw"
+    platform.document.body.style.height = "100vh"
+    platform.document.body.style.overflow = "hidden"
+    platform.document.body.style.background = "#000000"
+
+    platform.window.transfer.hidden = true
+    platform.window.canvas.style.visibility = "visible"
+
+
+    bundle = "z_game"
+
+    # the C or js loader could do that but be explicit.
+    appdir = Path(f"/data/data/{bundle}") # /data/data/z_game
+    appdir.mkdir()
+
+
+    # unpack filesystem from compressed archive into work dir
+    if platform.window.location.host.find('.itch.zone')>0:
+        import zipfile
+        async with platform.fopen("z_game.apk", "rb") as archive:
+            with zipfile.ZipFile(archive) as zip_ref:
+                zip_ref.extractall(appdir.as_posix())
+    else:
+        import tarfile
+        async with platform.fopen("z_game.tar.gz", "rb") as archive:
+            tar = tarfile.open(fileobj=archive, mode="r:gz")
+            tar.extractall(path=appdir.as_posix(), filter='tar')
+            tar.close()
+
+    # preloader will change to work dir and prepend it to sys.path
+    platform.run_main(PyConfig, loaderhome= appdir / "assets", loadermain=None)
+
+
+    # wait preloading complete : that includes images and wasm compilation of bundled modules
+    while embed.counter()<0:
+        await asyncio.sleep(.1)
+
+    main = appdir / "assets" / "main.py"
+
+    # TODO: test for window.webkitAudioContext and block aio loop until gesture if accessing media manager play
+    # before a gesture is recorded ( touch or click )
+
+    try:
+        platform.window.transfer.hidden = true
+        platform.window.infobox.style.display = "none"
+        platform.window.canvas.focus()
+    except Exception:
+        pass
+
+    # start async top level machinery if not started and add a console in any case if requested.
+    await TopLevel_async_handler.start_toplevel(platform.shell, console=window.python.config.debug)
+
+    # now that apk is mounted we have access to font cache
+    # but we need to fill __file__/__name__ that are not yet set
+    __import__(__name__).__file__ = main
+
+
+    def ui_callback(pkg):
+        platform.window.infobox.innerText = f"installing {pkg}"
+
+    await shell.source(main, callback=ui_callback)
+
+    # if you don't reach that step
+    # your main.py has an infinite sync loop somewhere !
+
+    platform.window.infobox.style.display = "none"
+    platform.window.transfer.hidden = true
+    platform.window.config.gui_divider = 1
+    platform.window.window_resize()
+    try:
+        platform.window.canvas.focus()
+    except Exception:
+        pass
+    pass
+
+asyncio.run( custom_site() )
+
+
+
+
+
+
+
+
+
+
+
+
+# BEGIN BLOCK
+#
+# now this is the html part you can (and should) customize
+# It is not mandatory : pygame-script when it reads the first line (also called
+# shebang ) of above code create absolute minimal widget set
+# required for running with default rules
+#
+# do not alter that comment block it is separating python code from html code
+# =============================================================================
+# --></script><head><!--
+//=============================================================================
+//
+//
+//
+//
+//
+//
+//
+
+    {%- if cookiecutter.comment != "" -%}
+{{cookiecutter.comment}}
+    {% endif %}
+
+--><script type="application/javascript">
+// END BLOCK
+
+
+
+// this dict is available under PyConfig.config from __main__
+
+config = {
+    xtermjs : "0" ,
+    _sdl2 : "canvas",
+    user_canvas : 1,
+    user_canvas_managed : 0,
+    gui_divider : 1,
+    ume_block : 0,
+    can_close : 0,
+    archive : "z_game",
+    gui_debug : 0,
+    cdn : "https://pygame-web.github.io/cdn/0.9.3/",
+    autorun : 1,
+    PYBUILD : "3.12",
+    fb_ar   :  (window.innerWidth / Math.max(1, window.innerHeight)),
+    fb_width : String(Math.max(1, window.innerWidth || 1280)),
+    fb_height : String(Math.max(1, window.innerHeight || 720))
+}
+
+window.__zgame_render_limits = {
+    maxWidth: 1280,
+    maxHeight: 720,
+};
+
+function renderLimitWidth() {
+    return Math.max(640, Number((window.__zgame_render_limits && window.__zgame_render_limits.maxWidth) || 1280));
+}
+
+function renderLimitHeight() {
+    return Math.max(360, Number((window.__zgame_render_limits && window.__zgame_render_limits.maxHeight) || 720));
+}
+
+function viewportWidth() {
+    return Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1280);
+}
+
+function viewportHeight() {
+    return Math.max(1, window.innerHeight || document.documentElement.clientHeight || 720);
+}
+
+function backingSize() {
+    const vw = viewportWidth();
+    const vh = viewportHeight();
+    return {
+        width: Math.max(1, Math.round(vw)),
+        height: Math.max(1, Math.round(vh)),
+        viewportWidth: vw,
+        viewportHeight: vh,
+    };
+}
+
+window.__zgame_apply_render_limits = function(maxWidth, maxHeight) {
+    try {
+        window.__zgame_render_limits = {
+            maxWidth: Math.max(640, Math.round(Number(maxWidth || renderLimitWidth()))),
+            maxHeight: Math.max(360, Math.round(Number(maxHeight || renderLimitHeight()))),
+        };
+        applyCanvasFullscreen();
+        focusCanvas();
+        return true;
+    } catch (e) {
+        console.warn("[ZGame] apply render limits failed", e);
+        return false;
+    }
+};
+
+function applyViewportConfig() {
+    const size = backingSize();
+    config.fb_width = String(size.width);
+    config.fb_height = String(size.height);
+    config.fb_ar = size.width / Math.max(1, size.height);
+}
+
+function applyCanvasFullscreen() {
+    applyViewportConfig();
+    const size = backingSize();
+    const width = size.viewportWidth;
+    const height = size.viewportHeight;
+    const backingWidth = size.width;
+    const backingHeight = size.height;
+    const targets = [window.canvas, window.canvas3d].filter(Boolean);
+    for (const node of targets) {
+        node.width = backingWidth;
+        node.height = backingHeight;
+        node.style.position = "fixed";
+        node.style.left = "0px";
+        node.style.top = "0px";
+        node.style.right = "auto";
+        node.style.bottom = "auto";
+        node.style.margin = "0";
+        node.style.width = width + "px";
+        node.style.height = height + "px";
+        node.style.maxWidth = "100vw";
+        node.style.maxHeight = "100vh";
+    }
+    if (typeof queue_event === "function") {
+        queue_event("resize", { width : backingWidth, height : backingHeight });
+    }
+}
+
+function focusCanvas() {
+    try { window.focus(); } catch (e) {}
+    try { document.body.focus({ preventScroll: true }); }
+    catch (e) { try { document.body.focus(); } catch (_) {} }
+    try { canvas.focus({ preventScroll: true }); }
+    catch (e) { try { canvas.focus(); } catch (_) {} }
+}
+
+window.__zgame_last_error = "";
+window.__zgame_error_count = 0;
+window.__zgame_audio_user_activated = false;
+
+function zgameIgnoreAutoplayMessage(err) {
+    try {
+        const msg = String(err && (err.message || err.reason || err.stack || err) || "").trim();
+        const lower = msg.toLowerCase();
+        return (
+            lower.includes("play() failed because the user didn't interact") ||
+            lower.includes("play() request was interrupted") ||
+            lower.includes("failed to load because no supported source was found") ||
+            (lower.includes("rejection occurred:") && lower.includes("play() failed because the user didn't interact"))
+        );
+    } catch (_) {
+        return false;
+    }
+}
+
+function zgameCanPlayAudioNow() {
+    try {
+        if (window.__zgame_audio_user_activated) {
+            return true;
+        }
+        const ua = (navigator && navigator.userActivation) ? navigator.userActivation : null;
+        return !!(ua && (ua.hasBeenActive || ua.isActive));
+    } catch (_) {
+        return !!window.__zgame_audio_user_activated;
+    }
+}
+
+function zgameMarkAudioActivated() {
+    window.__zgame_audio_user_activated = true;
+}
+
+window.addEventListener("pointerdown", zgameMarkAudioActivated, true);
+window.addEventListener("mousedown", zgameMarkAudioActivated, true);
+window.addEventListener("keydown", zgameMarkAudioActivated, true);
+window.addEventListener("touchstart", zgameMarkAudioActivated, true);
+
+try {
+    const zgameNativeAlert = (typeof window.alert === "function") ? window.alert.bind(window) : null;
+    window.alert = function(msg) {
+        if (zgameIgnoreAutoplayMessage(msg)) {
+            console.warn("[ZGameAudio] Suppressed autoplay alert", String(msg || ""));
+            return;
+        }
+        if (zgameNativeAlert) {
+            return zgameNativeAlert(msg);
+        }
+    };
+} catch (_) {}
+
+function zgameRecordError(prefix, err) {
+    try {
+        if (zgameIgnoreAutoplayMessage(err)) {
+            return;
+        }
+        const msg = String(err && (err.message || err.reason || err.stack || err) || "").trim();
+        window.__zgame_last_error = (prefix + ": " + msg).slice(0, 240);
+        window.__zgame_error_count = (Number(window.__zgame_error_count || 0) + 1);
+        console.error("[ZGameError]", window.__zgame_last_error);
+    } catch (_) {}
+}
+
+window.addEventListener("error", function(ev) {
+    const target = ev && ev.target;
+    const tag = String(target && target.tagName || "").toLowerCase();
+    const src = String((target && (target.src || target.href)) || "");
+    if (tag === "audio") {
+        try { ev.preventDefault(); } catch (_) {}
+        try { ev.stopImmediatePropagation(); } catch (_) {}
+        return;
+    }
+    if (tag === "script" && src.includes("browserfs.min.js")) {
+        try { ev.preventDefault(); } catch (_) {}
+        try { ev.stopImmediatePropagation(); } catch (_) {}
+        return;
+    }
+    if (zgameIgnoreAutoplayMessage(ev && (ev.error || ev.message || ev))) {
+        try { ev.preventDefault(); } catch (_) {}
+        try { ev.stopImmediatePropagation(); } catch (_) {}
+        return;
+    }
+    zgameRecordError("error", ev && (ev.error || ev.message || ev));
+}, true);
+
+window.addEventListener("unhandledrejection", function(ev) {
+    if (zgameIgnoreAutoplayMessage(ev && (ev.reason || ev))) {
+        try { ev.preventDefault(); } catch (_) {}
+        try { ev.stopImmediatePropagation(); } catch (_) {}
+        return;
+    }
+    zgameRecordError("promise", ev && (ev.reason || ev));
+}, true);
+
+window.__zgame_diag_dom = null;
+window.__zgame_js_frame = 0;
+window.__zgame_js_gap_ms = 0;
+window.__zgame_js_last_now = 0;
+window.__zgame_py_diag_export_json = "";
+window.__zgame_diag_last_post_ms = 0;
+window.__zgame_diag_last_post_reason = "";
+window.__zgame_diag_post_failures = 0;
+window.__zgame_diag_last_heartbeat_ms = 0;
+window.__zgame_diag_started_ms = Date.now();
+window.__zgame_py_live_last_frame = -1;
+window.__zgame_py_live_samples = [];
+window.__zgame_js_perf = {
+    gaps: [],
+    worstGapMs: 0,
+    hitch25: 0,
+    hitch33: 0,
+    hitch50: 0,
+    hitch100: 0,
+    currentStreak33: 0,
+    longestStreak33: 0,
+};
+
+function zgamePercentiles(values, points) {
+    const nums = (values || []).map((v) => Number(v || 0)).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+    const out = {};
+    if (!nums.length) {
+        for (const p of (points || [])) out["p" + p] = 0;
+        return out;
+    }
+    const last = nums.length - 1;
+    for (const p of (points || [])) {
+        if (last <= 0) {
+            out["p" + p] = Number(nums[0].toFixed(3));
+            continue;
+        }
+        const q = Math.max(0, Math.min(100, Number(p || 0))) / 100;
+        const idx = q * last;
+        const lo = Math.floor(idx);
+        const hi = Math.min(last, lo + 1);
+        const frac = idx - lo;
+        const val = nums[lo] * (1 - frac) + nums[hi] * frac;
+        out["p" + p] = Number(val.toFixed(3));
+    }
+    return out;
+}
+
+function zgameRecordJsGap(gapMs) {
+    const gap = Math.max(0, Number(gapMs || 0));
+    const perf = window.__zgame_js_perf;
+    perf.gaps.push(gap);
+    while (perf.gaps.length > 7200) {
+        perf.gaps.shift();
+    }
+    perf.worstGapMs = Math.max(Number(perf.worstGapMs || 0), gap);
+    if (gap > 25) perf.hitch25 += 1;
+    if (gap > 33) {
+        perf.hitch33 += 1;
+        perf.currentStreak33 += 1;
+        perf.longestStreak33 = Math.max(perf.longestStreak33, perf.currentStreak33);
+    } else {
+        perf.currentStreak33 = 0;
+    }
+    if (gap > 50) perf.hitch50 += 1;
+    if (gap > 100) perf.hitch100 += 1;
+}
+
+function zgameBuildJsPerfExport() {
+    const perf = window.__zgame_js_perf || {};
+    const gaps = Array.isArray(perf.gaps) ? perf.gaps.slice() : [];
+    return {
+        frames: Number(window.__zgame_js_frame || 0),
+        last_gap_ms: Number(window.__zgame_js_gap_ms || 0),
+        worst_gap_ms: Number(perf.worstGapMs || 0),
+        hitch_counts: {
+            "25": Number(perf.hitch25 || 0),
+            "33": Number(perf.hitch33 || 0),
+            "50": Number(perf.hitch50 || 0),
+            "100": Number(perf.hitch100 || 0),
+        },
+        longest_hitch_streak_33: Number(perf.longestStreak33 || 0),
+        gap_percentiles_ms: zgamePercentiles(gaps, [50, 90, 95, 99]),
+        samples_ms: gaps,
+    };
+}
+
+function zgameParseJsonText(text, fallback) {
+    try {
+        if (!text) return fallback;
+        const parsed = JSON.parse(String(text));
+        return (parsed && typeof parsed === "object") ? parsed : fallback;
+    } catch (_) {
+        return fallback;
+    }
+}
+
+function zgameCollectLivePySample() {
+    try {
+        const frame = Number(window.__zgame_py_frame || 0);
+        if (!Number.isFinite(frame) || frame <= 0) return;
+        const lastFrame = Number(window.__zgame_py_live_last_frame || -1);
+        if (frame === lastFrame) return;
+        window.__zgame_py_live_last_frame = frame;
+        const out = window.__zgame_py_live_samples;
+        out.push({
+            frame: frame,
+            t_s: Number(((Date.now() - Number(window.__zgame_diag_started_ms || Date.now())) / 1000).toFixed(4)),
+            raw_dt_ms: Number(window.__zgame_py_raw_dt_ms || 0),
+            dt_ms: Number(window.__zgame_py_dt_ms || 0),
+            frame_ms: Number(window.__zgame_py_total_ms || 0),
+            update_ms: Number(window.__zgame_py_update_ms || 0),
+            render_ms: Number(window.__zgame_py_render_ms || 0),
+            browser_gap_ms: Number(window.__zgame_py_browser_gap_ms || window.__zgame_js_gap_ms || 0),
+            rendered: Number(window.__zgame_py_rendered || 0),
+            phase_ms: zgameParseJsonText(window.__zgame_py_phase_json, {}),
+            counts: zgameParseJsonText(window.__zgame_py_counts_json, {}),
+        });
+        while (out.length > 4800) {
+            out.shift();
+        }
+    } catch (_) {}
+}
+
+function zgameBuildPyLiveSummary(samples) {
+    const frameMs = [];
+    const rawDtMs = [];
+    const updateMs = [];
+    const renderMs = [];
+    const gapMs = [];
+    const phaseAvg = Object.create(null);
+    const phaseMax = Object.create(null);
+    const phaseCount = Object.create(null);
+    const hitchCounts = { "25": 0, "33": 0, "50": 0, "100": 0 };
+    let renderedFrames = 0;
+    let skippedFrames = 0;
+    let worstHitchMs = 0;
+    let currentStreak33 = 0;
+    let longestStreak33 = 0;
+    for (const sample of (samples || [])) {
+        const frame = Number(sample.frame_ms || 0);
+        const raw = Number(sample.raw_dt_ms || 0);
+        const update = Number(sample.update_ms || 0);
+        const render = Number(sample.render_ms || 0);
+        const gap = Number(sample.browser_gap_ms || 0);
+        frameMs.push(frame);
+        rawDtMs.push(raw);
+        updateMs.push(update);
+        renderMs.push(render);
+        gapMs.push(gap);
+        if (Number(sample.rendered || 0)) renderedFrames += 1;
+        else skippedFrames += 1;
+        worstHitchMs = Math.max(worstHitchMs, frame);
+        if (frame > 25) hitchCounts["25"] += 1;
+        if (frame > 33) {
+            hitchCounts["33"] += 1;
+            currentStreak33 += 1;
+            longestStreak33 = Math.max(longestStreak33, currentStreak33);
+        } else {
+            currentStreak33 = 0;
+        }
+        if (frame > 50) hitchCounts["50"] += 1;
+        if (frame > 100) hitchCounts["100"] += 1;
+        for (const [name, value] of Object.entries(sample.phase_ms || {})) {
+            const ms = Number(value || 0);
+            phaseAvg[name] = Number(phaseAvg[name] || 0) + ms;
+            phaseMax[name] = Math.max(Number(phaseMax[name] || 0), ms);
+            phaseCount[name] = Number(phaseCount[name] || 0) + 1;
+        }
+    }
+    const phaseAvgOut = {};
+    for (const [name, total] of Object.entries(phaseAvg)) {
+        phaseAvgOut[name] = Number((Number(total || 0) / Math.max(1, Number(phaseCount[name] || 0))).toFixed(3));
+    }
+    const phaseMaxOut = {};
+    for (const [name, maxVal] of Object.entries(phaseMax)) {
+        phaseMaxOut[name] = Number(Number(maxVal || 0).toFixed(3));
+    }
+    return {
+        frames: Number(((samples || []).length ? (samples[samples.length - 1] || {}).frame : 0) || 0),
+        rendered_frames: renderedFrames,
+        skipped_frames: skippedFrames,
+        avg_frame_ms: Number((frameMs.reduce((a, b) => a + b, 0) / Math.max(1, frameMs.length)).toFixed(3)),
+        avg_render_ms: Number((renderMs.reduce((a, b) => a + b, 0) / Math.max(1, renderMs.length)).toFixed(3)),
+        avg_update_ms: Number((updateMs.reduce((a, b) => a + b, 0) / Math.max(1, updateMs.length)).toFixed(3)),
+        avg_browser_gap_ms: Number((gapMs.reduce((a, b) => a + b, 0) / Math.max(1, gapMs.length)).toFixed(3)),
+        worst_hitch_ms: Number(worstHitchMs.toFixed(3)),
+        longest_hitch_streak_33: longestStreak33,
+        hitch_counts: hitchCounts,
+        frame_percentiles_ms: zgamePercentiles(frameMs, [50, 90, 95, 99]),
+        raw_dt_percentiles_ms: zgamePercentiles(rawDtMs, [50, 90, 95, 99]),
+        render_percentiles_ms: zgamePercentiles(renderMs, [50, 90, 95, 99]),
+        update_percentiles_ms: zgamePercentiles(updateMs, [50, 90, 95, 99]),
+        browser_gap_percentiles_ms: zgamePercentiles(gapMs, [50, 90, 95, 99]),
+        phase_avg_ms: phaseAvgOut,
+        phase_max_ms: phaseMaxOut,
+    };
+}
+
+function zgamePostDiagExport(payload, reason) {
+    try {
+        const data = Object.assign({}, payload || {});
+        data.posted_at_ms = Date.now();
+        data.post_reason = String(reason || "");
+        const scenarioName =
+            String(
+                (((data.py || {}).session || {}).scenario) ||
+                data.scenario_name ||
+                ""
+            ).trim().toLowerCase();
+        const body = JSON.stringify(data);
+        const url = "/__zgame_diag" + (scenarioName ? ("?scenario=" + encodeURIComponent(scenarioName)) : "");
+        window.__zgame_diag_last_post_ms = Number(data.posted_at_ms || Date.now());
+        window.__zgame_diag_last_post_reason = String(reason || "");
+        fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: body,
+            keepalive: true,
+            credentials: "same-origin",
+            cache: "no-store",
+        }).catch(function() {
+            window.__zgame_diag_post_failures = Number(window.__zgame_diag_post_failures || 0) + 1;
+        });
+        return true;
+    } catch (_) {
+        window.__zgame_diag_post_failures = Number(window.__zgame_diag_post_failures || 0) + 1;
+        return false;
+    }
+}
+
+window.__zgame_diag_push = function(jsonText) {
+    try {
+        window.__zgame_py_diag_export_json = String(jsonText || "");
+        if (zgameDiagEnabled()) {
+            zgamePostDiagExport(window.__zgame_diag_collect_export(), "push");
+        }
+        return true;
+    } catch (_) {
+        return false;
+    }
+};
+
+window.__zgame_diag_collect_export = function() {
+    let pyExport = null;
+    try {
+        pyExport = window.__zgame_py_diag_export_json ? JSON.parse(window.__zgame_py_diag_export_json) : null;
+    } catch (_) {
+        pyExport = null;
+    }
+    const scenarioName = String(
+        ((((pyExport || {}).session || {}).scenario) ||
+        (new URLSearchParams(String((window.location && window.location.search) || "")).get("scenario")) ||
+        "")
+    );
+    if (!pyExport && Array.isArray(window.__zgame_py_live_samples) && window.__zgame_py_live_samples.length) {
+        const liveSamples = window.__zgame_py_live_samples.slice();
+        pyExport = {
+            source: "js-live-py-fallback",
+            session: { scenario: scenarioName },
+            summary: zgameBuildPyLiveSummary(liveSamples),
+            events: [],
+            samples: liveSamples,
+        };
+    }
+    return {
+        collected_at_ms: Date.now(),
+        location: String((window.location && window.location.href) || ""),
+        user_agent: String((navigator && navigator.userAgent) || ""),
+        scenario_name: scenarioName,
+        py_dead: Boolean(window.__zgame_py_dead),
+        py_error: String(window.__zgame_py_error || ""),
+        js_error: String(window.__zgame_last_error || ""),
+        js: zgameBuildJsPerfExport(),
+        py: pyExport,
+    };
+};
+
+function zgameDiagEnabled() {
+    try {
+        const marker = String((window.location && (window.location.search + "&" + window.location.hash)) || "").toLowerCase();
+        if (marker.includes("diag=1") || marker.includes("debug=1")) {
+            return true;
+        }
+        return Boolean(window.__zgame_last_error || window.__zgame_py_error);
+    } catch (e) {
+        return false;
+    }
+}
+
+function ensureZGameDiagDom() {
+    if (!zgameDiagEnabled()) return null;
+    let node = window.__zgame_diag_dom;
+    if (node && node.isConnected) return node;
+    node = document.createElement("pre");
+    node.id = "zgame-diag-dom";
+    node.style.position = "fixed";
+    node.style.left = "10px";
+    node.style.bottom = "10px";
+    node.style.zIndex = "999999";
+    node.style.margin = "0";
+    node.style.padding = "8px 10px";
+    node.style.maxWidth = "min(48vw, 720px)";
+    node.style.maxHeight = "36vh";
+    node.style.overflow = "auto";
+    node.style.whiteSpace = "pre-wrap";
+    node.style.font = "12px/1.35 Consolas, Menlo, monospace";
+    node.style.color = "#d8f3ff";
+    node.style.background = "rgba(5, 10, 18, 0.88)";
+    node.style.border = "1px solid rgba(88, 214, 255, 0.85)";
+    node.style.borderRadius = "8px";
+    node.style.pointerEvents = "none";
+    document.body.appendChild(node);
+    window.__zgame_diag_dom = node;
+    return node;
+}
+
+function updateZGameDiagDom() {
+    const node = ensureZGameDiagDom();
+    if (!node) return;
+    const lines = [];
+    const jsPerf = zgameBuildJsPerfExport();
+    lines.push(`js frame:${Number(window.__zgame_js_frame || 0)} gap:${Number(window.__zgame_js_gap_ms || 0).toFixed(1)}ms`);
+    lines.push(`js p95:${Number((jsPerf.gap_percentiles_ms || {}).p95 || 0).toFixed(1)}  worst:${Number(jsPerf.worst_gap_ms || 0).toFixed(1)}  hitch33:${Number(((jsPerf.hitch_counts || {})["33"]) || 0)}`);
+    lines.push(`py frame:${Number(window.__zgame_py_frame || 0)} dt:${Number(window.__zgame_py_dt_ms || 0).toFixed(1)} raw:${Number(window.__zgame_py_raw_dt_ms || 0).toFixed(1)} total:${Number(window.__zgame_py_total_ms || 0).toFixed(1)} rendered:${Number(window.__zgame_py_rendered || 0)}`);
+    lines.push(`idle:${Number(window.__zgame_py_idle_loops || 0)} accum:${Number(window.__zgame_py_accum_ms || 0).toFixed(1)}ms`);
+    lines.push(`phase:${String(window.__zgame_prof_phase || "-")}  detail:${String(window.__zgame_prof_detail || "")}`);
+    if (zgameDiagEnabled()) {
+        lines.push(`diag post:${String(window.__zgame_diag_last_post_reason || "-")} fail:${Number(window.__zgame_diag_post_failures || 0)}`);
+    }
+    try {
+        const mem = window.performance && window.performance.memory;
+        const heapMb = mem && mem.usedJSHeapSize ? (Number(mem.usedJSHeapSize) / (1024 * 1024)) : null;
+        let saveBytes = 0;
+        if (window.localStorage) {
+            for (let i = 0; i < window.localStorage.length; i += 1) {
+                const key = String(window.localStorage.key(i) || "");
+                if (!key.startsWith("z_game_save_")) continue;
+                const value = String(window.localStorage.getItem(key) || "");
+                saveBytes += (key.length + value.length) * 2;
+            }
+        }
+        if (heapMb !== null || saveBytes > 0) {
+            lines.push(
+                `chrome heap:${heapMb !== null ? heapMb.toFixed(1) + "MB" : "n/a"}  save:${(saveBytes / 1024).toFixed(1)}KB`
+            );
+        }
+    } catch (e) {}
+    if (window.__zgame_last_error) {
+        lines.push(`err:${String(window.__zgame_last_error)}`);
+    }
+    if (window.__zgame_py_error) {
+        lines.push(`pyerr:${String(window.__zgame_py_error)}`);
+    }
+    node.textContent = lines.join("\n");
+}
+
+function zgameDiagTick(now) {
+    try {
+        const last = Number(window.__zgame_js_last_now || 0);
+        if (last > 0) {
+            window.__zgame_js_gap_ms = Math.max(0, Number(now || 0) - last);
+            zgameRecordJsGap(window.__zgame_js_gap_ms);
+        }
+        window.__zgame_js_last_now = Number(now || 0);
+        window.__zgame_js_frame = Number(window.__zgame_js_frame || 0) + 1;
+        zgameCollectLivePySample();
+    } catch (e) {}
+    updateZGameDiagDom();
+    window.requestAnimationFrame(zgameDiagTick);
+}
+
+function zgameMaybeHeartbeatPost() {
+    try {
+        if (!zgameDiagEnabled()) return;
+        const posted = Number(window.__zgame_diag_last_heartbeat_ms || 0);
+        const nowMs = Date.now();
+        if ((nowMs - posted) < 3000) return;
+        window.__zgame_diag_last_heartbeat_ms = nowMs;
+        zgamePostDiagExport(window.__zgame_diag_collect_export(), "heartbeat");
+    } catch (_) {}
+}
+
+window.requestAnimationFrame(zgameDiagTick);
+window.setInterval(updateZGameDiagDom, 250);
+window.setInterval(zgameMaybeHeartbeatPost, 1000);
+window.addEventListener("pagehide", function() {
+    try {
+        if (zgameDiagEnabled()) {
+            zgamePostDiagExport(window.__zgame_diag_collect_export(), "pagehide");
+        }
+    } catch (_) {}
+});
+
+function show_infobox() {
+    infobox.style.display = "block";
+
+    // Measure box
+    const w = infobox.offsetWidth;
+    const h = infobox.offsetHeight;
+
+    // Center in viewport
+    const left = (window.innerWidth - w) / 2;
+    const top = (window.innerHeight - h) / 2;
+
+    infobox.style.left = left + "px";
+    infobox.style.top = top + "px";
+}
+
+window.__zgame_bgm_audio = null;
+window.__zgame_bgm_pending = false;
+window.__zgame_bgm_last_play_ms = 0;
+window.__zgame_bgm_retry_timer = 0;
+window.__zgame_bgm_retry_attempts = 0;
+window.__zgame_fx_pool = Object.create(null);
+
+function zgameClearBgmRetry() {
+    try {
+        const timer = Number(window.__zgame_bgm_retry_timer || 0);
+        if (timer) {
+            window.clearTimeout(timer);
+        }
+    } catch (_) {}
+    window.__zgame_bgm_retry_timer = 0;
+}
+
+function zgameScheduleBgmRetry(delayMs) {
+    zgameClearBgmRetry();
+    const delay = Math.max(40, Number(delayMs || 120));
+    window.__zgame_bgm_retry_timer = window.setTimeout(() => {
+        window.__zgame_bgm_retry_timer = 0;
+        try {
+            const audio = window.__zgame_bgm_audio;
+            if (!audio) return;
+            window.__zgame_bgm_play(audio.loop ? -1 : 0, 0);
+        } catch (_) {}
+    }, delay);
+}
+
+window.__zgame_bgm_open = function(src, volume) {
+    try {
+        const prev = window.__zgame_bgm_audio;
+        if (prev) {
+            try { prev.pause(); } catch (_) {}
+        }
+        zgameClearBgmRetry();
+        const audio = new Audio(src);
+        audio.preload = "auto";
+        audio.autoplay = true;
+        audio.playsInline = true;
+        audio.loop = true;
+        audio.defaultMuted = false;
+        audio.muted = false;
+        audio.volume = Math.max(0, Math.min(1, Number(volume || 0)));
+        audio.crossOrigin = "anonymous";
+        audio.addEventListener("playing", () => {
+            window.__zgame_bgm_pending = false;
+            window.__zgame_bgm_retry_attempts = 0;
+            zgameClearBgmRetry();
+        });
+        audio.addEventListener("pause", () => { window.__zgame_bgm_pending = false; });
+        audio.addEventListener("ended", () => { window.__zgame_bgm_pending = false; });
+        window.__zgame_bgm_audio = audio;
+        window.__zgame_bgm_pending = false;
+        window.__zgame_bgm_last_play_ms = 0;
+        window.__zgame_bgm_retry_attempts = 0;
+        const retryPlay = () => {
+            if (window.__zgame_bgm_audio !== audio) return;
+            window.__zgame_bgm_play(audio.loop ? -1 : 0, 0);
+        };
+        audio.addEventListener("loadeddata", retryPlay);
+        audio.addEventListener("canplay", retryPlay);
+        audio.addEventListener("canplaythrough", retryPlay);
+        try { audio.load(); } catch (_) {}
+        retryPlay();
+        window.setTimeout(() => {
+            if (window.__zgame_bgm_audio === audio) {
+                retryPlay();
+            }
+        }, 140);
+        window.setTimeout(() => {
+            if (window.__zgame_bgm_audio === audio) {
+                retryPlay();
+            }
+        }, 420);
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html bgm open failed", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_play = function(loops, fade_ms) {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        const now = (window.performance && typeof window.performance.now === "function")
+            ? window.performance.now()
+            : Date.now();
+        audio.loop = loops !== 0;
+        if ((!audio.paused && !audio.ended) || window.__zgame_bgm_pending) {
+            return true;
+        }
+        const sinceLast = now - Number(window.__zgame_bgm_last_play_ms || 0);
+        if (sinceLast < 250) {
+            if (audio.paused || audio.ended) {
+                zgameScheduleBgmRetry(260 - sinceLast);
+            }
+            return true;
+        }
+        window.__zgame_bgm_pending = true;
+        window.__zgame_bgm_last_play_ms = now;
+        const playPromise = audio.play();
+        if (!playPromise || typeof playPromise.then !== "function") {
+            window.__zgame_bgm_pending = false;
+        }
+        if (playPromise && typeof playPromise.then === "function") {
+            playPromise.then(() => {
+                window.__zgame_bgm_pending = false;
+            });
+        }
+        if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch((e) => {
+                window.__zgame_bgm_pending = false;
+                window.__zgame_bgm_last_play_ms = 0;
+                console.warn("[Audio] html bgm play failed", e);
+                if (!zgameIgnoreAutoplayMessage(e)) {
+                    const attempts = Number(window.__zgame_bgm_retry_attempts || 0);
+                    if (attempts < 4) {
+                        window.__zgame_bgm_retry_attempts = attempts + 1;
+                        zgameScheduleBgmRetry(160 + attempts * 180);
+                    }
+                }
+            });
+        }
+        return true;
+    } catch (e) {
+        window.__zgame_bgm_pending = false;
+        window.__zgame_bgm_last_play_ms = 0;
+        console.warn("[Audio] html bgm play exception", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_stop = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        audio.pause();
+        audio.currentTime = 0;
+        window.__zgame_bgm_pending = false;
+        window.__zgame_bgm_retry_attempts = 0;
+        zgameClearBgmRetry();
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html bgm stop failed", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_pause = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        audio.pause();
+        window.__zgame_bgm_pending = false;
+        zgameClearBgmRetry();
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html bgm pause failed", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_resume = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        window.__zgame_bgm_last_play_ms = 0;
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch((e) => {
+                window.__zgame_bgm_last_play_ms = 0;
+                console.warn("[Audio] html bgm resume failed", e);
+            });
+        }
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html bgm resume exception", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_set_volume = function(volume) {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        audio.volume = Math.max(0, Math.min(1, Number(volume || 0)));
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html bgm set_volume failed", e);
+        return false;
+    }
+};
+
+window.__zgame_bgm_busy = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return false;
+        return window.__zgame_bgm_pending || (!audio.paused && !audio.ended);
+    } catch (e) {
+        return false;
+    }
+};
+
+window.__zgame_bgm_pos_ms = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (!audio) return -1;
+        return Math.floor((audio.currentTime || 0) * 1000);
+    } catch (e) {
+        return -1;
+    }
+};
+
+window.__zgame_audio_stop_all = function() {
+    try {
+        const audio = window.__zgame_bgm_audio;
+        if (audio) {
+            try { audio.pause(); } catch (_) {}
+            try { audio.currentTime = 0; } catch (_) {}
+            try { audio.src = ""; } catch (_) {}
+        }
+        zgameClearBgmRetry();
+        window.__zgame_bgm_audio = null;
+        window.__zgame_bgm_pending = false;
+        window.__zgame_bgm_retry_attempts = 0;
+        const pool = window.__zgame_fx_pool || {};
+        for (const key of Object.keys(pool)) {
+            for (const audioEl of (pool[key] || [])) {
+                try { audioEl.pause(); } catch (_) {}
+                try { audioEl.currentTime = 0; } catch (_) {}
+                try { audioEl.src = ""; } catch (_) {}
+            }
+        }
+        window.__zgame_fx_pool = Object.create(null);
+        return true;
+    } catch (e) {
+        console.warn("[Audio] stop all failed", e);
+        return false;
+    }
+};
+
+window.__zgame_fx_play = function(src, volume) {
+    try {
+        const key = String(src || "");
+        if (!key) return false;
+        let pool = window.__zgame_fx_pool[key];
+        if (!pool) {
+            pool = [];
+            window.__zgame_fx_pool[key] = pool;
+        }
+        let audio = null;
+        for (const cand of pool) {
+            if (cand && (cand.paused || cand.ended) && Number(cand.readyState || 0) >= 2) {
+                audio = cand;
+                break;
+            }
+        }
+        if (!audio) {
+            for (const cand of pool) {
+                if (cand && (cand.paused || cand.ended)) {
+                    audio = cand;
+                    break;
+                }
+            }
+        }
+        if (!audio) {
+            audio = new Audio(key);
+            audio.preload = "auto";
+            audio.autoplay = false;
+            audio.playsInline = true;
+            audio.defaultMuted = false;
+            audio.muted = false;
+            audio.crossOrigin = "anonymous";
+            pool.push(audio);
+            while (pool.length > 6) {
+                pool.shift();
+            }
+            try { audio.load(); } catch (_) {}
+        }
+        try { audio.pause(); } catch (_) {}
+        try { audio.currentTime = 0; } catch (_) {}
+        audio.volume = Math.max(0, Math.min(1, Number(volume || 0)));
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch((e) => {
+                if (!zgameIgnoreAutoplayMessage(e)) {
+                    console.warn("[Audio] html fx play failed", e);
+                }
+            });
+        }
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html fx play exception", e);
+        return false;
+    }
+};
+
+window.__zgame_fx_preload = function(src, poolSize) {
+    try {
+        const key = String(src || "");
+        if (!key) return false;
+        const want = Math.max(1, Math.min(8, Number(poolSize || 2) | 0));
+        let pool = window.__zgame_fx_pool[key];
+        if (!pool) {
+            pool = [];
+            window.__zgame_fx_pool[key] = pool;
+        }
+        while (pool.length < want) {
+            const audio = new Audio(key);
+            audio.preload = "auto";
+            audio.autoplay = false;
+            audio.playsInline = true;
+            audio.defaultMuted = false;
+            audio.muted = false;
+            audio.crossOrigin = "anonymous";
+            pool.push(audio);
+        }
+        for (const audio of pool) {
+            try { audio.load(); } catch (_) {}
+        }
+        return true;
+    } catch (e) {
+        console.warn("[Audio] html fx preload failed", e);
+        return false;
+    }
+};
+
+window.__zgame_terminate = function(reason) {
+    try {
+        window.__zgame_audio_stop_all();
+    } catch (_) {}
+    try { window.__zgame_last_error = ""; } catch (_) {}
+    try { window.__zgame_py_error = ""; } catch (_) {}
+    try {
+        if (window.__zgame_diag_dom && window.__zgame_diag_dom.parentNode) {
+            window.__zgame_diag_dom.parentNode.removeChild(window.__zgame_diag_dom);
+        }
+        window.__zgame_diag_dom = null;
+    } catch (_) {}
+    try {
+        const canvas = document.querySelector("canvas");
+        if (canvas) {
+            canvas.style.display = "none";
+        }
+        document.body.innerHTML = "";
+        document.body.style.margin = "0";
+        document.body.style.background = "#000";
+    } catch (_) {}
+    try {
+        window.open("", "_self");
+        window.close();
+    } catch (_) {}
+    setTimeout(() => {
+        try {
+            window.location.replace("about:blank");
+        } catch (_) {}
+    }, 20);
+    return true;
+};
+
+</script>
+
+    <title>NEUROSURIVER</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="height=device-height, initial-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes"/>
+
+
+    <link rel="icon" type="image/png" href="favicon.png" sizes="16x16">
+
+    <style>
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            overscroll-behavior: none;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #transfer,
+        #status,
+        #progress,
+        #infobox,
+        #box,
+        #info,
+        #iframe,
+        #system,
+        #crt,
+        #pyconsole {
+            display: none !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
+
+        #status {
+            display: inline-block;
+            vertical-align: top;
+            margin-top: 20px;
+            margin-left: 30px;
+            font-weight: bold;
+            color: rgb(120, 120, 120);
+        }
+
+        #progress {
+            height: 20px;
+            width: 300px;
+        }
+
+        #infobox {
+            position: fixed; /* center relative to viewport */
+            background: green;
+            color: blue;
+            font-weight: bold;
+            padding: 12px 24px;
+ /*           display: none; */
+            z-index: 999999;
+        }
+        div.emscripten { text-align: center; }
+        div.emscripten_border { border: 1px solid black; }
+        div.thick_border { border: 4px solid black; }
+
+        /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
+        /* average size of droid screen 470dp x 320dp  */
+        canvas.emscripten {
+            border: 0px none;
+            background-color: transparent;
+            width: 100%;
+            height: 100%;
+            z-index: 5;
+
+            padding: 0;
+            margin: 0;
+
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            outline: none;
+        }
+
+        body {
+            font-family: arial;
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+        }
+
+        .topright{
+           position:absolute;
+           top:0px;
+           right:0px;
+        }
+
+        .bottomright {
+            position:absolute;
+            top: 40%;
+            right: 0px;
+        }
+
+        .center {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .trinfo{
+           position: relative;
+           right: 0px;
+           border: 1px solid black;
+        }
+
+        .framed{
+           position: relative;
+           top: 150px;
+           right: 10px;
+           border: 1px solid black;
+        }
+    </style>
+
+    <script>
+/*
+        if (navigator.serviceWorker)
+            navigator.serviceWorker.register("https://pygame-web.github.io/cdn/0.9.3/pygbag0.9.3.js")
+        else
+            console.warn("Service workers not supported")
+*/
+    </script>
+
+    <script src="https://pygame-web.github.io/cdn/0.9.3//browserfs.min.js"></script>
+
+</head>
+
+<body>
+
+    <div id="transfer" align=center hidden style="display:none">
+<!--        <div class="spinner" id='spinner'></div> -->
+        <div class="emscripten" id="status">Downloading...</div>
+        <div class="emscripten">
+            <progress value="0" max="100" id="progress"></progress>
+        </div>
+    </div>
+
+
+
+    <canvas class="emscripten" id="canvas"
+width="1px"
+height="1px"
+    oncontextmenu="event.preventDefault()" tabindex=1>
+    </canvas>
+
+    <canvas class="emscripten" id="canvas3d"
+width="1280px"
+height="720px"
+    oncontextmenu="event.preventDefault()" tabindex=1 hidden>
+    </canvas>
+
+    <div id="infobox" hidden style="display:none">Loading, please wait ...</div>
+
+    <div id=html></div>
+
+    <div id=crt  class=bottomright >
+
+        <div id="system" hidden>
+            <div class="button-container">
+                <button id="aiostop" disabled>AIO 鈴忥笌</button>
+                <button id="aiopaused_true" disabled>AIO 鈻?/button>
+                <button id="aiopaused_false" disabled>AIO 鈻?/button>
+                <button id="pygame_mixer_music_pause" disabled>Music 鈻?/button>
+            </div>
+
+            <div class="button-container">
+                <div id=load_min>min</div>
+                <div id=load_avg>avg</div>
+                <div id=load_max>max</div>
+              <button id="load_rst" disabled>RESET</button>
+            </div>
+
+            <div id="level">(battery level unknown)</div>
+            <div id="stateBattery">(charging state unknown)</div>
+
+        </div>
+
+        <div id=box class="emscripten_border" hidden=true>
+
+            <div id="info" class="trinfo"></div>
+
+            <iframe id="iframe" class="framed" name="iframe"
+width="470px" height="90%"
+allowtransparency="true"
+style="z-index: 10;"
+style="background: #FFFFFF;"
+frameborder="1"
+                allowfullscreen="true"
+                webkitallowfullscreen="true"
+                msallowfullscreen="true"
+                mozallowfullscreen="true"
+                sandbox="allow-same-origin allow-top-navigation allow-scripts allow-pointer-lock"
+                allow="autoplay; fullscreen *; geolocation; microphone; camera; midi; monetization; xr-spatial-tracking; gamepad; gyroscope; accelerometer; xr; cross-origin-isolated"
+                src="https://pygame-web.github.io/cdn/0.9.3/empty.html"
+                scrolling="yes">
+            </iframe>
+        </div>
+
+    </div>
+
+
+    <div id="dlg" hidden>
+        <input type="file" id="dlg_multifile" multiple accept="image/*">
+        <label for="dlg_multifile">Select files</label>
+    </div>
+
+    <div id="pyconsole">
+        <div id="terminal" tabIndex=1 align="left"></div>
+    </div>
+
+    <script type="application/javascript">
+
+    globalThis.__canvas_resized = (self, ecw, ech) => {
+        console.warn("TODO: panda3d canvas monitor", self, ecw, ech)
+    }
+
+    async function custom_onload(debug_hidden) {
+        // this is called before anything python is loaded
+        // make your js customization here
+        console.log(__FILE__, "custom_onload")
+
+        pyconsole.hidden = true
+        system.hidden = true
+        transfer.hidden = true
+        info.hidden = true
+        box.hidden = true
+        try { crt.hidden = true; } catch (e) {}
+        try { box.remove(); } catch (e) {}
+        try { crt.remove(); } catch (e) {}
+        infobox.style.display = "none"
+        if (window.vm && window.vm.config) {
+            window.vm.config.user_canvas = 1
+            window.vm.config.user_canvas_managed = 1
+        }
+        globalThis.window_resize = applyCanvasFullscreen
+
+        applyCanvasFullscreen()
+        focusCanvas()
+    }
+
+    window.addEventListener("resize", () => {
+        applyCanvasFullscreen();
+        focusCanvas();
+    });
+    window.addEventListener("focus", focusCanvas);
+    window.addEventListener("click", focusCanvas, true);
+    window.addEventListener("keydown", focusCanvas, true);
+    window.addEventListener("keyup", focusCanvas, true);
+    window.addEventListener("pointerdown", focusCanvas, { passive: true });
+    window.addEventListener("mousedown", focusCanvas);
+    window.addEventListener("touchstart", focusCanvas, { passive: true });
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) {
+            focusCanvas();
+        }
+    });
+
+    function custom_prerun(){
+        // no python main and no (MEMFS + VFS) yet.
+        console.log(__FILE__, "custom_prerun")
+
+    }
+
+    function custom_postrun(){
+        // python main and no VFS filesystem yet.
+        console.log(__FILE__, "custom_postrun")
+        applyCanvasFullscreen()
+        focusCanvas()
+
+    }
+
+    function debug() {
+        // allow to gain access to dev tools from js console
+        // but only on desktop. difficult to reach when in iframe
+        python.config.debug = true
+        custom_onload(false)
+        Module.PyRun_SimpleString("shell.uptime()")
+        window_resize()
+    }
+
+    function info_inline(data){
+        return
+    }
+
+    function info_online(url) {
+        return
+    }
+
+    function frame_online(url) {
+        return
+    }
+
+    </script>
+
+</body>
+</html>
+
