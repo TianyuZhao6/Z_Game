@@ -180,6 +180,22 @@ Implementation-backed browser prop behavior:
 | Turrets | Auto and stationary turrets simulate from saved META counts; lite render draws nearest 8 visible turrets | Do not document browser-only turret count conversion unless implementation changes |
 | Damage text | WEB_MAX_DAMAGE_TEXTS caps visible/active text and merges nearby non-crit numeric text | Browser notes should mention hidden/merged feedback only when it affects readability |
 
+Specific browser prop behavior matrix:
+| prop | browser runtime behavior | browser cap or cadence | player-facing text guidance |
+| --- | --- | --- | --- |
+| Piercing Rounds | Same pierce count and damage falloff as desktop; extra hits can create more damage text than browser will display | visible player bullets capped at 28 in lite render; damage text capped at 4 in default full profile | No card note; tooltip may say browser hides some repeated hit text in dense waves |
+| Ricochet Scope | Same ricochet count and bounce damage as desktop; routed bullets still simulate even if not all are drawn | visible player bullets capped at 28 in lite render | No card note; QA should confirm ricochet chains continue under render cap |
+| Shrapnel Shells | Same proc chance and shard damage; shard burst count is reduced only when pending-bullet headroom is low | pending soft cap uses max(10, WEB_LITE_RENDER_BULLET_CAP * 2), currently based on visible bullet cap 28 | Tooltip note should mention soft burst reduction, not a fixed shard cap |
+| Explosive Rounds | Same splash radius, damage, boss multiplier, and chain behavior; only particles are budgeted | global WEB_MAX_FX_PARTICLES currently 16 in default full profile | Tooltip note optional: FX may be trimmed, explosion damage unchanged |
+| DOT Rounds | Same stack limits, duration, and tick damage; browser loop processes DoT at scheduled intervals | DOT update cadence 20 Hz; visible damage text capped/merged | No card note; tooltip may say tick text can merge while damage continues |
+| Mark of Vulnerability | Same mark interval, target priority, duration, and damage bonus; browser loop updates marks on a scheduled cadence | vulnerability update cadence 0.10s | No card note; QA should confirm boss/elite priority and mark expiry |
+| Ground Spikes | Same spawn interval, distance rule, damage, slow, lifetime, and max_active; browser updates the system on a scheduled cadence | ground spike update cadence 20 Hz; max_active remains 6/10/14 | No card note; tooltip can mention older spikes are removed at cap |
+| Curing Paint | Same footprint spawn rules, damage, lifetime, radius, ownership, and boss modifier; browser rendering is cached/throttled | curing paint update cadence 20 Hz; paint render refresh uses cached static/dynamic layers | Tooltip note only if a biome hides paint rendering; damage continues |
+| Aegis Pulse | Same shield gate, cooldown, radius, damage, wave count, and pulse visual profile; text feedback is budgeted | active pulse list updates 24 Hz; damage text capped/merged | No card note; tooltip may say pulse damage continues even if text is merged |
+| Auto-Turret | Same saved level and simulated turret count up to max level 5; all owned follower turrets update and fire | lite renderer draws nearest 8 total turrets | Tooltip note only when many turrets are active: browser draws nearest 8 |
+| Stationary Turret | Same saved stationary_turret_count and placement restoration; all spawned stationary turrets remain obstacles and fire | lite renderer draws nearest 8 total turrets | Pause summary can explain hidden turrets still work when count is high |
+| Coin and economy props | Meta changes and reward math use the same state as desktop; browser may limit visible pickup clutter | max spoils on field currently 8 in default full profile; lite renderer draws 12 pickups | Do not imply reduced rewards; describe bundled/hidden pickup visuals only if implemented |
+
 Browser version description levels:
 - Card text: one short player-facing note only when browser behavior changes a number, cap, or trigger. Keep it under one line at 960x540.
 - Tooltip text: include the exact cap or fallback and the unchanged part of the effect, such as damage, cooldown, or reward value.
@@ -1179,6 +1195,7 @@ Rules:
 Level 1/2/3/4/5: pierce_count = +1/+2/+3/+4/+5
 Damage falloff per extra pierced target: 0% / 4% / 8% / 12% / 16% (cap 30%).
 Rule: piercing checks enemy hit cooldown to avoid multi-hit in the same frame.
+Browser version: pierce count, damage falloff, range, and hit rules match desktop. Browser lite rendering draws at most 28 visible player bullets and damage text is capped/merged, so repeated pierce hits may be less verbose visually while the actual hit simulation continues.
 
 1.2. Ricochet Scope
 Effect:
@@ -1194,6 +1211,7 @@ Rules:
 Level 1/2/3: ricochet_count = 1/2/3
 Retarget cone: 160 deg around impact normal; max retarget range = 4.0 / 4.8 / 5.6 tiles.
 Damage per bounce multiplier: 90% / 82% / 75%.
+Browser version: ricochet count, retargeting, and bounce damage match desktop. Browser lite rendering caps visible player bullets at 28, so a dense ricochet build may simulate more routed bullets than are visible at once.
 
 1.3. Bleeding Edge
 Effect:
@@ -1211,6 +1229,7 @@ Level 2: bleed_total = 36% bullet_base over 3.0s, max_stacks = 3
 Level 3: bleed_total = 52% bullet_base over 3.0s, max_stacks = 4
 Tick interval: 0.5s.
 Boss rule: bleed damage multiplier vs bosses = 0.75.
+Browser version: planned behavior should use the same DoT scheduling path as DOT Rounds if implemented. If enabled on browser, document whether bleed ticks run on the 20 Hz status update cadence and whether bleed damage text merges under WEB_MAX_DAMAGE_TEXTS.
 
 1.4. Shrapnel Shells
 Effect:
@@ -1250,6 +1269,7 @@ Level 2: mark_interval = 4.0s, damage_taken_bonus = +22%, mark_duration = 6.0s
 Level 3: mark_interval = 3.0s, damage_taken_bonus = +30%, mark_duration = 7.0s
 Targeting priority: boss/elite > ranged > nearest.
 UI rule: mark icon pulses every 1.0s while active.
+Browser version: mark interval, duration, targeting priority, and damage bonus match desktop. Browser updates vulnerability marks on a 0.10s scheduled cadence when WEB_ENABLE_VULNERABILITY_MARKS is enabled, so visual expiry can be quantized slightly while damage scaling remains deterministic.
 
 1.6. Explosive Rounds
 Effect:
@@ -1298,6 +1318,7 @@ Stacking behavior:
 Applying a new stack refreshes only that stack duration, not all stacks.
 Per-target DoT cap:
 max_total_dot_damage_per_second = 120% bullet_base (before boss multiplier).
+Browser version: stack count, duration, tick interval, per-target DPS cap, and boss multiplier match desktop. Browser processes DOT Rounds on a 20 Hz scheduled cadence when WEB_ENABLE_DOT_ROUNDS is enabled; tick damage still accumulates, but non-crit tick text can merge or be dropped when WEB_MAX_DAMAGE_TEXTS is saturated.
 
 1.8. Ground Spikes
 Effect:
@@ -1334,6 +1355,7 @@ Rules:
 Per level: gain +2 plating HP every 6.0s (so +2/+4/+6/+8/+10 per tick at levels 1..5).
 At level 5: each hit consumes one plating stack and fully negates that hit.
 Speed trade-off in current implementation: each purchase multiplies move speed by 0.98.
+Browser version: plating gain timing, mitigation order, level-5 full-hit negate rule, and speed trade-off match desktop. Browser damage text may merge shield/plating feedback under WEB_MAX_DAMAGE_TEXTS, but mitigation state is saved and resolved through the same player/meta fields.
 
 2.2. Guardian Charm
 Effect:
@@ -1418,6 +1440,7 @@ Rules:
 Per purchase: +20 persistent carapace shield HP.
 Damage order rule: base shield -> carapace shield -> HP.
 UI rule: display current carapace shield reserve in pause possession tooltip.
+Browser version: reserve shield value, damage order, pause tooltip state, and save/load behavior match desktop. Carapace is important browser QA coverage because it gates Aegis Pulse uptime and persists through the same META save path.
 
 2.7. Shield Capacitor
 Effect:
@@ -1509,6 +1532,7 @@ Rules:
 Protected coin ratio by level: 25% / 40% / 55% / 70%.
 Protection applies before bandit steal and before debt-style coin penalties.
 Suggested implementation: protected = floor(current_coins * ratio), unprotected = current_coins - protected.
+Browser version: planned/implemented coin protection should use the same META coin state as desktop. Browser pickup and spoil visual caps must not reduce protected value; if coin bundles are merged or hidden for performance, tooltip text should still show the full protected ratio.
 
 3.2. Wanted Poster
 Effect:
@@ -1523,6 +1547,7 @@ Rules:
 Bounty payout per charge: +18 / +26 / +36 coins (scales by level bracket early/mid/late).
 Consumption rule: only consumed when the player secures the first Bandit kill of that level.
 Fail-safe: if no bandit spawned, the charge is retained.
+Browser version: bounty state should persist through browser localStorage like desktop save data. Browser enemy caps and safe spawn routes may reduce practical bandit encounter density, so QA should verify charge retention on waves where no bandit appears and bounty payout when a bandit does spawn.
 
 3.3. Coin Magnet
 Effect:
@@ -1536,6 +1561,7 @@ Max Level: 5
 Rules:
 Radius bonus: +60 / +120 / +180 / +240 / +300 px.
 QoL rule: coin pickup ignores micro-obstacle edges within 0.2 tiles when magnetized.
+Browser version: pickup radius and collection math match desktop. Browser may cap visible pickups/spoils for rendering and field clutter, but Coin Magnet should still collect available spoils through the same pickup state; do not describe this prop as reward-reduced on web.
 
 3.4. Golden Interest
 Effect:
@@ -1550,6 +1576,7 @@ Rules:
 Interest rate by level: 5% / 10% / 15% / 20%
 Per-level payout cap: 30 / 50 / 70 / 90 coins
 Order rule: apply interest before debt repayment checks.
+Browser version: interest math, payout cap, and ordering should match desktop because shop/meta state is shared. Browser notes are only needed if future web pacing changes shop frequency or save timing.
 
 3.5. Bandit Radar
 Effect:
@@ -1564,6 +1591,7 @@ Rules:
 Slow strength by level: 8% / 12% / 16% / 20%
 Duration by level: 2s / 3s / 4s / 5s
 Visual: high-contrast outline + minimap ping pulse every 0.6s while effect is active.
+Browser version: bandit slow and radar state should match desktop. If browser spawn safety limits bandit appearances, Radar still needs a readable highlight when a bandit is present; visual pulses may be simplified under FX/text budgets.
 
 3.6. Coupon
 Effect:
@@ -1578,6 +1606,7 @@ Max Level: 4
 Rules:
 Discount by level: 5% / 10% / 15% / 20%
 Rule: applies to normal offers and reroll cost; price floor is 1 coin.
+Browser version: discount math and price floor match desktop. Browser shop cards should show the same discounted current price and next upgrade text as desktop, with no browser-specific note unless layout constraints hide secondary price details.
 
 3.7. Shady Loan
 Effect:
@@ -1593,6 +1622,7 @@ Rules:
 Repayment order: Golden Interest -> lockbox protection snapshot -> loan repayment pull.
 Anti-feels-bad rule: if player has <= 15 coins, skip scheduled repayment for that wave once.
 UI requirement: always show debt left + waves left in both shop and pause possession tooltip.
+Browser version: loan payout, repayment order, debt counters, and HP penalty should use the same META save keys as desktop. Browser QA must refresh the page mid-debt and confirm debt_left, waves_left, and failure penalties survive localStorage reload.
 
 3.8. Black Market Pass
 Effect:
