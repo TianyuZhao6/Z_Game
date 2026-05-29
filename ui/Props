@@ -192,9 +192,14 @@ Specific browser prop behavior matrix:
 | Ground Spikes | Same spawn interval, distance rule, damage, slow, lifetime, and max_active; browser updates the system on a scheduled cadence | ground spike update cadence 20 Hz; max_active remains 6/10/14 | No card note; tooltip can mention older spikes are removed at cap |
 | Curing Paint | Same footprint spawn rules, damage, lifetime, radius, ownership, and boss modifier; browser rendering is cached/throttled | curing paint update cadence 20 Hz; paint render refresh uses cached static/dynamic layers | Tooltip note only if a biome hides paint rendering; damage continues |
 | Aegis Pulse | Same shield gate, cooldown, radius, damage, wave count, and pulse visual profile; text feedback is budgeted | active pulse list updates 24 Hz; damage text capped/merged | No card note; tooltip may say pulse damage continues even if text is merged |
+| Guardian Charm | Planned low-HP trigger should use same damage-player event path and save cooldown state with player/meta snapshot | trigger should be checked every combat update; visual burst uses FX/text budgets | Card note not needed unless browser changes cooldown or shield value |
+| Reflect/retaliation props | Planned reflection and shield-hit buffs should hook into damage_player/enemy projectile events without recursive loops | enemy shots are disabled by default on normal browser route | Any ranged-reflect prop needs browser fallback or opt-in enemy-shot note |
 | Auto-Turret | Same saved level and simulated turret count up to max level 5; all owned follower turrets update and fire | lite renderer draws nearest 8 total turrets | Tooltip note only when many turrets are active: browser draws nearest 8 |
 | Stationary Turret | Same saved stationary_turret_count and placement restoration; all spawned stationary turrets remain obstacles and fire | lite renderer draws nearest 8 total turrets | Pause summary can explain hidden turrets still work when count is high |
 | Coin and economy props | Meta changes and reward math use the same state as desktop; browser may limit visible pickup clutter | max spoils on field currently 8 in default full profile; lite renderer draws 12 pickups | Do not imply reduced rewards; describe bundled/hidden pickup visuals only if implemented |
+| Movement/control props | Planned movement auras, dash contact, and tar puddles should run on scheduled browser update lanes rather than every visual frame | use 20-24 Hz cadence for area/contact effects and global FX/text budgets | Tooltip should state gameplay values only; browser notes belong in detailed spec unless values change |
+| Crit/element props | Planned crit explosions, chill, and shock chains should follow the same bullet/status scheduling and pending-bullet/FX budgets | projectile-like chains use bullet headroom; VFX uses WEB_MAX_FX_PARTICLES | Avoid card notes unless browser reduces chain count, radius, or proc chance |
+| Paint economy props | Planned Paint Converter/Cleanse Step should use paint ownership/intensity state, not rendered paint visibility | paint render can be skipped in wind/mist while paint state still updates | Tooltip must not imply disabled paint rewards just because paint layer is hidden |
 
 Browser version description levels:
 - Card text: one short player-facing note only when browser behavior changes a number, cap, or trigger. Keep it under one line at 960x540.
@@ -1372,6 +1377,7 @@ Level 1: shield = 15, speed_bonus = +15%, duration = 3.0s, cooldown = 30s
 Level 2: shield = 24, speed_bonus = +22%, duration = 3.5s, cooldown = 26s
 Level 3: shield = 36, speed_bonus = +30%, duration = 4.0s, cooldown = 22s
 Rule: Trigger can only occur once every 1.0s even if HP fluctuates around threshold.
+Browser version: planned trigger should use the same damage_player / HP-ratio path as desktop and store cooldown state in the player carry/save snapshot. Shield amount, speed bonus, duration, and cooldown should not be browser-reduced; only the rescue flash/audio may be trimmed by WEB_MAX_FX_PARTICLES or native FX availability.
 
 2.3. Blood Pact
 Effect:
@@ -1388,6 +1394,7 @@ Level 2: damage_mult +30%, max_hp_mult -20%
 Level 3: damage_mult +45%, max_hp_mult -28%
 Safety floor: final max HP cannot drop below 35% of base max HP.
 UI note: show both values in red/green on purchase confirmation.
+Browser version: planned max-HP penalty and damage bonus should be applied through the same META/player stat rebuild path as desktop. Browser card text must show the same green/red values at 960x540; no browser note is needed unless the web build changes the safety floor or damage multiplier.
 
 2.4. Retaliation Thorns
 Effect:
@@ -1404,6 +1411,7 @@ Level 2: reflect = max(14, 6% enemy_max_hp), internal_cd_per_enemy = 0.40s
 Level 3: reflect = max(22, 8% enemy_max_hp), internal_cd_per_enemy = 0.30s
 Boss rule: % max HP component is halved against bosses.
 Anti-loop: reflected damage cannot trigger other reflection effects.
+Browser version: planned contact reflection should work on browser because contact damage remains active. Reflection damage text may merge or drop under WEB_MAX_DAMAGE_TEXTS, but the per-enemy cooldown and anti-loop rule must still run in simulation.
 
 2.5. Aegis Pulse
 Effect:
@@ -1459,6 +1467,7 @@ Level 1: convert 25% heal at full HP, bonus_overheal_conversion +10%, temp_shiel
 Level 2: convert 40% heal at full HP, bonus_overheal_conversion +15%, temp_shield_duration 12s
 Level 3: convert 60% heal at full HP, bonus_overheal_conversion +20%, temp_shield_duration 14s
 Cap: temporary shield from this prop cannot exceed 40% of player max HP.
+Browser version: planned overheal conversion should use the same heal pickup and shield state as desktop. Browser visible heal/pickup caps must not reduce conversion value after pickup; QA should verify full-HP heal collection with Coin Magnet still grants the correct temporary shield.
 
 2.8. Mirror Shell
 Effect:
@@ -1479,6 +1488,7 @@ Level 2: reflect_ratio = 32%, reflect_range = 5.0 tiles
 Level 3: reflect_ratio = 45%, reflect_range = 6.0 tiles
 Boss rule: reflected damage dealt to bosses uses 70% of reflected value.
 Rate limit: max 6 reflections per second (global).
+Browser version: planned ranged reflection needs an explicit fallback because normal browser play clears enemy projectiles unless `enemyshots=1` or `allowenemyshots=1` is enabled. Fallback suggestion: while enemy shots are disabled, trigger from shield damage caused by ranged-type enemies within reflect_range, preserving reflect ratio and global 6/s rate limit.
 
 2.9. Shardstorm
 Effect:
@@ -1498,6 +1508,7 @@ Level 2: shard_count = 9, shard_damage = 0.35 * bullet_base, spread = 360 deg
 Level 3: shard_count = 12, shard_damage = 0.45 * bullet_base, spread = 360 deg
 Shard speed: 1.15 * player bullet speed, shard lifetime: 0.9s.
 Boss rule: shard damage to bosses = 65% of listed value.
+Browser version: planned shield-break shards should use the same browser pending-bullet soft cap as Shrapnel Shells. If pending headroom is low, reduce spawned shard count before changing damage; tooltip should say "Browser: shard count may compress during dense bullet bursts; shard damage unchanged."
 
 2.10. Retaliation Core
 Effect:
@@ -1514,6 +1525,7 @@ Level 2: +16% bullet damage, +9% crit chance, duration 3.0s
 Level 3: +24% bullet damage, +12% crit chance, duration 3.5s
 Refresh rule: retriggers refresh duration but cannot stack magnitude.
 Internal cooldown: 1.0s between retriggers.
+Browser version: planned shield-hit buff should use the same shield damage event path as Bone Plating, Carapace, and Aegis Pulse. Buff duration and magnitude should match desktop; browser feedback can be a compact HUD/status flash instead of extra particles.
 
 3. Economy & Bandit Interaction Props
 
@@ -1644,6 +1656,7 @@ Compensation: one extra offer slot in that shop (5 cards + reroll) to support de
 Rarity weights override suggestion:
 rarity_3 = 55%, rarity_4 = 35%, rarity_5 = 10% (when available by progression gate).
 Protection rule: keep at least one affordable offer (price <= current_coins + 15) to avoid dead shops.
+Browser version: planned black-market shop state should use the same shop generation and META flags as desktop. Browser card layout must still show premium price, minimum rarity, and expiry at 960x540; no reward or rarity reduction should be introduced for web.
 
 3.9. VIP Punchcard
 Effect:
@@ -1662,6 +1675,7 @@ Cashback cap per level: 30 / 45 / 60 / 80 coins
 Rule: cashback is granted after clearing the level (not immediately in shop).
 Accounting rule: cashback pool resets when entering a new shop.
 UI rule: show "Current cashback pool: X (cap Y)" in shop lower panel.
+Browser version: planned cashback should persist through browser localStorage from shop purchase through the next level clear. Browser pickup/spoil visual caps must not reduce cashback payout; if payout is spawned as coins, it should bundle or credit directly when WEB_MAX_SPOILS_ON_FIELD is saturated.
 
 3.10. Spoil Splitter
 Effect:
@@ -1680,6 +1694,7 @@ Proc chance by level: 10% / 20% / 30% / 40% / 50%
 Anti-loop rule: spawned bonus coin cannot recursively trigger Spoil Splitter.
 Performance rule: max 8 spawned bonus coins per second globally.
 Expected value guide: average coin gain should be +0.10 / +0.20 / +0.30 / +0.40 / +0.50 coins per pickup before caps.
+Browser version: planned bonus coin spawning must respect WEB_MAX_SPOILS_ON_FIELD and browser pickup rendering without lowering expected value silently. If field clutter is saturated, browser should merge bonus coins into a bundle or credit META spoils directly rather than dropping earned value.
 
 4. Utility / Control Props
 These props adjust player movement, positional control, and space denial.
@@ -1699,6 +1714,7 @@ Level 1: radius = 1.8 tiles, slow = 12%, pulse every 1.0s while standing
 Level 2: radius = 2.2 tiles, slow = 16%, pulse every 0.9s while standing
 Level 3: radius = 2.6 tiles, slow = 20%, pulse every 0.8s while standing
 Ramp rule: effect fades out 0.35s after movement resumes.
+Browser version: planned slow pulse should run on a scheduled browser area-effect cadence, preferably 20-24 Hz, and avoid spawning a new particle ring every frame. Slow amount, radius, and pulse interval should match desktop; visual pulse can be simplified under WEB_MAX_FX_PARTICLES.
 
 4.2. Phantom Dash (if you ever add dash / evade)
 Effect:
@@ -1715,6 +1731,7 @@ Level 1: dash_contact_damage = 0.55 * bullet_base, slow = 20% for 1.2s
 Level 2: dash_contact_damage = 0.75 * bullet_base, slow = 25% for 1.5s
 Level 3: dash_contact_damage = 1.00 * bullet_base, slow = 30% for 1.8s
 Internal hit cooldown per enemy during dash: 0.25s.
+Browser version: planned dash contact should use deterministic swept collision, not frame-only overlap, because browser frame cadence is lower. Damage and slow values should match desktop; VFX/audio can degrade silently when native FX or particle budget is saturated.
 
 4.3. Sticky Tar Flask
 Effect:
@@ -1730,6 +1747,7 @@ Level 1: puddle_radius = 0.9 tiles, slow = 15%, dot = 0.04 * bullet_base per 0.5
 Level 2: puddle_radius = 1.1 tiles, slow = 20%, dot = 0.06 * bullet_base per 0.5s, life = 3.5s
 Level 3: puddle_radius = 1.3 tiles, slow = 25%, dot = 0.08 * bullet_base per 0.5s, life = 4.5s
 Spawn cadence: drop one puddle every 2.2 / 1.9 / 1.6 seconds while moving.
+Browser version: planned tar puddles should share the Curing Paint/Ground Spikes browser scheduling model. Use a per-prop active puddle cap and oldest-puddle eviction, update damage/slow at 20 Hz, and render through cached ground effects where possible.
 
 4.4. Auto-Turret
 Effect:
@@ -1783,6 +1801,7 @@ Rules:
 Level 1: +8% crit chance, -6% fire rate
 Level 2: +13% crit chance, -10% fire rate
 Level 3: +20% crit chance, -15% fire rate
+Browser version: planned crit chance and fire-rate tradeoff should use the same stat rebuild path as desktop. Browser should not add a hidden fire-rate penalty beyond the listed value; if lower FPS affects perceived shot cadence, QA should compare actual shots per second rather than visual bullet count.
 
 5.2. Explosive Crits
 Effect:
@@ -1798,6 +1817,7 @@ Level 1: crit_explosion_damage = 30% bullet_base, radius = 0.60 tiles
 Level 2: crit_explosion_damage = 42% bullet_base, radius = 0.75 tiles
 Level 3: crit_explosion_damage = 55% bullet_base, radius = 0.90 tiles
 Boss rule: crit explosion damage is reduced by 35% against bosses.
+Browser version: planned crit explosions should follow Explosive Rounds browser rules: damage/radius match desktop, particles trim under WEB_MAX_FX_PARTICLES, and any chained or splash-created bullet-like effects must respect pending-bullet headroom.
 
 5.3. Frost Brand
 Effect:
@@ -1813,6 +1833,7 @@ Level 1: chill_chance = 14%, chill_slow = 20%, chill_duration = 1.2s, re-hit_bon
 Level 2: chill_chance = 20%, chill_slow = 24%, chill_duration = 1.5s, re-hit_bonus = +18%
 Level 3: chill_chance = 28%, chill_slow = 30%, chill_duration = 1.8s, re-hit_bonus = +26%
 Boss rule: slow effect is 50% effective on bosses.
+Browser version: planned chill should use the same status update cadence as DOT Rounds, targeting 20 Hz on browser. Chill slow/duration and re-hit bonus should match desktop; frost VFX can be reduced to a tint/status marker when particle budget is saturated.
 
 5.4. Shock Relay
 Effect:
@@ -1828,6 +1849,7 @@ Level 1: every 8th hit chains to up to 2 enemies, chain_damage = 30% bullet_base
 Level 2: every 6th hit chains to up to 3 enemies, chain_damage = 40% bullet_base
 Level 3: every 5th hit chains to up to 4 enemies, chain_damage = 50% bullet_base
 Chain range: 1.8 / 2.2 / 2.6 tiles by level.
+Browser version: planned shock chains should cap spawned chain segments through pending-bullet or FX headroom before reducing damage. If browser saturation prevents all visual arcs from drawing, damage should still resolve deterministically and tooltip text should only mention reduced visuals unless chain count is mechanically capped.
 
 6. Core Paint System
 Tiles can hold temporary "paint" that affects movement and combat. A tile¡¯s paint has:
@@ -1903,6 +1925,7 @@ L1: +8% chance to drop 1 bonus coin, consume 0.15 intensity.
 L2: +12% chance to drop 1 bonus coin, consume 0.12 intensity.
 L3: +16% chance to drop 1 bonus coin, consume 0.10 intensity.
 Rule: cannot trigger from summoned fake-coin entities.
+Browser version: planned reward conversion should use paint ownership/intensity state, not whether the paint layer was rendered this frame. If WEB_MAX_SPOILS_ON_FIELD is saturated, browser should merge rewards into existing bundles or credit directly so player value is not lost.
 
 6.3. Cleanse Step
 Effect:
@@ -1920,6 +1943,7 @@ L1: conversion_rate = 0.20 intensity/s
 L2: conversion_rate = 0.30 intensity/s
 L3: conversion_rate = 0.45 intensity/s
 Bonus: while converting, gain 6%/9%/12% slow resistance.
+Browser version: planned enemy-paint conversion should operate on paint_grid state even when browser wind/mist routes skip paint rendering. Conversion rate, slow resistance, and ownership changes should match desktop; visual repaint feedback can update on the cached paint refresh cadence.
 
 7. Set / Combo Ideas
 
