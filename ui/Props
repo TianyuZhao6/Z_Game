@@ -1953,6 +1953,7 @@ Piercing Rounds + Ricochet Scope (+ Shrapnel Shells as 3rd piece)
 Set Bonus:
 2-piece: +15% projectile speed, +10% shrapnel proc chance.
 3-piece: first ricochet each shot has +20% crit chance.
+Browser version: Ballistic Engine should not add a separate browser projectile cap. The 2-piece speed bonus and 3-piece crit bonus should apply to simulated bullets, while visible bullets remain subject to the lite-render 28 bullet cap. QA must verify ricochet + shrapnel + explosive chains still respect pending-bullet headroom and do not create unbounded pending_bullets.
 
 7.2. Fortress Loop (2/3 piece set)
 Pieces:
@@ -1960,6 +1961,7 @@ Carapace + Bone Plating (+ Aegis Pulse as 3rd piece)
 Set Bonus:
 2-piece: after losing shield, gain 10% move speed for 1.5s.
 3-piece: Aegis Pulse emits one extra mini-wave at 40% damage.
+Browser version: Fortress Loop should use the same shield-loss and Aegis pulse state as desktop. The extra mini-wave must be represented as an Aegis pulse entry updated on the 24 Hz pulse-list cadence, and its damage text can merge/drop under WEB_MAX_DAMAGE_TEXTS without reducing actual mini-wave damage.
 
 7.3. Predator Economy (2/3 piece set)
 Pieces:
@@ -1967,6 +1969,7 @@ Wanted Poster + Bandit Radar (+ Lockbox as 3rd piece)
 Set Bonus:
 2-piece: first bandit kill bounty +30%.
 3-piece: bandits drop 1 extra guaranteed coin bundle.
+Browser version: Predator Economy must preserve bounty and guaranteed bundle value even when browser spoil field/render caps are active. If WEB_MAX_SPOILS_ON_FIELD is saturated, the extra bundle should be merged into an existing pickup or credited directly rather than silently skipped.
 
 7.4. Cold Circuit (2/3 piece set)
 Pieces:
@@ -1974,6 +1977,7 @@ Frost Brand + Shock Relay (+ D.O.T. Rounds as 3rd piece)
 Set Bonus:
 2-piece: chilled targets take +12% chain lightning damage.
 3-piece: shock chains apply mini-chill (10% slow for 0.8s).
+Browser version: Cold Circuit should run chain damage and chill application on browser status cadence, targeting 20 Hz. Visual shock arcs and frost feedback can be trimmed by FX budget, but chain damage, mini-chill slow, and duration should remain deterministic unless a browser-specific chain cap is explicitly documented.
 
 Set system rules:
 Set bonuses should provide additive utility spikes, not run-defining raw multipliers.
@@ -1982,26 +1986,40 @@ Display active set count in pause and build summary UI (example: Fortress Loop 2
 Recompute active sets on prop acquire, prop sell, and level start.
 Conflict rule: if two sets modify the same stat bucket, apply additive bonuses then clamp by stat caps.
 Telemetry: track set_pick_rate, set_completion_rate, and win_rate_with_set.
+Browser telemetry: also track web_set_active, web_prop_trigger_count, web_pending_bullet_drops, web_fx_trim_count, and web_visible_cap_hits for any set that increases bullets, pulses, coins, or status triggers.
 
 8. Prop Runtime Contract (Implementation Detail)
 8.1. Event order on bullet hit:
 Apply crit -> apply mark or vulnerability multiplier -> apply direct-hit damage -> process on-hit status (bleed, DoT, chill) -> process on-kill effects (explosion, shrapnel) if the target died.
+Browser event rule: this order must not depend on render cadence. Browser may draw only 28 player bullets, but the simulated bullet hit event still owns the authoritative proc order, pending-bullet soft cap check, and damage-text merge/drop behavior.
 
 8.2. Event order on player damage:
 Base shield -> temporary shield -> carapace reserve -> HP.
 Then trigger on-shield-damaged effects (Retaliation Core / Mirror Shell).
 Then trigger on-HP-threshold effects (Guardian Charm).
+Browser event rule: enemy projectiles are disabled by default on normal browser play, so ranged-damage reactions must define whether they require `enemyshots=1` or use a browser fallback. Contact damage, shield loss, carapace reserve, and Guardian Charm thresholds should remain active on the normal browser route.
 
 8.3. Suggested data schema per prop entry:
 id, display_name, rarity, base_price, max_level, tags[]
 level_data[]: numeric values per level
 runtime_flags: can_stack, refresh_mode, cooldown_s, trigger_limit_per_second
 vfx_key, sfx_key, ui_summary_key
+browser_behavior:
+classification: same_as_desktop / visual_only / capped / fallback / mechanically_reduced
+runtime_gate: optional WEB_ENABLE_* flag or "always"
+update_cadence_hz: desktop / 20 / 24 / 30 / 0.10s / event_only
+render_cap: none or specific visible cap
+overflow_rule: none / drop / merge / credit_direct / reduce_spawn_count / hide_visual_only
+browser_player_text: card/tooltip text if player-facing behavior differs
 
 8.4. Save/load expectations:
 Persistent props store current level in save data.
 Consumables store both level and remaining charges.
 Temporary combat state (active buffs, marked targets, current paint intensity) should not persist across levels unless explicitly flagged.
+Browser save/load expectations:
+Browser prop levels must use the same META keys as desktop and survive localStorage refresh.
+Stateful browser props must specify whether active cooldowns persist in player carry state, save data, or reset at level start.
+If browser overflow credits value directly, save data must store the resulting coin/shield/debt value, not the hidden visual entity.
 
 9. Balance Verification Checklist
 9.1. Single-path stress test:
@@ -2067,21 +2085,27 @@ Curing Paint -> PAINT, STATUS, CONTROL
 12.1. Script A: Ballistic spike check
 Buy order: Piercing -> Ricochet -> Shrapnel -> Explosive
 Goal: confirm no infinite kill loops and verify projectile counts remain within cap.
+Browser add-on: run with `?start=1&diag=1` and verify visible player bullets cap at 28 while pending-bullet headroom prevents runaway shrapnel. Confirm explosive damage still resolves when FX particles trim to WEB_MAX_FX_PARTICLES.
 
 12.2. Script B: Shield retaliation loop
 Buy order: Carapace -> Bone Plating -> Aegis -> Mirror Shell -> Retaliation Core
 Goal: confirm survivability is strong without enabling indefinite boss stalls.
+Browser add-on: run once on the default route with enemy shots disabled and once with `enemyshots=1` if Mirror Shell is implemented. Confirm Aegis pulses update on the 24 Hz cadence, shield state persists through refresh, and ranged-reflect behavior has a documented fallback or opt-in requirement.
 
 12.3. Script C: Economy greed risk
 Buy order: Coupon -> Golden Interest -> VIP Punchcard -> Spoil Splitter -> Shady Loan
 Goal: confirm the delayed-power tradeoff remains fair and recoverable.
+Browser add-on: refresh mid-debt and after shop spending to verify localStorage preserves loan counters, cashback pool, coupon level, and coin totals. Confirm spoil visual caps do not reduce credited rewards.
 
 12.4. Script D: Paint control dominance
 Buy order: Curing Paint -> Cleanse Step -> Paint Converter -> Frost Brand
 Goal: confirm the map-control playstyle is viable without becoming mandatory for wins.
+Browser add-on: run one normal biome and one wind or mist biome. Confirm paint gameplay state updates at 20 Hz even when the browser render path skips or caches the paint layer, and confirm Paint Converter uses ownership state rather than rendered visibility.
 
 12.5. Logging template per test:
 run_id, level_reached, build_paths, avg_dps, damage_taken, coins_earned, boss_ttk, fps_min
+Browser logging extension:
+browser_quality, render_interval, web_visible_bullets, web_visible_turrets, pending_bullets, dmg_text_count, fx_particle_count, paint_active_count, prop_trigger_counts, localStorage_save_ok, py_frame_heartbeat_ok
 
 13. Runtime State Machine (Per Prop Trigger Type)
 13.1. On-hit props (Bleed, DoT, Chill, Mark prep)
@@ -2090,6 +2114,7 @@ IDLE -> HIT_DETECTED -> PROC_CHECK -> APPLY_EFFECT -> COOLDOWN/GCD -> IDLE
 Rules:
 Use a deterministic proc seed per hit event id to preserve replay consistency.
 If multiple on-hit props trigger, process them in fixed prop-id order to avoid nondeterminism.
+Browser rule: on-hit state machines must run from simulated collision/hit events, not from visible bullet draws. Status effects should use the browser status cadence when they tick over time, and damage text must be treated as optional feedback.
 
 13.2. On-kill props (Shrapnel, Explosive chain, coin split)
 State flow:
@@ -2097,6 +2122,7 @@ KILL_DETECTED -> SPAWN_PAYLOAD -> VALIDATE_CHAIN_DEPTH -> APPLY_CAPS -> COMPLETE
 Rules:
 Do not re-enter the same kill event more than once.
 Track chain_origin_id to prevent infinite recursive effect loops.
+Browser rule: on-kill payloads must pass through browser overflow handling before spawning bullets, coins, or particles. Preferred order is calculate reward/damage first, then apply visual/entity caps, then merge or credit overflow value when gameplay value must be preserved.
 
 13.3. On-damage-taken props (Mirror Shell, Retaliation Core, Guardian Charm)
 State flow:
@@ -2104,6 +2130,7 @@ DAMAGE_PACKET -> SHIELD_STAGE -> HP_STAGE -> THRESHOLD_TRIGGERS -> BUFF_APPLY
 Rules:
 All reaction props must read post-mitigation damage values.
 Require per-source throttles for rapid projectile-spam scenarios.
+Browser rule: reaction props must declare whether they depend on enemy projectiles. If they do, default browser play needs a fallback because WEB_SKIP_ENEMY_SHOTS is true unless explicitly enabled by URL.
 
 14. Numeric Caps and Safety Floors
 14.1. Offense caps
@@ -2148,6 +2175,12 @@ L3:
 Boss modifier:
 Internal cooldown:
 Performance cap:
+Browser level table:
+Browser values same as desktop? yes/no
+Browser-only changed values:
+Browser cap or cadence:
+Browser overflow rule:
+Browser fallback trigger:
 
 15.3. UX block
 Short tooltip:
@@ -2155,11 +2188,22 @@ Long tooltip:
 Card outline color tag:
 VFX key:
 SFX key:
+Browser card note:
+Browser tooltip note:
+Browser pause/build-summary note:
+Browser note shown only when:
 
 15.4. QA block
 Edge case:
 Failure mode:
 Expected telemetry signature:
+Browser QA:
+Minimum canvas: 960x540
+Browser scenario URL:
+Expected visible cap behavior:
+Expected simulation behavior:
+Expected localStorage/save behavior:
+Expected diagnostic counters:
 
 16. Release Acceptance Criteria (Props System)
 16.1. Functional
@@ -2788,7 +2832,7 @@ Use browser_version_note for player-facing differences only. Keep it short, fact
 Preferred format:
 Browser: [what changes] + [what stays true].
 Examples:
-Browser: caps shards at 12, damage stays unchanged.
+Browser: shard bursts use bullet headroom; damage stays unchanged.
 Browser: draws nearest 8 turrets; all owned turrets still fire.
 Browser: uses a shield pulse fallback while enemy shots are off.
 Do not mention implementation names such as web-lite, emscripten, pygbag, render cache, or debug flags in card text.
@@ -2813,10 +2857,33 @@ Browser: uses timed shield pulse while enemy shots are off.
 Tooltip:
 Browser: shard bursts use pending bullet headroom; shard damage stays unchanged.
 Browser: cached paint rendering; tick damage and ownership stay unchanged.
+Browser: tick text can merge; DOT damage continues.
+Browser: FX may trim; explosion damage is unchanged.
 Pause summary:
 Browser lite render: nearest 8 turrets drawn; all saved turrets remain active.
+Browser save: loan debt and cashback persist through refresh.
 Detailed spec:
 Browser version: classification = visual-only capped. Runtime rule = lite renderer draws nearest 8 turrets, while simulation still updates every owned auto/stationary turret. Player text = "Browser: draws nearest 8 turrets; all owned turrets still fire." QA = verify saved turret count restores and offscreen turrets keep firing even when not all are drawn.
+
+Browser note examples by prop family:
+Ballistic:
+Browser: visible bullets cap at 28; hit simulation continues.
+Browser: shrapnel may spawn fewer shards during bullet floods; shard damage is unchanged.
+Status:
+Browser: status ticks run on scheduled updates; damage values are unchanged.
+Browser: repeated tick numbers may merge while damage continues.
+Paint:
+Browser: paint visuals can cache or hide in some biomes; paint damage and ownership continue.
+Browser: rewards use paint ownership, not whether the paint was drawn this frame.
+Defense:
+Browser: shield state and Aegis timing match desktop; text feedback may merge.
+Browser: ranged reflect needs enemy shots enabled or a fallback trigger.
+Economy:
+Browser: pickup visuals may bundle; credited coin value is unchanged.
+Browser: debt/cashback state persists through browser refresh.
+Turret:
+Browser: nearest 8 turrets are drawn; all owned turrets still fire.
+Browser: saved turret count restores; offscreen turrets remain active.
 
 37.2. Naming rules
 Names should be short, distinct, and scannable in under 1 second.
