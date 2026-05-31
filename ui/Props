@@ -168,6 +168,33 @@ Current browser implementation snapshot:
 - Browser audio uses native HTML audio for BGM and skill FX by default; pygame mixer audio remains a debug fallback.
 - Browser saves use localStorage through the web save path; prop levels and persistent prop state read from the same META keys as desktop.
 
+Browser URL flags that affect prop behavior or QA:
+| flag | current effect | prop documentation impact |
+| --- | --- | --- |
+| `start=1` / `autostart=1` | starts gameplay directly in the browser route | Use for prop QA scenarios that need to skip menus |
+| `diag=1` / `profile=1` | enables browser profiler and diagnostic export | Required for verifying prop trigger counts, visible caps, and browser heartbeat |
+| `duration=` | controls diagnostic run duration when supported by the scenario harness | Use longer duration for late-wave prop burst checks |
+| `level=` | forces diagnostic level where supported | Use to test boss cadence or late-level shop prop mixes |
+| `biome=wind|mist|hell|stone` | forces browser biome in diagnostics | Use wind/mist for paint-render skip checks; hell/stone for damage and shield pressure |
+| `enemyshots=1` / `allowenemyshots=1` | enables browser enemy projectiles | Required for testing Mirror Shell or any enemy-shot-dependent prop without fallback |
+| `notimedspawns=1` / `nowaves=1` | disables timed browser wave renewals | Avoid for burst-prop QA unless isolating a single encounter |
+| `skipbullets=1` | disables bullet updates | Invalid for ballistic prop QA except as a negative-control diagnostic |
+| `skiprender=1` | disables rendering | Valid only for simulation-only checks; cannot validate card/readability/VFX |
+| `mixfx=1` / `nonativefx=1` | uses pygame mixer path for FX instead of native browser FX | Use only to reproduce audio regressions, not normal prop QA |
+
+Browser constants to cite in prop entries:
+| constant | current value or behavior | cite when documenting |
+| --- | --- | --- |
+| WEB_LITE_RENDER_BULLET_CAP | 28 visible player bullets | Piercing, Ricochet, Shrapnel, Shardstorm, Shock Relay |
+| WEB_LITE_RENDER_TURRET_CAP | 8 visible turrets | Auto-Turret, Stationary Turret, Summoner props |
+| WEB_LITE_RENDER_PICKUP_CAP | 12 visible pickups | Economy, Spoil Splitter, Paint Converter |
+| WEB_MAX_DAMAGE_TEXTS | 4 in default full profile | DoT, Aegis, multi-hit, shield and coin feedback |
+| WEB_MAX_FX_PARTICLES | 16 in default full profile | Explosions, pulse flashes, crit effects, dash/tar VFX |
+| WEB_MAX_SPOILS_ON_FIELD | 8 in default full profile | Coin-spawning and cashback props |
+| WEB_ENABLE_* prop gates | relevant gates default true in quality payload | Aegis, Ground Spikes, Curing Paint, DOT, Mark |
+| WEB_SKIP_ENEMY_SHOTS | true unless enemyshots flag is set | Mirror Shell and enemy-shot-dependent fallbacks |
+| WEB_PAINT_* refresh/quant values | cached paint render refresh and camera quantization | Curing Paint, Cleanse Step, Paint Converter |
+
 Implementation-backed browser prop behavior:
 | area | current implementation | prop documentation impact |
 | --- | --- | --- |
@@ -214,6 +241,24 @@ Browser version description template:
   - Player text: short card or tooltip sentence.
   - QA: minimum canvas check, late-wave density check, and save/load check if stateful.
   - Risk: what would make this prop feel worse on browser, such as hidden procs, delayed audio, or reduced actor count.
+
+Browser per-prop required detail checklist:
+| detail | required answer | examples |
+| --- | --- | --- |
+| Runtime gate | Is there a WEB_ENABLE_* flag or URL flag required? | WEB_ENABLE_CURING_PAINT, enemyshots=1 |
+| Update owner | Which loop owns the browser update? | bullet hit event, 20 Hz status, 24 Hz pulse list, 30 Hz pickup |
+| Simulated value | Which gameplay values stay authoritative? | damage, radius, cooldown, reward, shield amount |
+| Visible cap | Which browser render cap can hide feedback? | 28 bullets, 8 turrets, 12 pickups, 4 damage texts |
+| Overflow rule | What happens when cap/headroom is hit? | reduce spawned shards, merge text, trim FX, credit rewards |
+| Save path | Does state persist through localStorage refresh? | prop level, debt, cashback, turret count, shield reserve |
+| Player note | Is card/tooltip/pause browser text needed? | only if cap/fallback changes planning or visible feedback |
+| QA URL | What browser scenario proves the behavior? | ?start=1&diag=1, ?biome=wind, ?enemyshots=1 |
+
+Browser wording by implementation confidence:
+- Implemented and verified in code: use present tense, such as "Browser updates Curing Paint at 20 Hz."
+- Implemented but only visual: say "gameplay matches desktop" before describing the visual cap.
+- Planned: start with "planned" and specify the required hook or fallback.
+- Unknown: do not invent a cap; write "must define browser cap/fallback before implementation."
 
 Browser version classification guide:
 | classification | meaning | player-facing note needed | example |
@@ -2210,17 +2255,34 @@ Expected diagnostic counters:
 All prop ids load from save without migration errors.
 No prop purchase can crash the shop UI, even with malformed levels.
 All capped props must stop purchasing correctly at max level.
+Browser functional:
+All implemented prop levels must survive browser refresh through localStorage.
+Browser-only feature gates must default to the documented state in the quality payload.
+Any prop requiring enemy projectiles must either expose a fallback or document the `enemyshots=1` QA requirement.
+Any prop that spawns bullets, coins, particles, text, paint, or turrets must behave correctly when the related browser visible cap is hit.
 
 16.2. Balance
+Browser balance:
+Browser visual caps must not silently reduce coin, shield, damage, or cooldown value unless the prop is explicitly marked mechanically reduced.
+If browser cadence changes perceived timing, compare simulated events per second rather than rendered frames.
+If a browser fallback replaces an enemy-shot trigger, its expected proc frequency should stay within +/-15% of the desktop trigger in comparable encounters.
 Top 10 most picked props do not exceed 60% combined pick rate across 200+ runs.
 At least 4 distinct build archetypes have >10% win rate in test dataset.
 No single economy combo exceeds 2.2x baseline coin generation.
 
 16.3. Performance
+Browser performance:
+Worst-case prop burst checks must run with `diag=1` and record py_frame heartbeat, browser_gap_ms, pending_bullets, fx_particle_count, dmg_text_count, visible bullet/turret counts, and prop_trigger_counts.
+No browser prop burst should starve the event loop long enough to stop diagnostic heartbeat posts.
+Late-wave Shrapnel + Explosive + Curing Paint + Turret scenarios must respect visible caps without accumulating unbounded pending entities.
 Worst-case combat (projectile + paint + explosion heavy) must hold the 60 FPS target.
 No memory leak may occur from persistent status stacks or paint tile maps during a 30-minute session.
 
 16.4. Readability
+Browser readability:
+At 960x540, browser card text must still show current value, next value, path tag, and any browser_version_note without overlap.
+Damage text merging must not hide critical survival information such as shield break, Guardian Charm trigger, or boss telegraph damage.
+If paint visuals are skipped in wind/mist browser routes, pause/tooltips must still make it clear that paint gameplay remains active.
 Player can identify prop path from card outline color within 1 second.
 Tooltip "Now/Next" text fits in available panel space without clipping.
 Damage/event feedback remains readable during boss phase transitions.
@@ -2398,6 +2460,11 @@ RETALIATION_CORE_DURATION = (2.5, 3.0, 3.5)
 Use *_level for all level-based prop values.
 Use *_charges or *_waves for consumable counters.
 Keep temporary runtime values out of META unless they must persist across level transitions.
+Browser META policy:
+Use the same META key on desktop and browser for every prop level or persistent counter.
+Do not introduce browser-only META keys for visual caps; visual caps should be derived from WEB_* constants.
+If browser overflow credits value directly, write the final value to the normal coin/shield/debt key.
+If a browser-only fallback has cooldown state, store it in player carry state only if the desktop equivalent would also persist.
 
 22. Save Migration Plan (Props Data)
 22.1. Version key
@@ -2413,6 +2480,9 @@ v2 -> v3:
 Seed missing keys with default 0/false values.
 Clamp all levels to documented max levels.
 Remove deprecated transient runtime keys if present.
+Browser migration rule:
+After any migration, immediately write the migrated payload back through the browser save path so localStorage no longer contains stale prop keys.
+Browser migration must clamp prop levels before shop/card rendering because malformed values can overflow small browser cards.
 
 22.3. Corruption handling
 If a level has an invalid type or is out of range, coerce it to the nearest valid value and log a migration warning.
@@ -2422,22 +2492,32 @@ If a prop id is unknown, store the raw data in orphan_props for debugging and sk
 23.1. Event: prop_offer_shown
 Required fields:
 run_id, level, shop_id, slot_index, prop_id, rarity, cost, player_coins, active_paths
+Browser fields:
+browser_quality, canvas_size, card_text_overflow, browser_version_note_visible
 
 23.2. Event: prop_purchased
 Required fields:
 run_id, level, prop_id, old_level, new_level, cost_paid, coins_after, path_primary
+Browser fields:
+localStorage_write_ok, browser_note_ack, card_layout_scale
 
 23.3. Event: prop_triggered
 Required fields:
 run_id, level, prop_id, trigger_type, target_type, damage_done, stacks, cooldown_remaining
+Browser fields:
+browser_quality, update_cadence_hz, visible_cap_hit, overflow_rule, dropped_or_merged_count, pending_bullets, dmg_text_count, fx_particle_count
 
 23.4. Event: set_bonus_active
 Required fields:
 run_id, level, set_id, piece_count, bonus_tier, dps_delta_estimate
+Browser fields:
+browser_quality, affected_prop_ids, visible_cap_risk, fallback_required
 
 23.5. Event: performance_guard_hit
 Required fields:
 run_id, level, system_name, cap_name, dropped_events_count, fps_at_trigger
+Browser fields:
+browser_gap_ms, py_frame, heartbeat_age_ms, render_interval, web_visible_bullets, web_visible_turrets, web_visible_pickups
 
 24. QA Acceptance Matrix (Per Prop Family)
 24.1. Offense family
@@ -2445,24 +2525,40 @@ Acceptance checks:
 No chain effect can recurse infinitely.
 Per-hit and per-kill triggers respect throttles.
 Boss damage modifiers always applied.
+Browser acceptance:
+Visible bullet cap does not stop simulated damage.
+Pending-bullet headroom reduces spawned secondary bullets before frame stalls.
+FX particle trimming never changes explosive or crit damage numbers.
 
 24.2. Defense family
 Acceptance checks:
 Shield routing order matches section 8.2.
 Reaction buffs trigger once per valid event and honor internal cooldown.
 No reflection feedback loops.
+Browser acceptance:
+Shield/carapace/plating state survives browser refresh when it is part of carry/save state.
+Enemy-shot-dependent reactions have an enemyshots QA route or a fallback.
+Merged shield text does not hide whether mitigation happened.
 
 24.3. Economy family
 Acceptance checks:
 Shop discounts and surcharges apply in fixed deterministic order.
 Interest/cashback/loan logic cannot generate negative coin states.
 Bandit interactions never consume charges without valid trigger.
+Browser acceptance:
+Visible pickup/spoil caps do not reduce credited rewards.
+Loan, cashback, coupon, wanted, and protected coin counters survive localStorage reload.
+If rewards are merged or credited directly, telemetry records the original earned amount and final credited amount.
 
 24.4. Paint family
 Acceptance checks:
 Paint ownership and overwrite logic deterministic under simultaneous writes.
 Tile caps and cleanup execute without frame spikes.
 Paint effects clear correctly on level transition unless persisted by design.
+Browser acceptance:
+Paint gameplay state remains authoritative when paint rendering is cached, throttled, or skipped in wind/mist routes.
+Paint reward props read paint_grid ownership/intensity, not rendered pixels.
+Paint VFX refresh cadence does not change tick damage, slow resistance, or ownership conversion.
 
 25. Implementation Order (Recommended Sprint Breakdown)
 Sprint 1 (core stabilization):
