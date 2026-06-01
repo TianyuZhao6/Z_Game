@@ -195,6 +195,34 @@ Browser constants to cite in prop entries:
 | WEB_SKIP_ENEMY_SHOTS | true unless enemyshots flag is set | Mirror Shell and enemy-shot-dependent fallbacks |
 | WEB_PAINT_* refresh/quant values | cached paint render refresh and camera quantization | Curing Paint, Cleanse Step, Paint Converter |
 
+Browser runtime owner matrix for prop documentation:
+| runtime owner | browser cadence/path | prop examples | documentation requirement |
+| --- | --- | --- | --- |
+| Bullet hit event | event-driven during bullet update | Piercing, Ricochet, Shrapnel, Explosive, Mark prep | Say that simulation is authoritative even when visible bullets are capped |
+| Status scheduler | 20 Hz in browser combat loop | DOT, Bleed, Chill, Shock follow-up | State tick/update cadence and damage-text merge behavior |
+| Ground-control scheduler | 20 Hz in browser combat loop | Ground Spikes, Curing Paint, Sticky Tar | State active cap/eviction and cached render behavior |
+| Pulse/text scheduler | 24 Hz in browser combat loop | Aegis Pulse, damage texts, shield feedback | State that damage/shield values continue when text merges |
+| Pickup scheduler | 30 Hz in browser combat loop | Coin Magnet, Spoil Splitter, Paint Converter rewards | State whether overflow is merged, credited directly, or left on field |
+| Shop/meta path | shop screen plus META save/load | Coupon, Golden Interest, Shady Loan, Black Market Pass | State localStorage persistence and card text constraints |
+| Turret update loop | every bullet/update pass, render capped separately | Auto-Turret, Stationary Turret | Distinguish all simulated turrets from nearest 8 visible turrets |
+| Enemy projectile path | disabled by default unless `enemyshots=1` | Mirror Shell, ranged reflect | Require fallback or explicit opt-in browser QA route |
+
+Browser UI surface matrix for prop documentation:
+| surface | when to show browser detail | copy style |
+| --- | --- | --- |
+| Shop card | only when browser changes a planning decision, such as fallback trigger or visible actor cap | one short line, no debug terms |
+| Shop tooltip | when exact cap/cadence/overflow explains what the player sees | include number and unchanged value |
+| Pause summary | when browser hides simulated actors or tracks persistent browser-relevant state | summarize active count/value, not implementation |
+| Run summary | when browser visible caps may make a build look weaker than it simulated | show simulated triggers/damage, not only visible events |
+| Diagnostic overlay | during QA only | show raw caps/counters such as pending_bullets and fx_particle_count |
+
+Browser prop documentation anti-patterns:
+- Do not write "web has fewer turrets" when simulation count is unchanged and only visible drawing is capped.
+- Do not write "explosion is weaker" when only particles are trimmed.
+- Do not write "paint disabled" when only the paint render layer is skipped in wind/mist; gameplay paint state still updates.
+- Do not write fixed caps that are derived from WEB_* constants unless the current constant value is also cited.
+- Do not hide reward loss behind "performance mode"; if value is dropped, mark the prop mechanically reduced and list the browser value.
+
 Implementation-backed browser prop behavior:
 | area | current implementation | prop documentation impact |
 | --- | --- | --- |
@@ -227,6 +255,21 @@ Specific browser prop behavior matrix:
 | Movement/control props | Planned movement auras, dash contact, and tar puddles should run on scheduled browser update lanes rather than every visual frame | use 20-24 Hz cadence for area/contact effects and global FX/text budgets | Tooltip should state gameplay values only; browser notes belong in detailed spec unless values change |
 | Crit/element props | Planned crit explosions, chill, and shock chains should follow the same bullet/status scheduling and pending-bullet/FX budgets | projectile-like chains use bullet headroom; VFX uses WEB_MAX_FX_PARTICLES | Avoid card notes unless browser reduces chain count, radius, or proc chance |
 | Paint economy props | Planned Paint Converter/Cleanse Step should use paint ownership/intensity state, not rendered paint visibility | paint render can be skipped in wind/mist while paint state still updates | Tooltip must not imply disabled paint rewards just because paint layer is hidden |
+
+Browser diagnostics expected by prop:
+| prop or family | counters/signals to inspect | pass condition |
+| --- | --- | --- |
+| Piercing/Ricochet | web_visible_bullets, pending_bullets, prop_trigger_counts | visible bullets can cap at 28 while hit count and damage continue |
+| Shrapnel | pending_bullets, dropped_or_merged_count, prop_trigger_counts | shard burst reduces only when pending headroom is low; no unbounded pending list |
+| Explosive/Crit explosions | fx_particle_count, web_fx_trim_count, damage_done | particle count trims to budget while explosion damage remains expected |
+| DOT/Bleed/Chill | update_cadence_hz, dmg_text_count, stacks | status stacks tick at browser cadence and text merging does not stop damage |
+| Mark of Vulnerability | prop_trigger_counts, marked_target_type, mark_duration_remaining | boss/elite priority and duration match desktop values within scheduler granularity |
+| Ground Spikes | active_spike_count, update_cadence_hz, oldest_evictions | active count stays 6/10/14 by level and oldest eviction is deterministic |
+| Curing Paint | paint_active_count, paint_render_refresh_ms, paint_damage_ticks | damage/ownership continue even when render layer is cached or skipped |
+| Aegis Pulse | pulse_count, update_cadence_hz, dmg_text_count | pulse damage follows cooldown and text budget does not hide trigger state |
+| Turrets | web_visible_turrets, simulated_turret_count, turret_shots_fired | nearest 8 may be drawn, but all owned turrets continue firing |
+| Economy rewards | visible_pickups, spoils_on_field, coins_credited | visual caps never reduce earned coin value |
+| Enemy-shot reactions | WEB_SKIP_ENEMY_SHOTS, enemyshots flag, fallback_trigger_count | default route uses documented fallback or QA explicitly enables enemy shots |
 
 Browser version description levels:
 - Card text: one short player-facing note only when browser behavior changes a number, cap, or trigger. Keep it under one line at 960x540.
