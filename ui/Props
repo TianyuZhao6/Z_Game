@@ -298,6 +298,38 @@ Browser diagnostics expected by prop:
 | Economy rewards | visible_pickups, spoils_on_field, coins_credited | visual caps never reduce earned coin value |
 | Enemy-shot reactions | WEB_SKIP_ENEMY_SHOTS, enemyshots flag, fallback_trigger_count | default route uses documented fallback or QA explicitly enables enemy shots |
 
+Browser current/next text guidance for implemented props:
+| prop or family | current-value / next-upgrade text | browser_version_note decision |
+| --- | --- | --- |
+| Piercing Rounds | Show the same pierce count, range, and falloff values as desktop | No card note. Tooltip may say "Browser: visible bullets cap at 28; pierce hits still resolve." |
+| Ricochet Scope | Show the same bounce count, retarget range, and bounce damage values as desktop | No card note. Tooltip may say "Browser: dense ricochets can simulate more bullets than are drawn." |
+| Shrapnel Shells | Show chance, shard count, and shard damage from the level table | Tooltip note required when shard bursts are visible: "Browser: shard bursts use bullet headroom; shard damage is unchanged." |
+| Explosive Rounds | Show explosion damage, radius, boss modifier, and chain behavior from the level table | Tooltip note only: "Browser: explosion FX may trim; splash damage is unchanged." |
+| DOT Rounds | Show stack count, duration, tick interval, and DPS cap from the level table | Tooltip note only when text is confusing: "Browser: tick text may merge; damage continues." |
+| Mark of Vulnerability | Show mark interval, duration, priority, and damage bonus from the level table | No card note unless the scheduler cadence changes the actual duration or bonus. |
+| Ground Spikes | Show damage, slow, lifetime, radius, and max_active from the level table | Tooltip may mention oldest-spike eviction at cap; do not describe web as lower value when max_active matches desktop. |
+| Curing Paint | Show damage, radius, lifetime, and ownership/reclaim values from the level table | Tooltip may say paint visuals are cached or skipped in wind/mist; damage and ownership still use paint state. |
+| Aegis Pulse | Show shield trigger, cooldown, radius, damage, and wave count from the level table | Tooltip note only: "Browser: pulse text may merge; shield trigger and damage are unchanged." |
+| Auto-Turret / Stationary Turret | Show owned turret count, fire rate, damage, and placement rules from the level table | Browser note should say "nearest 8 turrets drawn; all owned turrets still fire." |
+| Coin / economy props | Show reward, discount, interest, debt, and protection values from the level table | Never show reduced reward text for visual pickup caps; mention bundled or hidden pickups only in tooltip/pause text. |
+
+Browser current/next wording rules:
+- Current-value and next-upgrade text should show browser-specific numbers only when browser changes gameplay values.
+- Visual caps belong in tooltip, pause summary, or detailed spec, not in the main upgrade number line.
+- If rewards are credited directly or bundled because of pickup caps, current/next text must still show the full reward math.
+- If a fallback trigger is used, tooltip text must name both the desktop trigger and the browser fallback.
+- If a prop has both a gameplay cap and a visual cap, lead with the gameplay cap and add the visual cap as secondary detail.
+
+Browser QA scenario rows for prop families:
+| scenario | suggested URL | build focus | pass criteria |
+| --- | --- | --- | --- |
+| ballistic_dense | `?start=1&diag=1&duration=90&level=6` | Piercing, Ricochet, Shrapnel, Explosive | pending bullets stay bounded, visible bullet cap is reported, and hit/damage counters continue |
+| shield_aegis | `?start=1&diag=1&biome=hell&level=5` | Carapace, Bone Plating, Aegis Pulse | mitigation order, pulse cooldown, and shield state match prop text under damage-text pressure |
+| paint_wind | `?start=1&diag=1&biome=wind&duration=90` | Ground Spikes, Curing Paint, paint economy props | paint/spike damage and ownership continue when paint rendering is cached or skipped |
+| turret_overflow | `?start=1&diag=1&level=8&duration=120` | Auto-Turret, Stationary Turret | simulated turret count can exceed 8 while nearest 8 are drawn and all owned turrets keep firing |
+| economy_refresh | `?start=1&diag=1&level=3` then browser refresh | Coupon, Interest, Loan, Lockbox, Wanted Poster | localStorage restores prop levels/state and visual pickup caps do not reduce credited coins |
+| enemyshot_reflect_optin | `?start=1&diag=1&enemyshots=1` plus default route | Mirror Shell and enemy-shot fallback props | projectile route triggers the real shot reaction; default route triggers documented fallback |
+
 Browser version description levels:
 - Card text: one short player-facing note only when browser behavior changes a number, cap, or trigger. Keep it under one line at 960x540.
 - Tooltip text: include the exact cap or fallback and the unchanged part of the effect, such as damage, cooldown, or reward value.
