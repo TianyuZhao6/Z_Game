@@ -356,6 +356,44 @@ Browser per-prop required detail checklist:
 | Player note | Is card/tooltip/pause browser text needed? | only if cap/fallback changes planning or visible feedback |
 | QA URL | What browser scenario proves the behavior? | ?start=1&diag=1, ?biome=wind, ?enemyshots=1 |
 
+Browser version field schema for every detailed prop:
+- First sentence: classify the browser behavior and say whether gameplay values match desktop.
+- Second sentence: name the implementation owner and cadence, such as bullet hit event, 20 Hz status update, 24 Hz pulse update, 30 Hz pickup update, shop/meta path, or turret update loop.
+- Third sentence: name the exact browser cap or overflow rule that can change visible feedback.
+- Fourth sentence: state what stays authoritative when the cap is hit, such as damage, reward credit, shield amount, cooldown, stack count, or saved level.
+- Fifth sentence: define the player-facing browser note surface: none, tooltip only, card plus tooltip, pause summary, or QA-only.
+- Final sentence: give one browser QA route or diagnostic counter when the prop is implemented or high risk.
+
+Browser version minimum wording by prop type:
+| prop type | must mention | should not mention |
+| --- | --- | --- |
+| Bullet modifiers | visible bullet cap, pending-bullet headroom, hit simulation authority | lower damage unless runtime actually lowers damage |
+| Status effects | update cadence, stack/tick authority, damage text merge | skipped ticks when only text is skipped |
+| Ground effects | update cadence, active cap, cached/skipped render behavior | disabled paint or spikes when only visuals are hidden |
+| Shield/defense | mitigation order, cooldown state, shield/plating save state, text merge | weaker defense when only feedback is reduced |
+| Turrets/summons | simulated actor count, visible actor cap, targeting/fire authority | fewer owned turrets unless simulation count is reduced |
+| Economy | credited value, pickup/spoil visual cap, localStorage state | reduced reward because pickups are bundled or hidden |
+| Enemy-shot reactions | default browser projectile state, fallback trigger, opt-in URL route | real projectile behavior on default route unless `enemyshots=1` is required |
+| Shop/meta props | card layout constraint, localStorage persistence, refresh behavior | browser-only price or rarity changes unless implemented |
+
+Browser version note surface decision:
+| browser difference | card note | tooltip note | pause/run summary | detailed spec |
+| --- | --- | --- | --- | --- |
+| no behavior difference | no | optional | no | yes, one line |
+| visual-only text/FX trim | no | yes if confusing | optional for trigger-heavy builds | yes |
+| render cap hides simulated actors | only if build planning changes | yes | yes for turrets/summons | yes |
+| overflow reduces spawned actors | yes if level value is affected | yes | optional | yes |
+| reward is bundled or credited directly | no | yes if pickups look missing | yes if run summary reports rewards | yes |
+| fallback replaces a trigger | yes | yes | yes if stateful | yes |
+| mechanical value differs | yes, with browser value | yes, with desktop comparison | yes if persistent | yes |
+
+Browser description red flags:
+- A prop entry says "same as desktop" but creates bullets, particles, paint, pickups, turrets, damage text, or persistent browser state without naming the cap or save path.
+- A card note exposes internal terms such as WEB_LITE_RENDER_BULLET_CAP, emscripten, quality payload, or pygame mixer.
+- Current-value text uses desktop numbers while browser has a different damage, radius, cooldown, chance, reward, stack cap, or summon count.
+- Tooltip says an effect is disabled when the implementation only skips rendering or merges feedback.
+- QA only uses `skiprender=1` for a prop whose player-facing browser behavior depends on visible bullets, paint, cards, or FX.
+
 Browser subfield example for an implemented prop:
 Browser version:
 - Runtime gate: WEB_ENABLE_CURING_PAINT.
