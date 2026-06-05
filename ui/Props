@@ -2387,6 +2387,47 @@ Browser cap or cadence:
 Browser overflow rule:
 Browser fallback trigger:
 
+15.2a. Browser version detail block
+Use this block in every detailed prop entry, even when the browser version is mostly identical. The goal is to make the browser behavior auditable from the prop file without reading runtime code.
+
+Browser classification:
+same_as_desktop / visual_only / render_capped / spawn_capped / fallback_trigger / mechanically_reduced
+
+Browser implementation owner:
+bullet_hit_event / bullet_update / status_20hz / ground_20hz / pulse_24hz / pickup_30hz / turret_update / shop_meta / player_damage_event / save_load
+
+Browser authoritative gameplay values:
+List the values that do not change in browser, such as damage, cooldown, radius, duration, stack cap, reward value, shield amount, turret count, or saved level.
+
+Browser visible feedback changes:
+List the browser feedback that can be hidden, merged, cached, skipped, or trimmed, such as visible bullets, damage text, particles, paint layer, pickup bundles, turret sprites, pulse rings, or audio.
+
+Browser cap / cadence / fallback:
+Use exact values when known. Examples: visible bullets 28, visible turrets 8, visible pickups 12, max damage texts 4, max FX particles 16, DOT/paint/spikes at 20 Hz, pulse/text at 24 Hz, pickups at 30 Hz, enemy-shot fallback while enemy shots are disabled.
+
+Browser overflow behavior:
+Choose one explicit verb: drop, merge, refresh oldest, reduce spawned count, credit directly, keep simulating while hidden, or use fallback. Do not write "optimized" without saying what happens to the excess event.
+
+Browser player-facing copy:
+State the final surface decision:
+- none: gameplay and visible planning are unchanged.
+- tooltip only: only visual feedback changes.
+- card + tooltip: browser changes a planning-relevant cap, fallback, or value.
+- pause/run summary: browser hides simulated persistent state, such as turrets or saved economy state.
+- QA only: relevant only to diagnostic counters and not useful to players.
+
+Browser QA proof:
+Name one URL or counter. For implemented props, include at least one of: pending_bullets, web_visible_bullets, web_visible_turrets, visible_pickups, dmg_text_count, fx_particle_count, prop_trigger_counts, fallback_trigger_count, localStorage_write_ok, or browser_gap_ms.
+
+Browser same-as-desktop expanded example:
+Browser version: classification = same_as_desktop. Implementation owner = bullet_hit_event. Authoritative gameplay values = proc chance, damage multiplier, cooldown, and boss modifier match desktop. Visible feedback changes = damage text may merge under the browser text budget. Player copy = no card note; tooltip note only if repeated text merging confuses QA. QA proof = `?start=1&diag=1` with prop_trigger_counts and damage_done matching desktop expectations.
+
+Browser capped expanded example:
+Browser version: classification = render_capped. Implementation owner = turret_update plus lite render. Authoritative gameplay values = owned turret count, fire rate, target selection, and damage match desktop. Visible feedback changes = browser draws nearest 8 turrets when more are owned. Overflow behavior = hidden turrets keep simulating and firing. Player copy = tooltip or pause summary says "Browser: nearest 8 turrets drawn; all owned turrets still fire." QA proof = web_visible_turrets, simulated_turret_count, and turret_shots_fired.
+
+Browser fallback expanded example:
+Browser version: classification = fallback_trigger. Implementation owner = player_damage_event. Authoritative gameplay values = reflect ratio, cooldown, range, and boss modifier match desktop. Browser cap/fallback = normal browser route disables enemy projectiles, so default route triggers from shield damage by ranged-type enemies; `enemyshots=1` tests the true projectile path. Player copy = card + tooltip because the trigger changes. QA proof = fallback_trigger_count on default route and projectile trigger count with `?enemyshots=1`.
+
 15.3. UX block
 Short tooltip:
 Long tooltip:
@@ -2397,6 +2438,9 @@ Browser card note:
 Browser tooltip note:
 Browser pause/build-summary note:
 Browser note shown only when:
+Browser note max length:
+Browser note hidden when:
+Browser desktop comparison needed? yes/no
 
 15.4. QA block
 Edge case:
@@ -2409,6 +2453,9 @@ Expected visible cap behavior:
 Expected simulation behavior:
 Expected localStorage/save behavior:
 Expected diagnostic counters:
+Expected player-facing browser text:
+Expected browser tooltip/pause summary text:
+Browser negative-control URL, if relevant:
 
 16. Release Acceptance Criteria (Props System)
 16.1. Functional
