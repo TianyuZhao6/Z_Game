@@ -420,6 +420,25 @@ Browser wording by implementation confidence:
 - Planned: start with "planned" and specify the required hook or fallback.
 - Unknown: do not invent a cap; write "must define browser cap/fallback before implementation."
 
+Browser entry depth by implementation status:
+| implementation status | required browser description depth | example detail |
+| --- | --- | --- |
+| implemented and gameplay-affecting | Full browser version paragraph with classification, owner, cap/cadence, overflow rule, player note, and QA counter | Shrapnel must name pending-bullet headroom, reduced shard spawn rule, visible bullet cap, and unchanged shard damage |
+| implemented and visual-only | One or two sentences in the detailed spec plus optional tooltip note; no separate browser level table | Explosive must say FX trims under the browser particle budget while explosion damage/radius stay unchanged |
+| implemented and persistent | Include localStorage/save behavior and refresh QA, even when combat behavior is unchanged | Coupon, Loan, Lockbox, Interest, Carapace, and turret counts must survive browser refresh |
+| implemented and high-density | Include late-wave diagnostic route and the counter that proves simulation continues under visible caps | Piercing/Ricochet should cite web_visible_bullets, pending_bullets, and prop_trigger_counts |
+| planned with known hook | Use future-tense/planned wording, name the intended browser owner, and list the cap/fallback that implementation must satisfy | Bleeding Edge should say it must use the 20 Hz status scheduler and damage-text merge behavior |
+| planned with disabled dependency | Must define a browser fallback before implementation can be considered complete | Mirror Shell must define default shield-hit/ranged-enemy fallback plus `enemyshots=1` projectile QA |
+| planned with unknown browser cost | Mark browser cap/fallback as unresolved and block card-ready status until the cap is chosen | New summon, chain-lightning, or paint-economy props must define actor/chain/pickup budgets before tuning |
+
+Browser implementation-status wording examples:
+- Implemented: "Browser version: gameplay values match desktop; browser updates DOT at 20 Hz and may merge tick text under the damage-text budget."
+- Implemented visual-only: "Browser version: explosion damage and radius match desktop; FX may trim under the 16-particle browser budget."
+- Implemented persistent: "Browser version: value and shop order match desktop; state persists through localStorage and must restore after refresh."
+- Planned known hook: "Browser version: planned to run through the 20 Hz ground scheduler; paint state remains authoritative even if the render layer is skipped."
+- Planned fallback: "Browser version: planned fallback required because default browser play disables enemy shots; use shield damage from ranged enemies unless `enemyshots=1` is enabled."
+- Unknown: "Browser version: browser cap/fallback must be defined before implementation; do not ship card text until the cap is documented."
+
 Browser version classification guide:
 | classification | meaning | player-facing note needed | example |
 | --- | --- | --- | --- |
