@@ -330,6 +330,28 @@ Browser QA scenario rows for prop families:
 | economy_refresh | `?start=1&diag=1&level=3` then browser refresh | Coupon, Interest, Loan, Lockbox, Wanted Poster | localStorage restores prop levels/state and visual pickup caps do not reduce credited coins |
 | enemyshot_reflect_optin | `?start=1&diag=1&enemyshots=1` plus default route | Mirror Shell and enemy-shot fallback props | projectile route triggers the real shot reaction; default route triggers documented fallback |
 
+Browser acceptance snippets for detailed prop entries:
+| prop family | detailed Browser version sentence to include | diagnostic proof | fail condition |
+| --- | --- | --- | --- |
+| Bullet routing | Browser visible bullets may cap at 28, but hit routing, pierce/ricochet counts, falloff, and damage are resolved by simulation. | web_visible_bullets <= 28, prop_trigger_counts rises, damage_done matches expected | Trigger count stops rising only because bullets are hidden. |
+| Secondary projectiles | Browser uses pending-bullet headroom before spawning secondary bullets; if headroom is tight, spawned count is reduced before damage values are changed. | pending_bullets, dropped_or_merged_count, spawned_secondary_count | Damage multiplier is silently lowered instead of reducing spawn count. |
+| Explosion / crit VFX | Browser trims particles under the FX budget while radius, damage, boss modifier, and chain rules stay authoritative. | fx_particle_count <= budget, damage_done, explosion_trigger_count | Explosion damage disappears when particles are trimmed. |
+| Status ticks | Browser status effects update on the scheduled status lane; stack caps, duration, tick damage, and boss modifiers remain authoritative while repeated text can merge. | update_cadence_hz, stacks, dmg_text_count, damage_done | Text merge reduces tick count or stack duration. |
+| Ground control | Browser ground effects update on the ground scheduler; active caps and oldest-refresh/oldest-evict rules must be explicit. | active_spike_count or paint_active_count, oldest_evictions, update_cadence_hz | Render cache state changes damage, slow, ownership, or active cap. |
+| Paint visuals | Browser may cache or skip paint rendering in wind/mist routes; paint gameplay must read paint state, not rendered pixels. | paint_damage_ticks, paint_active_count, paint_render_refresh_ms | Paint rewards or damage stop when paint layer is hidden. |
+| Shield mitigation | Browser shield/plating values, mitigation order, cooldowns, and save state match desktop; only text/audio feedback may merge or trim. | shield_state, plating_value, dmg_text_count, localStorage_write_ok | Merged feedback hides a real mitigation failure. |
+| Pulse effects | Browser pulse lists update on the pulse/text scheduler; pulse damage, radius, cooldown, and trigger state are authoritative. | pulse_count, update_cadence_hz, dmg_text_count | Pulse VFX cap prevents damage or cooldown progression. |
+| Economy / pickups | Browser pickup and spoil visual caps must not reduce credited coin value, discounts, debt, interest, bounty, cashback, or protected coins. | visible_pickups, spoils_on_field, coins_credited, localStorage_write_ok | Reward math changes because a pickup was bundled, hidden, or directly credited. |
+| Turrets / summons | Browser may draw only nearest visible actors, but owned actor count, targeting, fire rate, shots fired, and saved state remain authoritative unless marked mechanically reduced. | web_visible_turrets, simulated_turret_count, turret_shots_fired | Hidden turrets stop firing or disappear from save state. |
+| Enemy-shot props | Default browser route disables enemy shots, so the prop must either define a fallback trigger or require `enemyshots=1` for QA. | WEB_SKIP_ENEMY_SHOTS, fallback_trigger_count, enemyshots route trigger count | Prop is purchasable in browser but has no reachable trigger. |
+| Shop/meta props | Browser shop/meta props use the same level, price, ordering, and persistent state as desktop unless a browser-only value is listed. | card_text_overflow, browser_version_note_visible, localStorage_write_ok | Browser refresh changes prop level, debt, discount, or offer text. |
+
+Browser acceptance snippet rules:
+- Use these snippets as the minimum detailed-spec wording when a prop belongs to that family.
+- Replace generic words such as "budget" or "scheduler" with the exact current value when the implementation has one.
+- If a prop spans multiple families, include the strictest fail condition first.
+- If the browser changes an actual gameplay number, do not use these same-value snippets; write the browser number in current_value_text and next_upgrade_text.
+
 Browser version description levels:
 - Card text: one short player-facing note only when browser behavior changes a number, cap, or trigger. Keep it under one line at 960x540.
 - Tooltip text: include the exact cap or fallback and the unchanged part of the effect, such as damage, cooldown, or reward value.
