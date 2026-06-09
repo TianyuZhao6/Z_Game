@@ -3229,6 +3229,36 @@ Turret:
 Browser: nearest 8 turrets are drawn; all owned turrets still fire.
 Browser: saved turret count restores; offscreen turrets remain active.
 
+Browser copy map for implemented props:
+| prop | card browser_version_note | tooltip browser line | pause/run summary line |
+| --- | --- | --- | --- |
+| Piercing Rounds | none | Browser: visible bullets cap at 28; pierce count, falloff, and hit simulation continue. | Show total pierce hits, not only visible bullet count. |
+| Ricochet Scope | none | Browser: visible bullets cap at 28; ricochet routing and bounce damage continue. | Show routed-hit count if dense ricochet builds look visually quiet. |
+| Shrapnel Shells | Browser: shard bursts use bullet headroom; damage stays unchanged. | Browser: if pending bullets are crowded, fewer shards spawn before shard damage changes. | Show spawned vs skipped shards when diagnostics are enabled. |
+| Explosive Rounds | none | Browser: FX may trim under the particle budget; splash damage and radius stay unchanged. | Show explosion triggers and damage, not only particle count. |
+| DOT Rounds | none | Browser: tick text may merge; stack count, duration, and tick damage continue. | Show active stack count and total DOT damage when text is merged. |
+| Mark of Vulnerability | none | Browser: marks refresh on a scheduled update; bonus damage and priority rules stay unchanged. | Show current marked target and mark time remaining for QA builds. |
+| Ground Spikes | none | Browser: ground spikes update at browser cadence; damage, slow, lifetime, and active cap stay unchanged. | Show active spike count and oldest evictions if cap is reached. |
+| Curing Paint | none | Browser: paint visuals can cache or hide in some biomes; damage and ownership continue. | Show active paint state when wind/mist hides paint rendering. |
+| Aegis Pulse | none | Browser: pulse text may merge; shield trigger, cooldown, radius, and damage continue. | Show pulse cooldown and pulse damage when text is crowded. |
+| Bone Plating | none | Browser: mitigation is unchanged; shield/plating text may merge during dense hits. | Show current plating value after damage bursts. |
+| Carapace | none | Browser: reserve shield values persist through browser refresh. | Show reserve shield and save/refresh state if QA is active. |
+| Coin Magnet | none | Browser: pickup visuals may cap; pickup radius and credited coin value stay unchanged. | Show coins credited when pickups are bundled or hidden. |
+| Coupon | none | Browser: discount math is unchanged and persists through refresh. | Show stored discount level after shop refresh. |
+| Golden Interest | none | Browser: interest payout and cap are unchanged and persist through refresh. | Show interest payout order with loan/debt state. |
+| Lockbox | none | Browser: protected coin value is unchanged even if pickup visuals bundle. | Show protected coins before and after bandit loss. |
+| Shady Loan | none | Browser: loan coins and debt state persist through refresh. | Show debt waves remaining and repayment state. |
+| Bandit Radar | none | Browser: slow/highlight values stay unchanged; bandit spawn density may vary by route. | Show charge or highlight state when no bandit spawns. |
+| Wanted Poster | none | Browser: bounty charges and payout stay unchanged; bandit spawn density may vary by route. | Show retained charges across waves and refresh. |
+| Auto-Turret | Browser: nearest 8 turrets drawn; all owned turrets still fire. | Browser: renderer draws nearest 8 turrets; targeting, damage, and fire rate use all owned turrets. | Show simulated turret count and shots fired. |
+| Stationary Turret | Browser: nearest 8 turrets drawn; all owned turrets still fire. | Browser: renderer draws nearest 8 stationary turrets; hidden turrets remain active obstacles/fire sources if implemented. | Show simulated turret count, active placements, and shots fired. |
+
+Browser copy map rules:
+- Keep card browser_version_note empty for implemented same-value props unless the browser behavior changes player planning.
+- Use tooltip text for visual caps, text merges, cached paint, and localStorage details.
+- Use pause/run summary text when the browser can hide a simulated count or persistent value from the combat view.
+- If a future implementation changes an actual gameplay number, replace "none" with a card note that includes the browser number.
+
 37.2. Naming rules
 Names should be short, distinct, and scannable in under 1 second.
 Target length guideline:
