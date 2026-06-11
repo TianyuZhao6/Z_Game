@@ -207,6 +207,24 @@ Browser runtime owner matrix for prop documentation:
 | Turret update loop | every bullet/update pass, render capped separately | Auto-Turret, Stationary Turret | Distinguish all simulated turrets from nearest 8 visible turrets |
 | Enemy projectile path | disabled by default unless `enemyshots=1` | Mirror Shell, ranged reflect | Require fallback or explicit opt-in browser QA route |
 
+Browser owner-to-prop-field matrix:
+| runtime owner | Browser version fields that must be filled | required player-facing surface | required diagnostic signal |
+| --- | --- | --- | --- |
+| Bullet hit event | classification, visible bullet cap, pending-bullet rule, authoritative hit/damage values | tooltip only unless spawned count changes planning | web_visible_bullets, pending_bullets, prop_trigger_counts, damage_done |
+| Status scheduler | classification, 20 Hz cadence, stack cap, duration, tick damage, text merge rule | tooltip only when repeated text can confuse players | update_cadence_hz, stacks, dmg_text_count, damage_done |
+| Ground-control scheduler | classification, 20 Hz cadence, active cap, refresh/evict rule, render-cache rule | tooltip for hidden/cached visuals; pause summary for active counts | active_spike_count, paint_active_count, oldest_evictions, paint_render_refresh_ms |
+| Pulse/text scheduler | classification, 24 Hz cadence, cooldown authority, pulse/text merge rule | tooltip for survival-critical feedback; pause summary for cooldown/state | pulse_count, dmg_text_count, update_cadence_hz |
+| Pickup scheduler | classification, 30 Hz cadence, visual pickup cap, credit/bundle/direct-credit rule | tooltip for bundled visuals; run summary for credited totals | visible_pickups, spoils_on_field, coins_credited |
+| Shop/meta path | classification, localStorage key/state, card text constraint, refresh behavior | no card note unless browser changes value; pause/shop summary for state | localStorage_write_ok, browser_version_note_visible, card_text_overflow |
+| Turret update loop | classification, simulated count, visible count, target/fire authority, save restore | card note only when many actors may be hidden; tooltip and pause summary required | web_visible_turrets, simulated_turret_count, turret_shots_fired |
+| Enemy projectile path | classification, default projectile state, fallback trigger, opt-in QA URL | card plus tooltip when trigger changes | WEB_SKIP_ENEMY_SHOTS, fallback_trigger_count, enemyshots route trigger count |
+
+Browser owner-field completion rule:
+- A prop is not browser-doc-complete until every runtime owner it touches has a row-level answer in its detailed Browser version paragraph.
+- If a prop touches two owners, such as Shock Relay using hit counting plus chain projectiles, document both the trigger owner and the overflow owner.
+- If the owner is only shop/meta, do not invent combat caps; focus on localStorage, card layout, and refresh behavior.
+- If the owner is unknown, mark the Browser version as unresolved and block card-ready status until the owner is chosen.
+
 Browser UI surface matrix for prop documentation:
 | surface | when to show browser detail | copy style |
 | --- | --- | --- |
