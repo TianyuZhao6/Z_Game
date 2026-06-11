@@ -3253,6 +3253,30 @@ Browser copy map for implemented props:
 | Auto-Turret | Browser: nearest 8 turrets drawn; all owned turrets still fire. | Browser: renderer draws nearest 8 turrets; targeting, damage, and fire rate use all owned turrets. | Show simulated turret count and shots fired. |
 | Stationary Turret | Browser: nearest 8 turrets drawn; all owned turrets still fire. | Browser: renderer draws nearest 8 stationary turrets; hidden turrets remain active obstacles/fire sources if implemented. | Show simulated turret count, active placements, and shots fired. |
 
+Browser copy map for planned props:
+| prop | card browser_version_note | tooltip browser line | pause/run summary line |
+| --- | --- | --- | --- |
+| Bleeding Edge | none | Browser: planned bleed ticks should use the status scheduler; stack damage continues if tick text merges. | Show active bleed stacks and total bleed damage in QA builds. |
+| Cleanse Step | none | Browser: planned reclaim should use paint state, not whether hostile paint is drawn this frame. | Show reclaimed intensity and slow-resist state when paint visuals are hidden. |
+| Paint Converter | none | Browser: planned rewards should use owned-paint state; pickup visuals may bundle without reducing coin value. | Show bonus coins credited and paint intensity consumed. |
+| Explosive Crits | none | Browser: planned crit splash may trim FX; crit splash damage, radius, and boss rule should remain authoritative. | Show crit splash triggers and damage, not only particle count. |
+| Razor Focus | none | Browser: planned crit/fire-rate stat rebuild should match desktop and fit 960x540 card text. | Show crit chance and fire-rate delta after refresh. |
+| Frost Brand | none | Browser: planned chill ticks should use status cadence; slow/re-hit values continue if text merges. | Show chill target count, boss slow modifier, and re-hit damage. |
+| Shock Relay | Browser: chain jumps use browser headroom; damage stays unchanged. | Browser: planned chain count may compress under projectile/chain headroom before chain damage changes. | Show attempted jumps, spawned jumps, and skipped jumps. |
+| Blood Pact | none | Browser: planned max-HP penalty and damage bonus should use the same stat rebuild as desktop. | Show max HP floor and damage multiplier after save/load. |
+| Guardian Charm | none | Browser: planned rescue shield, speed, duration, and cooldown stay unchanged; rescue FX/audio may trim. | Show cooldown remaining and rescue trigger count. |
+| Mirror Shell | Browser: uses shield-hit fallback while enemy shots are off. | Browser: planned default route uses ranged-enemy shield damage fallback; `enemyshots=1` tests true projectile reflect. | Show fallback_trigger_count and projectile reflect count separately. |
+| Retaliation Core | none | Browser: planned shield-hit buff values stay unchanged; feedback can be a compact HUD flash. | Show buff timer, damage bonus, and crit bonus while text is merged. |
+| Retaliation Thorns | none | Browser: planned contact reflect values stay unchanged; reflected damage text may merge. | Show reflect triggers and boss reduction after dense contact hits. |
+| Shardstorm | Browser: shield shards use bullet headroom; damage stays unchanged. | Browser: planned shield-break shards should reduce spawned count under headroom before shard damage changes. | Show shield-break count, spawned shards, and skipped shards. |
+| Shield Capacitor | none | Browser: planned overheal conversion uses pickup state; visible pickup caps must not reduce shield value. | Show overheal amount, converted shield, and temp shield cap. |
+| Black Market Pass | Browser: shop override persists through refresh. | Browser: planned premium-shop state should use localStorage and keep rarity/price text readable. | Show active shop override, price modifier, and refresh persistence. |
+| Spoil Splitter | none | Browser: planned extra coin procs may merge pickup/text feedback; credited coin value stays unchanged. | Show proc count, anti-loop throttle, and coins credited. |
+| VIP Punchcard | none | Browser: planned cashback state persists through refresh; payout cap and timing stay unchanged. | Show cashback bank, cap, payout, and reset timing. |
+| Phantom Dash | none | Browser: planned dash contact damage stays unchanged; dash trail FX may trim. | Show dash strike count and cooldown/availability state. |
+| Sticky Tar Flask | Browser: active puddles are capped; slow values stay unchanged. | Browser: planned tar puddles should run on the ground scheduler and refresh/evict by a documented rule. | Show active puddle count, evictions, and slow applications. |
+| Time Dilation Boots | none | Browser: planned standstill aura values stay unchanged; pulse cadence must be documented. | Show standstill charge, pulse count, and enemies slowed. |
+
 Browser copy map rules:
 - Keep card browser_version_note empty for implemented same-value props unless the browser behavior changes player planning.
 - Use tooltip text for visual caps, text merges, cached paint, and localStorage details.
