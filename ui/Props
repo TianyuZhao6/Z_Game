@@ -396,6 +396,34 @@ Browser per-prop required detail checklist:
 | Player note | Is card/tooltip/pause browser text needed? | only if cap/fallback changes planning or visible feedback |
 | QA URL | What browser scenario proves the behavior? | ?start=1&diag=1, ?biome=wind, ?enemyshots=1 |
 
+Browser doc completeness checklist:
+| check | passes when | fails when |
+| --- | --- | --- |
+| Classification exists | Browser version says same_as_desktop, visual_only, render_capped, spawn_capped, fallback_trigger, or mechanically_reduced | Browser version only says "works in browser" or "same as desktop" without a classification |
+| Runtime owner named | The line names bullet_hit_event, status_20hz, ground_20hz, pulse_24hz, pickup_30hz, shop_meta, turret_update, player_damage_event, or save_load | The prop creates effects but the browser update path is not named |
+| Gameplay authority stated | The text lists which gameplay numbers remain authoritative: damage, cooldown, radius, duration, stack cap, reward, shield, summon count, or saved level | The text only describes visuals and leaves actual values ambiguous |
+| Cap/cadence exactness | Known browser values are written as exact numbers or exact routes, such as 28 bullets, 8 turrets, 12 pickups, 4 damage texts, 16 particles, 20 Hz, 24 Hz, 30 Hz, or `enemyshots=1` | The text uses vague phrases like "some limits", "optimized", "lower cost", or "browser-safe" |
+| Overflow behavior named | The text says drop, merge, refresh oldest, reduce spawned count, credit directly, keep simulating while hidden, or use fallback | The text says capped but does not say what happens when the cap is hit |
+| Player surface decided | The entry explicitly says no card note, tooltip only, card plus tooltip, pause/run summary, or QA-only | The browser text exists but no UI surface is defined |
+| Desktop comparison safe | If gameplay values match desktop, the browser note says what visual/feedback path changes instead of implying weaker values | Browser wording implies lower damage, reward, cooldown, or shield without a mechanical value change |
+| Save/refresh covered | Stateful props mention localStorage/save/load behavior and refresh QA | Economy, shield, turret, debt, discount, bounty, or cashback state can change across refresh without documentation |
+| QA proof included | The entry names a URL, diagnostic counter, or scenario tied to the runtime owner | QA says only "test in browser" |
+| Card text fit checked | Browser note is short enough for 960x540 card layout or is moved to tooltip/pause summary | Card browser note includes caps, debug names, and long implementation details |
+
+Browser doc completeness status labels:
+- browser_doc:complete - all checklist rows have an answer and no player-facing value is ambiguous.
+- browser_doc:needs_counter - behavior is described, but the diagnostic counter or URL is missing.
+- browser_doc:needs_surface - runtime behavior is described, but card/tooltip/pause placement is undecided.
+- browser_doc:needs_fallback - prop depends on a browser-disabled system and has no default-route fallback.
+- browser_doc:blocked_owner - runtime owner is unknown or unimplemented, so card-ready status is blocked.
+
+Browser doc completeness example:
+Good:
+Browser version: classification = render_capped. Runtime owner = turret_update. Gameplay values = owned turret count, damage, fire rate, targeting, and saved level match desktop. Browser cap = nearest 8 turrets are drawn; hidden turrets keep simulating and firing. Player surface = card note plus tooltip when owned turret count exceeds 8. QA proof = web_visible_turrets, simulated_turret_count, and turret_shots_fired in `?start=1&diag=1&level=8`.
+
+Bad:
+Browser version: optimized for web.
+
 Browser version field schema for every detailed prop:
 - First sentence: classify the browser behavior and say whether gameplay values match desktop.
 - Second sentence: name the implementation owner and cadence, such as bullet hit event, 20 Hz status update, 24 Hz pulse update, 30 Hz pickup update, shop/meta path, or turret update loop.
