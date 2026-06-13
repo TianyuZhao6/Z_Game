@@ -417,6 +417,35 @@ Browser doc completeness status labels:
 - browser_doc:needs_fallback - prop depends on a browser-disabled system and has no default-route fallback.
 - browser_doc:blocked_owner - runtime owner is unknown or unimplemented, so card-ready status is blocked.
 
+Current implemented-prop browser documentation audit:
+| prop | browser_doc status | documented browser behavior | remaining documentation requirement |
+| --- | --- | --- | --- |
+| Piercing Rounds | browser_doc:needs_counter | 28 visible-bullet cap; pierce/falloff/hit simulation remain authoritative; tooltip surface chosen | Record web_visible_bullets, pierce hit count, and damage_done in one dense-wave QA result. |
+| Ricochet Scope | browser_doc:needs_counter | 28 visible-bullet cap; routing and bounce damage continue; tooltip surface chosen | Record routed-hit count and pending_bullets while the visible cap is reached. |
+| Shrapnel Shells | browser_doc:complete | Pending-bullet headroom reduces spawned shards before damage; card/tooltip copy and QA counters are defined | Keep the documented headroom formula synchronized with browser constants. |
+| Explosive Rounds | browser_doc:needs_counter | Gameplay values match desktop; FX trims under the 16-particle budget; tooltip/run-summary behavior is defined | Capture explosion_trigger_count, fx_particle_count, and damage_done in the ballistic_dense scenario. |
+| DOT Rounds | browser_doc:needs_counter | 20 Hz status updates; stacks/tick damage continue when text merges; tooltip surface chosen | Record update_cadence_hz, stacks, tick count, and merged/dropped text count. |
+| Mark of Vulnerability | browser_doc:needs_counter | 0.10s scheduled update; duration, target priority, and bonus remain authoritative | Record marked target type, mark duration, and bonus-damage trigger count. |
+| Ground Spikes | browser_doc:needs_counter | 20 Hz update; max_active 6/10/14; oldest spike eviction; gameplay matches desktop | Record active_spike_count and oldest_evictions at each prop level. |
+| Curing Paint | browser_doc:needs_counter | 20 Hz gameplay update; cached/hidden paint rendering does not change damage or ownership | Record paint_damage_ticks in normal, wind, and mist routes while render refresh changes. |
+| Aegis Pulse | browser_doc:needs_counter | 24 Hz pulse/text update; trigger, cooldown, radius, and damage remain authoritative | Record pulse_count, cooldown intervals, damage_done, and merged text count. |
+| Bone Plating | browser_doc:needs_counter | Mitigation order and plating state match desktop; feedback text may merge | Record pre-hit damage, mitigated damage, plating value, and level-5 negate behavior. |
+| Carapace | browser_doc:needs_counter | Reserve shield and Aegis gating persist through browser save/load | Record shield value before refresh, localStorage_write_ok, restored value, and Aegis availability. |
+| Coin Magnet | browser_doc:needs_counter | Pickup radius and reward math match desktop; visible pickup caps do not reduce collection | Record visible_pickups, collected pickup count, and coins_credited during bundled rewards. |
+| Coupon | browser_doc:needs_counter | Discount math and level state persist through localStorage refresh | Record price before/after discount, stored level, and restored shop price after refresh. |
+| Golden Interest | browser_doc:needs_counter | Interest rate, payout cap, and ordering match desktop and persist | Record starting coins, interest amount, cap application, loan ordering, and restored level. |
+| Lockbox | browser_doc:needs_counter | Protected coin value remains authoritative when pickup visuals bundle | Record coins before loss, protected amount, actual loss, and restored prop level. |
+| Shady Loan | browser_doc:needs_counter | Loan payout, debt waves, repayment, and penalty state persist through refresh | Record payout, debt countdown, repayment, max-HP penalty, and restored debt state. |
+| Bandit Radar | browser_doc:needs_counter | Slow/highlight values match desktop; browser spawn density may delay observable triggers | Record bandit spawn, highlight duration, slow value, and retained state on no-bandit waves. |
+| Wanted Poster | browser_doc:needs_counter | Charge cap, retention, and payout match desktop and persist | Record charges before/after empty waves, valid bandit kill payout, and refresh restoration. |
+| Auto-Turret | browser_doc:complete | Nearest 8 turrets are drawn while all owned turrets simulate, target, fire, and restore | Keep simulated_turret_count, web_visible_turrets, and turret_shots_fired in regression QA. |
+| Stationary Turret | browser_doc:needs_counter | Nearest 8 are drawn; hidden placements remain simulated obstacles/fire sources and restore | Record active placements, visible count, collision behavior, shots fired, and restored placement count. |
+
+Audit maintenance rule:
+- Change a row to browser_doc:complete only after the listed diagnostic result or manual QA evidence exists.
+- If runtime behavior changes, update the detailed prop entry, roster note, copy map, and this audit row in the same change.
+- A browser_doc:complete row must not rely only on visual inspection when the browser can hide simulated actors, damage, rewards, or persistent state.
+
 Browser doc completeness example:
 Good:
 Browser version: classification = render_capped. Runtime owner = turret_update. Gameplay values = owned turret count, damage, fire rate, targeting, and saved level match desktop. Browser cap = nearest 8 turrets are drawn; hidden turrets keep simulating and firing. Player surface = card note plus tooltip when owned turret count exceeds 8. QA proof = web_visible_turrets, simulated_turret_count, and turret_shots_fired in `?start=1&diag=1&level=8`.
