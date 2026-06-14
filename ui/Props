@@ -441,6 +441,35 @@ Current implemented-prop browser documentation audit:
 | Auto-Turret | browser_doc:complete | Nearest 8 turrets are drawn while all owned turrets simulate, target, fire, and restore | Keep simulated_turret_count, web_visible_turrets, and turret_shots_fired in regression QA. |
 | Stationary Turret | browser_doc:needs_counter | Nearest 8 are drawn; hidden placements remain simulated obstacles/fire sources and restore | Record active placements, visible count, collision behavior, shots fired, and restored placement count. |
 
+Current planned-prop browser documentation audit:
+| prop | browser_doc status | required browser behavior before implementation | completion condition |
+| --- | --- | --- | --- |
+| Bleeding Edge | browser_doc:blocked_owner | Use the 20 Hz status scheduler; preserve bleed stacks, duration, tick damage, and boss modifier when text merges. | Assign the status owner, define bleed counters, and add a dense-wave tick QA route. |
+| Cleanse Step | browser_doc:blocked_owner | Read hostile paint state rather than rendered pixels; conversion and slow resistance must continue when paint is hidden. | Define paint-state query, conversion cadence, active-state counter, and wind/mist QA. |
+| Paint Converter | browser_doc:blocked_owner | Validate owned-paint state in simulation; preserve full coin reward when pickup visuals bundle or direct-credit. | Define kill owner, intensity consumption rule, coins_credited counter, and pickup overflow behavior. |
+| Explosive Crits | browser_doc:blocked_owner | Resolve splash damage from crit events while trimming only FX under the browser particle budget. | Define crit hook, splash trigger counter, particle budget behavior, and unchanged-damage tooltip. |
+| Razor Focus | browser_doc:needs_counter | Use the shared stat rebuild; crit gain and fire-rate penalty should match desktop and fit 960x540 cards. | Add stat-before/after and refresh-persistence QA evidence. |
+| Frost Brand | browser_doc:blocked_owner | Use the 20 Hz status scheduler for chill; preserve chance, slow, re-hit bonus, duration, and boss modifier. | Define chill owner/counters and verify merged text does not change re-hit damage. |
+| Shock Relay | browser_doc:blocked_owner | Count hits in the bullet path; reduce chain jumps under headroom before changing chain damage. | Define unique-target rule, chain headroom, attempted/spawned/skipped jump counters, and card note. |
+| Blood Pact | browser_doc:needs_counter | Use the shared stat rebuild and save path; max-HP penalty, damage bonus, and safety floor should match desktop. | Add stat rebuild, minimum-HP, save/load, and 960x540 card QA evidence. |
+| Guardian Charm | browser_doc:blocked_owner | Trigger from player damage after mitigation; preserve shield, speed, duration, cooldown, and saved cooldown state while trimming FX only. | Define damage-event order, cooldown persistence, rescue counter, and survival-critical feedback rule. |
+| Mirror Shell | browser_doc:needs_fallback | Default route must use a reachable shield-hit/ranged-enemy fallback while `enemyshots=1` tests true projectile reflect. | Finalize fallback frequency, anti-loop rule, card/tooltip copy, and separate fallback/projectile counters. |
+| Retaliation Core | browser_doc:blocked_owner | Trigger from shield damage; preserve buff magnitude/duration and use compact HUD feedback when text/FX budgets are full. | Define shield-hit owner, refresh rule, buff timer counter, and pause/HUD surface. |
+| Retaliation Thorns | browser_doc:blocked_owner | Trigger from contact damage with per-enemy cooldown and no recursive reflection; text may merge without changing damage. | Define contact owner, reflect counter, boss modifier, anti-loop QA, and tooltip surface. |
+| Shardstorm | browser_doc:blocked_owner | Trigger once per shield break; use pending-bullet headroom and reduce shard count before shard damage. | Define break-event owner, spawned/skipped shard counters, generation guard, and card note. |
+| Shield Capacitor | browser_doc:blocked_owner | Convert full-HP heal value through pickup state; visible pickup caps must not reduce temporary shield value. | Define pickup owner, conversion order, temp-shield cap, converted-value counter, and save/reset behavior. |
+| Black Market Pass | browser_doc:blocked_owner | Persist the next-shop override through localStorage; price modifier and rarity floor must remain readable after refresh. | Define consume/reset timing, storage state, card note, and refresh QA. |
+| Spoil Splitter | browser_doc:blocked_owner | Trigger from coin pickup with anti-loop throttle; merge visuals while preserving credited coin value. | Define pickup owner, proc/rate cap, coins_credited counter, and Coin Magnet stress QA. |
+| VIP Punchcard | browser_doc:blocked_owner | Persist cashback bank, payout cap, timing, and reset state through browser refresh. | Define shop purchase owner, localStorage fields, payout counters, and pause/shop summary. |
+| Phantom Dash | browser_doc:blocked_owner | Trigger only from a valid dash state; preserve contact damage/slow while trimming trail and impact FX. | Define dash owner, unavailable-dash negative control, strike counter, and FX-only tooltip decision. |
+| Sticky Tar Flask | browser_doc:blocked_owner | Use the 20 Hz ground scheduler; define active puddle cap and refresh/evict behavior while preserving slow values. | Choose exact active cap, duration cleanup, eviction counter, and ground-density QA route. |
+| Time Dilation Boots | browser_doc:blocked_owner | Use a documented pulse cadence; preserve aura radius/slow values and cancel buildup immediately on movement. | Define stationary owner, cadence, target cap, pulse counter, and movement-cancel QA. |
+
+Planned-prop audit rule:
+- `browser_doc:blocked_owner` means the browser runtime owner or overflow behavior must be selected before implementation starts.
+- `browser_doc:needs_fallback` blocks shop/card readiness because the normal browser route cannot trigger the prop as written.
+- Planned props may move to `browser_doc:needs_counter` after runtime behavior and player surfaces are fixed, but only implemented and verified props may become `browser_doc:complete`.
+
 Audit maintenance rule:
 - Change a row to browser_doc:complete only after the listed diagnostic result or manual QA evidence exists.
 - If runtime behavior changes, update the detailed prop entry, roster note, copy map, and this audit row in the same change.
