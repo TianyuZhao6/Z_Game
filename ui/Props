@@ -1,4 +1,4 @@
-ï»¿Executive Summary
+Executive Summary
 This document is the master working specification for Z Game's prop system, path identity, balance rules, browser behavior, UX readability, and QA requirements.
 Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and production guidance.
 Current intent: keep prop data consistent, make builds readable in-game, and keep implementation, UI text, browser behavior, and QA expectations synchronized.
@@ -1105,203 +1105,6 @@ Tag Rules
 3. If a prop bridges two paths, show one primary short tag and one secondary icon, not two equal tags.
 4. Rarity and path tag must remain visually distinct.
 
-Path System Overview
-Core design rule:
-Unlocking one piece of equipment can trigger a chain reaction that activates special interactions with another piece of equipment.
-
-Multi-element synergy rule:
-Example: Water + Lightning creates chained area damage that links enemies within shock range.
-
-Baseline implementation status:
-Ballistic Path: initial prototype (Pierce, Ricochet, Shrapnel).
-Turret Path: baseline variants (Auto, Stationary).
-Shield Path: working baseline (Carapace, Bone Plating, Shield AOE).
-Economy Path: baseline systems (Coin, Coupon, Reroll).
-Status Path: baseline systems (Buff, Debuff, Status).
-Status Path runtime rule: leave a trace while moving; enemies in the area receive a status effect.
-Status Path cleanup rule: the effect expires after the player leaves the area for a short time, or on death, restart, or level clear.
-Summoner Path: baseline systems (Pet, Minion, Summoner).
-Summoner Path baseline behavior: summons follow the player, attack enemies, respawn after death, level with the player, and have unique active and passive abilities.
-Lucky Path: baseline systems (Lucky, Risk, Chance).
-
-Path Archetype Summary
-Ballistic Path
-Fantasy: high projectile mastery and wave-clearing combos.
-Key scaling stats: projectile count, pierce count, ricochet count, projectile speed.
-Signature mechanics: hit chaining, wall-assisted bounces, kill-triggered shrapnel bursts.
-Weakness: underperforms when maps have low enemy density or poor bounce angles.
-
-Turret Path
-Fantasy: controlled zone defense with independent damage sources.
-Key scaling stats: turret count, duration, fire rate, lock-on range.
-Signature mechanics: auto turret tracking and stationary burst zones.
-Weakness: vulnerable to fast reposition encounters and forced-movement bosses.
-
-Shield Path
-Fantasy: survive pressure and convert defense into controlled retaliation.
-Key scaling stats: shield capacity, recharge, shield-on-hit effects, break effects.
-Signature mechanics: one-time protection, plating stacks, shield pulse damage.
-Weakness: lower ceiling if the player avoids all damage and never triggers shield reactions.
-
-Economy Path
-Fantasy: leverage resources to snowball through smarter resource decisions instead of raw combat stats.
-Key scaling stats: coin gain multiplier, shop discount, reroll efficiency, protected coins.
-Signature mechanics: better shop control, safer greed choices, compound value over time.
-Weakness: weak immediate combat power if the path is over-invested too early.
-
-Status Path
-Fantasy: control tempo through damage-over-time and debuff layers.
-Key scaling stats: status duration, tick damage, stack cap, application chance.
-Signature mechanics: trail zones, persistent debuffs, area denial through status fields.
-Weakness: slower burst against urgent threats without setup time.
-
-Summoner Path
-Fantasy: indirect power through companions and team-based combat flow.
-Key scaling stats: summon count, summon damage ratio, summon uptime, respawn speed.
-Signature mechanics: autonomous minions, command-based focus fire, summon-specific synergies.
-Weakness: AI and pathing downtime reduce real DPS in cluttered arenas.
-
-Lucky Path
-Fantasy: high-variance run shaping through risk and reward decisions.
-Key scaling stats: trigger chance, jackpot multiplier, fail penalty, reroll interaction.
-Signature mechanics: chance-based spikes, gamble props, and a high ceiling with an unstable floor.
-Weakness: inconsistent runs without protection mechanics.
-
-Cross-Path Design Rules
-Every major path should have at least 2 bridge props that connect it to two other paths.
-No single path should solve both elite waves and bosses without trade-offs.
-Utility paths (Economy and Status) should scale into strength over time, not deliver full value instantly.
-High-variance paths must include at least one stabilizer option for consistency.
-Economy Path and Control Path should remain universal side branches that can hybridize with any primary archetype.
-Status Path, Summoner Path, and Lucky Path should expand gradually only after their core loops are stable.
-
-Path Tuning Targets
-Global run brackets:
-Early: waves 1-5
-Mid: waves 6-12
-Late: waves 13+
-
-Enemy scaling targets:
-enemy_hp_multiplier = 1.00 / 1.85 / 3.10 (early, mid, late)
-enemy_damage_multiplier = 1.00 / 1.35 / 1.80
-elite_spawn_ratio = 8% / 16% / 24%
-
-Path activation thresholds:
-A path is online when the player owns >= 2 tagged props from that path.
-A path is fully online when the player owns >= 4 tagged props from that path.
-
-Ballistic Path numeric targets:
-effective_hit_count = 1 + pierce_count + (ricochet_count * 0.60)
-shrapnel_proc_chance_cap = 55%
-projectile_count_soft_cap = +4 (extra projectiles after cap deal 50% damage)
-target DPS gain from online to fully online = +35% to +55%
-
-Turret Path numeric targets:
-max_active_turrets = 1 / 2 / 3 (by progression tier)
-turret_damage_ratio_vs_player = 0.45 / 0.55 / 0.65
-turret_duration = 8s base, +1.5s per level, capped at 16s
-retarget_interval = 0.25s minimum to avoid visual jitter
-
-Shield Path numeric targets:
-shield_hp_gain_per_pick = +12 / +18 / +25
-shield_recharge_delay = 5.0s base, minimum 2.5s
-shield_break_explosion_ratio = 0.35 * player_bullet_base
-max_total_shield_from_props = 220 before temporary buffs
-
-Economy Path numeric targets:
-coin_gain_bonus_per_level = +8% (cap +56%)
-shop_discount_per_level = 4% (cap 20%)
-reroll_cost_growth = +1 coin per reroll, capped at 12
-safety rule: if DPS is below threshold, offer one combat-biased shop slot
-
-Status Path numeric targets:
-base_status_apply_chance = 18% / 24% / 30%
-status_duration_bonus_per_level = +0.4s (cap +2.4s)
-dot_tick_interval = 0.5s fixed for readability
-max_parallel_damage_statuses_on_single_target = 3
-
-Summoner Path numeric targets:
-summon_count_base = 1, hard_cap = 3
-summon_damage_ratio = 0.35 / 0.45 / 0.55 (early, mid, late)
-summon_hp_ratio_vs_player = 0.60 / 0.80 / 1.00
-summon_crit_inherit = min(player_crit * 0.40, 35%)
-summon_fire_rate_inherit = min(player_fire_rate_bonus * 0.50, +80%)
-summon_respawn_time = 6.0s base, floor 2.5s
-boss_damage_penalty_default = -25% unless overridden by summon-specialized props
-
-Lucky Path numeric targets:
-high_roll_trigger_chance = 12% base, cap 35%
-fail_penalty_limit = no more than -20% effective run DPS at full stack
-expected_value_rule = over 10 encounters, Lucky Path should produce +5% to +12% average value
-variance rule = standard deviation should stay below one shop purchase equivalent per wave
-
-Summoner Command and AI Specification
-Command inputs:
-Focus command cooldown = 8s, duration = 4s, bonus damage during focus = +20%
-Regroup command cooldown = 6s, summons orbit the player for 2.5s
-Hold Position command cooldown = 10s, hold radius = 1.5 tiles, duration = 5s
-
-AI movement tuning:
-follow_distance = 1.2 tiles
-leash_break_distance = 5.0 tiles
-teleport_back_delay_when_leash_broken = 1.0s
-avoid_overlap_separation_radius = 0.55 tiles
-
-AI target scoring:
-score = (threat_weight * enemy_threat) + (distance_weight / distance) + mark_bonus
-recommended weights: threat_weight = 0.6, distance_weight = 0.3, mark_bonus = 0.4
-forced retarget if the current target is unreachable for > 0.75s
-
-Summoner progression breakpoints:
-Level 1-2: baseline summon only, no branch passive
-Level 3: choose branch (Swarm Commander, Arcane Familiar, Warden Totem)
-Level 6: unlock branch active-skill modifier
-Level 9: unlock branch capstone passive
-Level 10+: horizontal growth only (utility and consistency), no major raw DPS spike
-
-Summoner Path Build Draft
-Core identity:
-Lower direct burst from the player; higher map control and sustained team DPS through summons.
-
-Core rules:
-Base max summons = 1. Hard cap = 3 (only through rare props or upgrades).
-Summon base damage scales from player bullet_base at a reduced ratio.
-Suggested damage ratio by tier = 35% / 45% / 55% (early, mid, late unlock tiers).
-Summon crit chance inherits 40% of player crit chance, capped at 35%.
-Summon attack speed inherits 50% of player fire-rate bonuses, with a hard cap.
-Respawn delay after summon death = 6.0s base, reducible to a 2.5s minimum.
-
-AI behavior package:
-Default: follow the player at medium leash distance.
-In combat: prioritize marked and high-threat enemies first.
-Safety: teleport back after a short timeout if too far from the player.
-Command skill: Focus mode forces all summons to attack one target for 4s.
-
-Build branches:
-Swarm Commander: more summon count, lower per-unit damage, strong with on-hit effects.
-Arcane Familiar: fewer summons, higher single-target DPS, better boss pressure.
-Warden Totem: defensive summon that grants shield pulses and slow zones.
-
-Recommended synergy tags:
-Summon + Status: summons apply bleed, burn, or slow stacks.
-Summon + Economy: summon kills can drop bonus coin shards.
-Summon + Shield: while shielded, summons gain damage reduction and taunt chance.
-Summon + AoE: summon kills create a mini-explosion or shrapnel burst.
-
-Balance constraints:
-Summons deal reduced damage to bosses unless specialized by props.
-Summons lose uptime in dense obstacle layouts.
-Summons should not fully inherit projectile multipliers without strict caps.
-
-Milestone unlock plan:
-Milestone 1: basic summon follower and respawn system.
-Milestone 2: summon command key and target-priority AI.
-Milestone 3: archetype split (Swarm, Familiar, Warden) with unique passives.
-Milestone 4: a legendary summon prop that changes the run win condition.
-
-Boss concept placeholder:
-Boss: Anti-U
-
 Rarity Policy
 Use numeric rarity for fast tuning:
 1 Common: very frequent in the shop, almost never used as a boss reward.
@@ -1984,7 +1787,7 @@ Chain range: 1.8 / 2.2 / 2.6 tiles by level.
 Browser version: planned shock chains should cap spawned chain segments through pending-bullet or FX headroom before reducing damage. If browser saturation prevents all visual arcs from drawing, damage should still resolve deterministically and tooltip text should only mention reduced visuals unless chain count is mechanically capped.
 
 6. Core Paint System
-Tiles can hold temporary "paint" that affects movement and combat. A tileÂ¡Â¯s paint has:
+Tiles can hold temporary "paint" that affects movement and combat. A tile?¡¥s paint has:
 Owner state: Neutral / Player Paint / Enemy Paint (enemy paint optional for later).
 Intensity: 0-1, starts high when applied, then decays over time. Effects scale with intensity.
 Sources of paint include:
@@ -2710,42 +2513,6 @@ Add set telemetry and run a balance pass against KPI targets.
 Sprint 4 (hardening):
 Complete save migration v3.
 Run full QA matrix and performance soak test.
-
-30. Summoner Path Build Requirements (Detailed)
-30.1. Role definition
-The Summoner path should feel like force multiplication through unit composition, not passive background damage.
-Player should make frequent tactical choices:
-Positioning, summon timing, command focus target, and unit upgrade route.
-
-30.2. Minimum viable summon roster
-Frontline summon:
-High aggro draw, low DPS, moderate durability.
-Ranged summon:
-Low durability, scaling sustained DPS.
-Utility summon:
-Applies slow/mark/debuff with lower direct damage.
-Ultimate summon:
-Timed high-impact unit with long cooldown or special resource.
-
-30.3. Core stat framework
-Summon cap (base + scaling)
-Summon duration and respawn cadence
-Summon damage scaling from player stats
-AI response delay and retarget interval
-Survivability lane:
-HP/armor/resist parameters plus boss-damage modifier
-
-30.4. Counterplay and balance controls
-Global cap on total summon entities to protect FPS.
-Diminishing returns on overlapping aura buffs.
-Use boss anti-summon mechanics on select encounters (zone clear, fear pulse, target swap) so play remains interactive.
-A Summoner run should still fail if the player ignores movement and defensive timing.
-
-30.5. Shop-path readability for summoner cards
-All summoner cards use green outline + summon icon + SUM label.
-Tooltip first line format:
-[SUMMONER] + short role tag (Spawner, Commander, Sustain, Sacrifice).
-Card VFX should include a subtle pulsing edge to distinguish them from crit and economy cards.
 
 32. Visual Identity System (Detailed Production Spec)
 32.1. Visual pillars (must stay consistent across all features)
