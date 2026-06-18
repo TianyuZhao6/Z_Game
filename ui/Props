@@ -559,7 +559,7 @@ Browser prototype backlog:
 
 Z Game Systems and Props Specification
 Status: Working Draft
-Purpose: Consolidated design, balance, UX, and production reference for the current version.
+Purpose: Consolidated prop roster, balance, browser, runtime, UI, and QA reference for the current version.
 
 Prop Roster Template
 Use this roster as the quick-reference layer before the detailed prop specifications. One row should represent one purchasable prop.
@@ -654,43 +654,8 @@ Section Scan Guide (Table Order)
 | auto_turret | Auto-Turret | Utility / Control | SUMMON | CONTROL | Follower turret | 2 | $14 | 5 | passive | +1 turret per level, 0.33 to 0.42 damage ratio | turret,summon,sustained | count converts to quality after cap | SUM | implemented | Baseline turret path; web:visual nearest 8 turrets drawn, all owned turrets simulate |
 | stationary_turret | Stationary Turret | Utility / Control | SUMMON | CONTROL | Static turret | 1 | $14 | 99 | passive | +1 static turret per purchase, max 8 active suggested | turret,holdout,zone_control | immobile placement | SUM | implemented | Baseline stationary turret variant; web:visual nearest 8 turrets drawn, all owned turrets simulate |
 
-Set Bonus and Non-Shop Systems Roster
-Use this second roster to track systems that are not purchased directly in the shop but still define build identity, pacing, readability, and run difficulty.
-
-System Roster Columns
-system_id | display_name | system_group | source_module | activation_rule | effect_summary | scope | ui_surface | implementation_status | notes
-
-Blank System Row Template
-SYSTEM_ID | Display Name | SetBonus/Biome/Encounter/RunRule/UI | function/constants | short trigger condition | short numeric/behavior summary | per_wave/per_level/run_wide/ui_only | shop/pause/hud/combat/none | planned/prototype/implemented/balancing/final | short dependency note
-
-Current Set Bonus and Non-Shop Systems Roster (Seed Rows)
-These rows represent current runtime systems defined outside direct prop purchases.
-
-System Scan Guide (Table Order)
-- Set Bonus / Path States
-- Biome Domain Modifiers
-- Encounter and Spawn Rules
-- Run Timer and Difficulty Curves
-
-| system_id | display_name | system_group | source_module | activation_rule | effect_summary | scope | ui_surface | implementation_status | notes |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| path_state_online | Path State: Online | SetBonus | path_focus_summary_lines + PATH_ONLINE_THRESHOLD | path score >= 2 | Marks path as online in build summary; no direct combat stat bonus yet | run_wide | pause/shop summary | implemented | Threshold currently 2 |
-| path_state_full | Path State: Full | SetBonus | path_focus_summary_lines + PATH_FULL_THRESHOLD | path score >= 4 | Marks path as full in build summary; no direct combat stat bonus yet | run_wide | pause/shop summary | implemented | Threshold currently 4 |
-| path_tag_bridge_scoring | Path Bridge Scoring | SetBonus | PROP_PATH_TAGS + path_scores_from_meta | own multi-tag props | Dual-tag props contribute score to both paths for build identity tracking | run_wide | pause/shop summary | implemented | Example: mark_vulnerability, bandit_radar |
-| path_border_color_rules | Path Border Color Rules | UI | PATH_BORDER_COLORS + prop_path_border_color | card render for tagged prop | Card border color follows path; dual-tag props blend two path colors | ui_only | shop cards/tooltips | implemented | Fallback color uses general tag |
-| biome_picker_domain_choice | Domain Choice Picker | Biome | show_biome_picker_in_shop + SCENE_BIOMES | after shop Next flow | Player selects next level domain from 4 options | per_level | shop domain picker | implemented | Domains: Wind, Misty, Hell, Stone |
-| biome_misty_forest_mod | Misty Forest Modifier | Biome | apply_domain_buffs_for_level | biome_active == Misty Forest | Forces fog field and sets xp_gain_mult to 1.3 for the level | per_level | combat + ambient VFX | implemented | Temporary level-only effect |
-| biome_scorched_hell_mod | Scorched Hell Modifier | Biome | apply_domain_buffs_for_level | biome_active == Scorched Hell | Player bullet damage x2; enemy contact x2; boss contact x1.5; curing paint level +1 | per_level | combat + VFX | implemented | High-risk high-output biome |
-| biome_bastion_stone_mod | Bastion of Stone Modifier | Biome | apply_domain_buffs_for_level + apply_biome_on_enemy_spawn | biome_active == Bastion of Stone | Player starts with 50% max-HP shield; spawned enemies get shields (boss/bandit 25%, others 50%) | per_level | HUD shield + combat | implemented | Spawn-time shield injection |
-| biome_domain_wind_mod | Domain of Wind Modifier | Biome | apply_domain_buffs_for_level + spawn_hurricane | biome_active == Domain of Wind | Spawns hurricane hazard and applies temporary player speed multiplier x1.12 | per_level | combat arena + movement feel | implemented | Hazard placement avoids spawn zone |
-| bandit_spawn_protocol | Coin Bandit Spawn Protocol | Encounter | spawn_enemies_for_wave + BANDIT constants | non-boss wave, level >= 3, tleft > 20s, one-per-level gate, chance roll | Spawns coin bandit with alert banner and optional radar/lockbox interactions | per_wave | banner + telegraph + combat | implemented | Chance per wave currently 0.28 |
-| boss_interval_rule | Boss Interval Rule | RunRule | is_boss_level + BOSS_EVERY_N_LEVELS | every 5th level | Flags boss level and applies boss-level run flow and timing | per_level | level flow + HUD timer | implemented | BOSS_EVERY_N_LEVELS = 5 |
-| level_timer_profile | Level Timer Profile | RunRule | LEVEL_TIME_LIMIT + BOSS_TIME_LIMIT | level start | Uses 45s timer for standard levels and 60s for boss levels | per_level | HUD timer | implemented | Timer frozen in pause/shop transitions |
-| threat_budget_curve | Threat Budget Curve | Encounter | budget_for_level + THREAT_BUDGET_* | each wave spawn pass | Budget scales by level: max(min, round(base * exp^level)) controlling enemy composition pressure | per_wave | backend only | implemented | Defaults: base 6, exp 1.18, min 5 |
-| passage_budget_fail_safe | Passage Budget Fail-Safe | RunRule | ensure_passage_budget | map spawn path blocked | Removes destructible obstacles until player spawn can reach map edge | per_level | none | implemented | Anti-softlock safety net |
-
 Specification Operations Addendum
-This addendum defines production controls for status semantics, runtime mapping, formulas, trigger order, balancing guardrails, QA, telemetry, and change tracking.
+This addendum defines prop status semantics, runtime mapping, formulas, trigger order, balancing guardrails, QA, and telemetry.
 
 A1. Status Legend
 - planned: spec exists but no active runtime hook in shop or game loop.
@@ -862,21 +827,6 @@ A9. Telemetry Specification
 | player_death | run fail | run_id, level_idx, cause_tag, top_damage_source, path_summary |
 | run_completed | victory/exit | run_id, final_level, total_time_s, key_props |
 
-A10. Change Log Template
-
-
-Entry Body Fields
-1. Intent: one sentence for why this change exists.
-2. Change: exact numeric or behavior delta.
-3. Expected Impact: what should improve or decrease.
-4. Validation: tests, metrics, and replay seeds used.
-5. Rollback Plan: exact condition and revert path.
-
-Change Log Row Template
-| date | build | owner | ids_affected | change_summary | intent | validation_ref | rollback_ref |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| YYYY-MM-DD | vX.Y.Z | name | comma-separated ids | one-line change | one-line intent | qa case or metric id | commit or patch id |
-
 A11. Planned Prop Onboarding Checklist (Detailed)
 Use this checklist to move each planned prop from design-only into runtime-ready implementation.
 
@@ -969,36 +919,6 @@ Card Hover / Inspect Requirements
 3. Hover panel should show trigger type and boss modifier if applicable.
 4. Hover panel should show synergy tags in a compact chip list.
 5. Hover panel should not exceed three short paragraphs or equivalent rows.
-
-A13. Path Balance Targets and Build Identity Benchmarks
-This section defines the intended gameplay promise of each path so future props do not drift into generic stat inflation.
-
-| path | player promise | strength window | main weakness | required counter-pressure |
-| --- | --- | --- | --- | --- |
-| BALLISTIC | reliable projectile scaling and clean wave clear | early to late if line tools stack well | can become too linear without utility | armor, spread enemies, angle checks |
-| OFFENSE | burst and kill-speed acceleration | mid-run spike | fragile if overcommitted to damage | contact pressure and boss sustain phases |
-| CONTROL | safer space management and tempo denial | early to mid stability | lower raw DPS ceiling | ranged enemies and mobility checks |
-| DEFENSE | mistake forgiveness and sustain | all-run consistency | can over-stall fights | anti-stall bosses and shield breakers |
-| ECONOMY | stronger long-run scaling through resource advantage | mid to late payoff | weak short-term combat tempo | fast pressure waves and debt risk |
-| STATUS | compounding value over time and on crowded waves | mid to late | boss tuning can invalidate it if over-nerfed | cleanse enemies or burst windows |
-| SUMMON | distributed damage and positional pressure | mid to late | AI failure or pathing loss | hazard-heavy arenas and target priority checks |
-| CRIT | explosive spikes and elite deletion | mid burst peaks | high variance and overkill waste | crit resistance, pressure during downtime |
-| PAINT | territory control and layered attrition | early to mid space control | weak if enemies never stay in zone | jumpers, ranged pressure, forced movement |
-| RISK | high reward through deliberate downside | depends on player mastery | can feel unfair if downside is hidden | transparent UI, predictable penalties |
-
-Path Tuning Benchmarks
-1. Every primary path should have one early anchor prop, two mid-run scaling props, and one late-run payoff prop.
-2. No path should require one exact prop to become functional by wave 3.
-3. Economy path must recover combat tempo by mid-run or it becomes a trap.
-4. Defense path must preserve survivability without producing unkillable stall loops.
-5. Status path must retain boss relevance through capped but meaningful conversion rules.
-6. Summon path must maintain uptime targets even in hazard-dense encounters.
-
-Run Health Benchmarks
-1. A weak but coherent build should still clear standard waves on pace.
-2. A strong build should feel dominant without deleting all boss mechanics instantly.
-3. Two-path bridge builds should be viable, not only pure mono-path stacks.
-4. High-risk props must pay back quickly enough to feel intentional, not bait.
 
 A14. Prop Synergy Matrix and Anti-Synergy Rules
 This section defines which prop combinations should be intentionally supported, which should remain neutral, and which require hard guardrails.
