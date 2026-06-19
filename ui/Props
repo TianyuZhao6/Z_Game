@@ -1,6 +1,6 @@
 Executive Summary
 This document is the master working specification for Z Game's prop system, path identity, balance rules, browser behavior, UX readability, and QA requirements.
-Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and production guidance.
+Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and QA guidance.
 Current intent: keep prop data consistent, make builds readable in-game, and keep implementation, UI text, browser behavior, and QA expectations synchronized.
 
 Design North Star
@@ -11,13 +11,6 @@ Every prop should answer four questions quickly:
 3. What exact number changes now and on the next upgrade?
 4. What risk, cap, or encounter weakness keeps it from becoming automatic?
 
-Primary build fantasies:
-- Ballistic: bullets gain routing, chaining, piercing, and burst-clearing behavior.
-- Paint / Control: the floor becomes a tactical resource for slowing, reclaiming, damaging, and zoning.
-- Crit / Element: hits become conditional payoff events with clear timing windows.
-- Defense: shields, plating, and emergency tools convert mistakes into counterplay without deleting danger.
-- Economy: greed changes shop tempo and pickup routing while preserving debt and bandit pressure.
-- Summon / Turret: extra actors multiply pressure, but positioning and target access still matter.
 
 Documentation Standard For Each Prop
 Each detailed prop entry should include:
@@ -42,10 +35,10 @@ Before marking a prop implemented, verify:
 7. The prop has at least one focused QA case in this file or the test plan.
 
 Browser Prototype Section
-The browser prototype is the playable web build of Z Game, packaged through pygbag and running under the browser/emscripten runtime. It should be treated as a real target, not only a demo export. Browser play keeps the same core loop as desktop: menu, timed combat level, coin and heal pickups, shop, biome selection, boss cadence, save/load, and pause/settings overlays. The browser version uses separate runtime limits so the game remains responsive inside Chrome even when desktop can handle more entities and effects.
+The browser prototype is the playable web build of Z Game, packaged through pygbag and running under the browser/emscripten runtime. It should be treated as a supported runtime target. Browser play should preserve desktop prop behavior unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so the game remains responsive inside Chrome even when desktop can handle more entities and effects.
 
 Browser version description:
-The browser version is the low-friction public entry point for Z Game. It should communicate the same prop fantasy and run structure as the desktop build, but with stricter budgets for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any player-facing prop description that changes behavior on web must explain the browser behavior in plain language, using "browser version" or "web build" rather than internal terms like emscripten, web-lite, or debug route. The goal is to make reduced effects feel intentional and readable, not like missing features.
+The browser version should communicate the same prop behavior as the desktop build, but with stricter budgets for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any player-facing prop description that changes behavior on web must explain the browser behavior in plain language, using "browser version" or "web build" rather than internal terms like emscripten, web-lite, or debug route. Reduced effects should read as intentional caps or fallbacks, not missing features.
 
 Browser version differences to document on props:
 - Props may use lower visual density, shorter effect lifetimes, or fewer simultaneous spawned actors.
