@@ -1,5 +1,5 @@
 Executive Summary
-This document is the master working specification for Z Game's prop system, path identity, balance rules, browser behavior, UX readability, and QA requirements.
+This document is the master working specification for the prop system: path identity, balance rules, browser behavior, UX readability, and QA requirements.
 Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and QA guidance.
 Current intent: keep prop data consistent, make builds readable in-game, and keep implementation, UI text, browser behavior, and QA expectations synchronized.
 
@@ -34,8 +34,8 @@ Before marking a prop implemented, verify:
 6. Browser version current-value text and next-upgrade text match the actual browser cap or fallback if it differs from desktop.
 7. The prop has at least one focused QA case in this file or the test plan.
 
-Browser Prototype Section
-The browser prototype is the playable web build of Z Game, packaged through pygbag and running under the browser/emscripten runtime. It should be treated as a supported runtime target. Browser play should preserve desktop prop behavior unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so the game remains responsive inside Chrome even when desktop can handle more entities and effects.
+Browser Version Section
+The browser version is a supported runtime target for prop behavior. Browser play should preserve desktop prop behavior unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when desktop can handle more entities and effects.
 
 Browser version description:
 The browser version should communicate the same prop behavior as the desktop build, but with stricter budgets for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any player-facing prop description that changes behavior on web must explain the browser behavior in plain language, using "browser version" or "web build" rather than internal terms like emscripten, web-lite, or debug route. Reduced effects should read as intentional caps or fallbacks, not missing features.
@@ -491,12 +491,11 @@ Same-as-desktop policy:
 - Still include browser QA if the prop can generate high entity density, frequent audio, persistent state, or large visual bursts.
 - If later tuning introduces a browser-only cap, update the classification from same-as-desktop to capped and add player-facing text.
 
-Browser prototype goals:
-- Let a new player start a run quickly from the browser without installing Python or Pygame.
-- Preserve the feel of the desktop combat loop while reducing render and simulation spikes.
+Browser prop documentation goals:
+- Keep browser-specific caps, fallbacks, and reduced values explicit in prop entries.
 - Keep shop props, pause summaries, and tooltip text readable at smaller canvas sizes.
-- Make browser regressions measurable through diagnostics instead of relying on manual feel.
-- Use browser-safe audio and storage paths so music, SFX, and save data survive normal web play.
+- Make browser prop regressions measurable through diagnostics instead of relying on manual feel.
+- Document browser-safe audio and storage behavior only when it changes prop feedback or prop state.
 
 Browser-specific runtime behavior:
 - Uses web-lite isometric rendering by default, including capped visible pickups, turrets, enemies, bullets, and enemy shots.
@@ -521,14 +520,12 @@ Browser prop design rules:
 11. Any browser-only mechanical reduction must be treated as a balance change and listed in the detailed level table.
 12. Any browser-only visual simplification must preserve threat readability before preserving decorative feedback.
 
-Browser prototype QA checklist:
-- Start a normal browser run and reach the first shop with no Python or JS error string.
+Browser prop QA checklist:
 - Buy at least one ballistic, defense, economy, paint, and turret prop across test runs.
 - Verify card border color, path tag, current value text, and next upgrade text remain readable at 960x540 and 1280x720.
 - Verify any browser_version_note appears only when browser behavior actually differs from desktop.
 - Verify browser_version_note text matches the active cap, fallback, or conversion rule in runtime diagnostics.
-- Verify the web profiler heartbeat continues during combat and shop transitions.
-- Run one wind, mist, hell, and stone biome browser scenario because each stresses a different subsystem.
+- Run browser scenarios that stress the prop subsystem under test, such as paint rendering, shield pressure, projectile density, or shop persistence.
 - Confirm save/load preserves prop levels after browser refresh.
 - Confirm late-wave prop bursts respect visible caps instead of freezing the browser frame.
 
@@ -543,16 +540,14 @@ Browser prop QA rows to add per high-risk prop:
 | WEB-PROP-06 | Auto-Turret | desktop simulation count with lite-render visible turret cap 8 | all owned turrets still fire while renderer prioritizes nearest visible turrets |
 | WEB-PROP-07 | Stationary Turret | desktop simulation count with lite-render visible turret cap 8 | saved turret count restores and offscreen/overflow turrets still participate in combat |
 
-Browser prototype backlog:
-- Add a small browser-only "performance mode" note in settings that explains reduced VFX without exposing debug language.
+Browser prop documentation backlog:
 - Add a prop-card validation report for web text overflow at minimum canvas size.
 - Add web QA rows for the highest-risk props: Shrapnel Shells, Explosive Rounds, Ground Spikes, Curing Paint, Aegis Pulse, Auto-Turret, and Stationary Turret.
-- Add one browser-safe showcase build that intentionally demonstrates each current prop family in under 5 minutes.
 - Add browser diagnostics for prop-trigger counts per minute so runaway effects are visible before they become stalls.
 
-Z Game Systems and Props Specification
+Prop Systems Specification
 Status: Working Draft
-Purpose: Consolidated prop roster, balance, browser, runtime, UI, and QA reference for the current version.
+Purpose: Consolidated prop roster, balance, browser, runtime, UI, and QA reference.
 
 Prop Roster Template
 Use this roster as the quick-reference layer before the detailed prop specifications. One row should represent one purchasable prop.
@@ -651,11 +646,11 @@ Specification Operations Addendum
 This addendum defines prop status semantics, runtime mapping, formulas, trigger order, balancing guardrails, QA, and telemetry.
 
 A1. Status Legend
-- planned: spec exists but no active runtime hook in shop or game loop.
+- planned: spec exists but no active runtime hook in shop, combat, save, or UI code.
 - prototype: partially wired runtime path exists, but behavior or data flow is incomplete.
 - implemented: purchasable/system is wired and behavior executes in runtime.
 - balancing: behavior is implemented and currently under numeric tuning pass.
-- final: locked for current release branch except critical hotfix.
+- final: locked for the current prop spec except critical fixes.
 
 Status Promotion Rules
 1. planned -> prototype requires at least one runtime entry point.
@@ -2100,7 +2095,7 @@ Expected player-facing browser text:
 Expected browser tooltip/pause summary text:
 Browser negative-control URL, if relevant:
 
-16. Release Acceptance Criteria (Props System)
+16. Prop Acceptance Criteria
 16.1. Functional
 All prop ids load from save without migration errors.
 No prop purchase can crash the shop UI, even with malformed levels.
