@@ -540,10 +540,6 @@ Browser prop QA rows to add per high-risk prop:
 | WEB-PROP-06 | Auto-Turret | desktop simulation count with lite-render visible turret cap 8 | all owned turrets still fire while renderer prioritizes nearest visible turrets |
 | WEB-PROP-07 | Stationary Turret | desktop simulation count with lite-render visible turret cap 8 | saved turret count restores and offscreen/overflow turrets still participate in combat |
 
-Browser prop documentation backlog:
-- Add a prop-card validation report for web text overflow at minimum canvas size.
-- Add web QA rows for the highest-risk props: Shrapnel Shells, Explosive Rounds, Ground Spikes, Curing Paint, Aegis Pulse, Auto-Turret, and Stationary Turret.
-- Add browser diagnostics for prop-trigger counts per minute so runaway effects are visible before they become stalls.
 
 Prop Systems Specification
 Status: Working Draft
@@ -984,7 +980,7 @@ Use these rules to keep prop names and descriptions clean, readable, and consist
 
 Naming Rules
 1. Prefer 2-3 word names unless a longer name is clearly more readable.
-2. Avoid duplicate fantasy words that do not explain gameplay role.
+2. Avoid duplicate theme words that do not explain prop role.
 3. If a prop is risk-based, the name should imply danger or sacrifice.
 4. If a prop is economy-based, the name should imply value, debt, saving, bounty, or trade.
 
