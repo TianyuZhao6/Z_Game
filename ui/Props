@@ -3,7 +3,7 @@ This document is the master working specification for the prop system: path iden
 Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and QA guidance.
 Current intent: keep prop data consistent, make builds readable in-game, and keep implementation, UI text, browser behavior, and QA expectations synchronized.
 
-Design North Star
+Prop Design Rules
 Props should create readable build identities, not only larger numbers.
 Every prop should answer four questions quickly:
 1. What does this make the player do differently?
@@ -14,7 +14,7 @@ Every prop should answer four questions quickly:
 
 Documentation Standard For Each Prop
 Each detailed prop entry should include:
-- Gameplay promise: one sentence describing the player-facing outcome.
+- Effect promise: one sentence describing the player-facing outcome.
 - Trigger and runtime hook: passive, on hit, on kill, on damage, on move, consumable, or shop-only.
 - Level table: exact values for every level, including duration, radius, damage, cooldown, cap, and chance.
 - Scaling source: bullet_base, enemy max HP, current coins, player max HP, movement state, shield state, or fixed value.
@@ -35,21 +35,21 @@ Before marking a prop implemented, verify:
 7. The prop has at least one focused QA case in this file or the test plan.
 
 Browser Version Section
-The browser version is a supported runtime target for prop behavior. Browser play should preserve desktop prop behavior unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when desktop can handle more entities and effects.
+The browser version is a supported runtime target for prop behavior. Browser prop behavior should match desktop unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when desktop can handle more entities and effects.
 
 Browser version description:
-The browser version should communicate the same prop behavior as the desktop build, but with stricter budgets for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any player-facing prop description that changes behavior on web must explain the browser behavior in plain language, using "browser version" or "web build" rather than internal terms like emscripten, web-lite, or debug route. Reduced effects should read as intentional caps or fallbacks, not missing features.
+The browser version should document the same prop behavior as the desktop build, but with stricter budgets for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any player-facing prop description that changes behavior on web must explain the browser behavior in plain language, using "browser version" or "web build" rather than internal terms like emscripten, web-lite, or debug route. Reduced effects should read as intentional caps or fallbacks, not missing features.
 
 Browser version differences to document on props:
 - Props may use lower visual density, shorter effect lifetimes, or fewer simultaneous spawned actors.
 - Projectile, paint, turret, summon, coin, damage text, and VFX bursts must state the effective browser cap when it differs from desktop behavior.
-- Effects that are visually simplified in browser should keep the same gameplay result whenever possible.
+- Effects that are visually simplified in browser should keep the same result whenever possible.
 - Effects that must be mechanically reduced in browser should show the reduced value in tooltip current-value and next-upgrade text.
 - Props that rely on disabled browser systems, such as enemy projectiles on the safest route, need a fallback behavior written into the prop entry.
 - Browser-specific text should be short enough for 960x540 card layouts and should avoid technical implementation details.
 
 Recommended prop entry wording:
-- Browser version: Same gameplay as desktop; FX is trimmed by the global browser particle budget.
+- Browser version: Same values as desktop; FX is trimmed by the global browser particle budget.
 - Browser version: Same turret count as desktop; lite renderer shows the nearest 8 turrets when many are active.
 - Browser version: Enemy-shot trigger becomes a timed shield pulse while browser enemy projectiles are disabled.
 - Browser version: Uses the same damage values as desktop, but damage text may be hidden during dense waves.
@@ -58,8 +58,8 @@ Browser version prop checklist:
 - State whether web behavior is same, capped, fallback, or visual-only simplified.
 - Name the exact cap when the prop spawns bullets, turrets, summons, paint, coins, damage text, pulses, or particles.
 - Explain what happens when the cap is reached: drop the new effect, refresh the oldest effect, merge into damage, or convert into a stat bonus.
-- Keep desktop and browser level tables separate only when the gameplay numbers differ.
-- If only VFX changes, say the gameplay values stay unchanged.
+- Keep desktop and browser level tables separate only when the effect numbers differ.
+- If only VFX changes, say the effect values stay unchanged.
 - If browser behavior affects balance, include one QA case at 960x540 and one late-wave density case.
 
 Browser version prop family expectations:
@@ -74,14 +74,14 @@ Current browser implementation snapshot:
 - Lite-render visible caps are pickups 12, turrets 8, enemies 10, player bullets 28, and enemy shots 16.
 - Browser enemy shots are disabled on the normal route unless `enemyshots=1` or `allowenemyshots=1` is present in the URL.
 - Browser update scheduling separates heavy systems: vulnerability marks every 0.10s, damage texts/aegis pulse lists at 24 Hz, ground spikes/curing paint/DOT rounds at 20 Hz, pickups at 30 Hz.
-- Browser paint rendering uses cached static/dynamic surfaces, camera quantization, and refresh windows rather than rebuilding every frame. Wind and mist browser routes can skip the paint render layer while gameplay state still updates.
+- Browser paint rendering uses cached static/dynamic surfaces, camera quantization, and refresh windows rather than rebuilding every frame. Wind and mist browser routes can skip the paint render layer while paint state still updates.
 - Browser audio uses native HTML audio for BGM and skill FX by default; pygame mixer audio remains a debug fallback.
 - Browser saves use localStorage through the web save path; prop levels and persistent prop state read from the same META keys as desktop.
 
 Browser URL flags that affect prop behavior or QA:
 | flag | current effect | prop documentation impact |
 | --- | --- | --- |
-| `start=1` / `autostart=1` | starts gameplay directly in the browser route | Use for prop QA scenarios that need to skip menus |
+| `start=1` / `autostart=1` | starts combat directly in the browser route | Use for prop QA scenarios that need to skip menus |
 | `diag=1` / `profile=1` | enables browser profiler and diagnostic export | Required for verifying prop trigger counts, visible caps, and browser heartbeat |
 | `duration=` | controls diagnostic run duration when supported by the scenario harness | Use longer duration for late-wave prop burst checks |
 | `level=` | forces diagnostic level where supported | Use to test boss cadence or late-level shop prop mixes |
@@ -147,7 +147,7 @@ Browser UI surface matrix for prop documentation:
 Browser prop documentation anti-patterns:
 - Do not write "web has fewer turrets" when simulation count is unchanged and only visible drawing is capped.
 - Do not write "explosion is weaker" when only particles are trimmed.
-- Do not write "paint disabled" when only the paint render layer is skipped in wind/mist; gameplay paint state still updates.
+- Do not write "paint disabled" when only the paint render layer is skipped in wind/mist; paint state still updates.
 - Do not write fixed caps that are derived from WEB_* constants unless the current constant value is also cited.
 - Do not hide reward loss behind "performance mode"; if value is dropped, mark the prop mechanically reduced and list the browser value.
 
@@ -169,7 +169,7 @@ Browser source-of-truth map:
 Browser display decision table:
 | browser behavior | card note | tooltip note | pause/run summary note | example |
 | --- | --- | --- | --- | --- |
-| Same gameplay, visual-only FX trim | no | optional if confusing | no | Explosive damage unchanged; particles trimmed |
+| Same effect, visual-only FX trim | no | optional if confusing | no | Explosive damage unchanged; particles trimmed |
 | Same simulation, visible actor cap | only if player may notice missing actors | yes | yes for persistent actors | Nearest 8 turrets drawn; all turrets fire |
 | Same value, text merge/drop | no | optional | no unless survival-critical | DOT text can merge; damage continues |
 | Spawn count reduced by headroom | no unless build-defining | yes | optional diagnostics | Shrapnel may spawn fewer shards during bullet floods |
@@ -184,9 +184,9 @@ Implementation-backed browser prop behavior:
 | Feature gates | WEB_ENABLE_AEGIS_PULSES, WEB_ENABLE_GROUND_SPIKES, WEB_ENABLE_CURING_PAINT, WEB_ENABLE_DOT_ROUNDS, and WEB_ENABLE_VULNERABILITY_MARKS default true in the web quality payload | These props are active on browser unless a future profile disables the gate |
 | Shrapnel bullets | Browser uses pending-bullet headroom from WEB_LITE_RENDER_BULLET_CAP * 2, not a fixed shrapnel-only cap | Describe soft burst reduction, not a hard live-shard limit |
 | Explosive rounds | Damage and chain behavior use desktop stats; FX particles are controlled by the global WEB_MAX_FX_PARTICLES budget | Mark as visual-budgeted, not mechanically reduced |
-| Ground Spikes | Browser updates the system at 20 Hz and uses the same max_active table 6/10/14 | Mark gameplay as same, with scheduled browser updates |
-| Curing Paint | Browser updates the system at 20 Hz; rendering uses cached paint layers and may skip paint rendering in wind/mist browser routes | Mark gameplay as same, visual render as cached/throttled |
-| Aegis Pulse | Trigger and stats match desktop; active pulse list updates at 24 Hz and damage text is capped/merged | Mark gameplay as same, feedback text as budgeted |
+| Ground Spikes | Browser updates the system at 20 Hz and uses the same max_active table 6/10/14 | Mark effect as same, with scheduled browser updates |
+| Curing Paint | Browser updates the system at 20 Hz; rendering uses cached paint layers and may skip paint rendering in wind/mist browser routes | Mark effect as same, visual render as cached/throttled |
+| Aegis Pulse | Trigger and stats match desktop; active pulse list updates at 24 Hz and damage text is capped/merged | Mark effect as same, feedback text as budgeted |
 | Turrets | Auto and stationary turrets simulate from saved META counts; lite render draws nearest 8 visible turrets | Do not document browser-only turret count conversion unless implementation changes |
 | Damage text | WEB_MAX_DAMAGE_TEXTS caps visible/active text and merges nearby non-crit numeric text | Browser notes should mention hidden/merged feedback only when it affects readability |
 
@@ -207,7 +207,7 @@ Specific browser prop behavior matrix:
 | Auto-Turret | Same saved level and simulated turret count up to max level 5; all owned follower turrets update and fire | lite renderer draws nearest 8 total turrets | Tooltip note only when many turrets are active: browser draws nearest 8 |
 | Stationary Turret | Same saved stationary_turret_count and placement restoration; all spawned stationary turrets remain obstacles and fire | lite renderer draws nearest 8 total turrets | Pause summary can explain hidden turrets still work when count is high |
 | Coin and economy props | Meta changes and reward math use the same state as desktop; browser may limit visible pickup clutter | max spoils on field currently 8 in default full profile; lite renderer draws 12 pickups | Do not imply reduced rewards; describe bundled/hidden pickup visuals only if implemented |
-| Movement/control props | Planned movement auras, dash contact, and tar puddles should run on scheduled browser update lanes rather than every visual frame | use 20-24 Hz cadence for area/contact effects and global FX/text budgets | Tooltip should state gameplay values only; browser notes belong in detailed spec unless values change |
+| Movement/control props | Planned movement auras, dash contact, and tar puddles should run on scheduled browser update lanes rather than every visual frame | use 20-24 Hz cadence for area/contact effects and global FX/text budgets | Tooltip should state effect values only; browser notes belong in detailed spec unless values change |
 | Crit/element props | Planned crit explosions, chill, and shock chains should follow the same bullet/status scheduling and pending-bullet/FX budgets | projectile-like chains use bullet headroom; VFX uses WEB_MAX_FX_PARTICLES | Avoid card notes unless browser reduces chain count, radius, or proc chance |
 | Paint economy props | Planned Paint Converter/Cleanse Step should use paint ownership/intensity state, not rendered paint visibility | paint render can be skipped in wind/mist while paint state still updates | Tooltip must not imply disabled paint rewards just because paint layer is hidden |
 
@@ -242,11 +242,11 @@ Browser current/next text guidance for implemented props:
 | Coin / economy props | Show reward, discount, interest, debt, and protection values from the level table | Never show reduced reward text for visual pickup caps; mention bundled or hidden pickups only in tooltip/pause text. |
 
 Browser current/next wording rules:
-- Current-value and next-upgrade text should show browser-specific numbers only when browser changes gameplay values.
+- Current-value and next-upgrade text should show browser-specific numbers only when browser changes effect values.
 - Visual caps belong in tooltip, pause summary, or detailed spec, not in the main upgrade number line.
 - If rewards are credited directly or bundled because of pickup caps, current/next text must still show the full reward math.
 - If a fallback trigger is used, tooltip text must name both the desktop trigger and the browser fallback.
-- If a prop has both a gameplay cap and a visual cap, lead with the gameplay cap and add the visual cap as secondary detail.
+- If a prop has both a effect cap and a visual cap, lead with the effect cap and add the visual cap as secondary detail.
 
 Browser QA scenario rows for prop families:
 | scenario | suggested URL | build focus | pass criteria |
@@ -266,7 +266,7 @@ Browser acceptance snippets for detailed prop entries:
 | Explosion / crit VFX | Browser trims particles under the FX budget while radius, damage, boss modifier, and chain rules stay authoritative. | fx_particle_count <= budget, damage_done, explosion_trigger_count | Explosion damage disappears when particles are trimmed. |
 | Status ticks | Browser status effects update on the scheduled status lane; stack caps, duration, tick damage, and boss modifiers remain authoritative while repeated text can merge. | update_cadence_hz, stacks, dmg_text_count, damage_done | Text merge reduces tick count or stack duration. |
 | Ground control | Browser ground effects update on the ground scheduler; active caps and oldest-refresh/oldest-evict rules must be explicit. | active_spike_count or paint_active_count, oldest_evictions, update_cadence_hz | Render cache state changes damage, slow, ownership, or active cap. |
-| Paint visuals | Browser may cache or skip paint rendering in wind/mist routes; paint gameplay must read paint state, not rendered pixels. | paint_damage_ticks, paint_active_count, paint_render_refresh_ms | Paint rewards or damage stop when paint layer is hidden. |
+| Paint visuals | Browser may cache or skip paint rendering in wind/mist routes; paint effect must read paint state, not rendered pixels. | paint_damage_ticks, paint_active_count, paint_render_refresh_ms | Paint rewards or damage stop when paint layer is hidden. |
 | Shield mitigation | Browser shield/plating values, mitigation order, cooldowns, and save state match desktop; only text/audio feedback may merge or trim. | shield_state, plating_value, dmg_text_count, localStorage_write_ok | Merged feedback hides a real mitigation failure. |
 | Pulse effects | Browser pulse lists update on the pulse/text scheduler; pulse damage, radius, cooldown, and trigger state are authoritative. | pulse_count, update_cadence_hz, dmg_text_count | Pulse VFX cap prevents damage or cooldown progression. |
 | Economy / pickups | Browser pickup and spoil visual caps must not reduce credited coin value, discounts, debt, interest, bounty, cashback, or protected coins. | visible_pickups, spoils_on_field, coins_credited, localStorage_write_ok | Reward math changes because a pickup was bundled, hidden, or directly credited. |
@@ -278,7 +278,7 @@ Browser acceptance snippet rules:
 - Use these snippets as the minimum detailed-spec wording when a prop belongs to that family.
 - Replace generic words such as "budget" or "scheduler" with the exact current value when the implementation has one.
 - If a prop spans multiple families, include the strictest fail condition first.
-- If the browser changes an actual gameplay number, do not use these same-value snippets; write the browser number in current_value_text and next_upgrade_text.
+- If the browser changes an actual effect number, do not use these same-value snippets; write the browser number in current_value_text and next_upgrade_text.
 
 Browser version description levels:
 - Card text: one short player-facing note only when browser behavior changes a number, cap, or trigger. Keep it under one line at 960x540.
@@ -299,7 +299,7 @@ Browser per-prop required detail checklist:
 | --- | --- | --- |
 | Runtime gate | Is there a WEB_ENABLE_* flag or URL flag required? | WEB_ENABLE_CURING_PAINT, enemyshots=1 |
 | Update owner | Which loop owns the browser update? | bullet hit event, 20 Hz status, 24 Hz pulse list, 30 Hz pickup |
-| Simulated value | Which gameplay values stay authoritative? | damage, radius, cooldown, reward, shield amount |
+| Simulated value | Which effect values stay authoritative? | damage, radius, cooldown, reward, shield amount |
 | Visible cap | Which browser render cap can hide feedback? | 28 bullets, 8 turrets, 12 pickups, 4 damage texts |
 | Overflow rule | What happens when cap/headroom is hit? | reduce spawned shards, merge text, trim FX, credit rewards |
 | Save path | Does state persist through localStorage refresh? | prop level, debt, cashback, turret count, shield reserve |
@@ -311,11 +311,11 @@ Browser doc completeness checklist:
 | --- | --- | --- |
 | Classification exists | Browser version says same_as_desktop, visual_only, render_capped, spawn_capped, fallback_trigger, or mechanically_reduced | Browser version only says "works in browser" or "same as desktop" without a classification |
 | Runtime owner named | The line names bullet_hit_event, status_20hz, ground_20hz, pulse_24hz, pickup_30hz, shop_meta, turret_update, player_damage_event, or save_load | The prop creates effects but the browser update path is not named |
-| Gameplay authority stated | The text lists which gameplay numbers remain authoritative: damage, cooldown, radius, duration, stack cap, reward, shield, summon count, or saved level | The text only describes visuals and leaves actual values ambiguous |
+| Effect authority stated | The text lists which effect numbers remain authoritative: damage, cooldown, radius, duration, stack cap, reward, shield, summon count, or saved level | The text only describes visuals and leaves actual values ambiguous |
 | Cap/cadence exactness | Known browser values are written as exact numbers or exact routes, such as 28 bullets, 8 turrets, 12 pickups, 4 damage texts, 16 particles, 20 Hz, 24 Hz, 30 Hz, or `enemyshots=1` | The text uses vague phrases like "some limits", "optimized", "lower cost", or "browser-safe" |
 | Overflow behavior named | The text says drop, merge, refresh oldest, reduce spawned count, credit directly, keep simulating while hidden, or use fallback | The text says capped but does not say what happens when the cap is hit |
 | Player surface decided | The entry explicitly says no card note, tooltip only, card plus tooltip, pause/run summary, or QA-only | The browser text exists but no UI surface is defined |
-| Desktop comparison safe | If gameplay values match desktop, the browser note says what visual/feedback path changes instead of implying weaker values | Browser wording implies lower damage, reward, cooldown, or shield without a mechanical value change |
+| Desktop comparison safe | If effect values match desktop, the browser note says what visual/feedback path changes instead of implying weaker values | Browser wording implies lower damage, reward, cooldown, or shield without a mechanical value change |
 | Save/refresh covered | Stateful props mention localStorage/save/load behavior and refresh QA | Economy, shield, turret, debt, discount, bounty, or cashback state can change across refresh without documentation |
 | QA proof included | The entry names a URL, diagnostic counter, or scenario tied to the runtime owner | QA says only "test in browser" |
 | Card text fit checked | Browser note is short enough for 960x540 card layout or is moved to tooltip/pause summary | Card browser note includes caps, debug names, and long implementation details |
@@ -333,11 +333,11 @@ Current implemented-prop browser documentation audit:
 | Piercing Rounds | browser_doc:needs_counter | 28 visible-bullet cap; pierce/falloff/hit simulation remain authoritative; tooltip surface chosen | Record web_visible_bullets, pierce hit count, and damage_done in one dense-wave QA result. |
 | Ricochet Scope | browser_doc:needs_counter | 28 visible-bullet cap; routing and bounce damage continue; tooltip surface chosen | Record routed-hit count and pending_bullets while the visible cap is reached. |
 | Shrapnel Shells | browser_doc:complete | Pending-bullet headroom reduces spawned shards before damage; card/tooltip copy and QA counters are defined | Keep the documented headroom formula synchronized with browser constants. |
-| Explosive Rounds | browser_doc:needs_counter | Gameplay values match desktop; FX trims under the 16-particle budget; tooltip/run-summary behavior is defined | Capture explosion_trigger_count, fx_particle_count, and damage_done in the ballistic_dense scenario. |
+| Explosive Rounds | browser_doc:needs_counter | Effect values match desktop; FX trims under the 16-particle budget; tooltip/run-summary behavior is defined | Capture explosion_trigger_count, fx_particle_count, and damage_done in the ballistic_dense scenario. |
 | DOT Rounds | browser_doc:needs_counter | 20 Hz status updates; stacks/tick damage continue when text merges; tooltip surface chosen | Record update_cadence_hz, stacks, tick count, and merged/dropped text count. |
 | Mark of Vulnerability | browser_doc:needs_counter | 0.10s scheduled update; duration, target priority, and bonus remain authoritative | Record marked target type, mark duration, and bonus-damage trigger count. |
-| Ground Spikes | browser_doc:needs_counter | 20 Hz update; max_active 6/10/14; oldest spike eviction; gameplay matches desktop | Record active_spike_count and oldest_evictions at each prop level. |
-| Curing Paint | browser_doc:needs_counter | 20 Hz gameplay update; cached/hidden paint rendering does not change damage or ownership | Record paint_damage_ticks in normal, wind, and mist routes while render refresh changes. |
+| Ground Spikes | browser_doc:needs_counter | 20 Hz update; max_active 6/10/14; oldest spike eviction; effect matches desktop | Record active_spike_count and oldest_evictions at each prop level. |
+| Curing Paint | browser_doc:needs_counter | 20 Hz state update; cached/hidden paint rendering does not change damage or ownership | Record paint_damage_ticks in normal, wind, and mist routes while render refresh changes. |
 | Aegis Pulse | browser_doc:needs_counter | 24 Hz pulse/text update; trigger, cooldown, radius, and damage remain authoritative | Record pulse_count, cooldown intervals, damage_done, and merged text count. |
 | Bone Plating | browser_doc:needs_counter | Mitigation order and plating state match desktop; feedback text may merge | Record pre-hit damage, mitigated damage, plating value, and level-5 negate behavior. |
 | Carapace | browser_doc:needs_counter | Reserve shield and Aegis gating persist through browser save/load | Record shield value before refresh, localStorage_write_ok, restored value, and Aegis availability. |
@@ -387,13 +387,13 @@ Audit maintenance rule:
 
 Browser doc completeness example:
 Good:
-Browser version: classification = render_capped. Runtime owner = turret_update. Gameplay values = owned turret count, damage, fire rate, targeting, and saved level match desktop. Browser cap = nearest 8 turrets are drawn; hidden turrets keep simulating and firing. Player surface = card note plus tooltip when owned turret count exceeds 8. QA proof = web_visible_turrets, simulated_turret_count, and turret_shots_fired in `?start=1&diag=1&level=8`.
+Browser version: classification = render_capped. Runtime owner = turret_update. Effect values = owned turret count, damage, fire rate, targeting, and saved level match desktop. Browser cap = nearest 8 turrets are drawn; hidden turrets keep simulating and firing. Player surface = card note plus tooltip when owned turret count exceeds 8. QA proof = web_visible_turrets, simulated_turret_count, and turret_shots_fired in `?start=1&diag=1&level=8`.
 
 Bad:
 Browser version: optimized for web.
 
 Browser version field schema for every detailed prop:
-- First sentence: classify the browser behavior and say whether gameplay values match desktop.
+- First sentence: classify the browser behavior and say whether effect values match desktop.
 - Second sentence: name the implementation owner and cadence, such as bullet hit event, 20 Hz status update, 24 Hz pulse update, 30 Hz pickup update, shop/meta path, or turret update loop.
 - Third sentence: name the exact browser cap or overflow rule that can change visible feedback.
 - Fourth sentence: state what stays authoritative when the cap is hit, such as damage, reward credit, shield amount, cooldown, stack count, or saved level.
@@ -436,7 +436,7 @@ Browser version:
 - Update owner: ground-control scheduler at 20 Hz.
 - Simulated values: damage_per_tick, lifetime, radius, boss multiplier, ownership, and tick interval match desktop.
 - Visible cap: paint render uses cached static/dynamic layers and can be skipped in wind/mist routes.
-- Overflow rule: gameplay paint state remains in paint_grid; do not base rewards on rendered pixels.
+- Overflow rule: paint state remains in paint_grid; do not base rewards on rendered pixels.
 - Player note: tooltip only if a biome hides paint visuals; no card note for normal browser play.
 - QA URL: `?start=1&diag=1&biome=wind` plus normal biome run.
 
@@ -452,14 +452,14 @@ Browser version:
 
 Browser wording by implementation confidence:
 - Implemented and verified in code: use present tense, such as "Browser updates Curing Paint at 20 Hz."
-- Implemented but only visual: say "gameplay matches desktop" before describing the visual cap.
+- Implemented but only visual: say "effect matches desktop" before describing the visual cap.
 - Planned: start with "planned" and specify the required hook or fallback.
 - Unknown: do not invent a cap; write "must define browser cap/fallback before implementation."
 
 Browser entry depth by implementation status:
 | implementation status | required browser description depth | example detail |
 | --- | --- | --- |
-| implemented and gameplay-affecting | Full browser version paragraph with classification, owner, cap/cadence, overflow rule, player note, and QA counter | Shrapnel must name pending-bullet headroom, reduced shard spawn rule, visible bullet cap, and unchanged shard damage |
+| implemented and effect-affecting | Full browser version paragraph with classification, owner, cap/cadence, overflow rule, player note, and QA counter | Shrapnel must name pending-bullet headroom, reduced shard spawn rule, visible bullet cap, and unchanged shard damage |
 | implemented and visual-only | One or two sentences in the detailed spec plus optional tooltip note; no separate browser level table | Explosive must say FX trims under the browser particle budget while explosion damage/radius stay unchanged |
 | implemented and persistent | Include localStorage/save behavior and refresh QA, even when combat behavior is unchanged | Coupon, Loan, Lockbox, Interest, Carapace, and turret counts must survive browser refresh |
 | implemented and high-density | Include late-wave diagnostic route and the counter that proves simulation continues under visible caps | Piercing/Ricochet should cite web_visible_bullets, pending_bullets, and prop_trigger_counts |
@@ -468,7 +468,7 @@ Browser entry depth by implementation status:
 | planned with unknown browser cost | Mark browser cap/fallback as unresolved and block card-ready status until the cap is chosen | New summon, chain-lightning, or paint-economy props must define actor/chain/pickup budgets before tuning |
 
 Browser implementation-status wording examples:
-- Implemented: "Browser version: gameplay values match desktop; browser updates DOT at 20 Hz and may merge tick text under the damage-text budget."
+- Implemented: "Browser version: effect values match desktop; browser updates DOT at 20 Hz and may merge tick text under the damage-text budget."
 - Implemented visual-only: "Browser version: explosion damage and radius match desktop; FX may trim under the 16-particle browser budget."
 - Implemented persistent: "Browser version: value and shop order match desktop; state persists through localStorage and must restore after refresh."
 - Planned known hook: "Browser version: planned to run through the 20 Hz ground scheduler; paint state remains authoritative even if the render layer is skipped."
@@ -479,15 +479,15 @@ Browser version classification guide:
 | classification | meaning | player-facing note needed | example |
 | --- | --- | --- | --- |
 | same as desktop | damage, timing, caps, triggers, and reward value match desktop | no card note; optional detailed spec note | DOT damage ticks at the same values |
-| visual-only simplified | gameplay matches desktop but particles, flashes, text, or ripples are reduced | tooltip note only if the missing visual could confuse players | explosive particles trim to the browser FX budget |
+| visual-only simplified | effect matches desktop but particles, flashes, text, or ripples are reduced | tooltip note only if the missing visual could confuse players | explosive particles trim to the browser FX budget |
 | capped | browser has a lower live actor, projectile, tile, text, or VFX cap | yes, if the cap changes planning or stacking value | lite renderer shows nearest 8 turrets |
 | fallback | a disabled browser subsystem is replaced by another trigger or effect | yes, always | enemy-shot trigger becomes timed shield pulse |
 | mechanically reduced | browser changes damage, duration, cooldown, radius, chance, or reward value | yes, card and tooltip must show browser numbers | splash radius or summon count is lower on web |
 
 Same-as-desktop policy:
-- If a prop is identical in gameplay and only benefits from generic browser optimizations, write "Browser version: same gameplay values as desktop" in the detailed spec only.
+- If a prop is identical in effect and only benefits from generic browser optimizations, write "Browser version: same values as desktop" in the detailed spec only.
 - Do not add a browser_version_note to the shop card for same-as-desktop props.
-- Do not create separate browser level tables unless at least one gameplay number differs.
+- Do not create separate browser level tables unless at least one effect number differs.
 - Still include browser QA if the prop can generate high entity density, frequent audio, persistent state, or large visual bursts.
 - If later tuning introduces a browser-only cap, update the classification from same-as-desktop to capped and add player-facing text.
 
@@ -514,7 +514,7 @@ Browser prop design rules:
 5. Any prop with persistent state must save and load through the same meta keys on desktop and web.
 6. Any prop with frequent audio feedback must use short, pooled, browser-safe SFX or degrade silently when FX audio is disabled.
 7. Any prop entry with browser-specific behavior must include a "Browser version" note that names the cap, fallback, or simplified effect.
-8. Browser version notes should distinguish visual-only reductions from gameplay reductions so QA can verify the correct expectation.
+8. Browser version notes should distinguish visual-only reductions from effect reductions so QA can verify the correct expectation.
 9. Any browser-only quality conversion must be visible in current-value and next-upgrade text, not hidden in backend tuning. Current turret implementation does not use browser-only quality conversion.
 10. Any browser-only cap must define what happens to overflow value: dropped, refreshed, merged, converted, or delayed.
 11. Any browser-only mechanical reduction must be treated as a balance change and listed in the detailed level table.
@@ -564,11 +564,11 @@ Roster Rules
 Browser roster annotation standard:
 Use the existing notes column for quick browser status when a prop has web-specific behavior.
 Preferred short tags:
-- web:same - gameplay values match desktop; no card note needed.
-- web:visual - gameplay values match desktop, but browser simplifies VFX or text density.
+- web:same - effect values match desktop; no card note needed.
+- web:visual - effect values match desktop, but browser simplifies VFX or text density.
 - web:cap - browser uses a lower actor, projectile, paint, pickup, text, or VFX cap.
 - web:fallback - browser replaces a disabled trigger or subsystem with another behavior.
-- web:reduced - browser changes a gameplay number and must show browser-specific values.
+- web:reduced - browser changes a effect number and must show browser-specific values.
 
 Roster browser note examples:
 - web:cap pending bullets by headroom, visible bullets 28
@@ -600,7 +600,7 @@ Section Scan Guide (Table Order)
 | piercing_rounds | Piercing Rounds | Core Offense | BALLISTIC | NONE | Pierce scaler | 1 | $12 | 5 | passive | +1 to +5 pierce, up to 16% falloff | pierce,wave_clear,projectile | none | OFF | implemented | Core Ballistic baseline; web:cap visible bullets 28, hit simulation continues |
 | ricochet_scope | Ricochet Scope | Core Offense | BALLISTIC | NONE | Bounce scaler | 2 | $14 | 3 | passive | 1 to 3 ricochets, 90% to 75% bounce damage | ricochet,crit,wave_clear | lower single-target value in open maps | OFF | implemented | Core Ballistic baseline; web:cap visible bullets 28, ricochet routing simulates |
 | shrapnel_shells | Shrapnel Shells | Core Offense | BALLISTIC | NONE | Death burst | 3 | $16 | 3 | on_kill | 25% to 45% proc, 3 to 4 shards | shrapnel,wave_clear,crit | performance-capped secondary spawns | OFF | implemented | Core Ballistic baseline; web:cap pending bullets by headroom, visible bullets 28 |
-| ground_spikes | Ground Spikes | Core Offense | CONTROL | OFFENSE | Trail trap | 2 | $18 | 3 | on_move | 0.30 to 0.50 bullet_base, 6 to 14 active spikes | trail,slow,area_denial | move speed penalty per purchase | CTL | implemented | Existing runtime constants mapped; web:same gameplay, 20 Hz update |
+| ground_spikes | Ground Spikes | Core Offense | CONTROL | OFFENSE | Trail trap | 2 | $18 | 3 | on_move | 0.30 to 0.50 bullet_base, 6 to 14 active spikes | trail,slow,area_denial | move speed penalty per purchase | CTL | implemented | Existing runtime constants mapped; web:same effect, 20 Hz update |
 | bleeding_edge | Bleeding Edge | Core Offense | OFFENSE | STATUS | Bleed applicator | 2 | $17 | 3 | on_hit | 24% to 52% bleed total over 3s | bleed,bossing,damage_over_time | lower burst without setup | OFF | planned | Add if bleed package is active; web:same planned 20 Hz status lane, text may merge |
 | dot_rounds | DOT Rounds | Core Offense | OFFENSE | STATUS | Generic DoT | 2 | $20 | 3 | on_hit | 0.10 to 0.22 bullet_base per tick, 1 to 2 stacks | dot,status,bossing | capped DPS and reduced boss value | OFF | implemented | Existing runtime constants mapped; web:same 20 Hz status update, text may merge |
 | explosive_rounds | Explosive Rounds | Core Offense | OFFENSE | AOE | Chain explosion | 2 | $18 | 3 | on_kill | 25% to 45% splash, radius 0.65 to 0.95 tiles | explosion,aoe,chain | boss damage reduced to 50% | OFF | implemented | Existing runtime constants mapped; web:visual FX budget 16 particles |
@@ -771,7 +771,7 @@ Price Resolution Order
 3. Round and clamp to minimum 1.
 
 A7. Set Bonus Matrix
-| path | seed state (<2) | online state (>=2) | full state (>=4) | current gameplay effect | next-step recommendation |
+| path | seed state (<2) | online state (>=2) | full state (>=4) | current effect | next-step recommendation |
 | --- | --- | --- | --- | --- | --- |
 | Ballistic | tracked only | UI online label | UI full label | none direct | add projectile consistency bonus |
 | Turret | tracked only | UI online label | UI full label | none direct | add turret uptime or targeting bonus |
@@ -1092,7 +1092,7 @@ Level 3: proc_chance = 45%, shard_count = 4, shard_damage = 44% bullet_base
 Shard travel range: 2.2 / 2.6 / 3.0 tiles
 Chain guard: shrapnel kills cannot trigger another shrapnel proc more than 2 generations deep.
 Performance cap: max 36 live shrapnel bullets at once; excess shards are dropped.
-Browser version: gameplay chance and shard damage match desktop. Shard count is passed through the browser pending-bullet soft cap: current implementation uses max(10, WEB_LITE_RENDER_BULLET_CAP * 2) pending headroom, with WEB_LITE_RENDER_BULLET_CAP currently 28. If there is no headroom, extra shards are not spawned; if headroom is tight, the shard burst is reduced. The lite renderer draws at most 28 visible player bullets nearest the player.
+Browser version: effect chance and shard damage match desktop. Shard count is passed through the browser pending-bullet soft cap: current implementation uses max(10, WEB_LITE_RENDER_BULLET_CAP * 2) pending headroom, with WEB_LITE_RENDER_BULLET_CAP currently 28. If there is no headroom, extra shards are not spawned; if headroom is tight, the shard burst is reduced. The lite renderer draws at most 28 visible player bullets nearest the player.
 
 1.5. Mark of Vulnerability
 Effect:
@@ -1746,7 +1746,7 @@ Level 3: damage_per_tick = 0.08 * bullet_base, lifetime = 4.0s, radius = 0.90 ti
 Boss rule: paint DoT deals 70% damage to bosses.
 Spawn cadence: leave footprint every 0.25s while moving.
 Ownership rule: only latest paint owner controls tile effects.
-Browser version: damage, lifetime, radius, boss modifier, ownership, and tick interval match desktop. The browser combat loop updates curing paint on a 20 Hz schedule when WEB_ENABLE_CURING_PAINT is enabled. Rendering uses cached static/dynamic paint surfaces, camera quantization, and lower refresh windows; wind and mist browser routes may skip the paint render layer while gameplay paint state still updates.
+Browser version: damage, lifetime, radius, boss modifier, ownership, and tick interval match desktop. The browser combat loop updates curing paint on a 20 Hz schedule when WEB_ENABLE_CURING_PAINT is enabled. Rendering uses cached static/dynamic paint surfaces, camera quantization, and lower refresh windows; wind and mist browser routes may skip the paint render layer while paint state still updates.
 
 6.2. Paint Converter
 Effect:
@@ -1784,7 +1784,7 @@ L3: conversion_rate = 0.45 intensity/s
 Bonus: while converting, gain 6%/9%/12% slow resistance.
 Browser version: planned enemy-paint conversion should operate on paint_grid state even when browser wind/mist routes skip paint rendering. Conversion rate, slow resistance, and ownership changes should match desktop; visual repaint feedback can update on the cached paint refresh cadence.
 
-7. Set / Combo Ideas
+7. Set / Combo Specifications
 
 7.1. Ballistic Engine (2/3 piece set)
 Pieces:
@@ -1939,7 +1939,7 @@ Browser add-on: refresh mid-debt and after shop spending to verify localStorage 
 12.4. Script D: Paint control dominance
 Buy order: Curing Paint -> Cleanse Step -> Paint Converter -> Frost Brand
 Goal: confirm the map-control playstyle is viable without becoming mandatory for wins.
-Browser add-on: run one normal biome and one wind or mist biome. Confirm paint gameplay state updates at 20 Hz even when the browser render path skips or caches the paint layer, and confirm Paint Converter uses ownership state rather than rendered visibility.
+Browser add-on: run one normal biome and one wind or mist biome. Confirm paint paint state updates at 20 Hz even when the browser render path skips or caches the paint layer, and confirm Paint Converter uses ownership state rather than rendered visibility.
 
 12.5. Logging template per test:
 run_id, level_reached, build_paths, avg_dps, damage_taken, coins_earned, boss_ttk, fps_min
@@ -1961,7 +1961,7 @@ KILL_DETECTED -> SPAWN_PAYLOAD -> VALIDATE_CHAIN_DEPTH -> APPLY_CAPS -> COMPLETE
 Rules:
 Do not re-enter the same kill event more than once.
 Track chain_origin_id to prevent infinite recursive effect loops.
-Browser rule: on-kill payloads must pass through browser overflow handling before spawning bullets, coins, or particles. Preferred order is calculate reward/damage first, then apply visual/entity caps, then merge or credit overflow value when gameplay value must be preserved.
+Browser rule: on-kill payloads must pass through browser overflow handling before spawning bullets, coins, or particles. Preferred order is calculate reward/damage first, then apply visual/entity caps, then merge or credit overflow value when effect value must be preserved.
 
 13.3. On-damage-taken props (Mirror Shell, Retaliation Core, Guardian Charm)
 State flow:
@@ -2030,7 +2030,7 @@ same_as_desktop / visual_only / render_capped / spawn_capped / fallback_trigger 
 Browser implementation owner:
 bullet_hit_event / bullet_update / status_20hz / ground_20hz / pulse_24hz / pickup_30hz / turret_update / shop_meta / player_damage_event / save_load
 
-Browser authoritative gameplay values:
+Browser authoritative effect values:
 List the values that do not change in browser, such as damage, cooldown, radius, duration, stack cap, reward value, shield amount, turret count, or saved level.
 
 Browser visible feedback changes:
@@ -2044,7 +2044,7 @@ Choose one explicit verb: drop, merge, refresh oldest, reduce spawned count, cre
 
 Browser player-facing copy:
 State the final surface decision:
-- none: gameplay and visible planning are unchanged.
+- none: effect values and visible planning are unchanged.
 - tooltip only: only visual feedback changes.
 - card + tooltip: browser changes a planning-relevant cap, fallback, or value.
 - pause/run summary: browser hides simulated persistent state, such as turrets or saved economy state.
@@ -2054,13 +2054,13 @@ Browser QA proof:
 Name one URL or counter. For implemented props, include at least one of: pending_bullets, web_visible_bullets, web_visible_turrets, visible_pickups, dmg_text_count, fx_particle_count, prop_trigger_counts, fallback_trigger_count, localStorage_write_ok, or browser_gap_ms.
 
 Browser same-as-desktop expanded example:
-Browser version: classification = same_as_desktop. Implementation owner = bullet_hit_event. Authoritative gameplay values = proc chance, damage multiplier, cooldown, and boss modifier match desktop. Visible feedback changes = damage text may merge under the browser text budget. Player copy = no card note; tooltip note only if repeated text merging confuses QA. QA proof = `?start=1&diag=1` with prop_trigger_counts and damage_done matching desktop expectations.
+Browser version: classification = same_as_desktop. Implementation owner = bullet_hit_event. Authoritative effect values = proc chance, damage multiplier, cooldown, and boss modifier match desktop. Visible feedback changes = damage text may merge under the browser text budget. Player copy = no card note; tooltip note only if repeated text merging confuses QA. QA proof = `?start=1&diag=1` with prop_trigger_counts and damage_done matching desktop expectations.
 
 Browser capped expanded example:
-Browser version: classification = render_capped. Implementation owner = turret_update plus lite render. Authoritative gameplay values = owned turret count, fire rate, target selection, and damage match desktop. Visible feedback changes = browser draws nearest 8 turrets when more are owned. Overflow behavior = hidden turrets keep simulating and firing. Player copy = tooltip or pause summary says "Browser: nearest 8 turrets drawn; all owned turrets still fire." QA proof = web_visible_turrets, simulated_turret_count, and turret_shots_fired.
+Browser version: classification = render_capped. Implementation owner = turret_update plus lite render. Authoritative effect values = owned turret count, fire rate, target selection, and damage match desktop. Visible feedback changes = browser draws nearest 8 turrets when more are owned. Overflow behavior = hidden turrets keep simulating and firing. Player copy = tooltip or pause summary says "Browser: nearest 8 turrets drawn; all owned turrets still fire." QA proof = web_visible_turrets, simulated_turret_count, and turret_shots_fired.
 
 Browser fallback expanded example:
-Browser version: classification = fallback_trigger. Implementation owner = player_damage_event. Authoritative gameplay values = reflect ratio, cooldown, range, and boss modifier match desktop. Browser cap/fallback = normal browser route disables enemy projectiles, so default route triggers from shield damage by ranged-type enemies; `enemyshots=1` tests the true projectile path. Player copy = card + tooltip because the trigger changes. QA proof = fallback_trigger_count on default route and projectile trigger count with `?enemyshots=1`.
+Browser version: classification = fallback_trigger. Implementation owner = player_damage_event. Authoritative effect values = reflect ratio, cooldown, range, and boss modifier match desktop. Browser cap/fallback = normal browser route disables enemy projectiles, so default route triggers from shield damage by ranged-type enemies; `enemyshots=1` tests the true projectile path. Player copy = card + tooltip because the trigger changes. QA proof = fallback_trigger_count on default route and projectile trigger count with `?enemyshots=1`.
 
 15.3. UX block
 Short tooltip:
@@ -2123,7 +2123,7 @@ No memory leak may occur from persistent status stacks or paint tile maps during
 Browser readability:
 At 960x540, browser card text must still show current value, next value, path tag, and any browser_version_note without overlap.
 Damage text merging must not hide critical survival information such as shield break, Guardian Charm trigger, or boss telegraph damage.
-If paint visuals are skipped in wind/mist browser routes, pause/tooltips must still make it clear that paint gameplay remains active.
+If paint visuals are skipped in wind/mist browser routes, pause/tooltips must still make it clear that paint effects remain active.
 Player can identify prop path from card outline color within 1 second.
 Tooltip "Now/Next" text fits in available panel space without clipping.
 Damage/event feedback remains readable during boss phase transitions.
@@ -2379,7 +2379,7 @@ Paint ownership and overwrite logic deterministic under simultaneous writes.
 Tile caps and cleanup execute without frame spikes.
 Paint effects clear correctly on level transition unless persisted by design.
 Browser acceptance:
-Paint gameplay state remains authoritative when paint rendering is cached, throttled, or skipped in wind/mist routes.
+Paint state remains authoritative when paint rendering is cached, throttled, or skipped in wind/mist routes.
 Paint reward props read paint_grid ownership/intensity, not rendered pixels.
 Paint VFX refresh cadence does not change tick damage, slow resistance, or ownership conversion.
 
@@ -2418,7 +2418,7 @@ Browser note writing rules:
 - Prefer exact numbers over vague wording.
 - Use "caps", "refreshes", "merges", "converts", or "uses fallback" as the main verb.
 - Keep the sentence useful without knowing the desktop version.
-- Avoid apology language such as "reduced", "limited", or "weaker" unless the gameplay value is actually lower.
+- Avoid apology language such as "reduced", "limited", or "weaker" unless the effect value is actually lower.
 
 Browser note examples by surface:
 Card:
@@ -2507,7 +2507,7 @@ Browser copy map rules:
 - Keep card browser_version_note empty for implemented same-value props unless the browser behavior changes player planning.
 - Use tooltip text for visual caps, text merges, cached paint, and localStorage details.
 - Use pause/run summary text when the browser can hide a simulated count or persistent value from the combat view.
-- If a future implementation changes an actual gameplay number, replace "none" with a card note that includes the browser number.
+- If a future implementation changes an actual effect number, replace "none" with a card note that includes the browser number.
 
 37.2. Naming rules
 Names should be short, distinct, and scannable in under 1 second.
