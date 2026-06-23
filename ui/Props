@@ -3,15 +3,6 @@ This document is the master working specification for the prop system: path iden
 Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and QA guidance.
 Current intent: keep prop data consistent, make builds readable in-game, and keep implementation, UI text, browser behavior, and QA expectations synchronized.
 
-Prop Design Rules
-Props should create readable build identities, not only larger numbers.
-Every prop should answer four questions quickly:
-1. What does this make the player do differently?
-2. Which path or hybrid path does it support?
-3. What exact number changes now and on the next upgrade?
-4. What risk, cap, or encounter weakness keeps it from becoming automatic?
-
-
 Documentation Standard For Each Prop
 Each detailed prop entry should include:
 - Effect promise: one sentence describing the player-facing outcome.
@@ -552,7 +543,7 @@ Roster Columns
 prop_id | display_name | section | path_primary | path_secondary | role | rarity | base_price | max_level | trigger_type | scaling_summary | synergy_tags | tradeoff | ui_tag | implementation_status | notes
 
 Blank Row Template
-PROP_ID | Display Name | Section Name | PRIMARY | SECONDARY or NONE | Role | 1-4 | $00 | N | passive/on_hit/on_kill/on_damage/on_move/consumable | short numeric summary | tag1,tag2,tag3 | none or short drawback | border/icon tag | planned/prototype/implemented/balancing/final | short note
+PROP_ID | Display Name | Section Name | PRIMARY | SECONDARY or NONE | Role | 1-4 | $00 | N | passive/on_hit/on_kill/on_damage/on_move/consumable | short numeric summary | tag1,tag2,tag3 | none or short drawback | border/icon tag | planned/partial/implemented/balancing/final | short note
 
 Roster Rules
 1. Use the same display_name here as the in-shop card title.
@@ -643,14 +634,14 @@ This addendum defines prop status semantics, runtime mapping, formulas, trigger 
 
 A1. Status Legend
 - planned: spec exists but no active runtime hook in shop, combat, save, or UI code.
-- prototype: partially wired runtime path exists, but behavior or data flow is incomplete.
+- partial: runtime path is partially wired, but behavior or data flow is incomplete.
 - implemented: purchasable/system is wired and behavior executes in runtime.
 - balancing: behavior is implemented and currently under numeric tuning pass.
 - final: locked for the current prop spec except critical fixes.
 
 Status Promotion Rules
-1. planned -> prototype requires at least one runtime entry point.
-2. prototype -> implemented requires effect execution plus UI visibility.
+1. planned -> partial requires at least one runtime entry point.
+2. partial -> implemented requires effect execution plus UI visibility.
 3. implemented -> balancing requires playtest metrics and patch iteration.
 4. balancing -> final requires regression pass and sign-off.
 
@@ -868,7 +859,7 @@ Required Card Fields
 | current_level | owned level if any | show `Lv X/Y` or `Owned` for non-level props |
 | effect_line | single-sentence summary | front-load numeric value before flavor wording |
 | tradeoff_line | explicit drawback if present | red or amber emphasis; never hide drawbacks in tooltip only |
-| status_marker | planned/prototype/implemented only in dev tools, not shipping UI | useful for debug shop or editor panels |
+| status_marker | planned/partial/implemented only in dev tools, not shipping UI | useful for debug shop or editor panels |
 
 Card Copy Rules
 1. The first line of effect copy must explain what happens, not lore.
