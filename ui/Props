@@ -1,8 +1,3 @@
-Executive Summary
-This document is the master working specification for the prop system: path identity, balance rules, browser behavior, UX readability, and QA requirements.
-Use the Prop Roster Template first for quick lookup, then use the numbered sections for detailed implementation, tuning, and QA guidance.
-Current intent: keep prop data consistent, make builds readable in-game, and keep implementation, UI text, browser behavior, and QA expectations synchronized.
-
 Documentation Standard For Each Prop
 Each detailed prop entry should include:
 - Effect promise: one sentence describing the player-facing outcome.
@@ -531,13 +526,9 @@ Browser prop QA rows to add per high-risk prop:
 | WEB-PROP-06 | Auto-Turret | desktop simulation count with lite-render visible turret cap 8 | all owned turrets still fire while renderer prioritizes nearest visible turrets |
 | WEB-PROP-07 | Stationary Turret | desktop simulation count with lite-render visible turret cap 8 | saved turret count restores and offscreen/overflow turrets still participate in combat |
 
-
 Prop Systems Specification
-Status: Working Draft
-Purpose: Consolidated prop roster, balance, browser, runtime, UI, and QA reference.
 
 Prop Roster Template
-Use this roster as the quick-reference layer before the detailed prop specifications. One row should represent one purchasable prop.
 
 Roster Columns
 prop_id | display_name | section | path_primary | path_secondary | role | rarity | base_price | max_level | trigger_type | scaling_summary | synergy_tags | tradeoff | ui_tag | implementation_status | notes
@@ -559,7 +550,7 @@ Preferred short tags:
 - web:visual - effect values match desktop, but browser simplifies VFX or text density.
 - web:cap - browser uses a lower actor, projectile, paint, pickup, text, or VFX cap.
 - web:fallback - browser replaces a disabled trigger or subsystem with another behavior.
-- web:reduced - browser changes a effect number and must show browser-specific values.
+- web:reduced - browser changes an effect number and must show browser-specific values.
 
 Roster browser note examples:
 - web:cap pending bullets by headroom, visible bullets 28
@@ -803,7 +794,6 @@ A9. Telemetry Specification
 | run_completed | victory/exit | run_id, final_level, total_time_s, key_props |
 
 A11. Planned Prop Onboarding Checklist (Detailed)
-Use this checklist to move each planned prop from design-only into runtime-ready implementation.
 
 Checklist Columns
 prop_id | required_meta_keys | required_runtime_hooks | required_ui_or_vfx | minimum_qa_case
@@ -839,7 +829,6 @@ Implementation Exit Criteria (for each planned prop)
 5. Added to at least one QA regression case and one telemetry event.
 
 A12. Shop Card Readability and Presentation Spec
-This section defines how prop cards should communicate path identity, risk, rarity, and purchase value in under one second of player attention.
 
 Card Information Priority
 1. Display Name
@@ -896,7 +885,6 @@ Card Hover / Inspect Requirements
 5. Hover panel should not exceed three short paragraphs or equivalent rows.
 
 A14. Prop Synergy Matrix and Anti-Synergy Rules
-This section defines which prop combinations should be intentionally supported, which should remain neutral, and which require hard guardrails.
 
 Synergy Rating Legend
 - primary: intended signature combo that should be discoverable and satisfying.
@@ -932,7 +920,6 @@ Anti-Synergy and Guardrail Rules
 5. Summon-count props must convert excess quantity into quality before performance collapses.
 
 A15. Boss Modifier Policy and Performance Safety Rules
-This section defines how prop effects should be reduced, capped, or reformatted in boss encounters and high-density late-wave situations.
 
 Boss Modifier Policy
 | effect_family | default boss treatment | reason |
@@ -1174,7 +1161,6 @@ Browser version: damage, slow, lifetime, radius, and max_active values match des
 
 2. Defense & Survival Props
 
-These props emphasize mitigation, conversion, and reactive defense instead of flat HP only.
 2.1. Bone Plating
 Effect:
 Every 6 seconds, gain 2 plating HP. Plating stacks reset each level.
@@ -1359,8 +1345,6 @@ Browser version: planned shield-hit buff should use the same shield damage event
 
 3. Economy & Bandit Interaction Props
 
-These props support the bandit loop and the shop-economy layer.
-
 3.1. Lockbox
 Effect:
 A portion of current coins becomes protected and cannot be stolen by bandits.
@@ -1527,7 +1511,6 @@ Expected value guide: average coin gain should be +0.10 / +0.20 / +0.30 / +0.40 
 Browser version: planned bonus coin spawning must respect WEB_MAX_SPOILS_ON_FIELD and browser pickup rendering without lowering expected value silently. If field clutter is saturated, browser should merge bonus coins into a bundle or credit META spoils directly rather than dropping earned value.
 
 4. Utility / Control Props
-These props adjust player movement, positional control, and space denial.
 
 4.1. Time Dilation Boots
 Effect:
@@ -1615,8 +1598,6 @@ Hard safety cap suggestion: max 8 active stationary turrets on map; extra copies
 Browser version: stationary turret simulation count currently follows stationary_turret_count and save/load restoration, same as desktop. The lite renderer caps visible turrets to the nearest 8, but offscreen/overflow stationary turrets still exist, block their tile through StationaryTurretObstacle, and fire normally. There is currently no browser-only conversion from extra stationary turrets into damage.
 
 5. Crit, Element, and Synergy Props
-
-These props strengthen crit, elemental, and conditional-damage identities.
 
 5.1. Razor Focus
 Effect:
@@ -2554,9 +2535,6 @@ If a prop was rerolled away, reduce its immediate reappearance chance for one sh
 
 38.4. Pivot protection
 Even in a heavily committed build, keep 10-20% of offers open for pivot or rescue options.
-Purpose:
-Prevent runs from becoming solved too early.
-Preserve comeback routes after bad boss matchups.
 
 38.5. Price feel targets
 Cheap buy should feel instantly attainable.
