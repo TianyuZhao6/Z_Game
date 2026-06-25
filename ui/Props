@@ -790,7 +790,6 @@ A9. Telemetry Specification
 | bandit_killed | bandit death resolution | run_id, level_idx, stolen_total, refund, bounty_paid |
 | shady_loan_purchased | loan purchase | run_id, level_idx, loan_level, debt_total, waves_remaining |
 | shady_loan_resolved | repayment/default outcome | run_id, level_idx, outcome, hp_penalty, debt_remaining |
-| player_death | run fail | run_id, level_idx, cause_tag, top_damage_source, path_summary |
 | run_completed | victory/exit | run_id, final_level, total_time_s, key_props |
 
 A11. Planned Prop Onboarding Checklist (Detailed)
@@ -2079,8 +2078,6 @@ Browser balance:
 Browser visual caps must not silently reduce coin, shield, damage, or cooldown value unless the prop is explicitly marked mechanically reduced.
 If browser cadence changes perceived timing, compare simulated events per second rather than rendered frames.
 If a browser fallback replaces an enemy-shot trigger, its expected proc frequency should stay within +/-15% of the desktop trigger in comparable encounters.
-Top 10 most picked props do not exceed 60% combined pick rate across 200+ runs.
-At least 4 distinct build archetypes have >10% win rate in test dataset.
 No single economy combo exceeds 2.2x baseline coin generation.
 
 16.3. Performance
@@ -2144,41 +2141,6 @@ Balance note: grant bonus rewards only when the enemy death location confirms pl
 Curing Paint + Cleanse Step:
 Expected effect: strong map control through reclaim and denial.
 Balance note: enemy paint should retain a minimum persistence window (e.g., 0.6s) before overwrite.
-
-18. Wave-by-Wave KPI Targets (Balance Dashboard)
-18.1. Survival targets
-Wave 1-3 expected end-of-wave HP: 70-100%
-Wave 4-6 expected end-of-wave HP: 50-85%
-Wave 7-9 expected end-of-wave HP: 35-75%
-Wave 10+ expected end-of-wave HP: 25-65%
-
-18.2. Damage targets
-Average elite TTK target:
-Early: 3.5-5.0s
-Mid: 4.0-6.0s
-Late: 4.5-7.0s
-
-Average boss TTK target:
-Early boss: 35-55s
-Mid boss: 45-70s
-Late boss: 55-90s
-
-18.3. Economy targets
-Expected coins at shop entry (no dedicated economy build):
-After level 1: 22-35
-After level 3: 40-65
-After level 5: 65-100
-
-Expected coins at shop entry (economy-focused build):
-After level 3: 60-90
-After level 5: 95-150
-Hard ceiling over baseline should remain <= 2.2x.
-
-18.4. Prop progression targets
-Average purchased prop levels by stage:
-Early (L1-3): 3-5 purchased levels total
-Mid (L4-6): 7-11 purchased levels total
-Late (L7+): 12-18 purchased levels total
 
 19. Data Validation Rules (Pre-Commit)
 19.1. Numeric validation
@@ -2514,31 +2476,3 @@ Tag priority order:
 Primary path -> trigger type -> scaling stat -> notable combo.
 Example:
 SUMMONER | On Kill | Attack Speed | Swarm
-
-38. Shop Anti-Frustration and Offer Quality Rules
-38.1. Offer quality baseline
-Each shop refresh should contain:
-At least 1 generally safe pick.
-At least 1 synergy-forward pick tied to current build if available.
-At least 1 wildcard pick with high upside or pivot potential.
-
-38.2. Dead shop prevention
-Do not allow three consecutive shops with zero path matches once the player has committed to a path.
-If the player owns 3+ props from a single path, increase that path's appearance weight by a controlled amount only:
-Recommended range:
-+12% to +20%, not uncapped.
-
-38.3. Anti-duplicate frustration
-Do not offer duplicate maxed-out props.
-Do not offer the same rejected prop more than twice in three shops unless the item pool is near exhaustion.
-If a prop was rerolled away, reduce its immediate reappearance chance for one shop cycle.
-
-38.4. Pivot protection
-Even in a heavily committed build, keep 10-20% of offers open for pivot or rescue options.
-
-38.5. Price feel targets
-Cheap buy should feel instantly attainable.
-Mid-cost buy should feel like a meaningful choice.
-High-cost buy should feel aspirational, not impossible.
-If a player cannot afford any item in two consecutive shops during an average run, economy pacing is failing.
-
