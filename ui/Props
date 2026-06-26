@@ -710,13 +710,6 @@ Bullet-Hit to Death Resolution Order
 10. resolve normal drops and XP transfer,
 11. resolve bullet continuation logic (ricochet, pierce, despawn).
 
-Level-Start Order (Runtime)
-1. Build GameState and map safety checks.
-2. Apply domain/biome modifiers for this level.
-3. Instantiate player carryover state.
-4. Spawn auto and stationary turrets from META.
-5. Enter wave/timer loop.
-
 A5. Stacking and Cap Policy
 Current Hard Caps (Runtime-Enforced by max_level or logic)
 - piercing_rounds 5, ricochet_scope 3, shrapnel_shells 3, explosive_rounds 3, dot_rounds 3.
@@ -1831,27 +1824,6 @@ Browser prop levels must use the same META keys as desktop and survive localStor
 Stateful browser props must specify whether active cooldowns persist in player carry state, save data, or reset at level start.
 If browser overflow credits value directly, save data must store the resulting coin/shield/debt value, not the hidden visual entity.
 
-9. Balance Verification Checklist
-9.1. Single-path stress test:
-Run 20-wave tests with pure Ballistic, Shield, Economy, and Status builds.
-Target: no path should exceed 1.35x the average win rate of the comparison set.
-
-9.2. Hybrid-path test:
-Test 2+2 split builds (e.g., Ballistic + Shield, Economy + Status).
-Target: hybrids should have a smoother power curve but a lower peak than the best specialized build.
-
-9.3. Boss test:
-Ensure no single prop can kill a mid-game boss in <8s without strong synergy.
-Ensure defensive paths can absorb boss pressure without enabling infinite stall loops.
-
-9.4. Economy abuse test:
-Combine Golden Interest + VIP Punchcard + Spoil Splitter + Black Market Pass.
-Target: expected coin income should remain below 2.2x baseline across 3 consecutive levels.
-
-9.5. Performance test:
-Run worst-case waves with Shrapnel, Explosive, and paint systems active simultaneously.
-Target: stable 60 FPS on target hardware, with no frame spike >25 ms for longer than 0.5s.
-
 10. Shop Roll and Price Formula (Implementation Spec)
 10.1. Level-based rarity weights (shop normal slots):
 L1-L2: R1=78, R2=20, R3=2, R4=0
@@ -1867,11 +1839,6 @@ repeat_mult = 1.0 + 0.10 * current_prop_level
 rarity_mult = {1:1.00, 2:1.12, 3:1.28, 4:1.45}
 final_cost = max(1, round(base_cost * level_mult * repeat_mult * rarity_mult[rarity]))
 Apply discounts in this order: Coupon -> temporary shop modifiers (e.g., Black Market Pass) -> floor at 1 coin.
-
-10.3. Offer quality guardrails:
-At least one offer must match one of the player's top-2 active path tags.
-At least one offer must be affordable within current_coins + 15.
-Do not show duplicate card ids in normal slots unless the pool is exhausted.
 
 11. Prop Tag Taxonomy (Runtime and UI)
 11.1. Primary tags:
@@ -1890,32 +1857,6 @@ Piercing Rounds -> OFFENSE, WAVE_CLEAR
 Bone Plating -> DEFENSE, SURVIVAL
 Golden Interest -> ECONOMY, GREED
 Curing Paint -> PAINT, STATUS, CONTROL
-
-12. Playtest Script Pack (Repeatable)
-12.1. Script A: Ballistic spike check
-Buy order: Piercing -> Ricochet -> Shrapnel -> Explosive
-Goal: confirm no infinite kill loops and verify projectile counts remain within cap.
-Browser add-on: run with `?start=1&diag=1` and verify visible player bullets cap at 28 while pending-bullet headroom prevents runaway shrapnel. Confirm explosive damage still resolves when FX particles trim to WEB_MAX_FX_PARTICLES.
-
-12.2. Script B: Shield retaliation loop
-Buy order: Carapace -> Bone Plating -> Aegis -> Mirror Shell -> Retaliation Core
-Goal: confirm survivability is strong without enabling indefinite boss stalls.
-Browser add-on: run once on the default route with enemy shots disabled and once with `enemyshots=1` if Mirror Shell is implemented. Confirm Aegis pulses update on the 24 Hz cadence, shield state persists through refresh, and ranged-reflect behavior has a documented fallback or opt-in requirement.
-
-12.3. Script C: Economy greed risk
-Buy order: Coupon -> Golden Interest -> VIP Punchcard -> Spoil Splitter -> Shady Loan
-Goal: confirm the delayed-power tradeoff remains fair and recoverable.
-Browser add-on: refresh mid-debt and after shop spending to verify localStorage preserves loan counters, cashback pool, coupon level, and coin totals. Confirm spoil visual caps do not reduce credited rewards.
-
-12.4. Script D: Paint control dominance
-Buy order: Curing Paint -> Cleanse Step -> Paint Converter -> Frost Brand
-Goal: confirm the map-control playstyle is viable without becoming mandatory for wins.
-Browser add-on: run one normal biome and one wind or mist biome. Confirm paint paint state updates at 20 Hz even when the browser render path skips or caches the paint layer, and confirm Paint Converter uses ownership state rather than rendered visibility.
-
-12.5. Logging template per test:
-run_id, level_reached, build_paths, avg_dps, damage_taken, coins_earned, boss_ttk, fps_min
-Browser logging extension:
-browser_quality, render_interval, web_visible_bullets, web_visible_turrets, pending_bullets, dmg_text_count, fx_particle_count, paint_active_count, prop_trigger_counts, localStorage_save_ok, py_frame_heartbeat_ok
 
 13. Runtime State Machine (Per Prop Trigger Type)
 13.1. On-hit props (Bleed, DoT, Chill, Mark prep)
@@ -2097,51 +2038,6 @@ Player can identify prop path from card outline color within 1 second.
 Tooltip "Now/Next" text fits in available panel space without clipping.
 Damage/event feedback remains readable during boss phase transitions.
 
-17. Interaction Matrix (High Priority Pairs)
-17.1. Offensive pairs
-Piercing + Ricochet:
-Expected effect: strong wave clear, moderate single-target.
-Balance note: apply bounce-damage decay first, then pierce decay.
-
-Explosive + Shrapnel:
-Expected effect: high chain potential in dense waves.
-Balance note: cap total spawned secondary projectiles and explosions per second to protect FPS.
-
-DoT + Mark of Vulnerability:
-Expected effect: sustained damage spike against elites/bosses.
-Balance note: apply the mark bonus to DoT tick damage once at application, not on every tick recalculation.
-
-17.2. Defensive pairs
-Bone Plating + Retaliation Thorns:
-Expected effect: contact-heavy enemies become less threatening.
-Balance note: reflected damage must not trigger enemy on-hit effects back onto the player.
-
-Carapace + Aegis Pulse:
-Expected effect: stable periodic AoE pressure while shield exists.
-Balance note: if multiple shield sources exist, pulse frequency must still follow one global cooldown.
-
-Mirror Shell + Retaliation Core:
-Expected effect: defensive play converts incoming ranged pressure into offense.
-Balance note: reflected hits must not trigger additional Retaliation Core loops.
-
-17.3. Economy/control pairs
-Coupon + Golden Interest:
-Expected effect: smooth long-run value, weaker immediate power.
-Balance note: discount and interest must not recursively amplify each other within the same calculation step.
-
-Bandit Radar + Wanted Poster:
-Expected effect: reliable bounty conversion path.
-Balance note: provide a bandit-spawn fallback on levels with zero native bandit budget.
-
-17.4. Paint-system pairs
-Curing Paint + Paint Converter:
-Expected effect: control zones become reward zones.
-Balance note: grant bonus rewards only when the enemy death location confirms player paint ownership.
-
-Curing Paint + Cleanse Step:
-Expected effect: strong map control through reclaim and denial.
-Balance note: enemy paint should retain a minimum persistence window (e.g., 0.6s) before overwrite.
-
 19. Data Validation Rules (Pre-Commit)
 19.1. Numeric validation
 Do not allow negative base_price, negative cooldown, or negative duration values.
@@ -2316,163 +2212,3 @@ Browser acceptance:
 Paint state remains authoritative when paint rendering is cached, throttled, or skipped in wind/mist routes.
 Paint reward props read paint_grid ownership/intensity, not rendered pixels.
 Paint VFX refresh cadence does not change tick damage, slow resistance, or ownership conversion.
-
-37. Prop Presentation Standard (Per Card, Per Upgrade)
-37.1. Required card data fields (display-facing)
-Every prop must expose the following display-facing fields:
-display_name
-path_tag
-role_tag
-rarity
-short_pitch
-current_value_text
-next_upgrade_text
-synergy_tags
-risk_note (if the prop has a drawback or tradeoff)
-browser_version_note (only when the browser version has a different cap, fallback, visual density, or mechanical value)
-
-37.1a. Browser version note format
-Use browser_version_note for player-facing differences only. Keep it short, factual, and non-technical.
-Preferred format:
-Browser: [what changes] + [what stays true].
-Examples:
-Browser: shard bursts use bullet headroom; damage stays unchanged.
-Browser: draws nearest 8 turrets; all owned turrets still fire.
-Browser: uses a shield pulse fallback while enemy shots are off.
-Do not mention implementation names such as web-lite, emscripten, pygbag, render cache, or debug flags in card text.
-
-Browser note placement rules:
-Use card text only for mechanical differences players may plan around.
-Use tooltip text for exact caps, conversion rules, and fallback triggers.
-Use pause summary text only for persistent state such as turret cap conversions or browser-only quality scaling.
-Do not show a browser note for invisible renderer optimizations when damage, timing, cooldown, and reward values are unchanged.
-
-Browser note writing rules:
-- Start with the changed behavior, then state what remains unchanged.
-- Prefer exact numbers over vague wording.
-- Use "caps", "refreshes", "merges", "converts", or "uses fallback" as the main verb.
-- Keep the sentence useful without knowing the desktop version.
-- Avoid apology language such as "reduced", "limited", or "weaker" unless the effect value is actually lower.
-
-Browser note examples by surface:
-Card:
-Browser: draws nearest 8 turrets; all owned turrets still fire.
-Browser: uses timed shield pulse while enemy shots are off.
-Tooltip:
-Browser: shard bursts use pending bullet headroom; shard damage stays unchanged.
-Browser: cached paint rendering; tick damage and ownership stay unchanged.
-Browser: tick text can merge; DOT damage continues.
-Browser: FX may trim; explosion damage is unchanged.
-Pause summary:
-Browser lite render: nearest 8 turrets drawn; all saved turrets remain active.
-Browser save: loan debt and cashback persist through refresh.
-Detailed spec:
-Browser version: classification = visual-only capped. Runtime rule = lite renderer draws nearest 8 turrets, while simulation still updates every owned auto/stationary turret. Player text = "Browser: draws nearest 8 turrets; all owned turrets still fire." QA = verify saved turret count restores and offscreen turrets keep firing even when not all are drawn.
-
-Browser note examples by prop family:
-Ballistic:
-Browser: visible bullets cap at 28; hit simulation continues.
-Browser: shrapnel may spawn fewer shards during bullet floods; shard damage is unchanged.
-Status:
-Browser: status ticks run on scheduled updates; damage values are unchanged.
-Browser: repeated tick numbers may merge while damage continues.
-Paint:
-Browser: paint visuals can cache or hide in some biomes; paint damage and ownership continue.
-Browser: rewards use paint ownership, not whether the paint was drawn this frame.
-Defense:
-Browser: shield state and Aegis timing match desktop; text feedback may merge.
-Browser: ranged reflect needs enemy shots enabled or a fallback trigger.
-Economy:
-Browser: pickup visuals may bundle; credited coin value is unchanged.
-Browser: debt/cashback state persists through browser refresh.
-Turret:
-Browser: nearest 8 turrets are drawn; all owned turrets still fire.
-Browser: saved turret count restores; offscreen turrets remain active.
-
-Browser copy map for implemented props:
-| prop | card browser_version_note | tooltip browser line | pause/run summary line |
-| --- | --- | --- | --- |
-| Piercing Rounds | none | Browser: visible bullets cap at 28; pierce count, falloff, and hit simulation continue. | Show total pierce hits, not only visible bullet count. |
-| Ricochet Scope | none | Browser: visible bullets cap at 28; ricochet routing and bounce damage continue. | Show routed-hit count if dense ricochet builds look visually quiet. |
-| Shrapnel Shells | Browser: shard bursts use bullet headroom; damage stays unchanged. | Browser: if pending bullets are crowded, fewer shards spawn before shard damage changes. | Show spawned vs skipped shards when diagnostics are enabled. |
-| Explosive Rounds | none | Browser: FX may trim under the particle budget; splash damage and radius stay unchanged. | Show explosion triggers and damage, not only particle count. |
-| DOT Rounds | none | Browser: tick text may merge; stack count, duration, and tick damage continue. | Show active stack count and total DOT damage when text is merged. |
-| Mark of Vulnerability | none | Browser: marks refresh on a scheduled update; bonus damage and priority rules stay unchanged. | Show current marked target and mark time remaining for QA builds. |
-| Ground Spikes | none | Browser: ground spikes update at browser cadence; damage, slow, lifetime, and active cap stay unchanged. | Show active spike count and oldest evictions if cap is reached. |
-| Curing Paint | none | Browser: paint visuals can cache or hide in some biomes; damage and ownership continue. | Show active paint state when wind/mist hides paint rendering. |
-| Aegis Pulse | none | Browser: pulse text may merge; shield trigger, cooldown, radius, and damage continue. | Show pulse cooldown and pulse damage when text is crowded. |
-| Bone Plating | none | Browser: mitigation is unchanged; shield/plating text may merge during dense hits. | Show current plating value after damage bursts. |
-| Carapace | none | Browser: reserve shield values persist through browser refresh. | Show reserve shield and save/refresh state if QA is active. |
-| Coin Magnet | none | Browser: pickup visuals may cap; pickup radius and credited coin value stay unchanged. | Show coins credited when pickups are bundled or hidden. |
-| Coupon | none | Browser: discount math is unchanged and persists through refresh. | Show stored discount level after shop refresh. |
-| Golden Interest | none | Browser: interest payout and cap are unchanged and persist through refresh. | Show interest payout order with loan/debt state. |
-| Lockbox | none | Browser: protected coin value is unchanged even if pickup visuals bundle. | Show protected coins before and after bandit loss. |
-| Shady Loan | none | Browser: loan coins and debt state persist through refresh. | Show debt waves remaining and repayment state. |
-| Bandit Radar | none | Browser: slow/highlight values stay unchanged; bandit spawn density may vary by route. | Show charge or highlight state when no bandit spawns. |
-| Wanted Poster | none | Browser: bounty charges and payout stay unchanged; bandit spawn density may vary by route. | Show retained charges across waves and refresh. |
-| Auto-Turret | Browser: nearest 8 turrets drawn; all owned turrets still fire. | Browser: renderer draws nearest 8 turrets; targeting, damage, and fire rate use all owned turrets. | Show simulated turret count and shots fired. |
-| Stationary Turret | Browser: nearest 8 turrets drawn; all owned turrets still fire. | Browser: renderer draws nearest 8 stationary turrets; hidden turrets remain active obstacles/fire sources if implemented. | Show simulated turret count, active placements, and shots fired. |
-
-Browser copy map for planned props:
-| prop | card browser_version_note | tooltip browser line | pause/run summary line |
-| --- | --- | --- | --- |
-| Bleeding Edge | none | Browser: planned bleed ticks should use the status scheduler; stack damage continues if tick text merges. | Show active bleed stacks and total bleed damage in QA builds. |
-| Cleanse Step | none | Browser: planned reclaim should use paint state, not whether hostile paint is drawn this frame. | Show reclaimed intensity and slow-resist state when paint visuals are hidden. |
-| Paint Converter | none | Browser: planned rewards should use owned-paint state; pickup visuals may bundle without reducing coin value. | Show bonus coins credited and paint intensity consumed. |
-| Explosive Crits | none | Browser: planned crit splash may trim FX; crit splash damage, radius, and boss rule should remain authoritative. | Show crit splash triggers and damage, not only particle count. |
-| Razor Focus | none | Browser: planned crit/fire-rate stat rebuild should match desktop and fit 960x540 card text. | Show crit chance and fire-rate delta after refresh. |
-| Frost Brand | none | Browser: planned chill ticks should use status cadence; slow/re-hit values continue if text merges. | Show chill target count, boss slow modifier, and re-hit damage. |
-| Shock Relay | Browser: chain jumps use browser headroom; damage stays unchanged. | Browser: planned chain count may compress under projectile/chain headroom before chain damage changes. | Show attempted jumps, spawned jumps, and skipped jumps. |
-| Blood Pact | none | Browser: planned max-HP penalty and damage bonus should use the same stat rebuild as desktop. | Show max HP floor and damage multiplier after save/load. |
-| Guardian Charm | none | Browser: planned rescue shield, speed, duration, and cooldown stay unchanged; rescue FX/audio may trim. | Show cooldown remaining and rescue trigger count. |
-| Mirror Shell | Browser: uses shield-hit fallback while enemy shots are off. | Browser: planned default route uses ranged-enemy shield damage fallback; `enemyshots=1` tests true projectile reflect. | Show fallback_trigger_count and projectile reflect count separately. |
-| Retaliation Core | none | Browser: planned shield-hit buff values stay unchanged; feedback can be a compact HUD flash. | Show buff timer, damage bonus, and crit bonus while text is merged. |
-| Retaliation Thorns | none | Browser: planned contact reflect values stay unchanged; reflected damage text may merge. | Show reflect triggers and boss reduction after dense contact hits. |
-| Shardstorm | Browser: shield shards use bullet headroom; damage stays unchanged. | Browser: planned shield-break shards should reduce spawned count under headroom before shard damage changes. | Show shield-break count, spawned shards, and skipped shards. |
-| Shield Capacitor | none | Browser: planned overheal conversion uses pickup state; visible pickup caps must not reduce shield value. | Show overheal amount, converted shield, and temp shield cap. |
-| Black Market Pass | Browser: shop override persists through refresh. | Browser: planned premium-shop state should use localStorage and keep rarity/price text readable. | Show active shop override, price modifier, and refresh persistence. |
-| Spoil Splitter | none | Browser: planned extra coin procs may merge pickup/text feedback; credited coin value stays unchanged. | Show proc count, anti-loop throttle, and coins credited. |
-| VIP Punchcard | none | Browser: planned cashback state persists through refresh; payout cap and timing stay unchanged. | Show cashback bank, cap, payout, and reset timing. |
-| Phantom Dash | none | Browser: planned dash contact damage stays unchanged; dash trail FX may trim. | Show dash strike count and cooldown/availability state. |
-| Sticky Tar Flask | Browser: active puddles are capped; slow values stay unchanged. | Browser: planned tar puddles should run on the ground scheduler and refresh/evict by a documented rule. | Show active puddle count, evictions, and slow applications. |
-| Time Dilation Boots | none | Browser: planned standstill aura values stay unchanged; pulse cadence must be documented. | Show standstill charge, pulse count, and enemies slowed. |
-
-Browser copy map rules:
-- Keep card browser_version_note empty for implemented same-value props unless the browser behavior changes player planning.
-- Use tooltip text for visual caps, text merges, cached paint, and localStorage details.
-- Use pause/run summary text when the browser can hide a simulated count or persistent value from the combat view.
-- If a future implementation changes an actual effect number, replace "none" with a card note that includes the browser number.
-
-37.2. Naming rules
-Names should be short, distinct, and scannable in under 1 second.
-Target length guideline:
-1-3 words preferred, 18 characters soft cap before text scaling.
-Avoid generic names that overlap in function:
-Bad example:
-Power Boost, Damage Up, Strong Shot.
-Good example:
-Retaliation Core, Grave Beacon, Razor Loop.
-
-37.3. Short pitch format
-The short pitch is the primary purchase-value sentence and must describe outcome, not only math.
-Examples:
-Spawn an extra frontliner that draws enemy aggro.
-Turn crit chains into room-clearing burst windows.
-Convert painted ground into safe damage zones.
-Pitch length target:
-45-70 characters.
-
-37.4. Upgrade preview standard
-All upgrade previews must show the absolute delta and the new total.
-Preferred format:
-Damage: +8 (32 -> 40)
-Cooldown: -0.3s (2.1s -> 1.8s)
-Summon Cap: +1 (3 -> 4)
-Never show only a percentage if the player can understand the concrete number instead.
-
-37.5. Synergy tag rules
-Each prop should display 2-4 synergy tags at most.
-Tag priority order:
-Primary path -> trigger type -> scaling stat -> notable combo.
-Example:
-SUMMONER | On Kill | Attack Speed | Swarm
