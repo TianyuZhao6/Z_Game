@@ -615,8 +615,8 @@ Section Scan Guide (Table Order)
 | vip_punchcard | VIP Punchcard | Economy & Bandit | ECONOMY | NONE | Cashback engine | 3 | $24 | 4 | passive | 10% to 25% cashback, 30 to 80 cap | cashback,reroll,econ | delayed payout | ECO | planned | Requires shop-side pool display; web:same cashback state, localStorage refresh QA |
 | wanted_poster | Wanted Poster | Economy & Bandit | ECONOMY | CONTROL | Bounty consumable | 2 | $15 | 3 | consumable | 3 charge cap, +18 to +36 bounty payout | bandit,bounty,burst | only pays on valid bandit kill | ECO | implemented | Charge retention fail-safe required; web:same charges/payout, spawn density QA |
 | phantom_dash | Phantom Dash (if you ever add dash / evade) | Utility / Control | CONTROL | MOVEMENT | Dash contact strike | 3 | $22 | 3 | on_move | 0.55 to 1.00 bullet_base dash hit, 20% to 30% slow | dash,contact,burst | depends on dash system | CTL | planned | Future-only if dash is added; web:same contact damage, dash FX may trim |
-| sticky_tar_flask | Sticky Tar Flask | Utility / Control | CONTROL | STATUS | Puddle control | 2 | $14 | 3 | on_move | 0.9 to 1.3 tile puddle, 15% to 25% slow | puddle,slow,area_denial | indirect damage only | CTL | planned | Supports choke-point play; web:cap active puddles, ground scheduler required |
-| time_dilation_boots | Time Dilation Boots | Utility / Control | CONTROL | NONE | Standstill aura | 2 | $16 | 3 | on_move | 1.8 to 2.6 tile slow pulse while stationary | slow,aura,positioning | requires standing still | CTL | planned | Counter-pattern to run-and-gun; web:same aura values, pulse cadence documented |
+| sticky_tar_flask | Sticky Tar Flask | Utility / Control | CONTROL | STATUS | Puddle control | 2 | $14 | 3 | on_move | 0.9 to 1.3 tile puddle, 15% to 25% slow | puddle,slow,area_denial | indirect damage only | CTL | planned | web:cap active puddles, ground scheduler required |
+| time_dilation_boots | Time Dilation Boots | Utility / Control | CONTROL | NONE | Standstill aura | 2 | $16 | 3 | on_move | 1.8 to 2.6 tile slow pulse while stationary | slow,aura,positioning | requires standing still | CTL | planned | web:same aura values, pulse cadence documented |
 | auto_turret | Auto-Turret | Utility / Control | SUMMON | CONTROL | Follower turret | 2 | $14 | 5 | passive | +1 turret per level, 0.33 to 0.42 damage ratio | turret,summon,sustained | count converts to quality after cap | SUM | implemented | Baseline turret path; web:visual nearest 8 turrets drawn, all owned turrets simulate |
 | stationary_turret | Stationary Turret | Utility / Control | SUMMON | CONTROL | Static turret | 1 | $14 | 99 | passive | +1 static turret per purchase, max 8 active suggested | turret,holdout,zone_control | immobile placement | SUM | implemented | Baseline stationary turret variant; web:visual nearest 8 turrets drawn, all owned turrets simulate |
 
@@ -661,40 +661,9 @@ Implemented Shop Props (Current Runtime)
 | auto_turret | auto_turret_level | shop catalog apply | level-start summon count and turret fire loop | implemented |
 | stationary_turret | stationary_turret_count | shop catalog apply | level-start static turret placement and fire loop | implemented |
 
-Set Bonus and Non-Shop Systems (Current Runtime)
-| system_id | runtime_symbols | execution_scope | status |
-| --- | --- | --- | --- |
-| path_state_online/full | path_scores_from_meta, path_focus_summary_lines, PATH_ONLINE_THRESHOLD, PATH_FULL_THRESHOLD | run_wide summary state | implemented |
-| path_border_color_rules | PROP_PATH_TAGS, PATH_BORDER_COLORS, prop_path_border_color | shop/pause visual identity | implemented |
-| biome_domain_selection | show_biome_picker_in_shop, SCENE_BIOMES | per-level domain selection | implemented |
-| biome_modifiers | apply_domain_buffs_for_level, apply_biome_on_enemy_spawn | per-level combat modifiers | implemented |
-| bandit_spawn_protocol | spawn_enemies_for_wave, BANDIT_MIN_LEVEL_IDX, BANDIT_SPAWN_CHANCE_PER_WAVE | per-wave encounter injection | implemented |
-| threat_budget_curve | budget_for_level, THREAT_BUDGET_* | per-wave spawn pressure | implemented |
-| timer_profile | LEVEL_TIME_LIMIT, BOSS_TIME_LIMIT | per-level pacing timer | implemented |
-| boss_interval_rule | is_boss_level, BOSS_EVERY_N_LEVELS | level cadence | implemented |
-
 A3. Formula Appendix
 Shop Price
 price = max(1, round(base_cost * SHOP_PRICE_EXP^level_idx * (1 + SHOP_PRICE_LINEAR * level_idx) * SHOP_PRICE_STACK^owned_level) * (1 - COUPON_DISCOUNT_PER * coupon_level))
-
-Path Score and State
-1. For each owned prop, add its current level to each tag in PROP_PATH_TAGS.
-2. state = seed when score < PATH_ONLINE_THRESHOLD (2).
-3. state = online when score >= PATH_ONLINE_THRESHOLD (2).
-4. state = full when score >= PATH_FULL_THRESHOLD (4).
-
-Threat Budget
-budget(level_idx) = max(THREAT_BUDGET_MIN, round(THREAT_BUDGET_BASE * THREAT_BUDGET_EXP^level_idx))
-Current constants: base=6, exp=1.18, min=5.
-
-Bandit Spawn Gate (Simplified)
-spawn if:
-1. non-boss level,
-2. level_idx >= BANDIT_MIN_LEVEL_IDX (2),
-3. time_left > 20 seconds,
-4. no bandit already spawned this level,
-5. random() < BANDIT_SPAWN_CHANCE_PER_WAVE (0.28),
-6. valid spawn position exists.
 
 A4. Trigger Order and Conflict Rules
 Bullet-Hit to Death Resolution Order
@@ -765,25 +734,18 @@ A8. QA Scenarios (Required Regression Set)
 | PROP-QA-04 | DOT + explosive + shrapnel on dense wave | no infinite chain loop or crash |
 | PROP-QA-05 | Ground spikes and curing paint at max level | footprint count/lifetime constraints respected |
 | PROP-QA-06 | Bone plating + carapace + aegis pulse shield interactions | mitigation order and pulse trigger remain stable |
-| PROP-QA-07 | Domain of Wind with many projectiles | hurricane logic remains performant and deterministic |
-| PROP-QA-08 | Scorched Hell with boss contact damage | enemy and boss contact multipliers apply correctly |
 | PROP-QA-09 | Wanted poster claim path on bandit death | bounty pays once and state flags clear correctly |
 | PROP-QA-10 | Shady loan across repayment and default branches | debt, waves, and HP penalties resolve correctly |
 | PROP-QA-11 | Auto and stationary turrets with save/load cycle | turret counts persist and restore correctly |
-| PROP-QA-12 | Path summaries after mixed dual-tag props | path score and state labels match expected totals |
 
 A9. Telemetry Specification
 | event_name | trigger | minimum payload |
 | --- | --- | --- |
 | prop_purchased | shop purchase success | run_id, level_idx, prop_id, new_level, cost |
-| shop_rerolled | reroll action | run_id, level_idx, reroll_cost, coin_after |
-| path_state_changed | any path score crosses threshold | run_id, level_idx, path, old_state, new_state, score |
-| biome_selected | biome picker confirm | run_id, level_idx, biome_name |
 | bandit_spawned | bandit spawn success | run_id, level_idx, wave_idx, radar_level, lockbox_level |
 | bandit_killed | bandit death resolution | run_id, level_idx, stolen_total, refund, bounty_paid |
 | shady_loan_purchased | loan purchase | run_id, level_idx, loan_level, debt_total, waves_remaining |
 | shady_loan_resolved | repayment/default outcome | run_id, level_idx, outcome, hp_penalty, debt_remaining |
-| run_completed | victory/exit | run_id, final_level, total_time_s, key_props |
 
 A11. Planned Prop Onboarding Checklist (Detailed)
 
@@ -878,32 +840,6 @@ Card Hover / Inspect Requirements
 
 A14. Prop Synergy Matrix and Anti-Synergy Rules
 
-Synergy Rating Legend
-- primary: intended signature combo that should be discoverable and satisfying.
-- support: useful connection that improves consistency but is not build-defining alone.
-- bridge: cross-path relationship that helps mixed builds stay viable.
-- guarded: allowed combo with explicit cap or anti-loop rule.
-
-Current and Planned Synergy Matrix
-| combo_id | props_or_paths | synergy_rating | design intent | runtime caution |
-| --- | --- | --- | --- | --- |
-| SYN-01 | piercing_rounds + ricochet_scope | primary | supports projectile routing and wave clear without requiring AoE | prevent multi-hit room wipe in narrow corridors |
-| SYN-02 | shrapnel_shells + explosive_rounds | guarded | turns kills into chained cleanup moments | cap recursive splash and secondary spawn density |
-| SYN-03 | dot_rounds + mark_vulnerability | primary | marked targets should reward sustained pressure builds | bonus applies to hit damage; avoid double-dipping DoT unless explicitly intended |
-| SYN-04 | curing_paint + ground_spikes | support | reinforces movement-based area denial play | overlap readability must stay clear on busy floors |
-| SYN-05 | curing_paint + paint_converter | primary | paint ownership becomes both combat and reward engine | reward proc must validate owned-paint condition only |
-| SYN-06 | bone_plating + aegis_pulse | primary | defensive stack enables repeated shield-gated pulse windows | pulse uptime must not become permanent stall loop |
-| SYN-07 | carapace + mirror_shell | support | reserve shield sustains reflect viability | disable reflect once reserve shield is fully spent |
-| SYN-08 | carapace + shardstorm | support | reserve shield increases chance of meaningful shield-break burst | single break event should only trigger once |
-| SYN-09 | lockbox + shady_loan | primary | coin protection reduces economic punishment of loan failure states | lockbox cannot trivialize loan risk entirely |
-| SYN-10 | wanted_poster + bandit_radar | support | radar increases bounty consistency without guaranteeing free payout | bandit spawn chance remains unchanged |
-| SYN-11 | coupon + golden_interest | bridge | enables disciplined economy runs with better long-term conversion | early combat weakness must remain visible |
-| SYN-12 | auto_turret + stationary_turret | primary | mixed summon setup covers both follow and holdout use cases | total turret count still needs performance gate |
-| SYN-13 | explosive_crits + razor_focus | primary | crit specialization turns fewer shots into meaningful burst | overkill waste should remain a balancing factor |
-| SYN-14 | frost_brand + shock_relay | bridge | layered elemental control into chain-clear package | target churn must remain readable in large waves |
-| SYN-15 | sticky_tar_flask + time_dilation_boots | primary | combines forced slowdown with standstill punishment zone | area stacking must use diminishing returns |
-| SYN-16 | guardian_charm + blood_pact | guarded | creates comeback windows for risky glass-cannon play | emergency survivability must not erase pact downside |
-
 Anti-Synergy and Guardrail Rules
 1. Never allow the same kill event to recursively trigger unlimited kill events.
 2. On-hit amplification and damage-over-time amplification must declare whether they stack multiplicatively or not.
@@ -938,12 +874,6 @@ Recommended Runtime Safety Checklist
 | area decals | max active instances plus pooled cleanup | sticky_tar_flask, curing_paint |
 | pulse/aura | fixed tick interval and target cap | time_dilation_boots, aegis_pulse |
 | summon counts | soft cap with quality conversion | auto_turret, stationary_turret, future summoner props |
-
-Boss Design Compatibility Rules
-1. Every prop family should still matter in boss fights, but not at full trash-wave value.
-2. Boss nerfs must be surfaced in tooltip or inspect copy when the difference is material.
-3. If a prop is weak on bosses by design, it must be strong enough on waves to justify the slot.
-4. No boss should fully invalidate an entire path unless that path has alternative payoff elsewhere in the run.
 
 A16. Naming and Tooltip Standards
 Use these rules to keep prop names and descriptions clean, readable, and consistent across shop, pause, and debug UI.
@@ -1159,7 +1089,6 @@ Every 6 seconds, gain 2 plating HP. Plating stacks reset each level.
 Purchase limit 5, once capped, any time you have plating it negates the next hit entirely
 (consuming one stack even if the damage exceeds the plating).
 Synergy:
-Supports beginner-friendly and contact-risk builds.
 Pairs with high-speed pickup and contact-routing builds.
 Rarity: 2
 Base Price: $12
@@ -1192,7 +1121,6 @@ Effect:
 Gain a large damage bonus at the cost of max HP; both scale by level.
 Synergy:
 Pairs with max-HP and healing support.
-High-risk option for skilled play.
 Rarity: 3
 Base Price: $20
 Max Level: 3
@@ -1209,7 +1137,6 @@ Effect:
 Enemies that hit you by contact damage take a flat damage or % of their max HP.
 Synergy:
 Pairs with Bone Plating to convert controlled contact damage into return damage.
-Best in slower, tank-oriented builds.
 Rarity: 2
 Base Price: $14
 Max Level: 3
@@ -1356,7 +1283,6 @@ Browser version: planned/implemented coin protection should use the same META co
 Effect:
 Consumable: for the next 2 levels, the first Bandit kill pays a bounty.
 Synergy:
-Converts a punishment encounter into a reward opportunity.
 Combines well with speed and burst damage for reliable bandit chase-downs.
 Rarity: 2
 Base Price: $15
@@ -1372,7 +1298,6 @@ Effect:
 Increase coin pickup radius by 60 px per level.
 Synergy:
 Strong with high-speed kiting builds.
-Reduces pickup risk and improves wave-end cleanup.
 Rarity: 1
 Base Price: $10
 Max Level: 5
@@ -1385,7 +1310,6 @@ Browser version: pickup radius and collection math match desktop. Browser may ca
 Effect:
 At the start of each level, gain interest on unspent coins (5/10/15/20% by level).
 Synergy:
-Encourages delayed spending instead of immediate power.
 Pairs with Lockbox by protecting accumulated savings.
 Rarity: 2
 Base Price: $12
@@ -1401,7 +1325,6 @@ Effect:
 When a bandit spawns, highlight them and slow them slightly for a short duration.
 Synergy:
 Combined with Wanted Poster, creates a dedicated bandit-hunter build.
-Fits existing aura and highlight UI patterns.
 Rarity: 2
 Base Price: $18
 Max Level: 4
@@ -1416,8 +1339,6 @@ Effect:
 Permanently decrease shop prices by 5% per level.
 Synergy:
 Pairs with Coupon and VIP Punchcard by making repeated purchases and rerolls cheaper.
-Supports pivot builds because lower prices reduce the penalty for changing paths mid-run.
-Bridge value: lets defense/economy runs buy survival now while still reaching late scaling.
 Rarity: 1
 Base Price: $10
 Max Level: 4
@@ -1432,7 +1353,6 @@ Take a loan: gain +80/+120/+160 coins immediately, then repay over 3/4/5 waves a
 Synergy:
 Pairs with Coupon and Black Market Pass by turning borrowed money into immediate premium offers.
 Pairs with Golden Interest only if the loan creates enough surplus to survive repayment timing.
-Bridge value: enables risky early power spikes for weak-starting paths, but debt must remain visible.
 Rarity: 3
 Base Price: 5
 Max Level: 3
@@ -1510,7 +1430,6 @@ After standing still for >= 0.5s, apply a local slow pulse to nearby enemies.
 Synergy:
 Supports a stationary, turret-style firing pattern.
 Pairs with high fire rate and range.
-Provides a counter-pattern to standard run-and-gun movement builds.
 Rarity: 2
 Base Price: $16
 Max Level: 3
@@ -1655,7 +1574,7 @@ Chain range: 1.8 / 2.2 / 2.6 tiles by level.
 Browser version: planned shock chains should cap spawned chain segments through pending-bullet or FX headroom before reducing damage. If browser saturation prevents all visual arcs from drawing, damage should still resolve deterministically and tooltip text should only mention reduced visuals unless chain count is mechanically capped.
 
 6. Core Paint System
-Tiles can hold temporary "paint" that affects movement and combat. A tile?¡¥s paint has:
+Tiles can hold temporary "paint" that affects movement and combat. A tile's paint has:
 Owner state: Neutral / Player Paint / Enemy Paint (enemy paint optional for later).
 Intensity: 0-1, starts high when applied, then decays over time. Effects scale with intensity.
 Sources of paint include:
@@ -1736,7 +1655,6 @@ Moving over enemy paint converts it toward neutral or player-owned paint.
 Synergy:
 Pairs with Curing Paint by reclaiming enemy zones and replacing them with player-safe lanes.
 Supports shield and survival builds by reducing slow pressure during retreats.
-Bridge value: keeps paint/control builds viable in biomes or boss fights that contest floor ownership.
 Rarity: 2
 Base Price: $16
 Max Level: 3
@@ -1783,7 +1701,6 @@ Set Bonus:
 Browser version: Cold Circuit should run chain damage and chill application on browser status cadence, targeting 20 Hz. Visual shock arcs and frost feedback can be trimmed by FX budget, but chain damage, mini-chill slow, and duration should remain deterministic unless a browser-specific chain cap is explicitly documented.
 
 Set system rules:
-Set bonuses should provide additive utility spikes, not run-defining raw multipliers.
 A full 3-piece set should add roughly +12% to +20% effective power.
 Display active set count in pause and build summary UI (example: Fortress Loop 2/3).
 Recompute active sets on prop acquire, prop sell, and level start.
