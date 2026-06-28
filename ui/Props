@@ -278,7 +278,7 @@ Browser version description template:
   - Runtime rule: exact cap, refresh rule, merge rule, drop rule, or conversion rule.
   - Player text: short card or tooltip sentence.
   - QA: minimum canvas check, late-wave density check, and save/load check if stateful.
-  - Risk: what would make this prop feel worse on browser, such as hidden procs, delayed audio, or reduced actor count.
+  - Risk: browser-specific hidden procs, delayed audio, or reduced actor count.
 
 Browser per-prop required detail checklist:
 | detail | required answer | examples |
@@ -480,7 +480,7 @@ Same-as-desktop policy:
 Browser prop documentation goals:
 - Keep browser-specific caps, fallbacks, and reduced values explicit in prop entries.
 - Keep shop props, pause summaries, and tooltip text readable at smaller canvas sizes.
-- Make browser prop regressions measurable through diagnostics instead of relying on manual feel.
+- Make browser prop regressions measurable through diagnostics.
 - Document browser-safe audio and storage behavior only when it changes prop feedback or prop state.
 
 Browser-specific runtime behavior:
@@ -929,9 +929,9 @@ Higher rarities keep lower base weight but higher growth per level.
 Effect:
 Bullets can pass through N enemies, each hit deals full or slightly reduced damage.
 Synergy:
-Strong with range (bullets travel farther, hit more).
-Strong with fire rate; higher shot volume increases multi-hit value.
-Strong in wave-clear scenarios; lower value in single-target boss phases.
+Pairs with range increases because bullets can reach more targets before despawning.
+Pairs with fire-rate increases because higher shot volume creates more pierce checks.
+Boss rule: single-target value is lower than multi-target value unless boss adds are present.
 Rarity: 1
 Base Price: $12
 Max Level: 5
@@ -947,7 +947,6 @@ When a bullet hits an enemy or wall, it can bounce toward the nearest valid enem
 Synergy:
 Works with map geometry; walls become routing tools.
 Synergizes with crit because ricochets can crit.
-Rewards play near walls and choke points.
 Rarity: 2
 Base Price: $14
 Max Level: 3
@@ -962,7 +961,6 @@ Effect:
 Apply stacking Bleed over 3s; damage and stack cap scale by level.
 Synergy:
 Scales well with high fire-rate builds.
-Maintains boss pressure while kiting.
 Supports follow-up effects that increase damage against bleeding targets.
 Rarity: 2
 Base Price: $17
@@ -979,7 +977,6 @@ Browser version: planned behavior should use the same DoT scheduling path as DOT
 Effect:
 On enemy death, gain a 25% / 35% / 45% chance to spawn 3-4 shard projectiles.
 Synergy:
-Strong in high-density wave scenarios.
 Synergizes with crit because shards can crit.
 Supports future upgrades to shard count or shard size.
 Rarity: 3
@@ -1000,8 +997,7 @@ Periodically mark a high-priority enemy,
 causing that target to take increased damage from all sources.
 Synergy:
 Pairs with high single-target DPS because every source benefits from the mark.
-Strong with turrets, DoT, and Aegis Pulse because passive damage keeps value flowing during the mark window.
-Bridge value: helps economy/control builds kill bandits and elites before they escape or overwhelm space.
+Pairs with turrets, DoT, and Aegis Pulse because those sources use the mark damage bonus.
 Rarity: 3
 Base Price: $25
 Max Level: 3
@@ -1020,9 +1016,8 @@ Effect:
 Spawn a small AoE explosion centered on that enemy.
 Explosion damage uses player base bullet damage only (pre-crit).
 Synergy:
-Strong with piercing and ricochet because clustered hits create more kill centers.
+Pairs with piercing and ricochet because clustered hits create more kill centers.
 Pairs with Mark of Vulnerability to turn priority-target kills into splash payoff.
-Bridge value: supports paint/control builds by clearing enemies held in choke points.
 Rarity: 2
 Base Price: $18
 Max Level: 3
@@ -1048,8 +1043,6 @@ On bullet hit, apply a DoT that ticks every 0.5s and scales from bullet_base (pr
 Bosses take 70% of listed DoT damage.
 Synergy:
 Scales with fire rate, ricochet, and turret shots if secondary sources are allowed to apply status.
-Pairs with Mark of Vulnerability for boss pressure while the player is kiting.
-Bridge value: supports control builds that keep enemies inside DoT windows longer.
 Rarity: 2
 Base Price: $20
 Max Level: 3
@@ -1071,7 +1064,6 @@ Trade-off: each purchase reduces move speed by approximately 4% (multiplicative)
 Synergy:
 Pairs with Curing Paint, Sticky Tar Flask, and Time Dilation Boots to punish enemies that chase through controlled space.
 Works with Coin Magnet by making pickup routes safer while leaving traps behind.
-Bridge value: helps turret builds create a defensive lane around static positions.
 Rarity: 2
 Base Price: $18
 Max Level: 3
@@ -1175,7 +1167,6 @@ Add a persistent reserve shield layer.
 Synergy:
 Pairs with Aegis Pulse and Mirror Shell by extending shield uptime for shield-gated effects.
 Works as an early survival anchor for Blood Pact or economy-first builds.
-Bridge value: gives summon/turret builds a buffer while they set up positioning.
 Rarity: 1
 Base Price: $6
 Max Level: None (stackable by purchases)
@@ -1192,8 +1183,7 @@ convert a portion of that heal into temporary shield HP.
 Higher levels increase overheal conversion.
 Synergy:
 Pairs with Coin Magnet because safer pickup routing increases full-HP heal collection.
-Strong with Aegis Pulse, Mirror Shell, and Shardstorm because overheal becomes shield uptime.
-Bridge value: rewards defensive economy builds that already invest in pickup control.
+Pairs with Aegis Pulse, Mirror Shell, and Shardstorm because overheal becomes shield uptime.
 Rarity: 2 (common/uncommon)
 Base Price: $15
 Max Level: 3
@@ -1268,8 +1258,6 @@ Browser version: planned shield-hit buff should use the same shield damage event
 Effect:
 A portion of current coins becomes protected and cannot be stolen by bandits.
 Synergy:
-High value when bandits are frequent.
-Supports coin-hoarding and delayed-spend builds.
 Rarity: 2
 Base Price: $14
 Max Level: 4
@@ -1283,7 +1271,6 @@ Browser version: planned/implemented coin protection should use the same META co
 Effect:
 Consumable: for the next 2 levels, the first Bandit kill pays a bounty.
 Synergy:
-Combines well with speed and burst damage for reliable bandit chase-downs.
 Rarity: 2
 Base Price: $15
 Max Level: 3 charges (stack cap)
@@ -1297,7 +1284,6 @@ Browser version: bounty state should persist through browser localStorage like d
 Effect:
 Increase coin pickup radius by 60 px per level.
 Synergy:
-Strong with high-speed kiting builds.
 Rarity: 1
 Base Price: $10
 Max Level: 5
@@ -1324,7 +1310,6 @@ Browser version: interest math, payout cap, and ordering should match desktop be
 Effect:
 When a bandit spawns, highlight them and slow them slightly for a short duration.
 Synergy:
-Combined with Wanted Poster, creates a dedicated bandit-hunter build.
 Rarity: 2
 Base Price: $18
 Max Level: 4
@@ -1358,7 +1343,7 @@ Base Price: 5
 Max Level: 3
 Rules:
 Repayment order: Golden Interest -> lockbox protection snapshot -> loan repayment pull.
-Anti-feels-bad rule: if player has <= 15 coins, skip scheduled repayment for that wave once.
+Repayment safety rule: if player has <= 15 coins, skip scheduled repayment for that wave once.
 UI requirement: always show debt left + waves left in both shop and pause possession tooltip.
 Browser version: loan payout, repayment order, debt counters, and HP penalty should use the same META save keys as desktop. Browser QA must refresh the page mid-debt and confirm debt_left, waves_left, and failure penalties survive localStorage reload.
 
@@ -1369,8 +1354,6 @@ The next shop upgrades offer quality at a price premium.
 Next shop prices increase by 20%, and all standard offers are rarity 3 or higher.
 Synergy:
 Pairs with Shady Loan and VIP Punchcard because it converts temporary buying power into higher-rarity choices.
-Strong after a boss reward or coin-heavy level when the player can afford the premium.
-Bridge value: helps committed builds find rare capstones while keeping prices high enough to preserve risk.
 Rarity: 3
 Base Price: $30
 Max Level: Single-use consumable
@@ -1411,7 +1394,6 @@ Does not trigger on synthetic coin sources (e.g., bank interest); only on ground
 Synergy:
 Pairs with Coin Magnet because larger pickup radius increases coin pickup count and splitter opportunities.
 Pairs with Golden Interest by turning extra pickups into larger future interest bases.
-Bridge value: supports mobile control builds that sweep the arena instead of camping.
 Rarity: 2 (uncommon)
 Base Price: $16
 Max Level: 5
@@ -1428,7 +1410,6 @@ Browser version: planned bonus coin spawning must respect WEB_MAX_SPOILS_ON_FIEL
 Effect:
 After standing still for >= 0.5s, apply a local slow pulse to nearby enemies.
 Synergy:
-Supports a stationary, turret-style firing pattern.
 Pairs with high fire rate and range.
 Rarity: 2
 Base Price: $16
@@ -1445,7 +1426,6 @@ Effect:
 Dashing through enemies deals damage and briefly slows them.
 Synergy:
 Pairs with movement speed and dash cooldown reduction.
-Supports aggressive routing around obstacles.
 Rarity: 3
 Base Price: $22
 Max Level: 3
@@ -1461,7 +1441,6 @@ Browser version: planned dash contact should use deterministic swept collision, 
 Effect:
 While moving, periodically drop a tar puddle that slows enemies and applies minor DoT.
 Synergy:
-Best near obstacles and choke points.
 Compatible with future knockback and push mechanics.
 Rarity: 2
 Base Price: $14
@@ -1615,7 +1594,6 @@ Your movement leaves a short trail of Player Paint ("curing ink") on the ground.
 Synergy:
 Pairs with Ground Spikes and Sticky Tar Flask because movement trails stack into a territorial control lane.
 Works with Coin Magnet by making wide pickup routes productive instead of purely risky.
-Bridge value: supports turret builds by painting fallback paths around static defenses.
 Rarity: 2 (Common / Uncommon)
 Base Price: $12
 Max Level: 3
@@ -1637,7 +1615,6 @@ When an enemy dies on player-owned paint, convert paint intensity into bonus rew
 Synergy:
 Pairs with Curing Paint and Ground Spikes because enemies dying inside controlled zones become extra income.
 Pairs with Coin Magnet so bonus coins can be collected without breaking combat routing.
-Bridge value: turns paint control into economy scaling without adding direct damage.
 Rarity: 3
 Base Price: $20
 Max Level: 3
@@ -1654,7 +1631,6 @@ Effect:
 Moving over enemy paint converts it toward neutral or player-owned paint.
 Synergy:
 Pairs with Curing Paint by reclaiming enemy zones and replacing them with player-safe lanes.
-Supports shield and survival builds by reducing slow pressure during retreats.
 Rarity: 2
 Base Price: $16
 Max Level: 3
