@@ -4,10 +4,9 @@ Each detailed prop entry should include:
 - Trigger and runtime hook: passive, on hit, on kill, on damage, on move, consumable, or shop-only.
 - Level table: exact values for every level, including duration, radius, damage, cooldown, cap, and chance.
 - Scaling source: bullet_base, enemy max HP, current coins, player max HP, movement state, shield state, or fixed value.
-- Synergy notes: 2-3 intended pairings, including at least one same-path and one bridge-path pairing where possible.
 - Tradeoff or limiter: drawback, boss modifier, internal cooldown, entity cap, performance cap, or opportunity cost.
 - Browser version behavior: state whether the prop is identical to desktop, visually simplified, capped, or mechanically reduced in the web build.
-- UI requirement: card pitch, current value text, next upgrade text, path tag, VFX/readability note, and any warning text.
+- UI requirement: current value text, next upgrade text, path tag, VFX/readability note, and any warning text.
 - QA case: one minimum scenario that proves the prop works and one scenario that proves the limiter works.
 
 Runtime Detail Checklist
@@ -800,7 +799,7 @@ Required Card Fields
 | border_color | path-derived border | use path primary color or mixed color for bridge props |
 | rarity_marker | numeric rarity plus icon treatment | rarity must be legible without reading description |
 | current_level | owned level if any | show `Lv X/Y` or `Owned` for non-level props |
-| effect_line | single-sentence summary | front-load numeric value before flavor wording |
+| effect_line | single-sentence summary | front-load numeric value |
 | tradeoff_line | explicit drawback if present | red or amber emphasis; never hide drawbacks in tooltip only |
 | status_marker | planned/partial/implemented only in dev tools, not shipping UI | useful for debug shop or editor panels |
 
@@ -835,29 +834,20 @@ Card Hover / Inspect Requirements
 1. Base card must be readable at a glance without hover.
 2. Hover panel should show current value and next-level value.
 3. Hover panel should show trigger type and boss modifier if applicable.
-4. Hover panel should show synergy tags in a compact chip list.
+4. Hover panel should show runtime tags in a compact chip list.
 5. Hover panel should not exceed three short paragraphs or equivalent rows.
-
-A14. Prop Synergy Matrix and Anti-Synergy Rules
-
-Anti-Synergy and Guardrail Rules
-1. Never allow the same kill event to recursively trigger unlimited kill events.
-2. On-hit amplification and damage-over-time amplification must declare whether they stack multiplicatively or not.
-3. Dual-area denial props must share visual priority rules so the floor never becomes unreadable.
-4. Economy props may improve stability, but may not delete the intended risk of debt, bandits, or greedy holds.
-5. Summon-count props must convert excess quantity into quality before performance collapses.
 
 A15. Boss Modifier Policy and Performance Safety Rules
 
 Boss Modifier Policy
-| effect_family | default boss treatment | reason |
+| effect_family | default boss treatment | implementation note |
 | --- | --- | --- |
-| splash_damage | 40% to 60% effectiveness unless explicitly exempt | prevents wave-clear tools from becoming free boss delete buttons |
-| damage_over_time | reduced tick value or capped stack count | keeps DoT relevant without replacing mechanical execution |
-| hard_control | duration reduction or control immunity windows | bosses must remain readable and interactive |
-| coin_economy | no direct boss payout inflation beyond explicit reward rules | prevents boss farming exploits |
-| reflect_damage | capped by boss-facing multiplier or trigger cooldown | avoids passive kill loops |
-| summon_pressure | maintain uptime target, but reduce AI abuse around boss hazards | preserves path identity without cheese |
+| splash_damage | 40% to 60% effectiveness unless explicitly exempt | clamp splash multiplier separately from direct hit damage |
+| damage_over_time | reduced tick value or capped stack count | define boss tick multiplier or stack cap |
+| hard_control | duration reduction or control immunity windows | define boss duration multiplier or immunity cooldown |
+| coin_economy | no direct boss payout inflation beyond explicit reward rules | require explicit boss payout rule |
+| reflect_damage | capped by boss-facing multiplier or trigger cooldown | require boss multiplier and trigger cooldown |
+| summon_pressure | maintain uptime target with hazard interaction caps | require summon cap and hazard interaction rule |
 
 Late-Wave Performance Safety Rules
 1. Any prop that spawns secondary projectiles must define a hard concurrent cap.
@@ -880,9 +870,9 @@ Use these rules to keep prop names and descriptions clean, readable, and consist
 
 Naming Rules
 1. Prefer 2-3 word names unless a longer name is clearly more readable.
-2. Avoid duplicate theme words that do not explain prop role.
-3. If a prop is risk-based, the name should imply danger or sacrifice.
-4. If a prop is economy-based, the name should imply value, debt, saving, bounty, or trade.
+2. Avoid duplicate words that do not explain prop role.
+3. If a prop is risk-based, the name should identify the drawback.
+4. If a prop is economy-based, the name should identify value, debt, saving, bounty, or trade.
 
 Tooltip Rules
 1. First sentence: trigger plus outcome.
@@ -1574,8 +1564,8 @@ Set Bonus:
 Browser version: Cold Circuit should run chain damage and chill application on browser status cadence, targeting 20 Hz. Visual shock arcs and frost feedback can be trimmed by FX budget, but chain damage, mini-chill slow, and duration should remain deterministic unless a browser-specific chain cap is explicitly documented.
 
 Set system rules:
-A full 3-piece set should add roughly +12% to +20% effective power.
-Display active set count in pause and build summary UI (example: Fortress Loop 2/3).
+3-piece set bonus target: +12% to +20% effective power.
+Display active set count in pause/build summary UI, e.g. Fortress Loop 2/3.
 Recompute active sets on prop acquire, prop sell, and level start.
 Conflict rule: if two sets modify the same stat bucket, apply additive bonuses then clamp by stat caps.
 Telemetry: track set_pick_rate, set_completion_rate, and win_rate_with_set.
