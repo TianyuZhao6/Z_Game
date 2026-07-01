@@ -1,4 +1,4 @@
-Documentation Standard For Each Prop
+Prop Entry Standard
 Each detailed prop entry should include:
 - Effect promise: one sentence describing the player-facing outcome.
 - Trigger and runtime hook: passive, on hit, on kill, on damage, on move, consumable, or shop-only.
@@ -6,7 +6,7 @@ Each detailed prop entry should include:
 - Scaling source: bullet_base, enemy max HP, current coins, player max HP, movement state, shield state, or fixed value.
 - Tradeoff or limiter: drawback, boss modifier, internal cooldown, entity cap, performance cap, or opportunity cost.
 - Browser version behavior: state whether the prop is identical to desktop, visually simplified, capped, or mechanically reduced in the web build.
-- UI requirement: current value text, next upgrade text, path tag, VFX/readability note, and any warning text.
+- UI requirement: current value text, next upgrade text, path tag, VFX/implementation note, and any warning text.
 - QA case: one minimum scenario that proves the prop works and one scenario that proves the limiter works.
 
 Runtime Detail Checklist
@@ -20,10 +20,10 @@ Before marking a prop implemented, verify:
 7. The prop has at least one focused QA case in this file or the test plan.
 
 Browser Version Section
-The browser version is a supported runtime target for prop behavior. Browser prop behavior should match desktop unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when desktop can handle more entities and effects.
+Browser prop behavior should match desktop unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when desktop can handle more entities and effects.
 
-Browser version description:
-The browser version should document the same prop behavior as the desktop build, but with stricter budgets for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any player-facing prop description that changes behavior on web must explain the browser behavior in plain language, using "browser version" or "web build" rather than internal terms like emscripten, web-lite, or debug route. Reduced effects should read as intentional caps or fallbacks, not missing features.
+Browser version rules:
+Document browser-only prop differences for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any web-only value, trigger, cap, or fallback must be written as "browser version" or "web build" text, not internal terms like emscripten, web-lite, or debug route.
 
 Browser version differences to document on props:
 - Props may use lower visual density, shorter effect lifetimes, or fewer simultaneous spawned actors.
@@ -265,13 +265,13 @@ Browser acceptance snippet rules:
 - If a prop spans multiple families, include the strictest fail condition first.
 - If the browser changes an actual effect number, do not use these same-value snippets; write the browser number in current_value_text and next_upgrade_text.
 
-Browser version description levels:
+Browser version detail levels:
 - Card text: one short player-facing note only when browser behavior changes a number, cap, or trigger. Keep it under one line at 960x540.
 - Tooltip text: include the exact cap or fallback and the unchanged part of the effect, such as damage, cooldown, or reward value.
 - Detailed prop spec: describe the runtime rule, cap behavior, VFX simplification, save/load impact, and QA scenario.
 - QA/test plan: verify the cap is visible in diagnostics, the card text matches runtime behavior, and the effect does not freeze late-wave combat.
 
-Browser version description template:
+Browser version detail template:
 - Browser version:
   - Classification: same as desktop / visual-only simplified / capped / fallback / mechanically reduced.
   - Runtime rule: exact cap, refresh rule, merge rule, drop rule, or conversion rule.
@@ -408,7 +408,7 @@ Browser version note surface decision:
 | fallback replaces a trigger | yes | yes | yes if stateful | yes |
 | mechanical value differs | yes, with browser value | yes, with desktop comparison | yes if persistent | yes |
 
-Browser description red flags:
+Browser note red flags:
 - A prop entry says "same as desktop" but creates bullets, particles, paint, pickups, turrets, damage text, or persistent browser state without naming the cap or save path.
 - A card note exposes internal terms such as WEB_LITE_RENDER_BULLET_CAP, emscripten, quality payload, or pygame mixer.
 - Current-value text uses desktop numbers while browser has a different damage, radius, cooldown, chance, reward, stack cap, or summon count.
@@ -442,7 +442,7 @@ Browser wording by implementation confidence:
 - Unknown: do not invent a cap; write "must define browser cap/fallback before implementation."
 
 Browser entry depth by implementation status:
-| implementation status | required browser description depth | example detail |
+| implementation status | required browser note depth | example detail |
 | --- | --- | --- |
 | implemented and effect-affecting | Full browser version paragraph with classification, owner, cap/cadence, overflow rule, player note, and QA counter | Shrapnel must name pending-bullet headroom, reduced shard spawn rule, visible bullet cap, and unchanged shard damage |
 | implemented and visual-only | One or two sentences in the detailed spec plus optional tooltip note; no separate browser level table | Explosive must say FX trims under the browser particle budget while explosion damage/radius stay unchanged |
@@ -797,31 +797,29 @@ Required Card Fields
 | title | exact roster display_name | do not shorten unless UI overflow requires approved alias |
 | path_label | primary path or dual-path label | use runtime path tags where possible |
 | border_color | path-derived border | use path primary color or mixed color for bridge props |
-| rarity_marker | numeric rarity plus icon treatment | rarity must be legible without reading description |
+| rarity_marker | numeric rarity plus icon treatment | rarity must be legible without reading body text |
 | current_level | owned level if any | show `Lv X/Y` or `Owned` for non-level props |
 | effect_line | single-sentence summary | front-load numeric value |
 | tradeoff_line | explicit drawback if present | red or amber emphasis; never hide drawbacks in tooltip only |
 | status_marker | planned/partial/implemented only in dev tools, not shipping UI | useful for debug shop or editor panels |
 
 Card Copy Rules
-1. The first line of effect copy must explain what happens, not lore.
-2. Use numbers before adjectives: `+20 shield`, not `small shield gain`.
 3. If a prop has a condition, state the condition first: `On hit`, `On kill`, `While moving`.
 4. If a prop has a drawback, reserve a dedicated tradeoff line.
 5. If boss behavior differs, include boss rule in tooltip or expanded inspect panel.
 
 Color and Outline Rules
-| path | base outline intent | readability note |
+| path | base outline rule | implementation note |
 | --- | --- | --- |
 | BALLISTIC | warm orange | reads as direct damage / projectile aggression |
-| OFFENSE | vivid red-orange | reserved for raw damage and marked kill pressure |
+| OFFENSE | vivid red-orange | used for raw damage and marked-target effects |
 | CONTROL | cyan-teal | used for slows, traps, pulse zones, and positional effects |
 | DEFENSE | steel blue | used for shields, mitigation, and survival tools |
 | ECONOMY | gold | used for coin, savings, discount, and bounty systems |
 | STATUS | toxic green | used for DoT, debuff, chill, shock, and paint status effects |
 | SUMMON | violet | used for turret and future summoner packages |
 | PAINT | lime-green / ink-accent | keep visually distinct from generic status when possible |
-| CRIT | bright amber-white accent | should read as precision / burst identity |
+| CRIT | bright amber-white accent | use for precision / burst props |
 | RISK | crimson accent overlay | add secondary warning trim, not full-card replacement |
 
 Dual-Path Card Rules
@@ -866,11 +864,10 @@ Recommended Runtime Safety Checklist
 | summon counts | soft cap with quality conversion | auto_turret, stationary_turret, future summoner props |
 
 A16. Naming and Tooltip Standards
-Use these rules to keep prop names and descriptions clean, readable, and consistent across shop, pause, and debug UI.
+Use these rules to keep prop names and tooltip text consistent across shop, pause, and debug UI.
 
 Naming Rules
 1. Prefer 2-3 word names unless a longer name is clearly more readable.
-2. Avoid duplicate words that do not explain prop role.
 3. If a prop is risk-based, the name should identify the drawback.
 4. If a prop is economy-based, the name should identify value, debt, saving, bounty, or trade.
 
