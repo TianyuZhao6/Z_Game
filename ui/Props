@@ -126,7 +126,7 @@ Browser UI surface matrix for prop documentation:
 | Shop card | only when browser changes a planning decision, such as fallback trigger or visible actor cap | one short line, no debug terms |
 | Shop tooltip | when exact cap/cadence/overflow explains what the player sees | include number and unchanged value |
 | Pause summary | when browser hides simulated actors or tracks persistent browser-relevant state | summarize active count/value, not implementation |
-| Run summary | when browser visible caps may make a build look weaker than it simulated | show simulated triggers/damage, not only visible events |
+| Run summary | when browser visible caps hide simulated prop output | show simulated triggers/damage, not only visible events |
 | Diagnostic overlay | during QA only | show raw caps/counters such as pending_bullets and fx_particle_count |
 
 Browser prop documentation anti-patterns:
@@ -234,7 +234,7 @@ Browser current/next wording rules:
 - If a prop has both a effect cap and a visual cap, lead with the effect cap and add the visual cap as secondary detail.
 
 Browser QA scenario rows for prop families:
-| scenario | suggested URL | build focus | pass criteria |
+| scenario | suggested URL | prop focus | pass criteria |
 | --- | --- | --- | --- |
 | ballistic_dense | `?start=1&diag=1&duration=90&level=6` | Piercing, Ricochet, Shrapnel, Explosive | pending bullets stay bounded, visible bullet cap is reported, and hit/damage counters continue |
 | shield_aegis | `?start=1&diag=1&biome=hell&level=5` | Carapace, Bone Plating, Aegis Pulse | mitigation order, pulse cooldown, and shield state match prop text under damage-text pressure |
@@ -402,7 +402,7 @@ Browser version note surface decision:
 | --- | --- | --- | --- | --- |
 | no behavior difference | no | optional | no | yes, one line |
 | visual-only text/FX trim | no | yes if confusing | optional for trigger-heavy builds | yes |
-| render cap hides simulated actors | only if build planning changes | yes | yes for turrets/summons | yes |
+| render cap hides simulated actors | only if prop planning changes | yes | yes for turrets/summons | yes |
 | overflow reduces spawned actors | yes if level value is affected | yes | optional | yes |
 | reward is bundled or credited directly | no | yes if pickups look missing | yes if run summary reports rewards | yes |
 | fallback replaces a trigger | yes | yes | yes if stateful | yes |
@@ -475,12 +475,6 @@ Same-as-desktop policy:
 - Do not create separate browser level tables unless at least one effect number differs.
 - Still include browser QA if the prop can generate high entity density, frequent audio, persistent state, or large visual bursts.
 - If later tuning introduces a browser-only cap, update the classification from same-as-desktop to capped and add player-facing text.
-
-Browser prop documentation goals:
-- Keep browser-specific caps, fallbacks, and reduced values explicit in prop entries.
-- Keep shop props, pause summaries, and tooltip text readable at smaller canvas sizes.
-- Make browser prop regressions measurable through diagnostics.
-- Document browser-safe audio and storage behavior only when it changes prop feedback or prop state.
 
 Browser-specific runtime behavior:
 - Uses web-lite isometric rendering by default, including capped visible pickups, turrets, enemies, bullets, and enemy shots.
@@ -863,53 +857,6 @@ Recommended Runtime Safety Checklist
 | pulse/aura | fixed tick interval and target cap | time_dilation_boots, aegis_pulse |
 | summon counts | soft cap with quality conversion | auto_turret, stationary_turret, future summoner props |
 
-A16. Naming and Tooltip Standards
-Use these rules to keep prop names and tooltip text consistent across shop, pause, and debug UI.
-
-Naming Rules
-1. Prefer 2-3 word names unless a longer name is clearly more readable.
-3. If a prop is risk-based, the name should identify the drawback.
-4. If a prop is economy-based, the name should identify value, debt, saving, bounty, or trade.
-
-Tooltip Rules
-1. First sentence: trigger plus outcome.
-2. Second sentence: scaling or level-up gain.
-3. Third sentence only if needed: tradeoff, boss modifier, or cap.
-4. Keep base tooltip under 140 characters when possible.
-5. Expanded tooltip may show formulas, but the first line must stay plain English.
-
-A17. Abbreviation and Tag Standards
-Use short tags consistently so debug screens, compact HUD elements, and shop cards do not drift into conflicting naming.
-
-UI Tag Meanings
-- OFF = offense
-- DEF = defense
-- ECO = economy
-- CTL = control
-- CRT = crit / burst
-- PNT = paint
-- SUM = summon
-
-Tag Rules
-1. A short tag should never replace the full path name in expanded UI.
-2. A short tag may appear on card corners, debug panels, or compact possession lists.
-3. If a prop bridges two paths, show one primary short tag and one secondary icon, not two equal tags.
-4. Rarity and path tag must remain visually distinct.
-
-Rarity Policy
-Use numeric rarity for fast tuning:
-1 Common: high shop weight; excluded from boss reward pools by default.
-2 Uncommon: medium frequency.
-3 Rare: low frequency early, then increases later.
-4 Epic: very low chance in the shop; usually appears through bosses.
-
-Shop rarity rule:
-Higher rarity means lower shop probability.
-Shop refresh growth can increase higher-rarity availability as level increases.
-
-Rarity progression rule:
-Lower rarities keep higher base weight.
-Higher rarities keep lower base weight but higher growth per level.
 1. Core Offense Props
 
 1.1. Piercing Rounds
