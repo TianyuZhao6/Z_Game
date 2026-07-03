@@ -336,139 +336,6 @@ Current implemented-prop browser documentation audit:
 | Auto-Turret | browser_doc:complete | Nearest 8 turrets are drawn while all owned turrets simulate, target, fire, and restore | Keep simulated_turret_count, web_visible_turrets, and turret_shots_fired in regression QA. |
 | Stationary Turret | browser_doc:needs_counter | Nearest 8 are drawn; hidden placements remain simulated obstacles/fire sources and restore | Record active placements, visible count, collision behavior, shots fired, and restored placement count. |
 
-Current planned-prop browser documentation audit:
-| prop | browser_doc status | required browser behavior before implementation | completion condition |
-| --- | --- | --- | --- |
-| Bleeding Edge | browser_doc:blocked_owner | Use the 20 Hz status scheduler; preserve bleed stacks, duration, tick damage, and boss modifier when text merges. | Assign the status owner, define bleed counters, and add a dense-wave tick QA route. |
-| Cleanse Step | browser_doc:blocked_owner | Read hostile paint state rather than rendered pixels; conversion and slow resistance must continue when paint is hidden. | Define paint-state query, conversion cadence, active-state counter, and wind/mist QA. |
-| Paint Converter | browser_doc:blocked_owner | Validate owned-paint state in simulation; preserve full coin reward when pickup visuals bundle or direct-credit. | Define kill owner, intensity consumption rule, coins_credited counter, and pickup overflow behavior. |
-| Explosive Crits | browser_doc:blocked_owner | Resolve splash damage from crit events while trimming only FX under the browser particle budget. | Define crit hook, splash trigger counter, particle budget behavior, and unchanged-damage tooltip. |
-| Razor Focus | browser_doc:needs_counter | Use the shared stat rebuild; crit gain and fire-rate penalty should match desktop and fit 960x540 cards. | Add stat-before/after and refresh-persistence QA evidence. |
-| Frost Brand | browser_doc:blocked_owner | Use the 20 Hz status scheduler for chill; preserve chance, slow, re-hit bonus, duration, and boss modifier. | Define chill owner/counters and verify merged text does not change re-hit damage. |
-| Shock Relay | browser_doc:blocked_owner | Count hits in the bullet path; reduce chain jumps under headroom before changing chain damage. | Define unique-target rule, chain headroom, attempted/spawned/skipped jump counters, and card note. |
-| Blood Pact | browser_doc:needs_counter | Use the shared stat rebuild and save path; max-HP penalty, damage bonus, and safety floor should match desktop. | Add stat rebuild, minimum-HP, save/load, and 960x540 card QA evidence. |
-| Guardian Charm | browser_doc:blocked_owner | Trigger from player damage after mitigation; preserve shield, speed, duration, cooldown, and saved cooldown state while trimming FX only. | Define damage-event order, cooldown persistence, rescue counter, and survival-critical feedback rule. |
-| Mirror Shell | browser_doc:needs_fallback | Default route must use a reachable shield-hit/ranged-enemy fallback while `enemyshots=1` tests true projectile reflect. | Finalize fallback frequency, anti-loop rule, card/tooltip copy, and separate fallback/projectile counters. |
-| Retaliation Core | browser_doc:blocked_owner | Trigger from shield damage; preserve buff magnitude/duration and use compact HUD feedback when text/FX budgets are full. | Define shield-hit owner, refresh rule, buff timer counter, and pause/HUD surface. |
-| Retaliation Thorns | browser_doc:blocked_owner | Trigger from contact damage with per-enemy cooldown and no recursive reflection; text may merge without changing damage. | Define contact owner, reflect counter, boss modifier, anti-loop QA, and tooltip surface. |
-| Shardstorm | browser_doc:blocked_owner | Trigger once per shield break; use pending-bullet headroom and reduce shard count before shard damage. | Define break-event owner, spawned/skipped shard counters, generation guard, and card note. |
-| Shield Capacitor | browser_doc:blocked_owner | Convert full-HP heal value through pickup state; visible pickup caps must not reduce temporary shield value. | Define pickup owner, conversion order, temp-shield cap, converted-value counter, and save/reset behavior. |
-| Black Market Pass | browser_doc:blocked_owner | Persist the next-shop override through localStorage; price modifier and rarity floor must remain readable after refresh. | Define consume/reset timing, storage state, card note, and refresh QA. |
-| Spoil Splitter | browser_doc:blocked_owner | Trigger from coin pickup with anti-loop throttle; merge visuals while preserving credited coin value. | Define pickup owner, proc/rate cap, coins_credited counter, and Coin Magnet stress QA. |
-| VIP Punchcard | browser_doc:blocked_owner | Persist cashback bank, payout cap, timing, and reset state through browser refresh. | Define shop purchase owner, localStorage fields, payout counters, and pause/shop summary. |
-| Phantom Dash | browser_doc:blocked_owner | Trigger only from a valid dash state; preserve contact damage/slow while trimming trail and impact FX. | Define dash owner, unavailable-dash negative control, strike counter, and FX-only tooltip decision. |
-| Sticky Tar Flask | browser_doc:blocked_owner | Use the 20 Hz ground scheduler; define active puddle cap and refresh/evict behavior while preserving slow values. | Choose exact active cap, duration cleanup, eviction counter, and ground-density QA route. |
-| Time Dilation Boots | browser_doc:blocked_owner | Use a documented pulse cadence; preserve aura radius/slow values and cancel buildup immediately on movement. | Define stationary owner, cadence, target cap, pulse counter, and movement-cancel QA. |
-
-Planned-prop audit rule:
-- `browser_doc:blocked_owner` means the browser runtime owner or overflow behavior must be selected before implementation starts.
-- `browser_doc:needs_fallback` blocks shop/card readiness because the normal browser route cannot trigger the prop as written.
-- Planned props may move to `browser_doc:needs_counter` after runtime behavior and player surfaces are fixed, but only implemented and verified props may become `browser_doc:complete`.
-
-Audit maintenance rule:
-- Change a row to browser_doc:complete only after the listed diagnostic result or manual QA evidence exists.
-- If runtime behavior changes, update the detailed prop entry, roster note, copy map, and this audit row in the same change.
-- A browser_doc:complete row must not rely only on visual inspection when the browser can hide simulated actors, damage, rewards, or persistent state.
-
-Browser doc completeness example:
-Good:
-Browser version: classification = render_capped. Runtime owner = turret_update. Effect values = owned turret count, damage, fire rate, targeting, and saved level match desktop. Browser cap = nearest 8 turrets are drawn; hidden turrets keep simulating and firing. Player surface = card note plus tooltip when owned turret count exceeds 8. QA proof = web_visible_turrets, simulated_turret_count, and turret_shots_fired in `?start=1&diag=1&level=8`.
-
-Bad:
-Browser version: optimized for web.
-
-Browser version field schema for every detailed prop:
-- First sentence: classify the browser behavior and say whether effect values match desktop.
-- Second sentence: name the implementation owner and cadence, such as bullet hit event, 20 Hz status update, 24 Hz pulse update, 30 Hz pickup update, shop/meta path, or turret update loop.
-- Third sentence: name the exact browser cap or overflow rule that can change visible feedback.
-- Fourth sentence: state what stays authoritative when the cap is hit, such as damage, reward credit, shield amount, cooldown, stack count, or saved level.
-- Fifth sentence: define the player-facing browser note surface: none, tooltip only, card plus tooltip, pause summary, or QA-only.
-- Final sentence: give one browser QA route or diagnostic counter when the prop is implemented or high risk.
-
-Browser version minimum wording by prop type:
-| prop type | must mention | should not mention |
-| --- | --- | --- |
-| Bullet modifiers | visible bullet cap, pending-bullet headroom, hit simulation authority | lower damage unless runtime actually lowers damage |
-| Status effects | update cadence, stack/tick authority, damage text merge | skipped ticks when only text is skipped |
-| Ground effects | update cadence, active cap, cached/skipped render behavior | disabled paint or spikes when only visuals are hidden |
-| Shield/defense | mitigation order, cooldown state, shield/plating save state, text merge | weaker defense when only feedback is reduced |
-| Turrets/summons | simulated actor count, visible actor cap, targeting/fire authority | fewer owned turrets unless simulation count is reduced |
-| Economy | credited value, pickup/spoil visual cap, localStorage state | reduced reward because pickups are bundled or hidden |
-| Enemy-shot reactions | default browser projectile state, fallback trigger, opt-in URL route | real projectile behavior on default route unless `enemyshots=1` is required |
-| Shop/meta props | card layout constraint, localStorage persistence, refresh behavior | browser-only price or rarity changes unless implemented |
-
-Browser version note surface decision:
-| browser difference | card note | tooltip note | pause/run summary | detailed spec |
-| --- | --- | --- | --- | --- |
-| no behavior difference | no | optional | no | yes, one line |
-| visual-only text/FX trim | no | yes if confusing | optional for trigger-heavy builds | yes |
-| render cap hides simulated actors | only if prop planning changes | yes | yes for turrets/summons | yes |
-| overflow reduces spawned actors | yes if level value is affected | yes | optional | yes |
-| reward is bundled or credited directly | no | yes if pickups look missing | yes if run summary reports rewards | yes |
-| fallback replaces a trigger | yes | yes | yes if stateful | yes |
-| mechanical value differs | yes, with browser value | yes, with desktop comparison | yes if persistent | yes |
-
-Browser note red flags:
-- A prop entry says "same as desktop" but creates bullets, particles, paint, pickups, turrets, damage text, or persistent browser state without naming the cap or save path.
-- A card note exposes internal terms such as WEB_LITE_RENDER_BULLET_CAP, emscripten, quality payload, or pygame mixer.
-- Current-value text uses desktop numbers while browser has a different damage, radius, cooldown, chance, reward, stack cap, or summon count.
-- Tooltip says an effect is disabled when the implementation only skips rendering or merges feedback.
-- QA only uses `skiprender=1` for a prop whose player-facing browser behavior depends on visible bullets, paint, cards, or FX.
-
-Browser subfield example for an implemented prop:
-Browser version:
-- Runtime gate: WEB_ENABLE_CURING_PAINT.
-- Update owner: ground-control scheduler at 20 Hz.
-- Simulated values: damage_per_tick, lifetime, radius, boss multiplier, ownership, and tick interval match desktop.
-- Visible cap: paint render uses cached static/dynamic layers and can be skipped in wind/mist routes.
-- Overflow rule: paint state remains in paint_grid; do not base rewards on rendered pixels.
-- Player note: tooltip only if a biome hides paint visuals; no card note for normal browser play.
-- QA URL: `?start=1&diag=1&biome=wind` plus normal biome run.
-
-Browser subfield example for a planned prop:
-Browser version:
-- Runtime gate: enemy projectiles disabled by default, so fallback is required.
-- Update owner: player damage event after shield/carapace mitigation.
-- Simulated values: reflect ratio, reflect range, boss multiplier, and global rate limit should match desktop.
-- Visible cap: reflected damage text may merge under WEB_MAX_DAMAGE_TEXTS.
-- Overflow rule: no recursive reflection; excess feedback is dropped, not damage.
-- Player note: "Browser: uses shield-hit fallback while enemy shots are off."
-- QA URL: default `?start=1&diag=1` and projectile route `?start=1&diag=1&enemyshots=1`.
-
-Browser wording by implementation confidence:
-- Implemented and verified in code: use present tense, such as "Browser updates Curing Paint at 20 Hz."
-- Implemented but only visual: say "effect matches desktop" before describing the visual cap.
-- Planned: start with "planned" and specify the required hook or fallback.
-- Unknown: do not invent a cap; write "must define browser cap/fallback before implementation."
-
-Browser entry depth by implementation status:
-| implementation status | required browser note depth | example detail |
-| --- | --- | --- |
-| implemented and effect-affecting | Full browser version paragraph with classification, owner, cap/cadence, overflow rule, player note, and QA counter | Shrapnel must name pending-bullet headroom, reduced shard spawn rule, visible bullet cap, and unchanged shard damage |
-| implemented and visual-only | One or two sentences in the detailed spec plus optional tooltip note; no separate browser level table | Explosive must say FX trims under the browser particle budget while explosion damage/radius stay unchanged |
-| implemented and persistent | Include localStorage/save behavior and refresh QA, even when combat behavior is unchanged | Coupon, Loan, Lockbox, Interest, Carapace, and turret counts must survive browser refresh |
-| implemented and high-density | Include late-wave diagnostic route and the counter that proves simulation continues under visible caps | Piercing/Ricochet should cite web_visible_bullets, pending_bullets, and prop_trigger_counts |
-| planned with known hook | Use future-tense/planned wording, name the intended browser owner, and list the cap/fallback that implementation must satisfy | Bleeding Edge should say it must use the 20 Hz status scheduler and damage-text merge behavior |
-| planned with disabled dependency | Must define a browser fallback before implementation can be considered complete | Mirror Shell must define default shield-hit/ranged-enemy fallback plus `enemyshots=1` projectile QA |
-| planned with unknown browser cost | Mark browser cap/fallback as unresolved and block card-ready status until the cap is chosen | New summon, chain-lightning, or paint-economy props must define actor/chain/pickup budgets before tuning |
-
-Browser implementation-status wording examples:
-- Implemented: "Browser version: effect values match desktop; browser updates DOT at 20 Hz and may merge tick text under the damage-text budget."
-- Implemented visual-only: "Browser version: explosion damage and radius match desktop; FX may trim under the 16-particle browser budget."
-- Implemented persistent: "Browser version: value and shop order match desktop; state persists through localStorage and must restore after refresh."
-- Planned known hook: "Browser version: planned to run through the 20 Hz ground scheduler; paint state remains authoritative even if the render layer is skipped."
-- Planned fallback: "Browser version: planned fallback required because default browser play disables enemy shots; use shield damage from ranged enemies unless `enemyshots=1` is enabled."
-- Unknown: "Browser version: browser cap/fallback must be defined before implementation; do not ship card text until the cap is documented."
-
-Browser version classification guide:
-| classification | meaning | player-facing note needed | example |
-| --- | --- | --- | --- |
-| same as desktop | damage, timing, caps, triggers, and reward value match desktop | no card note; optional detailed spec note | DOT damage ticks at the same values |
-| visual-only simplified | effect matches desktop but particles, flashes, text, or ripples are reduced | tooltip note only if the missing visual could confuse players | explosive particles trim to the browser FX budget |
-| capped | browser has a lower live actor, projectile, tile, text, or VFX cap | yes, if the cap changes planning or stacking value | lite renderer shows nearest 8 turrets |
-| fallback | a disabled browser subsystem is replaced by another trigger or effect | yes, always | enemy-shot trigger becomes timed shield pulse |
-| mechanically reduced | browser changes damage, duration, cooldown, radius, chance, or reward value | yes, card and tooltip must show browser numbers | splash radius or summon count is lower on web |
-
 Same-as-desktop policy:
 - If a prop is identical in effect and only benefits from generic browser optimizations, write "Browser version: same values as desktop" in the detailed spec only.
 - Do not add a browser_version_note to the shop card for same-as-desktop props.
@@ -513,7 +380,7 @@ Browser prop QA rows to add per high-risk prop:
 | --- | --- | --- | --- |
 | WEB-PROP-01 | Shrapnel Shells | pending-bullet soft cap and visible bullet render cap | dense kill wave respects pending headroom and does not flood rendered bullets |
 | WEB-PROP-02 | Explosive Rounds | FX particle budget and chain resolution | chain explosion clears enemies while FX trims to the browser particle budget |
-| WEB-PROP-03 | Ground Spikes | 20 Hz browser update cadence and max_active 6/10/14 | player trail remains readable and damage/slow still apply |
+| WEB-PROP-03 | Ground Spikes | 20 Hz browser update cadence and max_active 6/10/14 | trail state updates and damage/slow still apply |
 | WEB-PROP-04 | Curing Paint | 20 Hz browser update cadence plus cached paint rendering | ownership color and tick timing remain correct even when render refresh is lower |
 | WEB-PROP-05 | Aegis Pulse | 24 Hz pulse-list update with unchanged shield-gated trigger | shield-gated cooldown and radius/damage values match desktop rules |
 | WEB-PROP-06 | Auto-Turret | desktop simulation count with lite-render visible turret cap 8 | all owned turrets still fire while renderer prioritizes nearest visible turrets |
@@ -739,95 +606,6 @@ A9. Telemetry Specification
 | bandit_killed | bandit death resolution | run_id, level_idx, stolen_total, refund, bounty_paid |
 | shady_loan_purchased | loan purchase | run_id, level_idx, loan_level, debt_total, waves_remaining |
 | shady_loan_resolved | repayment/default outcome | run_id, level_idx, outcome, hp_penalty, debt_remaining |
-
-A11. Planned Prop Onboarding Checklist (Detailed)
-
-Checklist Columns
-prop_id | required_meta_keys | required_runtime_hooks | required_ui_or_vfx | minimum_qa_case
-
-| prop_id | required_meta_keys | required_runtime_hooks | required_ui_or_vfx | minimum_qa_case |
-| --- | --- | --- | --- | --- |
-| bleeding_edge | bleeding_edge_level, bleed_stack_cap | bullet hit apply + enemy bleed tick update | bleed stack icon + hit tint | verify stack cap and boss modifier |
-| cleanse_step | cleanse_step_level, cleanse_buffer | move tick conversion + paint ownership check | reclaim pulse ring + HUD resist indicator | verify no gain without hostile paint |
-| paint_converter | paint_converter_level, paint_bonus_cd | kill event hook + owned-paint zone validator | coin bonus popup + paint consume FX | verify bonus only in owned paint zone |
-| explosive_crits | explosive_crits_level | crit resolution hook + splash damage resolver | crit splash burst FX + radius ring | verify non-crit shots do not trigger |
-| razor_focus | razor_focus_level | fire-rate recompute + crit stat recompute | stat delta tooltip (crit up, speed down) | verify additive abuse is prevented |
-| frost_brand | frost_brand_level, chill_timer | on-hit chill apply + re-hit bonus resolver | chill icon + slow shader tint | verify boss slow reduction path |
-| shock_relay | shock_relay_level, relay_counter | hit counter + chain target selection | chain beam FX + jump count text | verify no infinite jump loops |
-| blood_pact | blood_pact_level | max-HP penalty apply + damage bonus apply | risk warning badge in shop card | verify HP floor guard on purchase |
-| guardian_charm | guardian_charm_level, guardian_cd | low-HP trigger + emergency shield apply | emergency proc banner + cooldown ring | verify cooldown lockout enforcement |
-| mirror_shell | mirror_shell_level | shield-state check + ranged reflect resolver | reflect arc FX + shield-state cue | verify disabled behavior without shield |
-| retaliation_core | retaliation_core_level, retaliate_timer | on-damage buff apply + timed decay | reactive buff icon + pulse outline | verify refresh behavior under rapid hits |
-| retaliation_thorns | retaliation_thorns_level | contact hit detector + reflect calculation | thorn flash FX on contact | verify boss reflect reduction rule |
-| shardstorm | shardstorm_level | shield-break event hook + shard spawn | shield-break burst FX + shard trails | verify single trigger per break instance |
-| shield_capacitor | shield_capacitor_level, temp_shield_cap | overheal convert pipeline + temp shield decay | temp shield bar segment + convert popup | verify cap enforcement at max HP |
-| black_market_pass | black_market_pass_charges | next-shop offer override + expiration clear | special shop frame + timer label | verify one-shop duration only |
-| spoil_splitter | spoil_splitter_level, split_proc_cd | coin pickup proc hook + anti-loop throttle | extra coin proc text + sparkle FX | verify proc cap under magnet farming |
-| vip_punchcard | vip_punchcard_level, cashback_bank | purchase event cashback accrual + payout | cashback meter in shop UI | verify payout cap and reset timing |
-| phantom_dash | phantom_dash_level | dash state event + contact strike resolver | dash trail FX + impact ring | verify no trigger when dash unavailable |
-| sticky_tar_flask | sticky_tar_flask_level | puddle spawn manager + slow aura tick | puddle decal + edge fade FX | verify duration cleanup on room reset |
-| time_dilation_boots | time_dilation_boots_level | stationary detector + periodic slow pulse | aura ring + standstill charge meter | verify movement cancels pulse build-up |
-
-Implementation Exit Criteria (for each planned prop)
-1. Added to shop catalog with max_level, rarity, and tooltip text.
-2. Added to META defaults and save/load serialization path.
-3. Added to runtime update loop with deterministic trigger conditions.
-4. Added to UI feedback layer (icon, tooltip, or event text).
-5. Added to at least one QA regression case and one telemetry event.
-
-A12. Shop Card Readability and Presentation Spec
-
-Card Information Priority
-1. Display Name
-2. Path Identity
-3. Immediate Effect
-4. Cost
-5. Level / Max Level
-6. Tradeoff or restriction
-
-Required Card Fields
-| field | requirement | notes |
-| --- | --- | --- |
-| title | exact roster display_name | do not shorten unless UI overflow requires approved alias |
-| path_label | primary path or dual-path label | use runtime path tags where possible |
-| border_color | path-derived border | use path primary color or mixed color for bridge props |
-| rarity_marker | numeric rarity plus icon treatment | rarity must be legible without reading body text |
-| current_level | owned level if any | show `Lv X/Y` or `Owned` for non-level props |
-| effect_line | single-sentence summary | front-load numeric value |
-| tradeoff_line | explicit drawback if present | red or amber emphasis; never hide drawbacks in tooltip only |
-| status_marker | planned/partial/implemented only in dev tools, not shipping UI | useful for debug shop or editor panels |
-
-Card Copy Rules
-3. If a prop has a condition, state the condition first: `On hit`, `On kill`, `While moving`.
-4. If a prop has a drawback, reserve a dedicated tradeoff line.
-5. If boss behavior differs, include boss rule in tooltip or expanded inspect panel.
-
-Color and Outline Rules
-| path | base outline rule | implementation note |
-| --- | --- | --- |
-| BALLISTIC | warm orange | reads as direct damage / projectile aggression |
-| OFFENSE | vivid red-orange | used for raw damage and marked-target effects |
-| CONTROL | cyan-teal | used for slows, traps, pulse zones, and positional effects |
-| DEFENSE | steel blue | used for shields, mitigation, and survival tools |
-| ECONOMY | gold | used for coin, savings, discount, and bounty systems |
-| STATUS | toxic green | used for DoT, debuff, chill, shock, and paint status effects |
-| SUMMON | violet | used for turret and future summoner packages |
-| PAINT | lime-green / ink-accent | keep visually distinct from generic status when possible |
-| CRIT | bright amber-white accent | use for precision / burst props |
-| RISK | crimson accent overlay | add secondary warning trim, not full-card replacement |
-
-Dual-Path Card Rules
-1. Mixed-path props should blend border colors or use split-corner accents.
-2. The primary path controls the border; the secondary path controls a badge, stripe, or icon.
-3. Do not use more than two path colors on a single card.
-4. If a prop is economy plus risk, the risk warning must visually outrank the economy color.
-
-Card Hover / Inspect Requirements
-1. Base card must be readable at a glance without hover.
-2. Hover panel should show current value and next-level value.
-3. Hover panel should show trigger type and boss modifier if applicable.
-4. Hover panel should show runtime tags in a compact chip list.
-5. Hover panel should not exceed three short paragraphs or equivalent rows.
 
 A15. Boss Modifier Policy and Performance Safety Rules
 
@@ -1760,7 +1538,7 @@ Damage text merging must not hide critical survival information such as shield b
 If paint visuals are skipped in wind/mist browser routes, pause/tooltips must still make it clear that paint effects remain active.
 Player can identify prop path from card outline color within 1 second.
 Tooltip "Now/Next" text fits in available panel space without clipping.
-Damage/event feedback remains readable during boss phase transitions.
+Damage/event feedback remains available during boss phase transitions.
 
 19. Data Validation Rules (Pre-Commit)
 19.1. Numeric validation
