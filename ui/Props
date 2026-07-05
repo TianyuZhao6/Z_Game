@@ -2,6 +2,14 @@ Browser Version Section
 Browser prop behavior should match desktop unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when desktop can handle more entities and effects.
 
 Browser version rules:
+
+Original version vs browser version:
+| area | original version | browser version |
+| --- | --- | --- |
+| Simulation authority | Desktop/original runtime is the reference for damage, cooldowns, proc order, save keys, and level tables. | Browser should keep those values unless the prop entry lists a browser-only cap, fallback, or reduced value. |
+| Rendering | Original version may draw every spawned bullet, pickup, turret, text, and particle allowed by desktop performance. | Browser may hide, merge, or trim visible actors and feedback while keeping simulation values authoritative. |
+| Overflow | Original version usually follows each prop's own max_active, cooldown, or entity cap. | Browser must state whether overflow is dropped, merged, credited directly, hidden visually, or spawn-count reduced. |
+| Disabled systems | Original version can use normal desktop combat hooks such as enemy projectile hits. | Browser must define a fallback or opt-in URL route when a desktop trigger is disabled by default. |
 Document browser-only prop differences for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any web-only value, trigger, cap, or fallback must be written as "browser version" or "web build" text, not internal terms like emscripten, web-lite, or debug route.
 
 Browser version differences to document on props:
@@ -451,7 +459,7 @@ Level 3: proc_chance = 45%, shard_count = 4, shard_damage = 44% bullet_base
 Shard travel range: 2.2 / 2.6 / 3.0 tiles
 Chain guard: shrapnel kills cannot trigger another shrapnel proc more than 2 generations deep.
 Performance cap: max 36 live shrapnel bullets at once; excess shards are dropped.
-Browser version: effect chance and shard damage match desktop. Shard count is passed through the browser pending-bullet soft cap: current implementation uses max(10, WEB_LITE_RENDER_BULLET_CAP * 2) pending headroom, with WEB_LITE_RENDER_BULLET_CAP currently 28. If there is no headroom, extra shards are not spawned; if headroom is tight, the shard burst is reduced. The lite renderer draws at most 28 visible player bullets nearest the player.
+Original version: uses the listed proc chance, shard count, shard damage, 36-live-shrapnel performance cap, and generation guard. Browser version: effect chance and shard damage match desktop. Shard count is passed through the browser pending-bullet soft cap: current implementation uses max(10, WEB_LITE_RENDER_BULLET_CAP * 2) pending headroom, with WEB_LITE_RENDER_BULLET_CAP currently 28. If there is no headroom, extra shards are not spawned; if headroom is tight, the shard burst is reduced. The lite renderer draws at most 28 visible player bullets nearest the player.
 
 1.5. Mark of Vulnerability
 Effect:
@@ -491,7 +499,7 @@ Chain behavior rule:
 chain_depth_cap = 3 (original kill + 2 chained explosions)
 same_target_rehit_lockout = 0.20s
 Visual budget: max 12 concurrent explosive flash VFX instances.
-Browser version: explosion damage, radius, boss multiplier, and chain resolution match desktop. Browser does not use a separate prop-level flash cap; explosive particles are trimmed by the global WEB_MAX_FX_PARTICLES budget, currently 16 in the default full profile. Death explosions also use a soft particle count helper so large bursts keep a small minimum flash while avoiding unbounded particle growth.
+Original version: uses the listed explosion damage, radius, boss multiplier, chain_depth_cap, rehit lockout, and flash VFX budget. Browser version: explosion damage, radius, boss multiplier, and chain resolution match desktop. Browser does not use a separate prop-level flash cap; explosive particles are trimmed by the global WEB_MAX_FX_PARTICLES budget, currently 16 in the default full profile. Death explosions also use a soft particle count helper so large bursts keep a small minimum flash while avoiding unbounded particle growth.
 
 1.7. DOT Rounds
 Effect:
@@ -509,7 +517,7 @@ Stacking behavior:
 Applying a new stack refreshes only that stack duration, not all stacks.
 Per-target DoT cap:
 max_total_dot_damage_per_second = 120% bullet_base (before boss multiplier).
-Browser version: stack count, duration, tick interval, per-target DPS cap, and boss multiplier match desktop. Browser processes DOT Rounds on a 20 Hz scheduled cadence when WEB_ENABLE_DOT_ROUNDS is enabled; tick damage still accumulates, but non-crit tick text can merge or be dropped when WEB_MAX_DAMAGE_TEXTS is saturated.
+Original version: uses the listed stack count, duration, 0.5s tick interval, per-target DPS cap, and boss multiplier. Browser version: stack count, duration, tick interval, per-target DPS cap, and boss multiplier match desktop. Browser processes DOT Rounds on a 20 Hz scheduled cadence when WEB_ENABLE_DOT_ROUNDS is enabled; tick damage still accumulates, but non-crit tick text can merge or be dropped when WEB_MAX_DAMAGE_TEXTS is saturated.
 
 1.8. Ground Spikes
 Effect:
@@ -538,7 +546,7 @@ Rules:
 Per level: gain +2 plating HP every 6.0s (so +2/+4/+6/+8/+10 per tick at levels 1..5).
 At level 5: each hit consumes one plating stack and fully negates that hit.
 Speed trade-off in current implementation: each purchase multiplies move speed by 0.98.
-Browser version: plating gain timing, mitigation order, level-5 full-hit negate rule, and speed trade-off match desktop. Browser damage text may merge shield/plating feedback under WEB_MAX_DAMAGE_TEXTS, but mitigation state is saved and resolved through the same player/meta fields.
+Original version: uses the listed 6.0s plating gain, mitigation order, level-5 full-hit negate rule, and 0.98 speed multiplier per purchase. Browser version: plating gain timing, mitigation order, level-5 full-hit negate rule, and speed trade-off match desktop. Browser damage text may merge shield/plating feedback under WEB_MAX_DAMAGE_TEXTS, but mitigation state is saved and resolved through the same player/meta fields.
 
 2.2. Guardian Charm
 Effect:
@@ -552,7 +560,7 @@ Level 1: shield = 15, speed_bonus = +15%, duration = 3.0s, cooldown = 30s
 Level 2: shield = 24, speed_bonus = +22%, duration = 3.5s, cooldown = 26s
 Level 3: shield = 36, speed_bonus = +30%, duration = 4.0s, cooldown = 22s
 Rule: Trigger can only occur once every 1.0s even if HP fluctuates around threshold.
-Browser version: planned trigger should use the same damage_player / HP-ratio path as desktop and store cooldown state in the player carry/save snapshot. Shield amount, speed bonus, duration, and cooldown should not be browser-reduced; only the rescue flash/audio may be trimmed by WEB_MAX_FX_PARTICLES or native FX availability.
+Original version: should trigger from the desktop damage_player / HP-ratio path after mitigation and enforce the listed cooldown. Browser version: planned trigger should use the same damage_player / HP-ratio path as desktop and store cooldown state in the player carry/save snapshot. Shield amount, speed bonus, duration, and cooldown should not be browser-reduced; only the rescue flash/audio may be trimmed by WEB_MAX_FX_PARTICLES or native FX availability.
 
 2.3. Blood Pact
 Effect:
@@ -599,7 +607,7 @@ cooldown = 4.0 / 3.375 / 2.75 / 2.125 / 1.5 s
 damage = 30% / 45% / 60% / 80% / 100% of enemy max HP
 Wave behavior: one expanding pulse; high levels may add visual ripple layers only (no extra hidden damage ticks).
 Safety cap: pulse damage to bosses can be clamped to avoid one-cycle kills.
-Browser version: shield trigger, cooldown, radius, damage, wave count, and visual profile use the same Aegis constants as desktop. Browser updates active pulse rings on a 24 Hz schedule and damage text is capped/merged by WEB_MAX_DAMAGE_TEXTS, currently 4 in the default full profile.
+Original version: uses the listed shield gate, cooldown, radius, damage, wave count, and Aegis constants. Browser version: shield trigger, cooldown, radius, damage, wave count, and visual profile use the same Aegis constants as desktop. Browser updates active pulse rings on a 24 Hz schedule and damage text is capped/merged by WEB_MAX_DAMAGE_TEXTS, currently 4 in the default full profile.
 
 2.6. Carapace
 Effect:
@@ -642,7 +650,7 @@ Level 2: reflect_ratio = 32%, reflect_range = 5.0 tiles
 Level 3: reflect_ratio = 45%, reflect_range = 6.0 tiles
 Boss rule: reflected damage dealt to bosses uses 70% of reflected value.
 Rate limit: max 6 reflections per second (global).
-Browser version: planned ranged reflection needs an explicit fallback because normal browser play clears enemy projectiles unless `enemyshots=1` or `allowenemyshots=1` is enabled. Fallback suggestion: while enemy shots are disabled, trigger from shield damage caused by ranged-type enemies within reflect_range, preserving reflect ratio and global 6/s rate limit.
+Original version: uses ranged/projectile damage events as the normal reflection trigger. Browser version: planned ranged reflection needs an explicit fallback because normal browser play clears enemy projectiles unless `enemyshots=1` or `allowenemyshots=1` is enabled. Fallback suggestion: while enemy shots are disabled, trigger from shield damage caused by ranged-type enemies within reflect_range, preserving reflect ratio and global 6/s rate limit.
 
 2.9. Shardstorm
 Effect:
@@ -686,7 +694,7 @@ Rules:
 Protected coin ratio by level: 25% / 40% / 55% / 70%.
 Protection applies before bandit steal and before debt-style coin penalties.
 Suggested implementation: protected = floor(current_coins * ratio), unprotected = current_coins - protected.
-Browser version: planned/implemented coin protection should use the same META coin state as desktop. Browser pickup and spoil visual caps must not reduce protected value; if coin bundles are merged or hidden for performance, tooltip text should still show the full protected ratio.
+Original version: protects the listed percentage of current coins before bandit steal and debt-style coin penalties. Browser version: planned/implemented coin protection should use the same META coin state as desktop. Browser pickup and spoil visual caps must not reduce protected value; if coin bundles are merged or hidden for performance, tooltip text should still show the full protected ratio.
 
 3.2. Wanted Poster
 Effect:
@@ -709,7 +717,7 @@ Max Level: 5
 Rules:
 Radius bonus: +60 / +120 / +180 / +240 / +300 px.
 QoL rule: coin pickup ignores micro-obstacle edges within 0.2 tiles when magnetized.
-Browser version: pickup radius and collection math match desktop. Browser may cap visible pickups/spoils for rendering and field clutter, but Coin Magnet should still collect available spoils through the same pickup state; do not describe this prop as reward-reduced on web.
+Original version: applies the listed pickup-radius bonus and micro-obstacle pickup rule. Browser version: pickup radius and collection math match desktop. Browser may cap visible pickups/spoils for rendering and field clutter, but Coin Magnet should still collect available spoils through the same pickup state; do not describe this prop as reward-reduced on web.
 
 3.4. Golden Interest
 Effect:
@@ -756,7 +764,7 @@ Rules:
 Repayment order: Golden Interest -> lockbox protection snapshot -> loan repayment pull.
 Repayment safety rule: if player has <= 15 coins, skip scheduled repayment for that wave once.
 UI requirement: always show debt left + waves left in both shop and pause possession tooltip.
-Browser version: loan payout, repayment order, debt counters, and HP penalty should use the same META save keys as desktop. Browser QA must refresh the page mid-debt and confirm debt_left, waves_left, and failure penalties survive localStorage reload.
+Original version: applies the listed instant payout, repayment order, debt countdown, and max-HP failure penalty. Browser version: loan payout, repayment order, debt counters, and HP penalty should use the same META save keys as desktop. Browser QA must refresh the page mid-debt and confirm debt_left, waves_left, and failure penalties survive localStorage reload.
 
 3.8. Black Market Pass
 Effect:
@@ -805,7 +813,7 @@ Proc chance by level: 10% / 20% / 30% / 40% / 50%
 Anti-loop rule: spawned bonus coin cannot recursively trigger Spoil Splitter.
 Performance rule: max 8 spawned bonus coins per second globally.
 Expected value guide: average coin gain should be +0.10 / +0.20 / +0.30 / +0.40 / +0.50 coins per pickup before caps.
-Browser version: planned bonus coin spawning must respect WEB_MAX_SPOILS_ON_FIELD and browser pickup rendering without lowering expected value silently. If field clutter is saturated, browser should merge bonus coins into a bundle or credit META spoils directly rather than dropping earned value.
+Original version: spawns the listed bonus coin on eligible ground-pickup procs, subject to anti-loop and 8-per-second global rate cap. Browser version: planned bonus coin spawning must respect WEB_MAX_SPOILS_ON_FIELD and browser pickup rendering without lowering expected value silently. If field clutter is saturated, browser should merge bonus coins into a bundle or credit META spoils directly rather than dropping earned value.
 
 4. Utility / Control Props
 
@@ -820,7 +828,7 @@ Level 1: radius = 1.8 tiles, slow = 12%, pulse every 1.0s while standing
 Level 2: radius = 2.2 tiles, slow = 16%, pulse every 0.9s while standing
 Level 3: radius = 2.6 tiles, slow = 20%, pulse every 0.8s while standing
 Ramp rule: effect fades out 0.35s after movement resumes.
-Browser version: planned slow pulse should run on a scheduled browser area-effect cadence, preferably 20-24 Hz, and avoid spawning a new particle ring every frame. Slow amount, radius, and pulse interval should match desktop; visual pulse can be simplified under WEB_MAX_FX_PARTICLES.
+Original version: applies the listed radius, slow, pulse interval, and movement cancel ramp from the normal movement update. Browser version: planned slow pulse should run on a scheduled browser area-effect cadence, preferably 20-24 Hz, and avoid spawning a new particle ring every frame. Slow amount, radius, and pulse interval should match desktop; visual pulse can be simplified under WEB_MAX_FX_PARTICLES.
 
 4.2. Phantom Dash (if you ever add dash / evade)
 Effect:
@@ -834,7 +842,7 @@ Level 1: dash_contact_damage = 0.55 * bullet_base, slow = 20% for 1.2s
 Level 2: dash_contact_damage = 0.75 * bullet_base, slow = 25% for 1.5s
 Level 3: dash_contact_damage = 1.00 * bullet_base, slow = 30% for 1.8s
 Internal hit cooldown per enemy during dash: 0.25s.
-Browser version: planned dash contact should use deterministic swept collision, not frame-only overlap, because browser frame cadence is lower. Damage and slow values should match desktop; VFX/audio can degrade silently when native FX or particle budget is saturated.
+Original version: may resolve dash contact from the dash state and per-enemy 0.25s hit cooldown. Browser version: planned dash contact should use deterministic swept collision, not frame-only overlap, because browser frame cadence is lower. Damage and slow values should match desktop; VFX/audio can degrade silently when native FX or particle budget is saturated.
 
 4.3. Sticky Tar Flask
 Effect:
@@ -865,7 +873,7 @@ L2: damage_ratio 0.35, interval 0.86s, range_mult 0.82
 L3: damage_ratio 0.37, interval 0.82s, range_mult 0.84
 L4: damage_ratio 0.39, interval 0.78s, range_mult 0.86
 L5: damage_ratio 0.42, interval 0.74s, range_mult 0.88
-Browser version: auto turret simulation count matches the saved auto_turret_level, up to the normal max level 5. The lite renderer caps visible turrets to the nearest 8, but hidden/offscreen turrets still update and fire. There is currently no browser-only conversion from extra auto turret levels into quality stats.
+Original version: draws and simulates turrets according to owned level and the normal max level 5. Browser version: auto turret simulation count matches the saved auto_turret_level, up to the normal max level 5. The lite renderer caps visible turrets to the nearest 8, but hidden/offscreen turrets still update and fire. There is currently no browser-only conversion from extra auto turret levels into quality stats.
 
 4.5. Stationary Turret
 Effect:
@@ -877,7 +885,7 @@ Rules:
 Per purchase: +1 stationary turret spawn each level at valid clear tile.
 Suggested tuning: same bullet damage as auto turret, +15% range, -10% fire interval.
 Hard safety cap suggestion: max 8 active stationary turrets on map; extra copies become +6% turret damage each.
-Browser version: stationary turret simulation count currently follows stationary_turret_count and save/load restoration, same as desktop. The lite renderer caps visible turrets to the nearest 8, but offscreen/overflow stationary turrets still exist, block their tile through StationaryTurretObstacle, and fire normally. There is currently no browser-only conversion from extra stationary turrets into damage.
+Original version: spawns stationary turrets from stationary_turret_count, restores placements through save/load, and applies the active-placement safety cap. Browser version: stationary turret simulation count currently follows stationary_turret_count and save/load restoration, same as desktop. The lite renderer caps visible turrets to the nearest 8, but offscreen/overflow stationary turrets still exist, block their tile through StationaryTurretObstacle, and fire normally. There is currently no browser-only conversion from extra stationary turrets into damage.
 
 5. Crit, Element, and Synergy Props
 
@@ -891,7 +899,7 @@ Rules:
 Level 1: +8% crit chance, -6% fire rate
 Level 2: +13% crit chance, -10% fire rate
 Level 3: +20% crit chance, -15% fire rate
-Browser version: planned crit chance and fire-rate tradeoff should use the same stat rebuild path as desktop. Browser should not add a hidden fire-rate penalty beyond the listed value; if lower FPS affects perceived shot cadence, QA should compare actual shots per second rather than visual bullet count.
+Original version: applies the listed crit chance increase and fire-rate penalty through the normal stat rebuild. Browser version: planned crit chance and fire-rate tradeoff should use the same stat rebuild path as desktop. Browser should not add a hidden fire-rate penalty beyond the listed value; if lower FPS affects perceived shot cadence, QA should compare actual shots per second rather than visual bullet count.
 
 5.2. Explosive Crits
 Effect:
@@ -917,7 +925,7 @@ Level 1: chill_chance = 14%, chill_slow = 20%, chill_duration = 1.2s, re-hit_bon
 Level 2: chill_chance = 20%, chill_slow = 24%, chill_duration = 1.5s, re-hit_bonus = +18%
 Level 3: chill_chance = 28%, chill_slow = 30%, chill_duration = 1.8s, re-hit_bonus = +26%
 Boss rule: slow effect is 50% effective on bosses.
-Browser version: planned chill should use the same status update cadence as DOT Rounds, targeting 20 Hz on browser. Chill slow/duration and re-hit bonus should match desktop; frost VFX can be reduced to a tint/status marker when particle budget is saturated.
+Original version: applies the listed chill chance, slow, duration, re-hit bonus, and boss slow reduction from hit/status logic. Browser version: planned chill should use the same status update cadence as DOT Rounds, targeting 20 Hz on browser. Chill slow/duration and re-hit bonus should match desktop; frost VFX can be reduced to a tint/status marker when particle budget is saturated.
 
 5.4. Shock Relay
 Effect:
@@ -930,7 +938,7 @@ Level 1: every 8th hit chains to up to 2 enemies, chain_damage = 30% bullet_base
 Level 2: every 6th hit chains to up to 3 enemies, chain_damage = 40% bullet_base
 Level 3: every 5th hit chains to up to 4 enemies, chain_damage = 50% bullet_base
 Chain range: 1.8 / 2.2 / 2.6 tiles by level.
-Browser version: planned shock chains should cap spawned chain segments through pending-bullet or FX headroom before reducing damage. If browser saturation prevents all visual arcs from drawing, damage should still resolve deterministically and tooltip text should only mention reduced visuals unless chain count is mechanically capped.
+Original version: releases the listed chain count, chain damage, and chain range every N hits by level. Browser version: planned shock chains should cap spawned chain segments through pending-bullet or FX headroom before reducing damage. If browser saturation prevents all visual arcs from drawing, damage should still resolve deterministically and tooltip text should only mention reduced visuals unless chain count is mechanically capped.
 
 6. Core Paint System
 Tiles can hold temporary "paint" that affects movement and combat. A tile's paint has:
@@ -984,7 +992,7 @@ Level 3: damage_per_tick = 0.08 * bullet_base, lifetime = 4.0s, radius = 0.90 ti
 Boss rule: paint DoT deals 70% damage to bosses.
 Spawn cadence: leave footprint every 0.25s while moving.
 Ownership rule: only latest paint owner controls tile effects.
-Browser version: damage, lifetime, radius, boss modifier, ownership, and tick interval match desktop. The browser combat loop updates curing paint on a 20 Hz schedule when WEB_ENABLE_CURING_PAINT is enabled. Rendering uses cached static/dynamic paint surfaces, camera quantization, and lower refresh windows; wind and mist browser routes may skip the paint render layer while paint state still updates.
+Original version: applies footprint spawn cadence, paint damage, lifetime, radius, boss modifier, ownership, and tick interval from the level table. Browser version: damage, lifetime, radius, boss modifier, ownership, and tick interval match desktop. The browser combat loop updates curing paint on a 20 Hz schedule when WEB_ENABLE_CURING_PAINT is enabled. Rendering uses cached static/dynamic paint surfaces, camera quantization, and lower refresh windows; wind and mist browser routes may skip the paint render layer while paint state still updates.
 
 6.2. Paint Converter
 Effect:
@@ -998,7 +1006,7 @@ L1: +8% chance to drop 1 bonus coin, consume 0.15 intensity.
 L2: +12% chance to drop 1 bonus coin, consume 0.12 intensity.
 L3: +16% chance to drop 1 bonus coin, consume 0.10 intensity.
 Rule: cannot trigger from summoned fake-coin entities.
-Browser version: planned reward conversion should use paint ownership/intensity state, not whether the paint layer was rendered this frame. If WEB_MAX_SPOILS_ON_FIELD is saturated, browser should merge rewards into existing bundles or credit directly so player value is not lost.
+Original version: reward conversion should read owned-paint state, consume intensity, and spawn the listed bonus reward. Browser version: planned reward conversion should use paint ownership/intensity state, not whether the paint layer was rendered this frame. If WEB_MAX_SPOILS_ON_FIELD is saturated, browser should merge rewards into existing bundles or credit directly so player value is not lost.
 
 6.3. Cleanse Step
 Effect:
@@ -1022,7 +1030,7 @@ Piercing Rounds + Ricochet Scope (+ Shrapnel Shells as 3rd piece)
 Set Bonus:
 2-piece: +15% projectile speed, +10% shrapnel proc chance.
 3-piece: first ricochet each shot has +20% crit chance.
-Browser version: Ballistic Engine should not add a separate browser projectile cap. The 2-piece speed bonus and 3-piece crit bonus should apply to simulated bullets, while visible bullets remain subject to the lite-render 28 bullet cap. QA must verify ricochet + shrapnel + explosive chains still respect pending-bullet headroom and do not create unbounded pending_bullets.
+Original version: applies the listed 2-piece projectile speed/shrapnel chance and 3-piece ricochet crit bonus through set state. Browser version: Ballistic Engine should not add a separate browser projectile cap. The 2-piece speed bonus and 3-piece crit bonus should apply to simulated bullets, while visible bullets remain subject to the lite-render 28 bullet cap. QA must verify ricochet + shrapnel + explosive chains still respect pending-bullet headroom and do not create unbounded pending_bullets.
 
 7.2. Fortress Loop (2/3 piece set)
 Pieces:
@@ -1030,7 +1038,7 @@ Carapace + Bone Plating (+ Aegis Pulse as 3rd piece)
 Set Bonus:
 2-piece: after losing shield, gain 10% move speed for 1.5s.
 3-piece: Aegis Pulse emits one extra mini-wave at 40% damage.
-Browser version: Fortress Loop should use the same shield-loss and Aegis pulse state as desktop. The extra mini-wave must be represented as an Aegis pulse entry updated on the 24 Hz pulse-list cadence, and its damage text can merge/drop under WEB_MAX_DAMAGE_TEXTS without reducing actual mini-wave damage.
+Original version: applies the shield-loss speed bonus and extra Aegis mini-wave from set state. Browser version: Fortress Loop should use the same shield-loss and Aegis pulse state as desktop. The extra mini-wave must be represented as an Aegis pulse entry updated on the 24 Hz pulse-list cadence, and its damage text can merge/drop under WEB_MAX_DAMAGE_TEXTS without reducing actual mini-wave damage.
 
 7.3. Predator Economy (2/3 piece set)
 Pieces:
@@ -1038,7 +1046,7 @@ Wanted Poster + Bandit Radar (+ Lockbox as 3rd piece)
 Set Bonus:
 2-piece: first bandit kill bounty +30%.
 3-piece: bandits drop 1 extra guaranteed coin bundle.
-Browser version: Predator Economy must preserve bounty and guaranteed bundle value even when browser spoil field/render caps are active. If WEB_MAX_SPOILS_ON_FIELD is saturated, the extra bundle should be merged into an existing pickup or credited directly rather than silently skipped.
+Original version: applies the bounty multiplier and guaranteed extra bandit coin bundle from set state. Browser version: Predator Economy must preserve bounty and guaranteed bundle value even when browser spoil field/render caps are active. If WEB_MAX_SPOILS_ON_FIELD is saturated, the extra bundle should be merged into an existing pickup or credited directly rather than silently skipped.
 
 7.4. Cold Circuit (2/3 piece set)
 Pieces:
@@ -1046,7 +1054,7 @@ Frost Brand + Shock Relay (+ D.O.T. Rounds as 3rd piece)
 Set Bonus:
 2-piece: chilled targets take +12% chain lightning damage.
 3-piece: shock chains apply mini-chill (10% slow for 0.8s).
-Browser version: Cold Circuit should run chain damage and chill application on browser status cadence, targeting 20 Hz. Visual shock arcs and frost feedback can be trimmed by FX budget, but chain damage, mini-chill slow, and duration should remain deterministic unless a browser-specific chain cap is explicitly documented.
+Original version: applies the chilled-target chain damage bonus and mini-chill from set state. Browser version: Cold Circuit should run chain damage and chill application on browser status cadence, targeting 20 Hz. Visual shock arcs and frost feedback can be trimmed by FX budget, but chain damage, mini-chill slow, and duration should remain deterministic unless a browser-specific chain cap is explicitly documented.
 
 Set system rules:
 3-piece set bonus target: +12% to +20% effective power.
