@@ -418,7 +418,7 @@ Rules:
 Level 1/2/3/4/5: pierce_count = +1/+2/+3/+4/+5
 Damage falloff per extra pierced target: 0% / 4% / 8% / 12% / 16% (cap 30%).
 Rule: piercing checks enemy hit cooldown to avoid multi-hit in the same frame.
-Browser version: pierce count, damage falloff, range, and hit rules match desktop. Browser lite rendering draws at most 28 visible player bullets and damage text is capped/merged, so repeated pierce hits may be less verbose visually while the actual hit simulation continues.
+Original version: uses the listed pierce count, damage falloff, range, and same-frame hit cooldown rule. Browser version: pierce count, damage falloff, range, and hit rules match desktop. Browser lite rendering draws at most 28 visible player bullets and damage text is capped/merged, so repeated pierce hits may be less verbose visually while the actual hit simulation continues.
 
 1.2. Ricochet Scope
 Effect:
@@ -430,7 +430,7 @@ Rules:
 Level 1/2/3: ricochet_count = 1/2/3
 Retarget cone: 160 deg around impact normal; max retarget range = 4.0 / 4.8 / 5.6 tiles.
 Damage per bounce multiplier: 90% / 82% / 75%.
-Browser version: ricochet count, retargeting, and bounce damage match desktop. Browser lite rendering caps visible player bullets at 28, so a dense ricochet build may simulate more routed bullets than are visible at once.
+Original version: uses the listed ricochet count, retarget cone, retarget range, and bounce damage multiplier. Browser version: ricochet count, retargeting, and bounce damage match desktop. Browser lite rendering caps visible player bullets at 28, so a dense ricochet build may simulate more routed bullets than are visible at once.
 
 1.3. Bleeding Edge
 Effect:
@@ -444,7 +444,7 @@ Level 2: bleed_total = 36% bullet_base over 3.0s, max_stacks = 3
 Level 3: bleed_total = 52% bullet_base over 3.0s, max_stacks = 4
 Tick interval: 0.5s.
 Boss rule: bleed damage multiplier vs bosses = 0.75.
-Browser version: planned behavior should use the same DoT scheduling path as DOT Rounds if implemented. If enabled on browser, document whether bleed ticks run on the 20 Hz status update cadence and whether bleed damage text merges under WEB_MAX_DAMAGE_TEXTS.
+Original version: should apply the listed bleed total, duration, stack cap, 0.5s tick interval, and boss multiplier. Browser version: planned behavior should use the same DoT scheduling path as DOT Rounds if implemented. If enabled on browser, document whether bleed ticks run on the 20 Hz status update cadence and whether bleed damage text merges under WEB_MAX_DAMAGE_TEXTS.
 
 1.4. Shrapnel Shells
 Effect:
@@ -476,7 +476,7 @@ Level 2: mark_interval = 4.0s, damage_taken_bonus = +22%, mark_duration = 6.0s
 Level 3: mark_interval = 3.0s, damage_taken_bonus = +30%, mark_duration = 7.0s
 Targeting priority: boss/elite > ranged > nearest.
 UI rule: mark icon pulses every 1.0s while active.
-Browser version: mark interval, duration, targeting priority, and damage bonus match desktop. Browser updates vulnerability marks on a 0.10s scheduled cadence when WEB_ENABLE_VULNERABILITY_MARKS is enabled, so visual expiry can be quantized slightly while damage scaling remains deterministic.
+Original version: uses the listed mark interval, duration, targeting priority, pulse cadence, and damage-taken bonus. Browser version: mark interval, duration, targeting priority, and damage bonus match desktop. Browser updates vulnerability marks on a 0.10s scheduled cadence when WEB_ENABLE_VULNERABILITY_MARKS is enabled, so visual expiry can be quantized slightly while damage scaling remains deterministic.
 
 1.6. Explosive Rounds
 Effect:
@@ -530,7 +530,7 @@ Rules:
 Level 1: spike_damage = 0.30 * bullet_base, lifetime = 3.0s, max_active = 6
 Level 2: spike_damage = 0.40 * bullet_base, lifetime = 4.0s, max_active = 10
 Level 3: spike_damage = 0.50 * bullet_base, lifetime = 5.0s, max_active = 14
-Browser version: damage, slow, lifetime, radius, and max_active values match desktop. The browser combat loop updates ground spikes on a 20 Hz schedule when WEB_ENABLE_GROUND_SPIKES is enabled. When max_active is exceeded, the existing implementation removes the oldest spike, same as desktop behavior.
+Original version: uses the listed spike damage, slow, lifetime, radius, max_active, movement spawn rule, and speed trade-off. Browser version: damage, slow, lifetime, radius, and max_active values match desktop. The browser combat loop updates ground spikes on a 20 Hz schedule when WEB_ENABLE_GROUND_SPIKES is enabled. When max_active is exceeded, the existing implementation removes the oldest spike, same as desktop behavior.
 
 2. Defense & Survival Props
 
@@ -574,7 +574,7 @@ Level 2: damage_mult +30%, max_hp_mult -20%
 Level 3: damage_mult +45%, max_hp_mult -28%
 Safety floor: final max HP cannot drop below 35% of base max HP.
 UI note: show both values in red/green on purchase confirmation.
-Browser version: planned max-HP penalty and damage bonus should be applied through the same META/player stat rebuild path as desktop. Browser card text must show the same green/red values at 960x540; no browser note is needed unless the web build changes the safety floor or damage multiplier.
+Original version: applies the listed damage multiplier, max-HP penalty, and 35% base-HP safety floor through the stat rebuild. Browser version: planned max-HP penalty and damage bonus should be applied through the same META/player stat rebuild path as desktop. Browser card text must show the same green/red values at 960x540; no browser note is needed unless the web build changes the safety floor or damage multiplier.
 
 2.4. Retaliation Thorns
 Effect:
@@ -588,7 +588,7 @@ Level 2: reflect = max(14, 6% enemy_max_hp), internal_cd_per_enemy = 0.40s
 Level 3: reflect = max(22, 8% enemy_max_hp), internal_cd_per_enemy = 0.30s
 Boss rule: % max HP component is halved against bosses.
 Anti-loop: reflected damage cannot trigger other reflection effects.
-Browser version: planned contact reflection should work on browser because contact damage remains active. Reflection damage text may merge or drop under WEB_MAX_DAMAGE_TEXTS, but the per-enemy cooldown and anti-loop rule must still run in simulation.
+Original version: uses contact-damage events, the listed reflect value, per-enemy cooldown, boss modifier, and anti-loop rule. Browser version: planned contact reflection should work on browser because contact damage remains active. Reflection damage text may merge or drop under WEB_MAX_DAMAGE_TEXTS, but the per-enemy cooldown and anti-loop rule must still run in simulation.
 
 2.5. Aegis Pulse
 Effect:
@@ -619,7 +619,7 @@ Rules:
 Per purchase: +20 persistent carapace shield HP.
 Damage order rule: base shield -> carapace shield -> HP.
 UI rule: display current carapace shield reserve in pause possession tooltip.
-Browser version: reserve shield value, damage order, pause tooltip state, and save/load behavior match desktop. Carapace is important browser QA coverage because it gates Aegis Pulse uptime and persists through the same META save path.
+Original version: adds the listed persistent reserve shield and resolves damage in base shield -> carapace shield -> HP order. Browser version: reserve shield value, damage order, pause tooltip state, and save/load behavior match desktop. Carapace is important browser QA coverage because it gates Aegis Pulse uptime and persists through the same META save path.
 
 2.7. Shield Capacitor
 Effect:
@@ -634,7 +634,7 @@ Level 1: convert 25% heal at full HP, bonus_overheal_conversion +10%, temp_shiel
 Level 2: convert 40% heal at full HP, bonus_overheal_conversion +15%, temp_shield_duration 12s
 Level 3: convert 60% heal at full HP, bonus_overheal_conversion +20%, temp_shield_duration 14s
 Cap: temporary shield from this prop cannot exceed 40% of player max HP.
-Browser version: planned overheal conversion should use the same heal pickup and shield state as desktop. Browser visible heal/pickup caps must not reduce conversion value after pickup; QA should verify full-HP heal collection with Coin Magnet still grants the correct temporary shield.
+Original version: converts full-HP heal pickup value into temporary shield using the listed conversion rate, duration, and 40% max-HP cap. Browser version: planned overheal conversion should use the same heal pickup and shield state as desktop. Browser visible heal/pickup caps must not reduce conversion value after pickup; QA should verify full-HP heal collection with Coin Magnet still grants the correct temporary shield.
 
 2.8. Mirror Shell
 Effect:
@@ -665,7 +665,7 @@ Level 2: shard_count = 9, shard_damage = 0.35 * bullet_base, spread = 360 deg
 Level 3: shard_count = 12, shard_damage = 0.45 * bullet_base, spread = 360 deg
 Shard speed: 1.15 * player bullet speed, shard lifetime: 0.9s.
 Boss rule: shard damage to bosses = 65% of listed value.
-Browser version: planned shield-break shards should use the same browser pending-bullet soft cap as Shrapnel Shells. If pending headroom is low, reduce spawned shard count before changing damage; tooltip should say "Browser: shard count may compress during dense bullet bursts; shard damage unchanged."
+Original version: spawns the listed shard count, shard damage, spread, speed, lifetime, and boss modifier when a shield layer breaks. Browser version: planned shield-break shards should use the same browser pending-bullet soft cap as Shrapnel Shells. If pending headroom is low, reduce spawned shard count before changing damage; tooltip should say "Browser: shard count may compress during dense bullet bursts; shard damage unchanged."
 
 2.10. Retaliation Core
 Effect:
@@ -680,7 +680,7 @@ Level 2: +16% bullet damage, +9% crit chance, duration 3.0s
 Level 3: +24% bullet damage, +12% crit chance, duration 3.5s
 Refresh rule: retriggers refresh duration but cannot stack magnitude.
 Internal cooldown: 1.0s between retriggers.
-Browser version: planned shield-hit buff should use the same shield damage event path as Bone Plating, Carapace, and Aegis Pulse. Buff duration and magnitude should match desktop; browser feedback can be a compact HUD/status flash instead of extra particles.
+Original version: triggers from shield damage, applies the listed bullet damage and crit buff, refreshes duration without stacking, and enforces the 1.0s cooldown. Browser version: planned shield-hit buff should use the same shield damage event path as Bone Plating, Carapace, and Aegis Pulse. Buff duration and magnitude should match desktop; browser feedback can be a compact HUD/status flash instead of extra particles.
 
 3. Economy & Bandit Interaction Props
 
@@ -706,7 +706,7 @@ Rules:
 Bounty payout per charge: +18 / +26 / +36 coins (scales by level bracket early/mid/late).
 Consumption rule: only consumed when the player secures the first Bandit kill of that level.
 Fail-safe: if no bandit spawned, the charge is retained.
-Browser version: bounty state should persist through browser localStorage like desktop save data. Browser enemy caps and safe spawn routes may reduce practical bandit encounter density, so QA should verify charge retention on waves where no bandit appears and bounty payout when a bandit does spawn.
+Original version: stores charges, retains them when no bandit spawns, and pays the listed bounty once on the first valid bandit kill. Browser version: bounty state should persist through browser localStorage like desktop save data. Browser enemy caps and safe spawn routes may reduce practical bandit encounter density, so QA should verify charge retention on waves where no bandit appears and bounty payout when a bandit does spawn.
 
 3.3. Coin Magnet
 Effect:
@@ -729,7 +729,7 @@ Rules:
 Interest rate by level: 5% / 10% / 15% / 20%
 Per-level payout cap: 30 / 50 / 70 / 90 coins
 Order rule: apply interest before debt repayment checks.
-Browser version: interest math, payout cap, and ordering should match desktop because shop/meta state is shared. Browser notes are only needed if future web pacing changes shop frequency or save timing.
+Original version: applies the listed interest rate, payout cap, and pre-debt ordering from shop/meta state. Browser version: interest math, payout cap, and ordering should match desktop because shop/meta state is shared. Browser notes are only needed if future web pacing changes shop frequency or save timing.
 
 3.5. Bandit Radar
 Effect:
@@ -741,7 +741,7 @@ Rules:
 Slow strength by level: 8% / 12% / 16% / 20%
 Duration by level: 2s / 3s / 4s / 5s
 Visual: high-contrast outline + minimap ping pulse every 0.6s while effect is active.
-Browser version: bandit slow and radar state should match desktop. If browser spawn safety limits bandit appearances, Radar still needs a readable highlight when a bandit is present; visual pulses may be simplified under FX/text budgets.
+Original version: applies the listed bandit slow, duration, outline, and minimap pulse when a bandit spawns. Browser version: bandit slow and radar state should match desktop. If browser spawn safety limits bandit appearances, Radar still needs a readable highlight when a bandit is present; visual pulses may be simplified under FX/text budgets.
 
 3.6. Coupon
 Effect:
@@ -752,7 +752,7 @@ Max Level: 4
 Rules:
 Discount by level: 5% / 10% / 15% / 20%
 Rule: applies to normal offers and reroll cost; price floor is 1 coin.
-Browser version: discount math and price floor match desktop. Browser shop cards should show the same discounted current price and next upgrade text as desktop, with no browser-specific note unless layout constraints hide secondary price details.
+Original version: applies the listed permanent discount to normal offers and reroll cost with a 1-coin floor. Browser version: discount math and price floor match desktop. Browser shop cards should show the same discounted current price and next upgrade text as desktop, with no browser-specific note unless layout constraints hide secondary price details.
 
 3.7. Shady Loan
 Effect:
@@ -782,7 +782,7 @@ Compensation: one extra offer slot in that shop (5 cards + reroll) to support de
 Rarity weights override suggestion:
 rarity_3 = 55%, rarity_4 = 35%, rarity_5 = 10% (when available by progression gate).
 Protection rule: keep at least one affordable offer (price <= current_coins + 15) to avoid dead shops.
-Browser version: planned black-market shop state should use the same shop generation and META flags as desktop. Browser card layout must still show premium price, minimum rarity, and expiry at 960x540; no reward or rarity reduction should be introduced for web.
+Original version: consumes the pass for the next single shop, applies +20% price, rarity floor 3, one extra slot, and the affordable-offer guard. Browser version: planned black-market shop state should use the same shop generation and META flags as desktop. Browser card layout must still show premium price, minimum rarity, and expiry at 960x540; no reward or rarity reduction should be introduced for web.
 
 3.9. VIP Punchcard
 Effect:
@@ -798,7 +798,7 @@ Cashback cap per level: 30 / 45 / 60 / 80 coins
 Rule: cashback is granted after clearing the level (not immediately in shop).
 Accounting rule: cashback pool resets when entering a new shop.
 UI rule: show "Current cashback pool: X (cap Y)" in shop lower panel.
-Browser version: planned cashback should persist through browser localStorage from shop purchase through the next level clear. Browser pickup/spoil visual caps must not reduce cashback payout; if payout is spawned as coins, it should bundle or credit directly when WEB_MAX_SPOILS_ON_FIELD is saturated.
+Original version: accrues the listed cashback percentage from shop spending, applies the per-level cap, pays after the next level, and resets the pool on shop entry. Browser version: planned cashback should persist through browser localStorage from shop purchase through the next level clear. Browser pickup/spoil visual caps must not reduce cashback payout; if payout is spawned as coins, it should bundle or credit directly when WEB_MAX_SPOILS_ON_FIELD is saturated.
 
 3.10. Spoil Splitter
 Effect:
@@ -855,7 +855,7 @@ Level 1: puddle_radius = 0.9 tiles, slow = 15%, dot = 0.04 * bullet_base per 0.5
 Level 2: puddle_radius = 1.1 tiles, slow = 20%, dot = 0.06 * bullet_base per 0.5s, life = 3.5s
 Level 3: puddle_radius = 1.3 tiles, slow = 25%, dot = 0.08 * bullet_base per 0.5s, life = 4.5s
 Spawn cadence: drop one puddle every 2.2 / 1.9 / 1.6 seconds while moving.
-Browser version: planned tar puddles should share the Curing Paint/Ground Spikes browser scheduling model. Use a per-prop active puddle cap and oldest-puddle eviction, update damage/slow at 20 Hz, and render through cached ground effects where possible.
+Original version: drops the listed tar puddle radius, slow, DoT, lifetime, and spawn cadence while moving. Browser version: planned tar puddles should share the Curing Paint/Ground Spikes browser scheduling model. Use a per-prop active puddle cap and oldest-puddle eviction, update damage/slow at 20 Hz, and render through cached ground effects where possible.
 
 4.4. Auto-Turret
 Effect:
@@ -912,7 +912,7 @@ Level 1: crit_explosion_damage = 30% bullet_base, radius = 0.60 tiles
 Level 2: crit_explosion_damage = 42% bullet_base, radius = 0.75 tiles
 Level 3: crit_explosion_damage = 55% bullet_base, radius = 0.90 tiles
 Boss rule: crit explosion damage is reduced by 35% against bosses.
-Browser version: planned crit explosions should follow Explosive Rounds browser rules: damage/radius match desktop, particles trim under WEB_MAX_FX_PARTICLES, and any chained or splash-created bullet-like effects must respect pending-bullet headroom.
+Original version: applies the listed crit explosion damage, radius, and boss reduction on critical hits. Browser version: planned crit explosions should follow Explosive Rounds browser rules: damage/radius match desktop, particles trim under WEB_MAX_FX_PARTICLES, and any chained or splash-created bullet-like effects must respect pending-bullet headroom.
 
 5.3. Frost Brand
 Effect:
@@ -1020,7 +1020,7 @@ L1: conversion_rate = 0.20 intensity/s
 L2: conversion_rate = 0.30 intensity/s
 L3: conversion_rate = 0.45 intensity/s
 Bonus: while converting, gain 6%/9%/12% slow resistance.
-Browser version: planned enemy-paint conversion should operate on paint_grid state even when browser wind/mist routes skip paint rendering. Conversion rate, slow resistance, and ownership changes should match desktop; visual repaint feedback can update on the cached paint refresh cadence.
+Original version: converts enemy paint with the listed conversion rate and slow resistance while reading paint ownership state. Browser version: planned enemy-paint conversion should operate on paint_grid state even when browser wind/mist routes skip paint rendering. Conversion rate, slow resistance, and ownership changes should match desktop; visual repaint feedback can update on the cached paint refresh cadence.
 
 7. Set / Combo Specifications
 
