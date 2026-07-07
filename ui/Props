@@ -10,6 +10,8 @@ Original version vs browser version:
 | Rendering | Original version may draw every spawned bullet, pickup, turret, text, and particle allowed by desktop performance. | Browser may hide, merge, or trim visible actors and feedback while keeping simulation values authoritative. |
 | Overflow | Original version usually follows each prop's own max_active, cooldown, or entity cap. | Browser must state whether overflow is dropped, merged, credited directly, hidden visually, or spawn-count reduced. |
 | Disabled systems | Original version can use normal desktop combat hooks such as enemy projectile hits. | Browser must define a fallback or opt-in URL route when a desktop trigger is disabled by default. |
+| Save state | Original version owns the canonical save keys, reset timing, and persistent prop state. | Browser uses the web save path but should preserve the same prop levels and persistent state unless documented otherwise. |
+| QA comparison | Original version is the baseline for expected damage, reward, cooldown, and state values. | Browser QA should compare simulated counters against original values when visuals are capped, merged, or hidden. |
 Document browser-only prop differences for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any web-only value, trigger, cap, or fallback must be written as "browser version" or "web build" text, not internal terms like emscripten, web-lite, or debug route.
 
 Browser version differences to document on props:
@@ -1080,6 +1082,10 @@ id, display_name, rarity, base_price, max_level, tags[]
 level_data[]: numeric values per level
 runtime_flags: can_stack, refresh_mode, cooldown_s, trigger_limit_per_second
 vfx_key, sfx_key, ui_summary_key
+original_behavior:
+authoritative_values: original damage/cooldown/radius/duration/reward/save state
+trigger_or_owner: desktop/original trigger path
+overflow_rule: max_active, cooldown, entity cap, refresh rule, or none
 browser_behavior:
 classification: same_as_desktop / visual_only / capped / fallback / mechanically_reduced
 runtime_gate: optional WEB_ENABLE_* flag or "always"
@@ -1199,6 +1205,10 @@ L3:
 Boss modifier:
 Internal cooldown:
 Performance cap:
+Original version level table:
+Original trigger/owner:
+Original overflow/cap rule:
+Original save/state behavior:
 Browser level table:
 Browser values same as desktop? yes/no
 Browser-only changed values:
@@ -1216,7 +1226,7 @@ Browser implementation owner:
 bullet_hit_event / bullet_update / status_20hz / ground_20hz / pulse_24hz / pickup_30hz / turret_update / shop_meta / player_damage_event / save_load
 
 Browser authoritative effect values:
-List the values that do not change in browser, such as damage, cooldown, radius, duration, stack cap, reward value, shield amount, turret count, or saved level.
+List the original-version values that do not change in browser, such as damage, cooldown, radius, duration, stack cap, reward value, shield amount, turret count, or saved level.
 
 Browser visible feedback changes:
 List the browser feedback that can be hidden, merged, cached, skipped, or trimmed, such as visible bullets, damage text, particles, paint layer, pickup bundles, turret sprites, pulse rings, or audio.
