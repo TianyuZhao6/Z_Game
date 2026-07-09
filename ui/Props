@@ -1217,7 +1217,22 @@ Browser cap or cadence:
 Browser overflow rule:
 Browser fallback trigger:
 
-15.2a. Browser version detail block
+15.2a. Original version detail block
+Use this block in every detailed prop entry before the browser block. The goal is to make the original baseline clear enough that browser differences can be reviewed without guessing the desktop/original behavior.
+
+Original implementation owner:
+Name the original trigger or system that owns the effect, such as bullet_hit_event, player_damage_event, shop_meta, turret_update, save_load, ground_effect_update, or status_tick.
+
+Original authoritative effect values:
+List the values the original version owns, such as damage, cooldown, radius, duration, stack cap, reward value, shield amount, turret count, proc order, boss modifier, saved level, or persistent charges.
+
+Original overflow / cap behavior:
+State the desktop/original max_active rule, cooldown gate, entity cap, refresh rule, same-frame hit rule, or "none" when the original version has no special overflow handling.
+
+Original save/state behavior:
+State whether the prop writes only level data, persistent charges, carry state, placed objects, debt/shield/coin values, or temporary combat state that resets between levels.
+
+15.2b. Browser version detail block
 Use this block in every detailed prop entry, even when the browser version is mostly identical. The goal is to make the browser behavior auditable from the prop file without reading runtime code.
 
 Browser classification:
@@ -1270,7 +1285,9 @@ Browser pause/build-summary note:
 Browser note shown only when:
 Browser note max length:
 Browser note hidden when:
-Browser desktop comparison needed? yes/no
+Original/browser comparison needed? yes/no
+Original behavior player-facing? yes/no
+Browser behavior player-facing? none / tooltip / card + tooltip / pause summary / QA only
 
 15.4. QA block
 Edge case:
