@@ -1070,12 +1070,14 @@ Browser telemetry: also track web_set_active, web_prop_trigger_count, web_pendin
 8. Prop Runtime Contract (Implementation Detail)
 8.1. Event order on bullet hit:
 Apply crit -> apply mark or vulnerability multiplier -> apply direct-hit damage -> process on-hit status (bleed, DoT, chill) -> process on-kill effects (explosion, shrapnel) if the target died.
+Original version event rule: the desktop/original bullet hit event is authoritative for proc order, damage values, same-frame hit locks, on-kill timing, and damage text creation. Prop entries should cite this path when browser behavior keeps the same combat result.
 Browser event rule: this order must not depend on render cadence. Browser may draw only 28 player bullets, but the simulated bullet hit event still owns the authoritative proc order, pending-bullet soft cap check, and damage-text merge/drop behavior.
 
 8.2. Event order on player damage:
 Base shield -> temporary shield -> carapace reserve -> HP.
 Then trigger on-shield-damaged effects (Retaliation Core / Mirror Shell).
 Then trigger on-HP-threshold effects (Guardian Charm).
+Original version event rule: the desktop/original damage_player path is authoritative for mitigation order, HP-ratio checks, shield-loss triggers, projectile-hit triggers, and post-damage cooldowns.
 Browser event rule: enemy projectiles are disabled by default on normal browser play, so ranged-damage reactions must define whether they require `enemyshots=1` or use a browser fallback. Contact damage, shield loss, carapace reserve, and Guardian Charm thresholds should remain active on the normal browser route.
 
 8.3. Suggested data schema per prop entry:
@@ -1099,6 +1101,8 @@ browser_player_text: card/tooltip text if player-facing behavior differs
 Persistent props store current level in save data.
 Consumables store both level and remaining charges.
 Temporary combat state (active buffs, marked targets, current paint intensity) should not persist across levels unless explicitly flagged.
+Original save/load expectations:
+Original version save data is the baseline for prop levels, persistent charges, placed objects, debt/shield/coin values, and carry state. A prop entry should say when the original version persists state beyond the current level.
 Browser save/load expectations:
 Browser prop levels must use the same META keys as desktop and survive localStorage refresh.
 Stateful browser props must specify whether active cooldowns persist in player carry state, save data, or reset at level start.
