@@ -1,5 +1,5 @@
 Browser Version Section
-Browser prop behavior should match desktop unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when desktop can handle more entities and effects.
+Browser prop behavior should match the original version unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when the original version can handle more entities and effects.
 
 Browser version rules:
 
@@ -36,7 +36,7 @@ Current browser implementation snapshot:
 - Browser update scheduling separates heavy systems: vulnerability marks every 0.10s, damage texts/aegis pulse lists at 24 Hz, ground spikes/curing paint/DOT rounds at 20 Hz, pickups at 30 Hz.
 - Browser paint rendering uses cached static/dynamic surfaces, camera quantization, and refresh windows rather than rebuilding every frame. Wind and mist browser routes can skip the paint render layer while paint state still updates.
 - Browser audio uses native HTML audio for BGM and skill FX by default; pygame mixer audio remains a debug fallback.
-- Browser saves use localStorage through the web save path; prop levels and persistent prop state read from the same META keys as desktop.
+- Browser saves use localStorage through the web save path; prop levels and persistent prop state read from the same META keys as the original version.
 
 Browser URL flags that affect prop behavior or QA:
 | flag | current effect | prop documentation impact |
@@ -97,30 +97,30 @@ Implementation-backed browser prop behavior:
 | --- | --- | --- |
 | Feature gates | WEB_ENABLE_AEGIS_PULSES, WEB_ENABLE_GROUND_SPIKES, WEB_ENABLE_CURING_PAINT, WEB_ENABLE_DOT_ROUNDS, and WEB_ENABLE_VULNERABILITY_MARKS default true in the web quality payload | These props are active on browser unless a future profile disables the gate |
 | Shrapnel bullets | Browser uses pending-bullet headroom from WEB_LITE_RENDER_BULLET_CAP * 2, not a fixed shrapnel-only cap | Describe soft burst reduction, not a hard live-shard limit |
-| Explosive rounds | Damage and chain behavior use desktop stats; FX particles are controlled by the global WEB_MAX_FX_PARTICLES budget | Mark as visual-budgeted, not mechanically reduced |
+| Explosive rounds | Damage and chain behavior use original-version stats; FX particles are controlled by the global WEB_MAX_FX_PARTICLES budget | Mark as visual-budgeted, not mechanically reduced |
 | Ground Spikes | Browser updates the system at 20 Hz and uses the same max_active table 6/10/14 | Mark effect as same, with scheduled browser updates |
 | Curing Paint | Browser updates the system at 20 Hz; rendering uses cached paint layers and may skip paint rendering in wind/mist browser routes | Mark effect as same, visual render as cached/throttled |
-| Aegis Pulse | Trigger and stats match desktop; active pulse list updates at 24 Hz and damage text is capped/merged | Mark effect as same, feedback text as budgeted |
+| Aegis Pulse | Trigger and stats match the original version; active pulse list updates at 24 Hz and damage text is capped/merged | Mark effect as same, feedback text as budgeted |
 | Turrets | Auto and stationary turrets simulate from saved META counts; lite render draws nearest 8 visible turrets | Do not document browser-only turret count conversion unless implementation changes |
 | Damage text | WEB_MAX_DAMAGE_TEXTS caps visible/active text and merges nearby non-crit numeric text | Browser notes should mention hidden/merged feedback only when it affects readability |
 
 Specific browser prop behavior matrix:
 | prop | browser runtime behavior | browser cap or cadence | player-facing text guidance |
 | --- | --- | --- | --- |
-| Piercing Rounds | Same pierce count and damage falloff as desktop; extra hits can create more damage text than browser will display | visible player bullets capped at 28 in lite render; damage text capped at 4 in default full profile | No card note; tooltip may say browser hides some repeated hit text in dense waves |
-| Ricochet Scope | Same ricochet count and bounce damage as desktop; routed bullets still simulate even if not all are drawn | visible player bullets capped at 28 in lite render | No card note; QA should confirm ricochet chains continue under render cap |
-| Shrapnel Shells | Same proc chance and shard damage; shard burst count is reduced only when pending-bullet headroom is low | pending soft cap uses max(10, WEB_LITE_RENDER_BULLET_CAP * 2), currently based on visible bullet cap 28 | Tooltip note should mention soft burst reduction, not a fixed shard cap |
-| Explosive Rounds | Same splash radius, damage, boss multiplier, and chain behavior; only particles are budgeted | global WEB_MAX_FX_PARTICLES currently 16 in default full profile | Tooltip note optional: FX may be trimmed, explosion damage unchanged |
-| DOT Rounds | Same stack limits, duration, and tick damage; browser loop processes DoT at scheduled intervals | DOT update cadence 20 Hz; visible damage text capped/merged | No card note; tooltip may say tick text can merge while damage continues |
-| Mark of Vulnerability | Same mark interval, target priority, duration, and damage bonus; browser loop updates marks on a scheduled cadence | vulnerability update cadence 0.10s | No card note; QA should confirm boss/elite priority and mark expiry |
-| Ground Spikes | Same spawn interval, distance rule, damage, slow, lifetime, and max_active; browser updates the system on a scheduled cadence | ground spike update cadence 20 Hz; max_active remains 6/10/14 | No card note; tooltip can mention older spikes are removed at cap |
-| Curing Paint | Same footprint spawn rules, damage, lifetime, radius, ownership, and boss modifier; browser rendering is cached/throttled | curing paint update cadence 20 Hz; paint render refresh uses cached static/dynamic layers | Tooltip note only if a biome hides paint rendering; damage continues |
-| Aegis Pulse | Same shield gate, cooldown, radius, damage, wave count, and pulse visual profile; text feedback is budgeted | active pulse list updates 24 Hz; damage text capped/merged | No card note; tooltip may say pulse damage continues even if text is merged |
-| Guardian Charm | Planned low-HP trigger should use same damage-player event path and save cooldown state with player/meta snapshot | trigger should be checked every combat update; visual burst uses FX/text budgets | Card note not needed unless browser changes cooldown or shield value |
+| Piercing Rounds | Same pierce count and damage falloff as the original version; extra hits can create more damage text than browser will display | visible player bullets capped at 28 in lite render; damage text capped at 4 in default full profile | No card note; tooltip may say browser hides some repeated hit text in dense waves |
+| Ricochet Scope | Same ricochet count and bounce damage as the original version; routed bullets still simulate even if not all are drawn | visible player bullets capped at 28 in lite render | No card note; QA should confirm ricochet chains continue under render cap |
+| Shrapnel Shells | Same proc chance and shard damage as the original version; shard burst count is reduced only when pending-bullet headroom is low | pending soft cap uses max(10, WEB_LITE_RENDER_BULLET_CAP * 2), currently based on visible bullet cap 28 | Tooltip note should mention soft burst reduction, not a fixed shard cap |
+| Explosive Rounds | Same splash radius, damage, boss multiplier, and chain behavior as the original version; only particles are budgeted | global WEB_MAX_FX_PARTICLES currently 16 in default full profile | Tooltip note optional: FX may be trimmed, explosion damage unchanged |
+| DOT Rounds | Same stack limits, duration, and tick damage as the original version; browser loop processes DoT at scheduled intervals | DOT update cadence 20 Hz; visible damage text capped/merged | No card note; tooltip may say tick text can merge while damage continues |
+| Mark of Vulnerability | Same mark interval, target priority, duration, and damage bonus as the original version; browser loop updates marks on a scheduled cadence | vulnerability update cadence 0.10s | No card note; QA should confirm boss/elite priority and mark expiry |
+| Ground Spikes | Same spawn interval, distance rule, damage, slow, lifetime, and max_active as the original version; browser updates the system on a scheduled cadence | ground spike update cadence 20 Hz; max_active remains 6/10/14 | No card note; tooltip can mention older spikes are removed at cap |
+| Curing Paint | Same footprint spawn rules, damage, lifetime, radius, ownership, and boss modifier as the original version; browser rendering is cached/throttled | curing paint update cadence 20 Hz; paint render refresh uses cached static/dynamic layers | Tooltip note only if a biome hides paint rendering; damage continues |
+| Aegis Pulse | Same shield gate, cooldown, radius, damage, wave count, and pulse visual profile as the original version; text feedback is budgeted | active pulse list updates 24 Hz; damage text capped/merged | No card note; tooltip may say pulse damage continues even if text is merged |
+| Guardian Charm | Planned low-HP trigger should use the original damage-player event path and save cooldown state with player/meta snapshot | trigger should be checked every combat update; visual burst uses FX/text budgets | Card note not needed unless browser changes cooldown or shield value |
 | Reflect/retaliation props | Planned reflection and shield-hit buffs should hook into damage_player/enemy projectile events without recursive loops | enemy shots are disabled by default on normal browser route | Any ranged-reflect prop needs browser fallback or opt-in enemy-shot note |
 | Auto-Turret | Same saved level and simulated turret count up to max level 5; all owned follower turrets update and fire | lite renderer draws nearest 8 total turrets | Tooltip note only when many turrets are active: browser draws nearest 8 |
 | Stationary Turret | Same saved stationary_turret_count and placement restoration; all spawned stationary turrets remain obstacles and fire | lite renderer draws nearest 8 total turrets | Pause summary can explain hidden turrets still work when count is high |
-| Coin and economy props | Meta changes and reward math use the same state as desktop; browser may limit visible pickup clutter | max spoils on field currently 8 in default full profile; lite renderer draws 12 pickups | Do not imply reduced rewards; describe bundled/hidden pickup visuals only if implemented |
+| Coin and economy props | Meta changes and reward math use the same state as the original version; browser may limit visible pickup clutter | max spoils on field currently 8 in default full profile; lite renderer draws 12 pickups | Do not imply reduced rewards; describe bundled/hidden pickup visuals only if implemented |
 | Movement/control props | Planned movement auras, dash contact, and tar puddles should run on scheduled browser update lanes rather than every visual frame | use 20-24 Hz cadence for area/contact effects and global FX/text budgets | Tooltip should state effect values only; browser notes belong in detailed spec unless values change |
 | Crit/element props | Planned crit explosions, chill, and shock chains should follow the same bullet/status scheduling and pending-bullet/FX budgets | projectile-like chains use bullet headroom; VFX uses WEB_MAX_FX_PARTICLES | Avoid card notes unless browser reduces chain count, radius, or proc chance |
 | Paint economy props | Planned Paint Converter/Cleanse Step should use paint ownership/intensity state, not rendered paint visibility | paint render can be skipped in wind/mist while paint state still updates | Tooltip must not imply disabled paint rewards just because paint layer is hidden |
@@ -132,7 +132,7 @@ Browser diagnostics expected by prop:
 | Shrapnel | pending_bullets, dropped_or_merged_count, prop_trigger_counts | shard burst reduces only when pending headroom is low; no unbounded pending list |
 | Explosive/Crit explosions | fx_particle_count, web_fx_trim_count, damage_done | particle count trims to budget while explosion damage remains expected |
 | DOT/Bleed/Chill | update_cadence_hz, dmg_text_count, stacks | status stacks tick at browser cadence and text merging does not stop damage |
-| Mark of Vulnerability | prop_trigger_counts, marked_target_type, mark_duration_remaining | boss/elite priority and duration match desktop values within scheduler granularity |
+| Mark of Vulnerability | prop_trigger_counts, marked_target_type, mark_duration_remaining | boss/elite priority and duration match original-version values within scheduler granularity |
 | Ground Spikes | active_spike_count, update_cadence_hz, oldest_evictions | active count stays 6/10/14 by level and oldest eviction is deterministic |
 | Curing Paint | paint_active_count, paint_render_refresh_ms, paint_damage_ticks | damage/ownership continue even when render layer is cached or skipped |
 | Aegis Pulse | pulse_count, update_cadence_hz, dmg_text_count | pulse damage follows cooldown and text budget does not hide trigger state |
@@ -157,8 +157,8 @@ Browser prop QA rows to add per high-risk prop:
 | WEB-PROP-03 | Ground Spikes | 20 Hz browser update cadence and max_active 6/10/14 | trail state updates and damage/slow still apply |
 | WEB-PROP-04 | Curing Paint | 20 Hz browser update cadence plus cached paint rendering | ownership color and tick timing remain correct even when render refresh is lower |
 | WEB-PROP-05 | Aegis Pulse | 24 Hz pulse-list update with unchanged shield-gated trigger | shield-gated cooldown and radius/damage values match desktop rules |
-| WEB-PROP-06 | Auto-Turret | desktop simulation count with lite-render visible turret cap 8 | all owned turrets still fire while renderer prioritizes nearest visible turrets |
-| WEB-PROP-07 | Stationary Turret | desktop simulation count with lite-render visible turret cap 8 | saved turret count restores and offscreen/overflow turrets still participate in combat |
+| WEB-PROP-06 | Auto-Turret | original-version simulation count with lite-render visible turret cap 8 | all owned turrets still fire while renderer prioritizes nearest visible turrets |
+| WEB-PROP-07 | Stationary Turret | original-version simulation count with lite-render visible turret cap 8 | saved turret count restores and offscreen/overflow turrets still participate in combat |
 
 Prop Systems Specification
 
@@ -180,8 +180,8 @@ Roster Rules
 Browser roster annotation standard:
 Use the existing notes column for quick browser status when a prop has web-specific behavior.
 Preferred short tags:
-- web:same - effect values match desktop; no card note needed.
-- web:visual - effect values match desktop, but browser simplifies VFX or text density.
+- web:same - effect values match the original version; no card note needed.
+- web:visual - effect values match the original version, but browser simplifies VFX or text density.
 - web:cap - browser uses a lower actor, projectile, paint, pickup, text, or VFX cap.
 - web:fallback - browser replaces a disabled trigger or subsystem with another behavior.
 - web:reduced - browser changes an effect number and must show browser-specific values.
@@ -191,7 +191,7 @@ Roster browser note examples:
 - web:same trigger, pulse list updates 24 Hz
 - web:visual nearest 8 turrets drawn, all owned turrets simulate
 - web:fallback enemy-shot trigger becomes timed pulse
-- web:same values match desktop, QA dense waves only
+- web:same values match original version, QA dense waves only
 
 Roster browser rules:
 1. If notes already contain implementation context, append the browser tag after a semicolon.
@@ -1104,7 +1104,7 @@ Temporary combat state (active buffs, marked targets, current paint intensity) s
 Original save/load expectations:
 Original version save data is the baseline for prop levels, persistent charges, placed objects, debt/shield/coin values, and carry state. A prop entry should say when the original version persists state beyond the current level.
 Browser save/load expectations:
-Browser prop levels must use the same META keys as desktop and survive localStorage refresh.
+Browser prop levels must use the same META keys as the original version and survive localStorage refresh.
 Stateful browser props must specify whether active cooldowns persist in player carry state, save data, or reset at level start.
 If browser overflow credits value directly, save data must store the resulting coin/shield/debt value, not the hidden visual entity.
 
