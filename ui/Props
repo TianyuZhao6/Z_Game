@@ -126,19 +126,19 @@ Specific browser prop behavior matrix:
 | Paint economy props | Planned Paint Converter/Cleanse Step should use paint ownership/intensity state, not rendered paint visibility | paint render can be skipped in wind/mist while paint state still updates | Tooltip must not imply disabled paint rewards just because paint layer is hidden |
 
 Browser diagnostics expected by prop:
-| prop or family | counters/signals to inspect | pass condition |
-| --- | --- | --- |
-| Piercing/Ricochet | web_visible_bullets, pending_bullets, prop_trigger_counts | visible bullets can cap at 28 while hit count and damage continue |
-| Shrapnel | pending_bullets, dropped_or_merged_count, prop_trigger_counts | shard burst reduces only when pending headroom is low; no unbounded pending list |
-| Explosive/Crit explosions | fx_particle_count, web_fx_trim_count, damage_done | particle count trims to budget while explosion damage remains expected |
-| DOT/Bleed/Chill | update_cadence_hz, dmg_text_count, stacks | status stacks tick at browser cadence and text merging does not stop damage |
-| Mark of Vulnerability | prop_trigger_counts, marked_target_type, mark_duration_remaining | boss/elite priority and duration match original-version values within scheduler granularity |
-| Ground Spikes | active_spike_count, update_cadence_hz, oldest_evictions | active count stays 6/10/14 by level and oldest eviction is deterministic |
-| Curing Paint | paint_active_count, paint_render_refresh_ms, paint_damage_ticks | damage/ownership continue even when render layer is cached or skipped |
-| Aegis Pulse | pulse_count, update_cadence_hz, dmg_text_count | pulse damage follows cooldown and text budget does not hide trigger state |
-| Turrets | web_visible_turrets, simulated_turret_count, turret_shots_fired | nearest 8 may be drawn, but all owned turrets continue firing |
-| Economy rewards | visible_pickups, spoils_on_field, coins_credited | visual caps never reduce earned coin value |
-| Enemy-shot reactions | WEB_SKIP_ENEMY_SHOTS, enemyshots flag, fallback_trigger_count | default route uses documented fallback or QA explicitly enables enemy shots |
+| prop or family | original-version baseline | browser counters/signals to inspect | pass condition |
+| --- | --- | --- | --- |
+| Piercing/Ricochet | original hit count, pierce/bounce count, and damage falloff | web_visible_bullets, pending_bullets, prop_trigger_counts | visible bullets can cap at 28 while hit count and damage continue |
+| Shrapnel | original proc chance, shard damage, and intended shard count | pending_bullets, dropped_or_merged_count, prop_trigger_counts | shard burst reduces only when pending headroom is low; no unbounded pending list |
+| Explosive/Crit explosions | original splash damage, radius, chain order, and boss modifier | fx_particle_count, web_fx_trim_count, damage_done | particle count trims to budget while explosion damage remains expected |
+| DOT/Bleed/Chill | original stack cap, duration, tick damage, and boss modifier | update_cadence_hz, dmg_text_count, stacks | status stacks tick at browser cadence and text merging does not stop damage |
+| Mark of Vulnerability | original target priority, interval, duration, and damage bonus | prop_trigger_counts, marked_target_type, mark_duration_remaining | boss/elite priority and duration match original-version values within scheduler granularity |
+| Ground Spikes | original spawn interval, max_active, damage, slow, and lifetime | active_spike_count, update_cadence_hz, oldest_evictions | active count stays 6/10/14 by level and oldest eviction is deterministic |
+| Curing Paint | original ownership, intensity, radius, damage, and lifetime | paint_active_count, paint_render_refresh_ms, paint_damage_ticks | damage/ownership continue even when render layer is cached or skipped |
+| Aegis Pulse | original shield gate, cooldown, wave count, radius, and damage | pulse_count, update_cadence_hz, dmg_text_count | pulse damage follows cooldown and text budget does not hide trigger state |
+| Turrets | original owned turret count, saved placements, fire rate, and damage | web_visible_turrets, simulated_turret_count, turret_shots_fired | nearest 8 may be drawn, but all owned turrets continue firing |
+| Economy rewards | original reward value, payout order, and persistent counters | visible_pickups, spoils_on_field, coins_credited | visual caps never reduce earned coin value |
+| Enemy-shot reactions | original projectile-hit trigger, cooldown, reflect value, and range | WEB_SKIP_ENEMY_SHOTS, enemyshots flag, fallback_trigger_count | default route uses documented fallback or QA explicitly enables enemy shots |
 
 Browser-specific runtime behavior:
 - Uses web-lite isometric rendering by default, including capped visible pickups, turrets, enemies, bullets, and enemy shots.
@@ -1440,6 +1440,7 @@ Seed missing keys with default 0/false values.
 Clamp all levels to documented max levels.
 Remove deprecated transient runtime keys if present.
 Browser migration rule:
+Original version migration rules are the baseline for key names, level clamps, deprecated transient cleanup, and orphan prop handling.
 After any migration, immediately write the migrated payload back through the browser save path so localStorage no longer contains stale prop keys.
 Browser migration must clamp prop levels before shop/card rendering because malformed values can overflow small browser cards.
 
