@@ -1298,6 +1298,9 @@ Edge case:
 Failure mode:
 Expected telemetry signature:
 Browser QA:
+Original version baseline:
+Original expected value source:
+Original expected trigger/cadence:
 Minimum canvas: 960x540
 Browser scenario URL:
 Expected visible cap behavior:
@@ -1453,31 +1456,31 @@ If a prop id is unknown, store the raw data in orphan_props for debugging and sk
 Required fields:
 run_id, level, shop_id, slot_index, prop_id, rarity, cost, player_coins, active_paths
 Browser fields:
-browser_quality, canvas_size, card_text_overflow, browser_version_note_visible
+browser_quality, canvas_size, card_text_overflow, browser_version_note_visible, original_card_text_key
 
 23.2. Event: prop_purchased
 Required fields:
 run_id, level, prop_id, old_level, new_level, cost_paid, coins_after, path_primary
 Browser fields:
-localStorage_write_ok, browser_note_ack, card_layout_scale
+localStorage_write_ok, browser_note_ack, card_layout_scale, original_meta_key
 
 23.3. Event: prop_triggered
 Required fields:
 run_id, level, prop_id, trigger_type, target_type, damage_done, stacks, cooldown_remaining
 Browser fields:
-browser_quality, update_cadence_hz, visible_cap_hit, overflow_rule, dropped_or_merged_count, pending_bullets, dmg_text_count, fx_particle_count
+browser_quality, update_cadence_hz, visible_cap_hit, overflow_rule, dropped_or_merged_count, pending_bullets, dmg_text_count, fx_particle_count, original_trigger_type, original_expected_value
 
 23.4. Event: set_bonus_active
 Required fields:
 run_id, level, set_id, piece_count, bonus_tier, dps_delta_estimate
 Browser fields:
-browser_quality, affected_prop_ids, visible_cap_risk, fallback_required
+browser_quality, affected_prop_ids, visible_cap_risk, fallback_required, original_bonus_tier
 
 23.5. Event: performance_guard_hit
 Required fields:
 run_id, level, system_name, cap_name, dropped_events_count, fps_at_trigger
 Browser fields:
-browser_gap_ms, py_frame, heartbeat_age_ms, render_interval, web_visible_bullets, web_visible_turrets, web_visible_pickups
+browser_gap_ms, py_frame, heartbeat_age_ms, render_interval, web_visible_bullets, web_visible_turrets, web_visible_pickups, original_entity_count
 
 24. QA Acceptance Matrix (Per Prop Family)
 24.1. Offense family
