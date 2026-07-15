@@ -1317,6 +1317,7 @@ All prop ids load from save without migration errors.
 No prop purchase can crash the shop UI, even with malformed levels.
 All capped props must stop purchasing correctly at max level.
 Browser functional:
+Original-version save/load, trigger ownership, and prop level caps are the baseline for browser functional checks.
 All implemented prop levels must survive browser refresh through localStorage.
 Browser-only feature gates must default to the documented state in the quality payload.
 Any prop requiring enemy projectiles must either expose a fallback or document the `enemyshots=1` QA requirement.
@@ -1324,13 +1325,15 @@ Any prop that spawns bullets, coins, particles, text, paint, or turrets must beh
 
 16.2. Balance
 Browser balance:
+Original-version damage, shield, coin, cooldown, radius, duration, and proc frequency are the baseline unless the prop is marked mechanically reduced.
 Browser visual caps must not silently reduce coin, shield, damage, or cooldown value unless the prop is explicitly marked mechanically reduced.
 If browser cadence changes perceived timing, compare simulated events per second rather than rendered frames.
-If a browser fallback replaces an enemy-shot trigger, its expected proc frequency should stay within +/-15% of the desktop trigger in comparable encounters.
+If a browser fallback replaces an enemy-shot trigger, its expected proc frequency should stay within +/-15% of the original-version trigger in comparable encounters.
 No single economy combo exceeds 2.2x baseline coin generation.
 
 16.3. Performance
 Browser performance:
+Original-version simulated results remain authoritative while browser performance caps decide what is drawn, merged, queued, or dropped visually.
 Worst-case prop burst checks must run with `diag=1` and record py_frame heartbeat, browser_gap_ms, pending_bullets, fx_particle_count, dmg_text_count, visible bullet/turret counts, and prop_trigger_counts.
 No browser prop burst should starve the event loop long enough to stop diagnostic heartbeat posts.
 Late-wave Shrapnel + Explosive + Curing Paint + Turret scenarios must respect visible caps without accumulating unbounded pending entities.
@@ -1339,6 +1342,7 @@ No memory leak may occur from persistent status stacks or paint tile maps during
 
 16.4. Readability
 Browser readability:
+Original-version player-facing values must remain visible or be restated when browser notes, caps, or fallbacks add extra text.
 At 960x540, browser card text must still show current value, next value, path tag, and any browser_version_note without overlap.
 Damage text merging must not hide critical survival information such as shield break, Guardian Charm trigger, or boss telegraph damage.
 If paint visuals are skipped in wind/mist browser routes, pause/tooltips must still make it clear that paint effects remain active.
@@ -1489,6 +1493,7 @@ No chain effect can recurse infinitely.
 Per-hit and per-kill triggers respect throttles.
 Boss damage modifiers always applied.
 Browser acceptance:
+Original offense damage, proc order, and boss modifiers remain the baseline for browser checks.
 Visible bullet cap does not stop simulated damage.
 Pending-bullet headroom reduces spawned secondary bullets before frame stalls.
 FX particle trimming never changes explosive or crit damage numbers.
@@ -1499,6 +1504,7 @@ Shield routing order matches section 8.2.
 Reaction buffs trigger once per valid event and honor internal cooldown.
 No reflection feedback loops.
 Browser acceptance:
+Original mitigation order, trigger eligibility, and cooldowns remain the baseline for browser checks.
 Shield/carapace/plating state survives browser refresh when it is part of carry/save state.
 Enemy-shot-dependent reactions have an enemyshots QA route or a fallback.
 Merged shield text does not hide whether mitigation happened.
@@ -1509,6 +1515,7 @@ Shop discounts and surcharges apply in fixed deterministic order.
 Interest/cashback/loan logic cannot generate negative coin states.
 Bandit interactions never consume charges without valid trigger.
 Browser acceptance:
+Original payout order, reward values, and persistent counters remain the baseline for browser checks.
 Visible pickup/spoil caps do not reduce credited rewards.
 Loan, cashback, coupon, wanted, and protected coin counters survive localStorage reload.
 If rewards are merged or credited directly, telemetry records the original earned amount and final credited amount.
@@ -1519,6 +1526,7 @@ Paint ownership and overwrite logic deterministic under simultaneous writes.
 Tile caps and cleanup execute without frame spikes.
 Paint effects clear correctly on level transition unless persisted by design.
 Browser acceptance:
+Original paint ownership, intensity, tick damage, and cleanup rules remain the baseline for browser checks.
 Paint state remains authoritative when paint rendering is cached, throttled, or skipped in wind/mist routes.
 Paint reward props read paint_grid ownership/intensity, not rendered pixels.
 Paint VFX refresh cadence does not change tick damage, slow resistance, or ownership conversion.
