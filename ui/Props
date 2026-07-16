@@ -66,19 +66,19 @@ Browser constants to cite in prop entries:
 | WEB_PAINT_* refresh/quant values | cached paint render refresh and camera quantization | Curing Paint, Cleanse Step, Paint Converter |
 
 Browser source-of-truth map:
-| browser doc topic | source file / runtime area | what to verify before editing this prop doc |
-| --- | --- | --- |
-| Quality profile, visible caps, URL flags | zgame/browser.py | Current WEB_* constants, default quality payload, and query flag behavior |
-| Bullet, shrapnel, ricochet, pierce hit flow | zgame/player_projectiles.py | Pending-bullet helper, bullet source checks, on-kill order, and projectile release path |
-| Explosive Rounds stats and VFX | ZGame.py | EXPLOSIVE_ROUNDS_* constants, trigger_explosive_rounds, FX spawn behavior |
-| DOT/Mark/Aegis/Ground/Curing stat helpers | ZGame.py | *_stats functions, Aegis visual profile, prop level read helpers |
-| Ground Spikes and Curing Paint updates | zgame/game_state.py | update_ground_spikes, update_curing_paint, paint bins, owner checks, tick cadence integration |
-| Damage text and transient budgets | zgame/game_state.py / zgame/app_flow.py | add_damage_text merge/drop rules and enforce_transient_budgets |
-| Browser update cadence | zgame/app_flow.py | _runtime_interval_step schedules for marks, pickups, texts, Aegis, spikes, paint, DoT |
-| Browser render caps | zgame/render_runtime.py | Lite-render visible caps and nearest-visible prioritization |
-| Turret simulation | zgame/turrets.py / zgame/app_flow.py | Spawn from META, update loop, stationary obstacle creation, render cap separation |
-| Save/localStorage behavior | ZGame.py / zgame/persistence.py | Web save key path, localStorage write/load, player carry fields |
-| Shop card and tooltip display | zgame/shop_support.py / zgame/shop_ui.py | Prop desc/current/next text and card layout at browser canvas size |
+| browser doc topic | source file / runtime area | original-version baseline to verify | browser behavior to verify |
+| --- | --- | --- | --- |
+| Quality profile, visible caps, URL flags | zgame/browser.py | Original version has no web quality cap unless the prop entry defines one | Current WEB_* constants, default quality payload, and query flag behavior |
+| Bullet, shrapnel, ricochet, pierce hit flow | zgame/player_projectiles.py | Original hit order, on-kill order, same-frame locks, and projectile release path | Pending-bullet helper, bullet source checks, and visible bullet cap behavior |
+| Explosive Rounds stats and VFX | ZGame.py | EXPLOSIVE_ROUNDS_* constants and trigger_explosive_rounds damage/chain behavior | FX spawn behavior and browser particle budget behavior |
+| DOT/Mark/Aegis/Ground/Curing stat helpers | ZGame.py | *_stats functions, Aegis values, and prop level read helpers | Browser cadence, visual profile, and level read parity |
+| Ground Spikes and Curing Paint updates | zgame/game_state.py | update_ground_spikes, update_curing_paint, paint bins, owner checks, and tick values | 20 Hz browser cadence, cached paint render, and owner/state parity |
+| Damage text and transient budgets | zgame/game_state.py / zgame/app_flow.py | Original damage text creation and critical feedback requirements | add_damage_text merge/drop rules and enforce_transient_budgets |
+| Browser update cadence | zgame/app_flow.py | Original trigger cadence or per-event trigger owner | _runtime_interval_step schedules for marks, pickups, texts, Aegis, spikes, paint, DoT |
+| Browser render caps | zgame/render_runtime.py | Original simulated actor count or spawned entity count | Lite-render visible caps and nearest-visible prioritization |
+| Turret simulation | zgame/turrets.py / zgame/app_flow.py | Original META turret count, saved placements, update loop, and firing rules | Spawn from META, update loop parity, stationary obstacle creation, and render cap separation |
+| Save/localStorage behavior | ZGame.py / zgame/persistence.py | Original save keys, reset timing, player carry fields, and migration rules | Web save key path, localStorage write/load, and persistent-state parity |
+| Shop card and tooltip display | zgame/shop_support.py / zgame/shop_ui.py | Original prop desc/current/next values and card text keys | Browser card layout at canvas size and browser-version note visibility |
 
 Browser display decision table:
 | original behavior | browser behavior | card note | tooltip note | pause/run summary note | example |
@@ -1215,7 +1215,7 @@ Original trigger/owner:
 Original overflow/cap rule:
 Original save/state behavior:
 Browser level table:
-Browser values same as desktop? yes/no
+Browser values same as original version? yes/no
 Browser-only changed values:
 Browser cap or cadence:
 Browser overflow rule:
