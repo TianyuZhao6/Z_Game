@@ -6,18 +6,18 @@ Browser version rules:
 Original version vs browser version:
 | area | original version | browser version |
 | --- | --- | --- |
-| Simulation authority | Desktop/original runtime is the reference for damage, cooldowns, proc order, save keys, and level tables. | Browser should keep those values unless the prop entry lists a browser-only cap, fallback, or reduced value. |
-| Rendering | Original version may draw every spawned bullet, pickup, turret, text, and particle allowed by desktop performance. | Browser may hide, merge, or trim visible actors and feedback while keeping simulation values authoritative. |
+| Simulation authority | Original-version runtime is the reference for damage, cooldowns, proc order, save keys, and level tables. | Browser should keep those values unless the prop entry lists a browser-specific cap, fallback, or reduced value. |
+| Rendering | Original version may draw every spawned bullet, pickup, turret, text, and particle allowed by the original runtime. | Browser may hide, merge, or trim visible actors and feedback while keeping simulation values authoritative. |
 | Overflow | Original version usually follows each prop's own max_active, cooldown, or entity cap. | Browser must state whether overflow is dropped, merged, credited directly, hidden visually, or spawn-count reduced. |
-| Disabled systems | Original version can use normal desktop combat hooks such as enemy projectile hits. | Browser must define a fallback or opt-in URL route when a desktop trigger is disabled by default. |
+| Disabled systems | Original version can use normal original-runtime combat hooks such as enemy projectile hits. | Browser must define a fallback or opt-in URL route when an original trigger is disabled by default. |
 | Save state | Original version owns the canonical save keys, reset timing, and persistent prop state. | Browser uses the web save path but should preserve the same prop levels and persistent state unless documented otherwise. |
 | QA comparison | Original version is the baseline for expected damage, reward, cooldown, and state values. | Browser QA should compare simulated counters against original values when visuals are capped, merged, or hidden. |
-Document browser-only prop differences for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any web-only value, trigger, cap, or fallback must be written as "browser version" or "web build" text, not internal terms like emscripten, web-lite, or debug route.
+Document browser-specific prop differences for CPU work, draw calls, audio mixing, storage writes, and burst entity creation. Any web-only value, trigger, cap, or fallback must be written as "browser version" or "web build" text, not internal terms like emscripten, web-lite, or debug route.
 
 Browser version differences to document on props:
 - Start each detailed entry by naming the original version trigger, value source, overflow rule, and save/state behavior that browser is compared against.
 - Props may use lower visual density, shorter effect lifetimes, or fewer simultaneous spawned actors.
-- Projectile, paint, turret, summon, coin, damage text, and VFX bursts must state the effective browser cap when it differs from desktop behavior.
+- Projectile, paint, turret, summon, coin, damage text, and VFX bursts must state the effective browser cap when it differs from original-version behavior.
 - Effects that are visually simplified in browser should keep the same result whenever possible.
 - Effects that must be mechanically reduced in browser should show the reduced value in tooltip current-value and next-upgrade text.
 - Props that rely on disabled browser systems, such as enemy projectiles on the safest route, need a fallback behavior written into the prop entry.
@@ -1090,7 +1090,7 @@ authoritative_values: original damage/cooldown/radius/duration/reward/save state
 trigger_or_owner: desktop/original trigger path
 overflow_rule: max_active, cooldown, entity cap, refresh rule, or none
 browser_behavior:
-classification: same_as_desktop / visual_only / capped / fallback / mechanically_reduced
+classification: same_as_original / visual_only / capped / fallback / mechanically_reduced
 runtime_gate: optional WEB_ENABLE_* flag or "always"
 update_cadence_hz: desktop / 20 / 24 / 30 / 0.10s / event_only
 render_cap: none or specific visible cap
@@ -1216,7 +1216,7 @@ Original overflow/cap rule:
 Original save/state behavior:
 Browser level table:
 Browser values same as original version? yes/no
-Browser-only changed values:
+Browser-specific changed values:
 Browser cap or cadence:
 Browser overflow rule:
 Browser fallback trigger:
@@ -1231,7 +1231,7 @@ Original authoritative effect values:
 List the values the original version owns, such as damage, cooldown, radius, duration, stack cap, reward value, shield amount, turret count, proc order, boss modifier, saved level, or persistent charges.
 
 Original overflow / cap behavior:
-State the desktop/original max_active rule, cooldown gate, entity cap, refresh rule, same-frame hit rule, or "none" when the original version has no special overflow handling.
+State the original-version max_active rule, cooldown gate, entity cap, refresh rule, same-frame hit rule, or "none" when the original version has no special overflow handling.
 
 Original save/state behavior:
 State whether the prop writes only level data, persistent charges, carry state, placed objects, debt/shield/coin values, or temporary combat state that resets between levels.
@@ -1240,7 +1240,7 @@ State whether the prop writes only level data, persistent charges, carry state, 
 Use this block in every detailed prop entry, even when the browser version is mostly identical. The goal is to make the browser behavior auditable from the prop file without reading runtime code.
 
 Browser classification:
-same_as_desktop / visual_only / render_capped / spawn_capped / fallback_trigger / mechanically_reduced
+same_as_original / visual_only / render_capped / spawn_capped / fallback_trigger / mechanically_reduced
 
 Browser implementation owner:
 bullet_hit_event / bullet_update / status_20hz / ground_20hz / pulse_24hz / pickup_30hz / turret_update / shop_meta / player_damage_event / save_load
@@ -1268,8 +1268,8 @@ State the final surface decision:
 Browser QA proof:
 Name one URL or counter. For implemented props, include at least one of: pending_bullets, web_visible_bullets, web_visible_turrets, visible_pickups, dmg_text_count, fx_particle_count, prop_trigger_counts, fallback_trigger_count, localStorage_write_ok, or browser_gap_ms.
 
-Browser same-as-desktop expanded example:
-Original version: uses bullet_hit_event as the trigger owner and the listed proc chance, damage multiplier, cooldown, boss modifier, and hit ordering. Browser version: classification = same_as_desktop. Implementation owner = bullet_hit_event. Authoritative effect values = proc chance, damage multiplier, cooldown, and boss modifier match desktop. Visible feedback changes = damage text may merge under the browser text budget. Player copy = no card note; tooltip note only if repeated text merging confuses QA. QA proof = `?start=1&diag=1` with prop_trigger_counts and damage_done matching desktop expectations.
+Browser same-as-original expanded example:
+Original version: uses bullet_hit_event as the trigger owner and the listed proc chance, damage multiplier, cooldown, boss modifier, and hit ordering. Browser version: classification = same_as_original. Implementation owner = bullet_hit_event. Authoritative effect values = proc chance, damage multiplier, cooldown, and boss modifier match the original version. Visible feedback changes = damage text may merge under the browser text budget. Player copy = no card note; tooltip note only if repeated text merging confuses QA. QA proof = `?start=1&diag=1` with prop_trigger_counts and damage_done matching original-version expectations.
 
 Browser capped expanded example:
 Original version: owns, draws, and simulates every purchased turret through turret_update and saved turret state. Browser version: classification = render_capped. Implementation owner = turret_update plus lite render. Authoritative effect values = owned turret count, fire rate, target selection, and damage match desktop. Visible feedback changes = browser draws nearest 8 turrets when more are owned. Overflow behavior = hidden turrets keep simulating and firing. Player copy = tooltip or pause summary says "Browser: nearest 8 turrets drawn; all owned turrets still fire." QA proof = web_visible_turrets, simulated_turret_count, and turret_shots_fired.
