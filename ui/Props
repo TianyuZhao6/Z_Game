@@ -141,6 +141,7 @@ Browser diagnostics expected by prop:
 | Enemy-shot reactions | original projectile-hit trigger, cooldown, reflect value, and range | WEB_SKIP_ENEMY_SHOTS, enemyshots flag, fallback_trigger_count | default route uses documented fallback or QA explicitly enables enemy shots |
 
 Browser-specific runtime behavior:
+- Original-version simulation remains the baseline for damage, rewards, cooldowns, save state, and trigger ordering; the browser runtime notes below describe how the web route limits rendering, scheduling, storage, or fallback triggers around that baseline.
 - Uses web-lite isometric rendering by default, including capped visible pickups, turrets, enemies, bullets, and enemy shots.
 - Uses cached wall/background layers so static map geometry is not rebuilt every frame.
 - Uses browser-native BGM and FX audio paths where possible to avoid pygame mixer crackle under web load.
@@ -150,15 +151,15 @@ Browser-specific runtime behavior:
 - Uses queued/batched timed spawns so renewed waves do not enter the simulation in one browser frame.
 
 Browser prop QA rows to add per high-risk prop:
-| qa_id | prop | browser behavior under test | minimum check |
-| --- | --- | --- | --- |
-| WEB-PROP-01 | Shrapnel Shells | pending-bullet soft cap and visible bullet render cap | dense kill wave respects pending headroom and does not flood rendered bullets |
-| WEB-PROP-02 | Explosive Rounds | FX particle budget and chain resolution | chain explosion clears enemies while FX trims to the browser particle budget |
-| WEB-PROP-03 | Ground Spikes | 20 Hz browser update cadence and max_active 6/10/14 | trail state updates and damage/slow still apply |
-| WEB-PROP-04 | Curing Paint | 20 Hz browser update cadence plus cached paint rendering | ownership color and tick timing remain correct even when render refresh is lower |
-| WEB-PROP-05 | Aegis Pulse | 24 Hz pulse-list update with unchanged shield-gated trigger | shield-gated cooldown and radius/damage values match original-version rules |
-| WEB-PROP-06 | Auto-Turret | original-version simulation count with lite-render visible turret cap 8 | all owned turrets still fire while renderer prioritizes nearest visible turrets |
-| WEB-PROP-07 | Stationary Turret | original-version simulation count with lite-render visible turret cap 8 | saved turret count restores and offscreen/overflow turrets still participate in combat |
+| qa_id | prop | original-version baseline | browser behavior under test | minimum check |
+| --- | --- | --- | --- | --- |
+| WEB-PROP-01 | Shrapnel Shells | listed proc chance, shard damage, and intended shard count | pending-bullet soft cap and visible bullet render cap | dense kill wave respects pending headroom and does not flood rendered bullets |
+| WEB-PROP-02 | Explosive Rounds | listed splash damage, radius, boss modifier, and chain resolution | FX particle budget and chain resolution | chain explosion clears enemies while FX trims to the browser particle budget |
+| WEB-PROP-03 | Ground Spikes | listed spawn cadence, max_active 6/10/14, damage, slow, and lifetime | 20 Hz browser update cadence and max_active 6/10/14 | trail state updates and damage/slow still apply |
+| WEB-PROP-04 | Curing Paint | listed ownership, radius, lifetime, tick damage, and cleanup rules | 20 Hz browser update cadence plus cached paint rendering | ownership color and tick timing remain correct even when render refresh is lower |
+| WEB-PROP-05 | Aegis Pulse | listed shield gate, cooldown, radius, wave count, and damage | 24 Hz pulse-list update with unchanged shield-gated trigger | shield-gated cooldown and radius/damage values match original-version rules |
+| WEB-PROP-06 | Auto-Turret | owned follower turret count, fire rate, target selection, and damage | lite-render visible turret cap 8 | all owned turrets still fire while renderer prioritizes nearest visible turrets |
+| WEB-PROP-07 | Stationary Turret | saved stationary turret count, placement restore, obstacle state, and firing rules | lite-render visible turret cap 8 | saved turret count restores and offscreen/overflow turrets still participate in combat |
 
 Prop Systems Specification
 
