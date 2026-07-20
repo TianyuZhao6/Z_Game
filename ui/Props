@@ -199,7 +199,8 @@ Roster browser rules:
 2. Use web:same only for high-density or stateful props worth browser QA; omit it for simple stat props.
 3. Use web:reduced only when damage, cooldown, radius, chance, duration, or reward value differs.
 4. Keep roster browser text short; the detailed prop entry must hold the full cap, fallback, and QA case.
-5. Any prop marked web:cap, web:fallback, or web:reduced must have a matching Browser version line in its detailed entry.
+5. Include the original-version baseline in the roster note when the browser tag can be misunderstood, such as "original damage unchanged" or "original trigger replaced."
+6. Any prop marked web:cap, web:fallback, or web:reduced must have matching Original version and Browser version lines in its detailed entry.
 
 Current Prop Roster (Seed Rows)
 These rows are draft roster entries for the current defined prop list in sections 1-6. Keep them synchronized with the detailed entries below.
@@ -214,9 +215,9 @@ Section Scan Guide (Table Order)
 
 | prop_id | display_name | section | path_primary | path_secondary | role | rarity | base_price | max_level | trigger_type | scaling_summary | synergy_tags | tradeoff | ui_tag | implementation_status | notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| piercing_rounds | Piercing Rounds | Core Offense | BALLISTIC | NONE | Pierce scaler | 1 | $12 | 5 | passive | +1 to +5 pierce, up to 16% falloff | pierce,wave_clear,projectile | none | OFF | implemented | Core Ballistic baseline; web:cap visible bullets 28, hit simulation continues |
-| ricochet_scope | Ricochet Scope | Core Offense | BALLISTIC | NONE | Bounce scaler | 2 | $14 | 3 | passive | 1 to 3 ricochets, 90% to 75% bounce damage | ricochet,crit,wave_clear | lower single-target value in open maps | OFF | implemented | Core Ballistic baseline; web:cap visible bullets 28, ricochet routing simulates |
-| shrapnel_shells | Shrapnel Shells | Core Offense | BALLISTIC | NONE | Death burst | 3 | $16 | 3 | on_kill | 25% to 45% proc, 3 to 4 shards | shrapnel,wave_clear,crit | performance-capped secondary spawns | OFF | implemented | Core Ballistic baseline; web:cap pending bullets by headroom, visible bullets 28 |
+| piercing_rounds | Piercing Rounds | Core Offense | BALLISTIC | NONE | Pierce scaler | 1 | $12 | 5 | passive | +1 to +5 pierce, up to 16% falloff | pierce,wave_clear,projectile | none | OFF | implemented | Core Ballistic baseline; web:cap visible bullets 28, original pierce/damage simulation continues |
+| ricochet_scope | Ricochet Scope | Core Offense | BALLISTIC | NONE | Bounce scaler | 2 | $14 | 3 | passive | 1 to 3 ricochets, 90% to 75% bounce damage | ricochet,crit,wave_clear | lower single-target value in open maps | OFF | implemented | Core Ballistic baseline; web:cap visible bullets 28, original ricochet routing simulates |
+| shrapnel_shells | Shrapnel Shells | Core Offense | BALLISTIC | NONE | Death burst | 3 | $16 | 3 | on_kill | 25% to 45% proc, 3 to 4 shards | shrapnel,wave_clear,crit | performance-capped secondary spawns | OFF | implemented | Core Ballistic baseline; web:cap pending bullets by headroom, original shard damage preserved |
 | ground_spikes | Ground Spikes | Core Offense | CONTROL | OFFENSE | Trail trap | 2 | $18 | 3 | on_move | 0.30 to 0.50 bullet_base, 6 to 14 active spikes | trail,slow,area_denial | move speed penalty per purchase | CTL | implemented | Existing runtime constants mapped; web:same effect, 20 Hz update |
 | bleeding_edge | Bleeding Edge | Core Offense | OFFENSE | STATUS | Bleed applicator | 2 | $17 | 3 | on_hit | 24% to 52% bleed total over 3s | bleed,bossing,damage_over_time | lower burst without setup | OFF | planned | Add if bleed package is active; web:same planned 20 Hz status lane, text may merge |
 | dot_rounds | DOT Rounds | Core Offense | OFFENSE | STATUS | Generic DoT | 2 | $20 | 3 | on_hit | 0.10 to 0.22 bullet_base per tick, 1 to 2 stacks | dot,status,bossing | capped DPS and reduced boss value | OFF | implemented | Existing runtime constants mapped; web:same 20 Hz status update, text may merge |
@@ -228,13 +229,13 @@ Section Scan Guide (Table Order)
 | explosive_crits | Explosive Crits | Crit / Element / Synergy | CRIT | AOE | Crit splash | 3 | $24 | 3 | on_hit | 30% to 55% splash on crit, 0.60 to 0.90 tile radius | crit,aoe,splash | reduced boss splash | CRT | planned | Strong combo bridge with Ballistic; web:visual FX budget, splash damage unchanged |
 | razor_focus | Razor Focus | Crit / Element / Synergy | CRIT | NONE | Crit tradeoff | 2 | $18 | 3 | passive | +8% to +20% crit, -6% to -15% fire rate | crit,risk,burst | fire rate penalty | CRT | planned | Straight crit conversion; web:same stat rebuild and card text at 960x540 |
 | frost_brand | Frost Brand | Crit / Element / Synergy | STATUS | CRIT | Chill re-hit | 2 | $16 | 3 | on_hit | 14% to 28% chill chance, +12% to +26% re-hit bonus | chill,control,re_hit | boss slow reduced | CRT | planned | Element bridge prop; web:same status cadence, slow text may merge |
-| shock_relay | Shock Relay | Crit / Element / Synergy | STATUS | AOE | Chain lightning | 2 | $19 | 3 | on_hit | every 8th to 5th hit chains, 30% to 50% damage | shock,chain,wave_clear | weaker in single-target fights | CRT | planned | Element bridge prop; web:cap chain/projectile headroom before damage changes |
+| shock_relay | Shock Relay | Crit / Element / Synergy | STATUS | AOE | Chain lightning | 2 | $19 | 3 | on_hit | every 8th to 5th hit chains, 30% to 50% damage | shock,chain,wave_clear | weaker in single-target fights | CRT | planned | Element bridge prop; web:cap chain/projectile headroom, original chain damage preserved unless reduced |
 | aegis_pulse | Aegis Pulse | Defense & Survival | DEFENSE | AOE | Shield pulse | 3 | $28 | 5 | passive | 100 to 180 px pulse, 4.0s to 1.5s cooldown | shield,aoe,pulse | shield-gated activation | DEF | implemented | Existing runtime constants mapped; web:same trigger, pulse list updates 24 Hz |
 | blood_pact | Blood Pact | Defense & Survival | DEFENSE | OFFENSE | Risk conversion | 3 | $20 | 3 | passive | +18% to +45% damage, -12% to -28% max HP | risk,damage,glass_cannon | max HP penalty | DEF | planned | Safety floor required |
 | bone_plating | Bone Plating | Defense & Survival | DEFENSE | NONE | Layered mitigation | 2 | $12 | 5 | passive | +2 plating HP per tick per level, cap effect at L5 | plating,survival,contact | minor move speed reduction per purchase | DEF | implemented | Current implementation note present; web:same mitigation, text may merge |
 | carapace | Carapace | Defense & Survival | DEFENSE | NONE | Reserve shield | 1 | $6 | None | passive | +20 persistent reserve shield per purchase | shield,stacking,survival | none | DEF | implemented | Working baseline shield layer; web:same shield state, localStorage refresh QA |
 | guardian_charm | Guardian Charm | Defense & Survival | DEFENSE | MOVEMENT | Emergency rescue | 2 | $16 | 3 | on_damage | 15 to 36 shield, +15% to +30% speed burst | emergency_shield,escape,survival | long cooldown | DEF | planned | Threshold trigger on low HP; web:same trigger/cooldown, rescue FX may trim |
-| mirror_shell | Mirror Shell | Defense & Survival | DEFENSE | OFFENSE | Ranged reflect | 3 | $23 | 3 | on_damage | 20% to 45% reflect, 4.0 to 6.0 tile return range | reflect,ranged,shield | only active while shielded | DEF | planned | Suggested constant block already defined; web:fallback required while enemy shots off |
+| mirror_shell | Mirror Shell | Defense & Survival | DEFENSE | OFFENSE | Ranged reflect | 3 | $23 | 3 | on_damage | 20% to 45% reflect, 4.0 to 6.0 tile return range | reflect,ranged,shield | only active while shielded | DEF | planned | Suggested constant block already defined; web:fallback replaces original enemy-shot trigger while enemy shots off |
 | retaliation_core | Retaliation Core | Defense & Survival | DEFENSE | CRIT | Reactive buff | 3 | $18 | 3 | on_damage | +10% to +24% damage, +6% to +12% crit | shield_hit,crit,damage_buff | shield-hit trigger only | DEF | planned | Suggested constant block already defined; web:same buff state, compact HUD feedback |
 | retaliation_thorns | Retaliation Thorns | Defense & Survival | DEFENSE | OFFENSE | Contact reflect | 2 | $14 | 3 | on_damage | max(8,4%) to max(22,8%) reflect on contact | reflect,contact,anti_melee | weaker on bosses | DEF | planned | Anti-loop rule required; web:same contact trigger, reflect text may merge |
 | shardstorm | Shardstorm | Defense & Survival | DEFENSE | BALLISTIC | Shield burst | 4 | $24 | 3 | on_damage | 6 to 12 shards on shield break | shield_break,projectile,burst | depends on shield loss to trigger | DEF | planned | Use rarity 4 if treated as premium; web:cap pending bullets by headroom |
@@ -1088,12 +1089,12 @@ runtime_flags: can_stack, refresh_mode, cooldown_s, trigger_limit_per_second
 vfx_key, sfx_key, ui_summary_key
 original_behavior:
 authoritative_values: original damage/cooldown/radius/duration/reward/save state
-trigger_or_owner: desktop/original trigger path
+trigger_or_owner: original-version trigger path
 overflow_rule: max_active, cooldown, entity cap, refresh rule, or none
 browser_behavior:
 classification: same_as_original / visual_only / capped / fallback / mechanically_reduced
 runtime_gate: optional WEB_ENABLE_* flag or "always"
-update_cadence_hz: desktop / 20 / 24 / 30 / 0.10s / event_only
+update_cadence_hz: original / 20 / 24 / 30 / 0.10s / event_only
 render_cap: none or specific visible cap
 overflow_rule: none / drop / merge / credit_direct / reduce_spawn_count / hide_visual_only
 browser_player_text: card/tooltip text if player-facing behavior differs
