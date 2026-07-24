@@ -1068,6 +1068,7 @@ Recompute active sets on prop acquire, prop sell, and level start.
 Conflict rule: if two sets modify the same stat bucket, apply additive bonuses then clamp by stat caps.
 Telemetry: track set_pick_rate, set_completion_rate, and win_rate_with_set.
 Browser telemetry: also track web_set_active, web_prop_trigger_count, web_pending_bullet_drops, web_fx_trim_count, and web_visible_cap_hits for any set that increases bullets, pulses, coins, or status triggers.
+Original/browser telemetry comparison: set telemetry should keep the original set_id, piece_count, bonus_tier, and expected stat value alongside browser counters. Browser-only drops, trims, or fallback triggers must be logged as delivery details, not as a different set bonus, unless the browser version explicitly changes the bonus value.
 
 8. Prop Runtime Contract (Implementation Detail)
 8.1. Event order on bullet hit:
@@ -1461,35 +1462,48 @@ If a level has an invalid type or is out of range, coerce it to the nearest vali
 If a prop id is unknown, store the raw data in orphan_props for debugging and skip runtime use.
 
 23. Telemetry Event Contract (Props)
+Telemetry comparison rule:
+Required fields describe the original-version economy/combat event. Browser fields describe web delivery details, such as layout, localStorage, cadence, visible caps, overflow, and fallback behavior. Browser telemetry should never replace the original trigger/value fields when the browser version preserves the same effect.
+
 23.1. Event: prop_offer_shown
 Required fields:
 run_id, level, shop_id, slot_index, prop_id, rarity, cost, player_coins, active_paths
 Browser fields:
 browser_quality, canvas_size, card_text_overflow, browser_version_note_visible, original_card_text_key
+Browser/original comparison:
+original_card_text_key must identify the original prop text/value key used before any browser note is appended.
 
 23.2. Event: prop_purchased
 Required fields:
 run_id, level, prop_id, old_level, new_level, cost_paid, coins_after, path_primary
 Browser fields:
 localStorage_write_ok, browser_note_ack, card_layout_scale, original_meta_key
+Browser/original comparison:
+original_meta_key must be the canonical save key shared with the original version; browser storage health is reported separately by localStorage_write_ok.
 
 23.3. Event: prop_triggered
 Required fields:
 run_id, level, prop_id, trigger_type, target_type, damage_done, stacks, cooldown_remaining
 Browser fields:
 browser_quality, update_cadence_hz, visible_cap_hit, overflow_rule, dropped_or_merged_count, pending_bullets, dmg_text_count, fx_particle_count, original_trigger_type, original_expected_value
+Browser/original comparison:
+original_trigger_type and original_expected_value must remain populated when browser cadence, caps, or text merging change only delivery or visibility.
 
 23.4. Event: set_bonus_active
 Required fields:
 run_id, level, set_id, piece_count, bonus_tier, dps_delta_estimate
 Browser fields:
 browser_quality, affected_prop_ids, visible_cap_risk, fallback_required, original_bonus_tier
+Browser/original comparison:
+original_bonus_tier must identify the original set bonus tier before any browser fallback or cap risk is evaluated.
 
 23.5. Event: performance_guard_hit
 Required fields:
 run_id, level, system_name, cap_name, dropped_events_count, fps_at_trigger
 Browser fields:
 browser_gap_ms, py_frame, heartbeat_age_ms, render_interval, web_visible_bullets, web_visible_turrets, web_visible_pickups, original_entity_count
+Browser/original comparison:
+original_entity_count records the original intended actor or payload count; web_visible_* records the browser-rendered subset.
 
 24. QA Acceptance Matrix (Per Prop Family)
 24.1. Offense family
