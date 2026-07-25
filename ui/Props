@@ -1367,16 +1367,26 @@ If trigger_type == consumable, require charges or single_use=true.
 If the effect includes chain behavior, require chain_depth_cap.
 If the effect applies DoT, require tick_interval, duration, and max_stacks.
 If the effect applies slow, require boss_slow_modifier.
+If browser_behavior is present, require original_behavior so the browser cap, fallback, or reduced value has an explicit baseline.
+If browser_behavior.classification is same_as_original or visual_only, require at least one authoritative original value to compare against.
+If browser_behavior.classification is fallback or mechanically_reduced, require the original trigger/value and the browser replacement trigger/value in the same prop entry.
 
 19.3. UI validation
 All props require short tooltip text <= 80 chars and long tooltip text <= 220 chars.
 All props require a path color tag for card-border mapping.
 All rarity values must map to a defined rarity visual marker count.
+Browser UI validation:
+Browser card, tooltip, and pause-summary notes must not hide the original current/next values.
+Any browser-specific player-facing note must state whether the original effect value is preserved, visually capped, fallback-triggered, or mechanically reduced.
 
 19.4. Runtime validation
 Every spawned-entity effect must define a performance cap or pool limit.
 Every reactive trigger must define an internal cooldown or per-source throttle.
 Every saveable prop state must include a default value in run-reset logic.
+Original/browser runtime validation:
+Original trigger order, save key, and authoritative values must be validated before browser caps or cadence are applied.
+Browser overflow validation must prove whether extra actors are dropped, hidden, merged, credited directly, or still simulated.
+Browser fallback validation must prove the original trigger is unavailable or disabled on the normal browser route.
 
 21. Code Constant Mapping (ZGame.py Integration)
 21.1. Existing constants already aligned with implementation
