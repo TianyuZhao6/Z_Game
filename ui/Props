@@ -1389,7 +1389,11 @@ Browser overflow validation must prove whether extra actors are dropped, hidden,
 Browser fallback validation must prove the original trigger is unavailable or disabled on the normal browser route.
 
 21. Code Constant Mapping (ZGame.py Integration)
+Constant comparison rule:
+Gameplay constants listed here are the original-version baseline for prop math unless a browser-specific constant or cap is named in the prop entry. Browser constants such as WEB_MAX_FX_PARTICLES, WEB_LITE_RENDER_BULLET_CAP, or WEB_SKIP_ENEMY_SHOTS should describe delivery limits, render caps, or fallback availability; they must not silently replace original damage, reward, cooldown, radius, duration, stack, or save values.
+
 21.1. Existing constants already aligned with implementation
+These constants should be cited as original-version authoritative values when browser behavior is same_as_original, visual_only, or render_capped.
 Explosive Rounds:
 EXPLOSIVE_ROUNDS_RADIUS_MULTS
 EXPLOSIVE_ROUNDS_DAMAGE_MULTS
@@ -1424,6 +1428,7 @@ AEGIS_PULSE_BASE_COOLDOWN
 AEGIS_PULSE_COOLDOWN_DELTA
 
 21.2. Suggested new constants
+Suggested constants should define original-version behavior first. Add a browser-specific companion constant only when the browser version is mechanically reduced or uses a different fallback trigger/cadence that affects player-facing behavior.
 BLEED_DAMAGE_TOTAL = (0.24, 0.36, 0.52)
 BLEED_DURATION = 3.0
 BLEED_MAX_STACKS = (2, 3, 4)
