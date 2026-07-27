@@ -274,28 +274,28 @@ Status Promotion Rules
 
 A2. Runtime Field Map
 Implemented Shop Props (Current Runtime)
-| prop_id | meta_keys | apply_path | runtime_execution | status |
-| --- | --- | --- | --- | --- |
-| piercing_rounds | pierce_level | shop catalog apply | bullet pierce charge consumed on enemy hit | implemented |
-| ricochet_scope | ricochet_level | shop catalog apply | bullet ricochet attempt and retarget | implemented |
-| shrapnel_shells | shrapnel_level | shop catalog apply | on-kill shrapnel spawn roll and splash bullets | implemented |
-| explosive_rounds | explosive_rounds_level | shop catalog apply | on-kill explosive trigger and splash damage | implemented |
-| dot_rounds | dot_rounds_level | shop catalog apply | on-hit DoT stack apply and periodic tick loop | implemented |
-| ground_spikes | ground_spikes_level | shop catalog apply | move-trail spike spawn, hit, slow, lifetime cleanup | implemented |
-| curing_paint | curing_paint_level | shop catalog apply | move-trail paint spawn, bin query, periodic damage tick | implemented |
-| mark_vulnerability | vuln_mark_level | shop catalog apply | priority mark pulse and damage amplification | implemented |
-| bone_plating | bone_plating_level, bone_plating_hp | shop catalog apply | periodic plating gain and pre-HP mitigation | implemented |
-| carapace | carapace_shield_hp | shop catalog apply | persistent reserve shield consumed before HP | implemented |
-| aegis_pulse | aegis_pulse_level, _aegis_pulse_cd | shop catalog apply | shield-gated pulse emission and AoE damage rings | implemented |
-| coin_magnet | coin_magnet_radius | shop catalog apply | spoils pull radius increase in coin update loop | implemented |
-| coupon | coupon_level | shop catalog apply | global shop discount through shop_price | implemented |
-| golden_interest | golden_interest_level | shop catalog apply | post-shop interest payout with cap | implemented |
-| lockbox | lockbox_level | shop catalog apply | protected coin floor for bandit and loan loss clamps | implemented |
-| bandit_radar | bandit_radar_level | shop catalog apply | bandit slow and highlight on spawn | implemented |
-| wanted_poster | wanted_poster_waves, wanted_active | consumable apply function | bounty payout window and consume logic | implemented |
-| shady_loan | shady_loan_level, shady_loan_remaining_debt, shady_loan_waves_remaining, shady_loan_status | purchase function | upfront payout and wave-by-wave debt resolution | implemented |
-| auto_turret | auto_turret_level | shop catalog apply | level-start summon count and turret fire loop | implemented |
-| stationary_turret | stationary_turret_count | shop catalog apply | level-start static turret placement and fire loop | implemented |
+| prop_id | meta_keys | apply_path | original runtime execution | browser comparison note | status |
+| --- | --- | --- | --- | --- | --- |
+| piercing_rounds | pierce_level | shop catalog apply | bullet pierce charge consumed on enemy hit | preserve original pierce/damage; visible bullet cap only | implemented |
+| ricochet_scope | ricochet_level | shop catalog apply | bullet ricochet attempt and retarget | preserve original bounce routing/damage; visible bullet cap only | implemented |
+| shrapnel_shells | shrapnel_level | shop catalog apply | on-kill shrapnel spawn roll and splash bullets | preserve original proc/damage; apply pending-bullet headroom before spawn flood | implemented |
+| explosive_rounds | explosive_rounds_level | shop catalog apply | on-kill explosive trigger and splash damage | preserve original splash/chain damage; trim FX particles only | implemented |
+| dot_rounds | dot_rounds_level | shop catalog apply | on-hit DoT stack apply and periodic tick loop | preserve original stack/damage values; browser status cadence handles ticks | implemented |
+| ground_spikes | ground_spikes_level | shop catalog apply | move-trail spike spawn, hit, slow, lifetime cleanup | preserve original damage/slow/max_active; browser update cadence handles scheduling | implemented |
+| curing_paint | curing_paint_level | shop catalog apply | move-trail paint spawn, bin query, periodic damage tick | preserve original paint state/damage; browser may cache or skip render layer | implemented |
+| mark_vulnerability | vuln_mark_level | shop catalog apply | priority mark pulse and damage amplification | preserve original mark values; browser scheduled update owns cadence | implemented |
+| bone_plating | bone_plating_level, bone_plating_hp | shop catalog apply | periodic plating gain and pre-HP mitigation | preserve original mitigation order; browser may merge text | implemented |
+| carapace | carapace_shield_hp | shop catalog apply | persistent reserve shield consumed before HP | preserve original reserve shield state through localStorage refresh | implemented |
+| aegis_pulse | aegis_pulse_level, _aegis_pulse_cd | shop catalog apply | shield-gated pulse emission and AoE damage rings | preserve original shield trigger/damage; browser pulse list updates at 24 Hz | implemented |
+| coin_magnet | coin_magnet_radius | shop catalog apply | spoils pull radius increase in coin update loop | preserve original pickup math; visible pickup cap only | implemented |
+| coupon | coupon_level | shop catalog apply | global shop discount through shop_price | preserve original shop discount math and META key | implemented |
+| golden_interest | golden_interest_level | shop catalog apply | post-shop interest payout with cap | preserve original payout math and ordering | implemented |
+| lockbox | lockbox_level | shop catalog apply | protected coin floor for bandit and loan loss clamps | preserve original protected value; browser pickup visuals may bundle | implemented |
+| bandit_radar | bandit_radar_level | shop catalog apply | bandit slow and highlight on spawn | preserve original slow/highlight window; browser QA checks spawn density | implemented |
+| wanted_poster | wanted_poster_waves, wanted_active | consumable apply function | bounty payout window and consume logic | preserve original charges/payout; browser QA checks localStorage state | implemented |
+| shady_loan | shady_loan_level, shady_loan_remaining_debt, shady_loan_waves_remaining, shady_loan_status | purchase function | upfront payout and wave-by-wave debt resolution | preserve original debt state and repayment/default ordering | implemented |
+| auto_turret | auto_turret_level | shop catalog apply | level-start summon count and turret fire loop | preserve original turret count/fire rules; browser draws nearest 8 | implemented |
+| stationary_turret | stationary_turret_count | shop catalog apply | level-start static turret placement and fire loop | preserve original placement/fire rules; browser draws nearest 8 | implemented |
 
 A3. Formula Appendix
 Shop Price
@@ -362,17 +362,17 @@ A7. Set Bonus Matrix
 | Lucky | tracked only | UI online label | UI full label | none direct | add bounded rare-event chance bonus |
 
 A8. QA Scenarios (Required Regression Set)
-| test_id | scenario | expected result |
-| --- | --- | --- |
-| PROP-QA-01 | Buy coupon to cap and reroll shop | prices follow formula and never go below 1 |
-| PROP-QA-02 | Stack lockbox then trigger bandit and loan losses | coin floor protection always respected |
-| PROP-QA-03 | Apply mark_vulnerability and verify hit numbers | marked targets receive bonus exactly once per hit |
-| PROP-QA-04 | DOT + explosive + shrapnel on dense wave | no infinite chain loop or crash |
-| PROP-QA-05 | Ground spikes and curing paint at max level | footprint count/lifetime constraints respected |
-| PROP-QA-06 | Bone plating + carapace + aegis pulse shield interactions | mitigation order and pulse trigger remain stable |
-| PROP-QA-09 | Wanted poster claim path on bandit death | bounty pays once and state flags clear correctly |
-| PROP-QA-10 | Shady loan across repayment and default branches | debt, waves, and HP penalties resolve correctly |
-| PROP-QA-11 | Auto and stationary turrets with save/load cycle | turret counts persist and restore correctly |
+| test_id | scenario | original-version expected result | browser comparison check |
+| --- | --- | --- | --- |
+| PROP-QA-01 | Buy coupon to cap and reroll shop | prices follow formula and never go below 1 | localStorage keeps coupon_level and browser card text does not hide current/next values |
+| PROP-QA-02 | Stack lockbox then trigger bandit and loan losses | coin floor protection always respected | browser reward/pickup visuals must not change protected coin math |
+| PROP-QA-03 | Apply mark_vulnerability and verify hit numbers | marked targets receive bonus exactly once per hit | browser scheduled mark updates preserve target priority and damage bonus |
+| PROP-QA-04 | DOT + explosive + shrapnel on dense wave | no infinite chain loop or crash | browser pending-bullet and FX caps trim delivery without changing preserved damage |
+| PROP-QA-05 | Ground spikes and curing paint at max level | footprint count/lifetime constraints respected | browser 20 Hz cadence preserves damage, slow, ownership, and cleanup rules |
+| PROP-QA-06 | Bone plating + carapace + aegis pulse shield interactions | mitigation order and pulse trigger remain stable | browser refresh preserves shield state and text merge does not hide mitigation |
+| PROP-QA-09 | Wanted poster claim path on bandit death | bounty pays once and state flags clear correctly | browser localStorage keeps charges/payout state and spawn-density QA remains valid |
+| PROP-QA-10 | Shady loan across repayment and default branches | debt, waves, and HP penalties resolve correctly | browser save path preserves debt state and repayment/default ordering |
+| PROP-QA-11 | Auto and stationary turrets with save/load cycle | turret counts persist and restore correctly | browser render cap draws nearest 8 while all original turrets simulate/fire |
 
 A9. Telemetry Specification
 | event_name | trigger | minimum payload |
