@@ -375,13 +375,14 @@ A8. QA Scenarios (Required Regression Set)
 | PROP-QA-11 | Auto and stationary turrets with save/load cycle | turret counts persist and restore correctly | browser render cap draws nearest 8 while all original turrets simulate/fire |
 
 A9. Telemetry Specification
-| event_name | trigger | minimum payload |
-| --- | --- | --- |
-| prop_purchased | shop purchase success | run_id, level_idx, prop_id, new_level, cost |
-| bandit_spawned | bandit spawn success | run_id, level_idx, wave_idx, radar_level, lockbox_level |
-| bandit_killed | bandit death resolution | run_id, level_idx, stolen_total, refund, bounty_paid |
-| shady_loan_purchased | loan purchase | run_id, level_idx, loan_level, debt_total, waves_remaining |
-| shady_loan_resolved | repayment/default outcome | run_id, level_idx, outcome, hp_penalty, debt_remaining |
+Telemetry rows should keep original-version event fields authoritative and add browser fields only for web delivery, storage, layout, cap, or fallback details.
+| event_name | trigger | original-version minimum payload | browser comparison payload |
+| --- | --- | --- | --- |
+| prop_purchased | shop purchase success | run_id, level_idx, prop_id, new_level, cost | browser_quality, localStorage_write_ok, original_meta_key, card_layout_scale |
+| bandit_spawned | bandit spawn success | run_id, level_idx, wave_idx, radar_level, lockbox_level | browser_quality, spawn_density, visible_cap_hit, fallback_route |
+| bandit_killed | bandit death resolution | run_id, level_idx, stolen_total, refund, bounty_paid | coins_credited, visible_pickups, original_bounty_value, bundled_reward_visual |
+| shady_loan_purchased | loan purchase | run_id, level_idx, loan_level, debt_total, waves_remaining | original_meta_key, localStorage_write_ok, browser_note_visible |
+| shady_loan_resolved | repayment/default outcome | run_id, level_idx, outcome, hp_penalty, debt_remaining | original_debt_value, browser_save_confirmed, card_text_overflow |
 
 A15. Boss Modifier Policy and Performance Safety Rules
 
