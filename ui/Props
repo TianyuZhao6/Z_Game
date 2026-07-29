@@ -387,30 +387,30 @@ Telemetry rows should keep original-version event fields authoritative and add b
 A15. Boss Modifier Policy and Performance Safety Rules
 
 Boss Modifier Policy
-| effect_family | default boss treatment | implementation note |
-| --- | --- | --- |
-| splash_damage | 40% to 60% effectiveness unless explicitly exempt | clamp splash multiplier separately from direct hit damage |
-| damage_over_time | reduced tick value or capped stack count | define boss tick multiplier or stack cap |
-| hard_control | duration reduction or control immunity windows | define boss duration multiplier or immunity cooldown |
-| coin_economy | no direct boss payout inflation beyond explicit reward rules | require explicit boss payout rule |
-| reflect_damage | capped by boss-facing multiplier or trigger cooldown | require boss multiplier and trigger cooldown |
-| summon_pressure | maintain uptime target with hazard interaction caps | require summon cap and hazard interaction rule |
+| effect_family | original-version boss treatment | browser comparison note | implementation note |
+| --- | --- | --- | --- |
+| splash_damage | 40% to 60% effectiveness unless explicitly exempt | Browser FX caps may trim particles, but boss splash multiplier stays original unless mechanically_reduced is documented | clamp splash multiplier separately from direct hit damage |
+| damage_over_time | reduced tick value or capped stack count | Browser cadence may schedule ticks differently, but total boss tick value and stack cap stay original unless documented | define boss tick multiplier or stack cap |
+| hard_control | duration reduction or control immunity windows | Browser text/FX may merge, but control duration and immunity windows must compare against original values | define boss duration multiplier or immunity cooldown |
+| coin_economy | no direct boss payout inflation beyond explicit reward rules | Browser pickup caps may bundle visuals, but credited boss rewards must match original payout rules | require explicit boss payout rule |
+| reflect_damage | capped by boss-facing multiplier or trigger cooldown | Browser enemy-shot fallback must preserve original reflect ratio/cooldown or document a reduced trigger | require boss multiplier and trigger cooldown |
+| summon_pressure | maintain uptime target with hazard interaction caps | Browser render caps may hide summons, but original simulated summon count and uptime remain baseline | require summon cap and hazard interaction rule |
 
 Late-Wave Performance Safety Rules
-1. Any prop that spawns secondary projectiles must define a hard concurrent cap.
-2. Any trail or puddle system must define both a lifetime and maximum active count.
-3. Any chain effect must define max jumps, retarget filters, and duplicate-target lockout.
-4. Any periodic scan aura must define scan interval and maximum affected targets per tick.
-5. Any visually persistent floor effect must define z-order priority and fade behavior.
+1. Any prop that spawns secondary projectiles must define the original intended spawn count plus the browser pending/visible cap.
+2. Any trail or puddle system must define the original lifetime and maximum active count plus browser update cadence.
+3. Any chain effect must define original max jumps, retarget filters, and duplicate-target lockout before browser headroom rules.
+4. Any periodic scan aura must define original scan interval and maximum affected targets per tick plus browser cadence if different.
+5. Any visually persistent floor effect must define original z-order priority and fade behavior plus browser cache/skip behavior.
 
 Recommended Runtime Safety Checklist
-| system_type | required safety control | example |
-| --- | --- | --- |
-| projectile burst | max active secondary projectiles | shrapnel_shells, shardstorm |
-| chain logic | unique target list per trigger | shock_relay |
-| area decals | max active instances plus pooled cleanup | sticky_tar_flask, curing_paint |
-| pulse/aura | fixed tick interval and target cap | time_dilation_boots, aegis_pulse |
-| summon counts | soft cap with quality conversion | auto_turret, stationary_turret, future summoner props |
+| system_type | original-version safety control | browser comparison requirement | example |
+| --- | --- | --- | --- |
+| projectile burst | max active secondary projectiles | state whether browser drops, hides, or reduces pending projectiles after original damage is calculated | shrapnel_shells, shardstorm |
+| chain logic | unique target list per trigger | state whether browser headroom changes visible chains only or also chain count | shock_relay |
+| area decals | max active instances plus pooled cleanup | state browser cadence/cache behavior and whether original damage/slow stays authoritative | sticky_tar_flask, curing_paint |
+| pulse/aura | fixed tick interval and target cap | state browser cadence and whether original radius/damage/slow values are unchanged | time_dilation_boots, aegis_pulse |
+| summon counts | soft cap with quality conversion | state original simulated count and browser visible count separately | auto_turret, stationary_turret, future summoner props |
 
 1. Core Offense Props
 
