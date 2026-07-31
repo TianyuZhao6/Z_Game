@@ -905,7 +905,7 @@ Rules:
 Level 1: +8% crit chance, -6% fire rate
 Level 2: +13% crit chance, -10% fire rate
 Level 3: +20% crit chance, -15% fire rate
-Original version: applies the listed crit chance increase and fire-rate penalty through the normal stat rebuild. Browser version: planned crit chance and fire-rate tradeoff should use the same stat rebuild path as desktop. Browser should not add a hidden fire-rate penalty beyond the listed value; if lower FPS affects perceived shot cadence, QA should compare actual shots per second rather than visual bullet count.
+Original version: applies the listed crit chance increase and fire-rate penalty through the normal stat rebuild. Browser version: planned crit chance and fire-rate tradeoff should use the same stat rebuild path as the original version. Browser should not add a hidden fire-rate penalty beyond the listed value; if lower FPS affects perceived shot cadence, QA should compare actual shots per second rather than visual bullet count.
 
 5.2. Explosive Crits
 Effect:
