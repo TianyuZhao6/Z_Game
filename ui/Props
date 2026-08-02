@@ -566,7 +566,7 @@ Level 1: shield = 15, speed_bonus = +15%, duration = 3.0s, cooldown = 30s
 Level 2: shield = 24, speed_bonus = +22%, duration = 3.5s, cooldown = 26s
 Level 3: shield = 36, speed_bonus = +30%, duration = 4.0s, cooldown = 22s
 Rule: Trigger can only occur once every 1.0s even if HP fluctuates around threshold.
-Original version: should trigger from the desktop damage_player / HP-ratio path after mitigation and enforce the listed cooldown. Browser version: planned trigger should use the same damage_player / HP-ratio path as desktop and store cooldown state in the player carry/save snapshot. Shield amount, speed bonus, duration, and cooldown should not be browser-reduced; only the rescue flash/audio may be trimmed by WEB_MAX_FX_PARTICLES or native FX availability.
+Original version: should trigger from the original damage_player / HP-ratio path after mitigation and enforce the listed cooldown. Browser version: planned trigger should use the same damage_player / HP-ratio path as the original version and store cooldown state in the player carry/save snapshot. Shield amount, speed bonus, duration, and cooldown should not be browser-reduced; only the rescue flash/audio may be trimmed by WEB_MAX_FX_PARTICLES or native FX availability.
 
 2.3. Blood Pact
 Effect:
@@ -580,7 +580,7 @@ Level 2: damage_mult +30%, max_hp_mult -20%
 Level 3: damage_mult +45%, max_hp_mult -28%
 Safety floor: final max HP cannot drop below 35% of base max HP.
 UI note: show both values in red/green on purchase confirmation.
-Original version: applies the listed damage multiplier, max-HP penalty, and 35% base-HP safety floor through the stat rebuild. Browser version: planned max-HP penalty and damage bonus should be applied through the same META/player stat rebuild path as desktop. Browser card text must show the same green/red values at 960x540; no browser note is needed unless the web build changes the safety floor or damage multiplier.
+Original version: applies the listed damage multiplier, max-HP penalty, and 35% base-HP safety floor through the stat rebuild. Browser version: planned max-HP penalty and damage bonus should be applied through the same META/player stat rebuild path as the original version. Browser card text must show the same green/red values at 960x540; no browser note is needed unless the web build changes the safety floor or damage multiplier.
 
 2.4. Retaliation Thorns
 Effect:
@@ -613,7 +613,7 @@ cooldown = 4.0 / 3.375 / 2.75 / 2.125 / 1.5 s
 damage = 30% / 45% / 60% / 80% / 100% of enemy max HP
 Wave behavior: one expanding pulse; high levels may add visual ripple layers only (no extra hidden damage ticks).
 Safety cap: pulse damage to bosses can be clamped to avoid one-cycle kills.
-Original version: uses the listed shield gate, cooldown, radius, damage, wave count, and Aegis constants. Browser version: shield trigger, cooldown, radius, damage, wave count, and visual profile use the same Aegis constants as desktop. Browser updates active pulse rings on a 24 Hz schedule and damage text is capped/merged by WEB_MAX_DAMAGE_TEXTS, currently 4 in the default full profile.
+Original version: uses the listed shield gate, cooldown, radius, damage, wave count, and Aegis constants. Browser version: shield trigger, cooldown, radius, damage, wave count, and visual profile use the same Aegis constants as the original version. Browser updates active pulse rings on a 24 Hz schedule and damage text is capped/merged by WEB_MAX_DAMAGE_TEXTS, currently 4 in the default full profile.
 
 2.6. Carapace
 Effect:
@@ -640,7 +640,7 @@ Level 1: convert 25% heal at full HP, bonus_overheal_conversion +10%, temp_shiel
 Level 2: convert 40% heal at full HP, bonus_overheal_conversion +15%, temp_shield_duration 12s
 Level 3: convert 60% heal at full HP, bonus_overheal_conversion +20%, temp_shield_duration 14s
 Cap: temporary shield from this prop cannot exceed 40% of player max HP.
-Original version: converts full-HP heal pickup value into temporary shield using the listed conversion rate, duration, and 40% max-HP cap. Browser version: planned overheal conversion should use the same heal pickup and shield state as desktop. Browser visible heal/pickup caps must not reduce conversion value after pickup; QA should verify full-HP heal collection with Coin Magnet still grants the correct temporary shield.
+Original version: converts full-HP heal pickup value into temporary shield using the listed conversion rate, duration, and 40% max-HP cap. Browser version: planned overheal conversion should use the same heal pickup and shield state as the original version. Browser visible heal/pickup caps must not reduce conversion value after pickup; QA should verify full-HP heal collection with Coin Magnet still grants the correct temporary shield.
 
 2.8. Mirror Shell
 Effect:
@@ -1044,7 +1044,7 @@ Carapace + Bone Plating (+ Aegis Pulse as 3rd piece)
 Set Bonus:
 2-piece: after losing shield, gain 10% move speed for 1.5s.
 3-piece: Aegis Pulse emits one extra mini-wave at 40% damage.
-Original version: applies the shield-loss speed bonus and extra Aegis mini-wave from set state. Browser version: Fortress Loop should use the same shield-loss and Aegis pulse state as desktop. The extra mini-wave must be represented as an Aegis pulse entry updated on the 24 Hz pulse-list cadence, and its damage text can merge/drop under WEB_MAX_DAMAGE_TEXTS without reducing actual mini-wave damage.
+Original version: applies the shield-loss speed bonus and extra Aegis mini-wave from set state. Browser version: Fortress Loop should use the same shield-loss and Aegis pulse state as the original version. The extra mini-wave must be represented as an Aegis pulse entry updated on the 24 Hz pulse-list cadence, and its damage text can merge/drop under WEB_MAX_DAMAGE_TEXTS without reducing actual mini-wave damage.
 
 7.3. Predator Economy (2/3 piece set)
 Pieces:
