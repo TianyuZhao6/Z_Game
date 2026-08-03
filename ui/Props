@@ -700,7 +700,7 @@ Rules:
 Protected coin ratio by level: 25% / 40% / 55% / 70%.
 Protection applies before bandit steal and before debt-style coin penalties.
 Suggested implementation: protected = floor(current_coins * ratio), unprotected = current_coins - protected.
-Original version: protects the listed percentage of current coins before bandit steal and debt-style coin penalties. Browser version: planned/implemented coin protection should use the same META coin state as desktop. Browser pickup and spoil visual caps must not reduce protected value; if coin bundles are merged or hidden for performance, tooltip text should still show the full protected ratio.
+Original version: protects the listed percentage of current coins before bandit steal and debt-style coin penalties. Browser version: planned/implemented coin protection should use the same META coin state as the original version. Browser pickup and spoil visual caps must not reduce protected value; if coin bundles are merged or hidden for performance, tooltip text should still show the full protected ratio.
 
 3.2. Wanted Poster
 Effect:
@@ -712,7 +712,7 @@ Rules:
 Bounty payout per charge: +18 / +26 / +36 coins (scales by level bracket early/mid/late).
 Consumption rule: only consumed when the player secures the first Bandit kill of that level.
 Fail-safe: if no bandit spawned, the charge is retained.
-Original version: stores charges, retains them when no bandit spawns, and pays the listed bounty once on the first valid bandit kill. Browser version: bounty state should persist through browser localStorage like desktop save data. Browser enemy caps and safe spawn routes may reduce practical bandit encounter density, so QA should verify charge retention on waves where no bandit appears and bounty payout when a bandit does spawn.
+Original version: stores charges, retains them when no bandit spawns, and pays the listed bounty once on the first valid bandit kill. Browser version: bounty state should persist through browser localStorage like original save data. Browser enemy caps and safe spawn routes may reduce practical bandit encounter density, so QA should verify charge retention on waves where no bandit appears and bounty payout when a bandit does spawn.
 
 3.3. Coin Magnet
 Effect:
@@ -758,7 +758,7 @@ Max Level: 4
 Rules:
 Discount by level: 5% / 10% / 15% / 20%
 Rule: applies to normal offers and reroll cost; price floor is 1 coin.
-Original version: applies the listed permanent discount to normal offers and reroll cost with a 1-coin floor. Browser version: discount math and price floor match the original version. Browser shop cards should show the same discounted current price and next upgrade text as desktop, with no browser-specific note unless layout constraints hide secondary price details.
+Original version: applies the listed permanent discount to normal offers and reroll cost with a 1-coin floor. Browser version: discount math and price floor match the original version. Browser shop cards should show the same discounted current price and next upgrade text as the original version, with no browser-specific note unless layout constraints hide secondary price details.
 
 3.7. Shady Loan
 Effect:
@@ -770,7 +770,7 @@ Rules:
 Repayment order: Golden Interest -> lockbox protection snapshot -> loan repayment pull.
 Repayment safety rule: if player has <= 15 coins, skip scheduled repayment for that wave once.
 UI requirement: always show debt left + waves left in both shop and pause possession tooltip.
-Original version: applies the listed instant payout, repayment order, debt countdown, and max-HP failure penalty. Browser version: loan payout, repayment order, debt counters, and HP penalty should use the same META save keys as desktop. Browser QA must refresh the page mid-debt and confirm debt_left, waves_left, and failure penalties survive localStorage reload.
+Original version: applies the listed instant payout, repayment order, debt countdown, and max-HP failure penalty. Browser version: loan payout, repayment order, debt counters, and HP penalty should use the same META save keys as the original version. Browser QA must refresh the page mid-debt and confirm debt_left, waves_left, and failure penalties survive localStorage reload.
 
 3.8. Black Market Pass
 Effect:
@@ -788,7 +788,7 @@ Compensation: one extra offer slot in that shop (5 cards + reroll) to support de
 Rarity weights override suggestion:
 rarity_3 = 55%, rarity_4 = 35%, rarity_5 = 10% (when available by progression gate).
 Protection rule: keep at least one affordable offer (price <= current_coins + 15) to avoid dead shops.
-Original version: consumes the pass for the next single shop, applies +20% price, rarity floor 3, one extra slot, and the affordable-offer guard. Browser version: planned black-market shop state should use the same shop generation and META flags as desktop. Browser card layout must still show premium price, minimum rarity, and expiry at 960x540; no reward or rarity reduction should be introduced for web.
+Original version: consumes the pass for the next single shop, applies +20% price, rarity floor 3, one extra slot, and the affordable-offer guard. Browser version: planned black-market shop state should use the same shop generation and META flags as the original version. Browser card layout must still show premium price, minimum rarity, and expiry at 960x540; no reward or rarity reduction should be introduced for web.
 
 3.9. VIP Punchcard
 Effect:
@@ -1074,14 +1074,14 @@ Original/browser telemetry comparison: set telemetry should keep the original se
 8. Prop Runtime Contract (Implementation Detail)
 8.1. Event order on bullet hit:
 Apply crit -> apply mark or vulnerability multiplier -> apply direct-hit damage -> process on-hit status (bleed, DoT, chill) -> process on-kill effects (explosion, shrapnel) if the target died.
-Original version event rule: the desktop/original bullet hit event is authoritative for proc order, damage values, same-frame hit locks, on-kill timing, and damage text creation. Prop entries should cite this path when browser behavior keeps the same combat result.
+Original version event rule: the original bullet hit event is authoritative for proc order, damage values, same-frame hit locks, on-kill timing, and damage text creation. Prop entries should cite this path when browser behavior keeps the same combat result.
 Browser event rule: this order must not depend on render cadence. Browser may draw only 28 player bullets, but the simulated bullet hit event still owns the authoritative proc order, pending-bullet soft cap check, and damage-text merge/drop behavior.
 
 8.2. Event order on player damage:
 Base shield -> temporary shield -> carapace reserve -> HP.
 Then trigger on-shield-damaged effects (Retaliation Core / Mirror Shell).
 Then trigger on-HP-threshold effects (Guardian Charm).
-Original version event rule: the desktop/original damage_player path is authoritative for mitigation order, HP-ratio checks, shield-loss triggers, projectile-hit triggers, and post-damage cooldowns.
+Original version event rule: the original damage_player path is authoritative for mitigation order, HP-ratio checks, shield-loss triggers, projectile-hit triggers, and post-damage cooldowns.
 Browser event rule: enemy projectiles are disabled by default on normal browser play, so ranged-damage reactions must define whether they require `enemyshots=1` or use a browser fallback. Contact damage, shield loss, carapace reserve, and Guardian Charm thresholds should remain active on the normal browser route.
 
 8.3. Suggested data schema per prop entry:
