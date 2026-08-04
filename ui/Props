@@ -8,7 +8,7 @@ Original version vs browser version:
 | --- | --- | --- |
 | Simulation authority | Original-version runtime is the reference for damage, cooldowns, proc order, save keys, and level tables. | Browser should keep those values unless the prop entry lists a browser-specific cap, fallback, or reduced value. |
 | Rendering | Original version may draw every spawned bullet, pickup, turret, text, and particle allowed by the original runtime. | Browser may hide, merge, or trim visible actors and feedback while keeping simulation values authoritative. |
-| Overflow | Original version usually follows each prop s own max_active, cooldown, or entity cap. | Browser must state whether overflow is dropped, merged, credited directly, hidden visually, or spawn-count reduced. |
+| Overflow | Original version usually follows each prop's own max_active, cooldown, or entity cap. | Browser must state whether overflow is dropped, merged, credited directly, hidden visually, or spawn-count reduced. |
 | Disabled systems | Original version can use normal original-runtime combat hooks such as enemy projectile hits. | Browser must define a fallback or opt-in URL route when an original trigger is disabled by default. |
 | Save state | Original version owns the canonical save keys, reset timing, and persistent prop state. | Browser uses the web save path but should preserve the same prop levels and persistent state unless documented otherwise. |
 | QA comparison | Original version is the baseline for expected damage, reward, cooldown, and state values. | Browser QA should compare simulated counters against original values when visuals are capped, merged, or hidden. |
@@ -1229,7 +1229,7 @@ Browser overflow rule:
 Browser fallback trigger:
 
 15.2a. Original version detail block
-Use this block in every detailed prop entry before the browser block. The goal is to make the original baseline clear enough that browser differences can be reviewed without guessing the desktop/original behavior.
+Use this block in every detailed prop entry before the browser block. The goal is to make the original baseline clear enough that browser differences can be reviewed without guessing the original-version behavior.
 
 Original implementation owner:
 Name the original trigger or system that owns the effect, such as bullet_hit_event, player_damage_event, shop_meta, turret_update, save_load, ground_effect_update, or status_tick.
@@ -1248,6 +1248,8 @@ Use this block in every detailed prop entry, even when the browser version is mo
 
 Browser classification:
 same_as_original / visual_only / render_capped / spawn_capped / fallback_trigger / mechanically_reduced
+Classification rule:
+Use same_as_original when browser preserves all original values and triggers. Use visual_only or render_capped when only feedback or visible actor count changes. Use fallback_trigger when browser replaces an unavailable original trigger. Use mechanically_reduced only when browser changes damage, reward, cooldown, radius, duration, chance, stack cap, or saved value.
 
 Browser implementation owner:
 bullet_hit_event / bullet_update / status_20hz / ground_20hz / pulse_24hz / pickup_30hz / turret_update / shop_meta / player_damage_event / save_load
@@ -1326,7 +1328,7 @@ All capped props must stop purchasing correctly at max level.
 Browser functional:
 Original-version save/load, trigger ownership, and prop level caps are the baseline for browser functional checks.
 All implemented prop levels must survive browser refresh through localStorage.
-Browser-only feature gates must default to the documented state in the quality payload.
+Browser-specific feature gates must default to the documented state in the quality payload.
 Any prop requiring enemy projectiles must either expose a fallback or document the `enemyshots=1` QA requirement.
 Any prop that spawns bullets, coins, particles, text, paint, or turrets must behave correctly when the related browser visible cap is hit.
 
@@ -1450,9 +1452,9 @@ Keep temporary runtime values out of META unless they must persist across level 
 Browser META policy:
 Original version META keys are authoritative for every prop level, persistent counter, placed object, and carry-state value.
 Use the same META key on original version and browser for every prop level or persistent counter.
-Do not introduce browser-only META keys for visual caps; visual caps should be derived from WEB_* constants.
+Do not introduce browser-specific META keys for visual caps; visual caps should be derived from WEB_* constants.
 If browser overflow credits value directly, write the final value to the normal coin/shield/debt key.
-If a browser-only fallback has cooldown state, store it in player carry state only if the original-version equivalent would also persist.
+If a browser-specific fallback has cooldown state, store it in player carry state only if the original-version equivalent would also persist.
 
 22. Save Migration Plan (Props Data)
 22.1. Version key
