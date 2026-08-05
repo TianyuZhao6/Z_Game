@@ -1567,3 +1567,30 @@ Original paint ownership, intensity, tick damage, and cleanup rules remain the b
 Paint state remains authoritative when paint rendering is cached, throttled, or skipped in wind/mist routes.
 Paint reward props read paint_grid ownership/intensity, not rendered pixels.
 Paint VFX refresh cadence does not change tick damage, slow resistance, or ownership conversion.
+
+24.5. Summon and turret family
+Acceptance checks:
+Summon counts, placement rules, target selection, and fire cadence are deterministic.
+Saved summon state restores before combat update begins.
+Browser acceptance:
+Original summoned actor count, saved placement state, fire rate, target selection, and damage remain the baseline for browser checks.
+Browser visible turret/summon caps must be documented separately from simulated count.
+Hidden or offscreen browser summons must still fire, block, expire, or despawn according to original rules unless mechanically_reduced is documented.
+
+24.6. Control and movement family
+Acceptance checks:
+Movement-triggered effects use deterministic distance, cadence, and per-target cooldown rules.
+Slow, dash-contact, aura, and puddle effects define boss modifiers and overlap rules.
+Browser acceptance:
+Original movement trigger distance, effect radius, slow value, duration, and cooldown remain the baseline for browser checks.
+Browser cadence may schedule aura, dash, tar, and pulse checks, but it must not add hidden slow/damage reductions.
+Browser FX trimming must not hide player-critical movement state such as active dash contact, standstill aura, or hazard slow.
+
+24.7. Crit and status family
+Acceptance checks:
+Crit, chill, shock, bleed, and DoT effects use stable proc order and explicit boss modifiers.
+Status stacks, re-hit bonuses, chain locks, and duplicate-target filters remain deterministic.
+Browser acceptance:
+Original proc chance, crit multiplier, chain count, stack cap, duration, and boss modifier remain the baseline for browser checks.
+Browser status cadence and text merging must not change total damage, slow duration, re-hit bonus, or chain eligibility.
+Browser visible arc/particle caps must be documented as visual_only or render_capped unless chain count or damage is mechanically reduced.
