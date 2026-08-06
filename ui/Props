@@ -1199,6 +1199,13 @@ player_speed_floor = 30% of base speed (after all penalties)
 enemy_slow_floor = enemy retains at least 20% of base speed
 boss_slow_effectiveness_cap = 50% of listed slow values
 
+14.5. Browser cap comparison rules
+Original numeric caps remain the gameplay baseline for max levels, damage ceilings, shield limits, reward ceilings, slow floors, boss modifiers, and proc throttles.
+Browser render caps may be lower than original gameplay caps, but they must be documented as visible caps when simulated values continue running.
+Browser spawn caps may reduce created entities only after the original trigger, reward, or damage value is calculated; the prop entry must state whether overflow is dropped, merged, credited directly, or still simulated while hidden.
+Browser cadence caps must compare simulated events per second against the original cadence instead of rendered frames.
+Browser-specific mechanical caps must name the changed original value and be classified as mechanically_reduced.
+
 15. Prop Authoring Template (Use For New Cards)
 15.1. Required fields
 id:
