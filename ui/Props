@@ -1308,6 +1308,8 @@ Browser note hidden when:
 Original/browser comparison needed? yes/no
 Original behavior player-facing? yes/no
 Browser behavior player-facing? none / tooltip / card + tooltip / pause summary / QA only
+Browser/original copy rule:
+Keep original current/next values as the primary text. Add browser copy only when the browser version changes a planning-relevant trigger, cap, cadence, visible actor count, persistence rule, or mechanical value. If the original value is preserved and only feedback is trimmed, prefer tooltip or QA-only text over a card note.
 
 15.4. QA block
 Edge case:
@@ -1326,6 +1328,8 @@ Expected diagnostic counters:
 Expected player-facing browser text:
 Expected browser tooltip/pause summary text:
 Browser negative-control URL, if relevant:
+Browser/original QA comparison rule:
+Each browser QA case must name the original value or trigger being protected, the browser cap/fallback/cadence under test, and the pass condition that proves browser delivery did not change original gameplay unless the prop is mechanically_reduced.
 
 16. Prop Acceptance Criteria
 16.1. Functional
