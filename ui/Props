@@ -1,4 +1,4 @@
-Browser Version Section
+﻿Browser Version Section
 Browser prop behavior should match the original version unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when the original version can handle more entities and effects.
 
 Browser version rules:
@@ -8,7 +8,7 @@ Original version vs browser version:
 | --- | --- | --- |
 | Simulation authority | Original-version runtime is the reference for damage, cooldowns, proc order, save keys, and level tables. | Browser should keep those values unless the prop entry lists a browser-specific cap, fallback, or reduced value. |
 | Rendering | Original version may draw every spawned bullet, pickup, turret, text, and particle allowed by the original runtime. | Browser may hide, merge, or trim visible actors and feedback while keeping simulation values authoritative. |
-| Overflow | Original version usually follows each prop's own max_active, cooldown, or entity cap. | Browser must state whether overflow is dropped, merged, credited directly, hidden visually, or spawn-count reduced. |
+| Overflow | Original version usually follows each prop s own max_active, cooldown, or entity cap. | Browser must state whether overflow is dropped, merged, credited directly, hidden visually, or spawn-count reduced. |
 | Disabled systems | Original version can use normal original-runtime combat hooks such as enemy projectile hits. | Browser must define a fallback or opt-in URL route when an original trigger is disabled by default. |
 | Save state | Original version owns the canonical save keys, reset timing, and persistent prop state. | Browser uses the web save path but should preserve the same prop levels and persistent state unless documented otherwise. |
 | QA comparison | Original version is the baseline for expected damage, reward, cooldown, and state values. | Browser QA should compare simulated counters against original values when visuals are capped, merged, or hidden. |
@@ -947,7 +947,7 @@ Chain range: 1.8 / 2.2 / 2.6 tiles by level.
 Original version: releases the listed chain count, chain damage, and chain range every N hits by level. Browser version: planned shock chains should cap spawned chain segments through pending-bullet or FX headroom before reducing damage. If browser saturation prevents all visual arcs from drawing, damage should still resolve deterministically and tooltip text should only mention reduced visuals unless chain count is mechanically capped.
 
 6. Core Paint System
-Tiles can hold temporary "paint" that affects movement and combat. A tile's paint has:
+Tiles can hold temporary "paint" that affects movement and combat. A tile s paint has:
 Owner state: Neutral / Player Paint / Enemy Paint (enemy paint optional for later).
 Intensity: 0-1, starts high when applied, then decays over time. Effects scale with intensity.
 Sources of paint include:
