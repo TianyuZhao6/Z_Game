@@ -271,6 +271,8 @@ Status Promotion Rules
 2. partial -> implemented requires effect execution plus UI visibility.
 3. implemented -> balancing requires playtest metrics and patch iteration.
 4. balancing -> final requires regression pass and sign-off.
+5. Any status promotion that touches browser runtime must update both Original version and Browser version lines in the detailed prop entry.
+6. A browser-specific cap, fallback, cadence, storage path, or player-facing note cannot be marked implemented until the original-version baseline and browser comparison note are documented.
 
 A2. Runtime Field Map
 Implemented Shop Props (Current Runtime)
