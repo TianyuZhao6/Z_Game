@@ -302,6 +302,9 @@ Shop Price
 price = max(1, round(base_cost * SHOP_PRICE_EXP^level_idx * (1 + SHOP_PRICE_LINEAR * level_idx) * SHOP_PRICE_STACK^owned_level) * (1 - COUPON_DISCOUNT_PER * coupon_level))
 
 A4. Trigger Order and Conflict Rules
+Original/browser trigger-order rule:
+The order below is the original-version baseline. Browser caps, cadence, rendering, or fallback routes must not reorder damage, status, kill, reward, pierce, ricochet, or save-state resolution. If browser overflow changes spawned payload count, the prop entry must say whether the original damage/reward was already credited or mechanically reduced.
+
 Bullet-Hit to Death Resolution Order
 1. Compute base hit damage and crit multiplier.
 2. Apply vulnerability bonus if mark is active.
@@ -316,6 +319,9 @@ Bullet-Hit to Death Resolution Order
 11. resolve bullet continuation logic (ricochet, pierce, despawn).
 
 A5. Stacking and Cap Policy
+Original/browser stacking rule:
+Current hard caps are original-version gameplay caps. Browser visible caps, pending-entity caps, and localStorage limits must be documented separately and cannot lower max_level, owned level, stack count, or saved counter unless the prop is classified as mechanically_reduced.
+
 Current Hard Caps (Runtime-Enforced by max_level or logic)
 - piercing_rounds 5, ricochet_scope 3, shrapnel_shells 3, explosive_rounds 3, dot_rounds 3.
 - curing_paint 3, ground_spikes 3, bone_plating 5, aegis_pulse 5.
@@ -330,6 +336,9 @@ Policy Rules
 5. Cross-system scaling must use multiplicative composition unless explicitly documented as additive.
 
 A6. Shop Economy Reference Table
+Original/browser economy rule:
+Shop constants, price order, discount caps, interest caps, loan values, bounty values, and lockbox rates are original-version economy values. Browser card layout, localStorage writes, pickup bundling, or visible spoil caps must not change final price, debt, bounty, interest, cashback, or protected coin value unless a browser-specific reduced value is explicitly documented.
+
 | knob | current value | note |
 | --- | --- | --- |
 | SHOP_PRICE_EXP | 1.12 | exponential price growth by level |
@@ -351,6 +360,9 @@ Price Resolution Order
 3. Round and clamp to minimum 1.
 
 A7. Set Bonus Matrix
+Original/browser set rule:
+Set state and piece thresholds are original-version progression state. Browser telemetry and visible-cap checks may add web-specific counters, but browser must not change set activation, piece count, or bonus tier unless a browser-specific set rule is written in the detailed set entry.
+
 | path | seed state (<2) | online state (>=2) | full state (>=4) | current effect | next-step recommendation |
 | --- | --- | --- | --- | --- | --- |
 | Ballistic | tracked only | UI online label | UI full label | none direct | add projectile consistency bonus |
