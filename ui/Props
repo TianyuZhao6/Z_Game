@@ -24,6 +24,7 @@ Browser version differences to document on props:
 - Browser-specific text should be short enough for 960x540 card layouts and should avoid technical implementation details.
 
 Recommended prop entry wording:
+- Keep the Original version sentence first. The Browser version sentence should name the browser classification and the exact original value, trigger, save key, overflow rule, or runtime state that is preserved or changed.
 - Original version: uses the listed damage, cooldown, trigger path, and save key. Browser version: same values; FX is trimmed by the global browser particle budget.
 - Original version: owns and simulates every purchased turret. Browser version: same turret count; lite renderer shows the nearest 8 turrets when many are active.
 - Original version: triggers from enemy projectile hits. Browser version: enemy-shot trigger becomes a timed shield pulse while browser enemy projectiles are disabled.
@@ -81,6 +82,7 @@ Browser source-of-truth map:
 | Shop card and tooltip display | zgame/shop_support.py / zgame/shop_ui.py | Original prop desc/current/next values and card text keys | Browser card layout at canvas size and browser-version note visibility |
 
 Browser display decision table:
+Display decision rule: show browser copy to players only when the browser route changes planning information. If original gameplay is unchanged and only feedback is hidden, merged, bundled, or trimmed, keep card text on original values and put browser detail in tooltip, QA, or implementation notes.
 | original behavior | browser behavior | card note | tooltip note | pause/run summary note | example |
 | --- | --- | --- | --- | --- | --- |
 | Original effect values stay authoritative | Visual-only FX trim | no | optional if confusing | no | Explosive damage unchanged; particles trimmed |
@@ -93,6 +95,7 @@ Browser display decision table:
 | Original feature may run normally | Browser feature gate disabled | yes if normal route disables it | yes | yes | Requires enemyshots=1 or fallback |
 
 Implementation-backed browser prop behavior:
+Implementation rows document browser delivery around original-version behavior. Any browser cap, cadence, feature gate, or fallback listed here must also say whether original damage, reward, state, trigger order, or save data continues unchanged.
 | area | current implementation | prop documentation impact |
 | --- | --- | --- |
 | Feature gates | WEB_ENABLE_AEGIS_PULSES, WEB_ENABLE_GROUND_SPIKES, WEB_ENABLE_CURING_PAINT, WEB_ENABLE_DOT_ROUNDS, and WEB_ENABLE_VULNERABILITY_MARKS default true in the web quality payload | These props are active on browser unless a future profile disables the gate |
