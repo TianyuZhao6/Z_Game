@@ -1110,8 +1110,10 @@ original_behavior:
 authoritative_values: original damage/cooldown/radius/duration/reward/save state
 trigger_or_owner: original-version trigger path
 overflow_rule: max_active, cooldown, entity cap, refresh rule, or none
+visible_feedback: original bullets/text/particles/turrets/pickups/paint/audio shown to players
 browser_behavior:
 classification: same_as_original / visual_only / capped / fallback / mechanically_reduced
+comparison_result: preserved / visual_only_difference / render_capped / spawn_capped / fallback_trigger / mechanically_reduced
 runtime_gate: optional WEB_ENABLE_* flag or "always"
 update_cadence_hz: original / 20 / 24 / 30 / 0.10s / event_only
 render_cap: none or specific visible cap
@@ -1267,6 +1269,9 @@ State the original-version max_active rule, cooldown gate, entity cap, refresh r
 Original save/state behavior:
 State whether the prop writes only level data, persistent charges, carry state, placed objects, debt/shield/coin values, or temporary combat state that resets between levels.
 
+Original visible feedback:
+State the normal original-version player feedback, such as bullet sprites, damage text, pickup drops, turret sprites, paint layer, pulse rings, particles, or audio cues. This gives browser visual-only differences a concrete baseline.
+
 15.2b. Browser version detail block
 Use this block in every detailed prop entry, even when the browser version is mostly identical. The goal is to make the browser behavior auditable from the prop file without reading runtime code.
 
@@ -1280,6 +1285,9 @@ bullet_hit_event / bullet_update / status_20hz / ground_20hz / pulse_24hz / pick
 
 Browser authoritative effect values:
 List the original-version values that do not change in browser, such as damage, cooldown, radius, duration, stack cap, reward value, shield amount, turret count, or saved level.
+
+Browser comparison result:
+Write one short conclusion: same mechanics as original, visual-only difference, render-capped but fully simulated, spawn-capped after original trigger, fallback trigger used, or mechanically reduced. This line should match the browser classification and prevent mixed messages in card, tooltip, QA, and roster notes.
 
 Browser visible feedback changes:
 List the browser feedback that can be hidden, merged, cached, skipped, or trimmed, such as visible bullets, damage text, particles, paint layer, pickup bundles, turret sprites, pulse rings, or audio.
@@ -1401,6 +1409,8 @@ If the effect applies slow, require boss_slow_modifier.
 If browser_behavior is present, require original_behavior so the browser cap, fallback, or reduced value has an explicit baseline.
 If browser_behavior.classification is same_as_original or visual_only, require at least one authoritative original value to compare against.
 If browser_behavior.classification is fallback or mechanically_reduced, require the original trigger/value and the browser replacement trigger/value in the same prop entry.
+If browser_behavior.classification is render_capped or spawn_capped, require the original simulated count, browser visible/spawn cap, and overflow result.
+If browser_behavior.comparison_result conflicts with browser_player_text, fix the text: preserved and visual_only_difference should not claim reduced values, while mechanically_reduced must show the changed browser value.
 
 19.3. UI validation
 All props require short tooltip text <= 80 chars and long tooltip text <= 220 chars.
