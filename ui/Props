@@ -1318,6 +1318,9 @@ Original version: owns, draws, and simulates every purchased turret through turr
 Browser fallback expanded example:
 Original version: triggers from enemy projectile damage through player_damage_event and applies the listed reflect ratio, cooldown, range, and boss modifier. Browser version: classification = fallback_trigger. Implementation owner = player_damage_event. Authoritative effect values = reflect ratio, cooldown, range, and boss modifier match the original version. Browser cap/fallback = normal browser route disables enemy projectiles, so default route triggers from shield damage by ranged-type enemies; `enemyshots=1` tests the true projectile path. Player copy = card + tooltip because the trigger changes. QA proof = fallback_trigger_count on default route and projectile trigger count with `?enemyshots=1`.
 
+Browser mechanically-reduced expanded example:
+Original version: uses the listed chain count, radius, cooldown, damage multiplier, and boss modifier from the original trigger path. Browser version: classification = mechanically_reduced. Implementation owner = bullet_update or status_20hz. Authoritative effect values = only the listed unchanged fields match the original version. Browser changed values = exact browser chain count, radius, cooldown, or damage multiplier must be written next to the original value. Player copy = card + tooltip because build planning changes. QA proof = prop_trigger_counts plus damage_done or chain_count showing the browser value, not just a lower visual count.
+
 15.3. UX block
 Short tooltip:
 Long tooltip:
@@ -1410,6 +1413,7 @@ If browser_behavior is present, require original_behavior so the browser cap, fa
 If browser_behavior.classification is same_as_original or visual_only, require at least one authoritative original value to compare against.
 If browser_behavior.classification is fallback or mechanically_reduced, require the original trigger/value and the browser replacement trigger/value in the same prop entry.
 If browser_behavior.classification is render_capped or spawn_capped, require the original simulated count, browser visible/spawn cap, and overflow result.
+If older entries use capped, rewrite it as render_capped when only visible actors are limited or spawn_capped when fewer entities are created.
 If browser_behavior.comparison_result conflicts with browser_player_text, fix the text: preserved and visual_only_difference should not claim reduced values, while mechanically_reduced must show the changed browser value.
 
 19.3. UI validation
