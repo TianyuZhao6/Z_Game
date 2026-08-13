@@ -1112,8 +1112,9 @@ trigger_or_owner: original-version trigger path
 overflow_rule: max_active, cooldown, entity cap, refresh rule, or none
 visible_feedback: original bullets/text/particles/turrets/pickups/paint/audio shown to players
 browser_behavior:
-classification: same_as_original / visual_only / capped / fallback / mechanically_reduced
+classification: same_as_original / visual_only / render_capped / spawn_capped / fallback_trigger / mechanically_reduced
 comparison_result: preserved / visual_only_difference / render_capped / spawn_capped / fallback_trigger / mechanically_reduced
+changed_values: none or exact browser value beside original value
 runtime_gate: optional WEB_ENABLE_* flag or "always"
 update_cadence_hz: original / 20 / 24 / 30 / 0.10s / event_only
 render_cap: none or specific visible cap
