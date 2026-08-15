@@ -1287,6 +1287,9 @@ bullet_hit_event / bullet_update / status_20hz / ground_20hz / pulse_24hz / pick
 Browser authoritative effect values:
 List the original-version values that do not change in browser, such as damage, cooldown, radius, duration, stack cap, reward value, shield amount, turret count, or saved level.
 
+Browser changed values:
+Write "none" when browser keeps original mechanics. If browser changes any mechanic, list each changed value as "original X -> browser Y" for damage, cooldown, radius, duration, chance, stack cap, reward, spawn count, trigger, or saved value.
+
 Browser comparison result:
 Write one short conclusion: same mechanics as original, visual-only difference, render-capped but fully simulated, spawn-capped after original trigger, fallback trigger used, or mechanically reduced. This line should match the browser classification and prevent mixed messages in card, tooltip, QA, and roster notes.
 
