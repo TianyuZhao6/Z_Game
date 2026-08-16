@@ -1290,6 +1290,9 @@ List the original-version values that do not change in browser, such as damage, 
 Browser changed values:
 Write "none" when browser keeps original mechanics. If browser changes any mechanic, list each changed value as "original X -> browser Y" for damage, cooldown, radius, duration, chance, stack cap, reward, spawn count, trigger, or saved value.
 
+Browser parity statement:
+Add one sentence that says whether browser is mechanically identical to the original version, visually different only, trigger-fallback compatible, or mechanically different. This should be readable without checking runtime code and should match Browser changed values.
+
 Browser comparison result:
 Write one short conclusion: same mechanics as original, visual-only difference, render-capped but fully simulated, spawn-capped after original trigger, fallback trigger used, or mechanically reduced. This line should match the browser classification and prevent mixed messages in card, tooltip, QA, and roster notes.
 
@@ -1419,6 +1422,7 @@ If browser_behavior.classification is fallback or mechanically_reduced, require 
 If browser_behavior.classification is render_capped or spawn_capped, require the original simulated count, browser visible/spawn cap, and overflow result.
 If older entries use capped, rewrite it as render_capped when only visible actors are limited or spawn_capped when fewer entities are created.
 If browser_behavior.comparison_result conflicts with browser_player_text, fix the text: preserved and visual_only_difference should not claim reduced values, while mechanically_reduced must show the changed browser value.
+If a prop has Browser changed values other than none, require the Browser parity statement and player-facing copy to name the exact original value that changed.
 
 19.3. UI validation
 All props require short tooltip text <= 80 chars and long tooltip text <= 220 chars.
