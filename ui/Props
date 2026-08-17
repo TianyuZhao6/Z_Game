@@ -16,6 +16,7 @@ Document browser-specific prop differences for CPU work, draw calls, audio mixin
 
 Browser version differences to document on props:
 - Start each detailed entry by naming the original version trigger, value source, overflow rule, and save/state behavior that browser is compared against.
+- Separate browser simulation from browser presentation. Simulation text covers damage, cooldowns, rewards, triggers, save data, and spawned entity counts; presentation text covers sprites, particles, damage numbers, audio, cached paint, and other visible feedback.
 - Props may use lower visual density, shorter effect lifetimes, or fewer simultaneous spawned actors.
 - Projectile, paint, turret, summon, coin, damage text, and VFX bursts must state the effective browser cap when it differs from original-version behavior.
 - Effects that are visually simplified in browser should keep the same result whenever possible.
