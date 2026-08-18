@@ -1420,6 +1420,7 @@ If the effect includes chain behavior, require chain_depth_cap.
 If the effect applies DoT, require tick_interval, duration, and max_stacks.
 If the effect applies slow, require boss_slow_modifier.
 If browser_behavior is present, require original_behavior so the browser cap, fallback, or reduced value has an explicit baseline.
+If browser_behavior is present, require parity_statement and qa_proof so browser/original comparison is reviewable from the prop entry.
 If browser_behavior.classification is same_as_original or visual_only, require at least one authoritative original value to compare against.
 If browser_behavior.classification is fallback or mechanically_reduced, require the original trigger/value and the browser replacement trigger/value in the same prop entry.
 If browser_behavior.classification is render_capped or spawn_capped, require the original simulated count, browser visible/spawn cap, and overflow result.
