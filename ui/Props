@@ -1277,6 +1277,9 @@ State whether the prop writes only level data, persistent charges, carry state, 
 Original visible feedback:
 State the normal original-version player feedback, such as bullet sprites, damage text, pickup drops, turret sprites, paint layer, pulse rings, particles, or audio cues. This gives browser visual-only differences a concrete baseline.
 
+Original player-facing text:
+State the original card text, current-value text, next-upgrade text, and tooltip meaning that must stay visible when browser notes are added. Browser copy should extend this text only when browser behavior changes planning information.
+
 15.2b. Browser version detail block
 Use this block in every detailed prop entry, even when the browser version is mostly identical. The goal is to make the browser behavior auditable from the prop file without reading runtime code.
 
