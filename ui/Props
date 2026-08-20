@@ -1112,6 +1112,7 @@ authoritative_values: original damage/cooldown/radius/duration/reward/save state
 trigger_or_owner: original-version trigger path
 overflow_rule: max_active, cooldown, entity cap, refresh rule, or none
 visible_feedback: original bullets/text/particles/turrets/pickups/paint/audio shown to players
+player_text: original card, current-value, next-upgrade, and tooltip text that browser notes must preserve
 browser_behavior:
 classification: same_as_original / visual_only / render_capped / spawn_capped / fallback_trigger / mechanically_reduced
 comparison_result: preserved / visual_only_difference / render_capped / spawn_capped / fallback_trigger / mechanically_reduced
