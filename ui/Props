@@ -1122,6 +1122,7 @@ runtime_gate: optional WEB_ENABLE_* flag or "always"
 update_cadence_hz: original / 20 / 24 / 30 / 0.10s / event_only
 render_cap: none or specific visible cap
 overflow_rule: none / drop / merge / credit_direct / reduce_spawn_count / hide_visual_only
+save_state_behavior: same META key / localStorage refresh / carry state / reset at level start / browser-only none
 browser_player_text: card/tooltip text if player-facing behavior differs
 qa_proof: diagnostic URL, counter, or save check proving browser/original behavior
 
@@ -1311,6 +1312,9 @@ Use exact values when known. Examples: visible bullets 28, visible turrets 8, vi
 
 Browser overflow behavior:
 Choose one explicit verb: drop, merge, refresh oldest, reduce spawned count, credit directly, keep simulating while hidden, or use fallback. Do not write "optimized" without saying what happens to the excess event.
+
+Browser save/state behavior:
+State whether browser uses the same META key as the original version, survives localStorage refresh, carries state between levels, resets temporary combat state at level start, or has no browser-specific save behavior.
 
 Browser player-facing copy:
 State the final surface decision:
