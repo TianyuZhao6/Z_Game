@@ -1339,6 +1339,9 @@ Original version: triggers from enemy projectile damage through player_damage_ev
 Browser mechanically-reduced expanded example:
 Original version: uses the listed chain count, radius, cooldown, damage multiplier, and boss modifier from the original trigger path. Browser version: classification = mechanically_reduced. Implementation owner = bullet_update or status_20hz. Authoritative effect values = only the listed unchanged fields match the original version. Browser changed values = exact browser chain count, radius, cooldown, or damage multiplier must be written next to the original value. Player copy = card + tooltip because build planning changes. QA proof = prop_trigger_counts plus damage_done or chain_count showing the browser value, not just a lower visual count.
 
+Browser save-state expanded example:
+Original version: stores the prop level, persistent charges, placed object state, or economy counter in the canonical META key and resets only temporary combat state at level start. Browser version: classification = same_as_original unless storage behavior changes. Save/state behavior = same META key, survives localStorage refresh, carries persistent state between levels, and resets the same temporary fields as the original version. Player copy = none unless refresh or carry-state behavior differs. QA proof = localStorage_write_ok plus original_meta_key and a refresh/load check.
+
 15.3. UX block
 Short tooltip:
 Long tooltip:
