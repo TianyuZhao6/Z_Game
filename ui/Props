@@ -1327,6 +1327,9 @@ State the final surface decision:
 Browser QA proof:
 Name one URL or counter. For implemented props, include at least one of: pending_bullets, web_visible_bullets, web_visible_turrets, visible_pickups, dmg_text_count, fx_particle_count, prop_trigger_counts, fallback_trigger_count, localStorage_write_ok, or browser_gap_ms.
 
+Browser negative-control proof:
+Use a negative-control URL when a browser flag disables the system being tested, such as `skipbullets=1`, `skiprender=1`, or enemy shots disabled by default. The prop entry should state the original behavior that must stop, the browser flag that disables it, and the counter that proves no false trigger, reward, or save write occurred.
+
 Browser same-as-original expanded example:
 Original version: uses bullet_hit_event as the trigger owner and the listed proc chance, damage multiplier, cooldown, boss modifier, and hit ordering. Browser version: classification = same_as_original. Implementation owner = bullet_hit_event. Authoritative effect values = proc chance, damage multiplier, cooldown, and boss modifier match the original version. Visible feedback changes = damage text may merge under the browser text budget. Player copy = no card note; tooltip note only if repeated text merging confuses QA. QA proof = `?start=1&diag=1` with prop_trigger_counts and damage_done matching original-version expectations.
 
