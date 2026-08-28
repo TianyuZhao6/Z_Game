@@ -1441,6 +1441,7 @@ If browser_behavior.classification is fallback or mechanically_reduced, require 
 If browser_behavior.classification is render_capped or spawn_capped, require the original simulated count, browser visible/spawn cap, and overflow result.
 If browser_behavior uses a runtime gate, scheduled cadence, or render cap, require runtime_gate, update_cadence_hz, or render_cap to name the exact browser setting instead of relying on prose.
 If browser_behavior touches saved levels, persistent counters, carry state, localStorage refresh, or level-start reset, require save_state_behavior to compare browser persistence against the original save/state behavior.
+If browser_behavior depends on a browser flag disabling bullets, rendering, enemy shots, audio, or another trigger source, require negative_control to name the flag and counter proving the original trigger is not firing accidentally.
 If older entries use capped, rewrite it as render_capped when only visible actors are limited or spawn_capped when fewer entities are created.
 If browser_behavior.comparison_result conflicts with browser_player_text, fix the text: preserved and visual_only_difference should not claim reduced values, while mechanically_reduced must show the changed browser value.
 If a prop has Browser changed values other than none, require the Browser parity statement and player-facing copy to name the exact original value that changed.
