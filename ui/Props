@@ -1361,6 +1361,8 @@ Browser note hidden when:
 Original/browser comparison needed? yes/no
 Original behavior player-facing? yes/no
 Browser behavior player-facing? none / tooltip / card + tooltip / pause summary / QA only
+Original/browser comparison needed rule:
+Set yes when the browser version has a cap, fallback, cadence, save-state difference, negative-control requirement, or changed mechanic. Set no only when browser behavior is fully same_as_original and no player-facing or QA-only browser note is useful.
 Browser/original copy rule:
 Keep original current/next values as the primary text. Add browser copy only when the browser version changes a planning-relevant trigger, cap, cadence, visible actor count, persistence rule, or mechanical value. If the original value is preserved and only feedback is trimmed, prefer tooltip or QA-only text over a card note.
 
