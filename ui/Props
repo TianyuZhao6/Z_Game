@@ -1377,10 +1377,12 @@ Browser scenario URL:
 Expected visible cap behavior:
 Expected simulation behavior:
 Expected localStorage/save behavior:
+Expected browser save_state_behavior:
 Expected diagnostic counters:
 Expected player-facing browser text:
 Expected browser tooltip/pause summary text:
 Browser negative-control URL, if relevant:
+Expected browser negative_control:
 Browser/original QA comparison rule:
 Each browser QA case must name the original value or trigger being protected, the browser cap/fallback/cadence under test, and the pass condition that proves browser delivery did not change original gameplay unless the prop is mechanically_reduced.
 
