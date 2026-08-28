@@ -1125,6 +1125,7 @@ overflow_rule: none / drop / merge / credit_direct / reduce_spawn_count / hide_v
 save_state_behavior: same META key / localStorage refresh / carry state / reset at level start / browser-only none
 browser_player_text: card/tooltip text if player-facing behavior differs
 qa_proof: diagnostic URL, counter, or save check proving browser/original behavior
+negative_control: none or browser flag/counter proving disabled systems do not trigger the prop
 
 8.4. Save/load expectations:
 Persistent props store current level in save data.
