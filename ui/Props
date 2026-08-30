@@ -1358,6 +1358,8 @@ Browser pause/build-summary note:
 Browser note shown only when:
 Browser note max length:
 Browser note hidden when:
+Browser note visibility rule:
+Show browser notes only when the current route, flag, quality profile, or cap makes the browser behavior differ from the original version. Hide browser notes when the prop is same_as_original and the original card/current/next values already describe the active browser behavior.
 Original/browser comparison needed? yes/no
 Original behavior player-facing? yes/no
 Browser behavior player-facing? none / tooltip / card + tooltip / pause summary / QA only
