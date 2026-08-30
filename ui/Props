@@ -1460,6 +1460,7 @@ All rarity values must map to a defined rarity visual marker count.
 Browser UI validation:
 Browser card, tooltip, and pause-summary notes must not hide the original current/next values.
 If browser_player_text is present, require original_behavior.player_text so reviewers can confirm the browser note preserves the original card, current-value, next-upgrade, and tooltip meaning.
+If Browser note shown only when or Browser note hidden when is filled, require the condition to reference a browser route, flag, quality profile, cap, fallback, or changed value instead of a vague platform check.
 Any browser-specific player-facing note must state whether the original effect value is preserved, visually capped, fallback-triggered, or mechanically reduced.
 
 19.4. Runtime validation
