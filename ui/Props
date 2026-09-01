@@ -1308,6 +1308,9 @@ Write one short conclusion: same mechanics as original, visual-only difference, 
 Browser visible feedback changes:
 List the browser feedback that can be hidden, merged, cached, skipped, or trimmed, such as visible bullets, damage text, particles, paint layer, pickup bundles, turret sprites, pulse rings, or audio.
 
+Browser audio feedback changes:
+State whether browser uses the same SFX cue as the original version, routes it through native browser audio, suppresses repeated sounds during dense waves, or uses the mixer fallback only for diagnostics.
+
 Browser cap / cadence / fallback:
 Use exact values when known. Examples: visible bullets 28, visible turrets 8, visible pickups 12, max damage texts 4, max FX particles 16, DOT/paint/spikes at 20 Hz, pulse/text at 24 Hz, pickups at 30 Hz, enemy-shot fallback while enemy shots are disabled.
 
