@@ -1123,6 +1123,7 @@ update_cadence_hz: original / 20 / 24 / 30 / 0.10s / event_only
 render_cap: none or specific visible cap
 overflow_rule: none / drop / merge / credit_direct / reduce_spawn_count / hide_visual_only
 save_state_behavior: same META key / localStorage refresh / carry state / reset at level start / browser-only none
+audio_feedback: same SFX / native browser audio / repeated SFX suppressed / mixer fallback diagnostic only / none
 browser_player_text: card/tooltip text if player-facing behavior differs
 qa_proof: diagnostic URL, counter, or save check proving browser/original behavior
 negative_control: none or browser flag/counter proving disabled systems do not trigger the prop
