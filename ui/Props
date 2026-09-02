@@ -1451,6 +1451,7 @@ If browser_behavior.classification is fallback or mechanically_reduced, require 
 If browser_behavior.classification is render_capped or spawn_capped, require the original simulated count, browser visible/spawn cap, and overflow result.
 If browser_behavior uses a runtime gate, scheduled cadence, or render cap, require runtime_gate, update_cadence_hz, or render_cap to name the exact browser setting instead of relying on prose.
 If browser_behavior touches saved levels, persistent counters, carry state, localStorage refresh, or level-start reset, require save_state_behavior to compare browser persistence against the original save/state behavior.
+If browser_behavior changes SFX routing, suppresses repeated sounds, or uses the mixer fallback, require audio_feedback to compare browser audio against the original SFX cue.
 If browser_behavior depends on a browser flag disabling bullets, rendering, enemy shots, audio, or another trigger source, require negative_control to name the flag and counter proving the original trigger is not firing accidentally.
 If browser_behavior.classification is not same_as_original or has player-facing/QA-only browser notes, require Original/browser comparison needed? = yes in the UX block.
 If older entries use capped, rewrite it as render_capped when only visible actors are limited or spawn_capped when fewer entities are created.
