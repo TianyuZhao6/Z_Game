@@ -1387,6 +1387,7 @@ Expected simulation behavior:
 Expected localStorage/save behavior:
 Expected browser save_state_behavior:
 Expected diagnostic counters:
+Expected browser audio_feedback:
 Expected player-facing browser text:
 Expected browser tooltip/pause summary text:
 Browser negative-control URL, if relevant:
