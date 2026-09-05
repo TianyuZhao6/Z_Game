@@ -1383,6 +1383,8 @@ Original expected trigger/cadence:
 Minimum canvas: 960x540
 Browser scenario URL:
 Expected browser parity_statement:
+Expected browser comparison_result:
+Expected browser changed_values:
 Expected visible cap behavior:
 Expected simulation behavior:
 Expected localStorage/save behavior:
