@@ -5510,7 +5510,7 @@ def _apply_aegis_pulse_damage(player, game_state: "GameState", enemies, cx: floa
     for gp, ob in list(getattr(game_state, "obstacles", {}).items()):
         if getattr(ob, "type", "") != "Destructible":
             continue
-        # circle-rect intersection using closest point clamp
+        # circle-rect intersection using closest point clampd
         rect = ob.rect
         closest_x = min(max(cx, rect.left), rect.right)
         closest_y = min(max(cy, rect.top), rect.bottom)

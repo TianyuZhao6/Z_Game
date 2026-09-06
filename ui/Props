@@ -1245,9 +1245,7 @@ max_level:
 trigger_type: on_hit/on_kill/on_damage/on_move/passive/consumable
 
 15.2. Level table block
-L1:
-L2:
-L3:
+
 Boss modifier:
 Internal cooldown:
 Performance cap:
