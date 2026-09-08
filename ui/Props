@@ -156,7 +156,7 @@ Browser-specific runtime behavior:
 
 Browser prop QA rows to add per high-risk prop:
 | qa_id | prop | original-version baseline | browser behavior under test | minimum check |
-| --- | --- | --- | --- | --- |
+
 | WEB-PROP-01 | Shrapnel Shells | listed proc chance, shard damage, and intended shard count | pending-bullet soft cap and visible bullet render cap | dense kill wave respects pending headroom and does not flood rendered bullets |
 | WEB-PROP-02 | Explosive Rounds | listed splash damage, radius, boss modifier, and chain resolution | FX particle budget and chain resolution | chain explosion clears enemies while FX trims to the browser particle budget |
 | WEB-PROP-03 | Ground Spikes | listed spawn cadence, max_active 6/10/14, damage, slow, and lifetime | 20 Hz browser update cadence and max_active 6/10/14 | trail state updates and damage/slow still apply |
