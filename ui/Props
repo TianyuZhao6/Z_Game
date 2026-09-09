@@ -156,7 +156,6 @@ Browser-specific runtime behavior:
 
 Browser prop QA rows to add per high-risk prop:
 | qa_id | prop | original-version baseline | browser behavior under test | minimum check |
-
 | WEB-PROP-01 | Shrapnel Shells | listed proc chance, shard damage, and intended shard count | pending-bullet soft cap and visible bullet render cap | dense kill wave respects pending headroom and does not flood rendered bullets |
 | WEB-PROP-02 | Explosive Rounds | listed splash damage, radius, boss modifier, and chain resolution | FX particle budget and chain resolution | chain explosion clears enemies while FX trims to the browser particle budget |
 | WEB-PROP-03 | Ground Spikes | listed spawn cadence, max_active 6/10/14, damage, slow, and lifetime | 20 Hz browser update cadence and max_active 6/10/14 | trail state updates and damage/slow still apply |
@@ -218,7 +217,7 @@ Section Scan Guide (Table Order)
 - Utility / Control: CONTROL, SUMMON
 
 | prop_id | display_name | section | path_primary | path_secondary | role | rarity | base_price | max_level | trigger_type | scaling_summary | synergy_tags | tradeoff | ui_tag | implementation_status | notes |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | piercing_rounds | Piercing Rounds | Core Offense | BALLISTIC | NONE | Pierce scaler | 1 | $12 | 5 | passive | +1 to +5 pierce, up to 16% falloff | pierce,wave_clear,projectile | none | OFF | implemented | Core Ballistic baseline; web:cap visible bullets 28, original pierce/damage simulation continues |
 | ricochet_scope | Ricochet Scope | Core Offense | BALLISTIC | NONE | Bounce scaler | 2 | $14 | 3 | passive | 1 to 3 ricochets, 90% to 75% bounce damage | ricochet,crit,wave_clear | lower single-target value in open maps | OFF | implemented | Core Ballistic baseline; web:cap visible bullets 28, original ricochet routing simulates |
 | shrapnel_shells | Shrapnel Shells | Core Offense | BALLISTIC | NONE | Death burst | 3 | $16 | 3 | on_kill | 25% to 45% proc, 3 to 4 shards | shrapnel,wave_clear,crit | performance-capped secondary spawns | OFF | implemented | Core Ballistic baseline; web:cap pending bullets by headroom, original shard damage preserved |
@@ -281,7 +280,7 @@ Status Promotion Rules
 A2. Runtime Field Map
 Implemented Shop Props (Current Runtime)
 | prop_id | meta_keys | apply_path | original runtime execution | browser comparison note | status |
-| --- | --- | --- | --- | --- | --- |
+| --- | 
 | piercing_rounds | pierce_level | shop catalog apply | bullet pierce charge consumed on enemy hit | preserve original pierce/damage; visible bullet cap only | implemented |
 | ricochet_scope | ricochet_level | shop catalog apply | bullet ricochet attempt and retarget | preserve original bounce routing/damage; visible bullet cap only | implemented |
 | shrapnel_shells | shrapnel_level | shop catalog apply | on-kill shrapnel spawn roll and splash bullets | preserve original proc/damage; apply pending-bullet headroom before spawn flood | implemented |
