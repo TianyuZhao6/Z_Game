@@ -369,7 +369,7 @@ Original/browser set rule:
 Set state and piece thresholds are original-version progression state. Browser telemetry and visible-cap checks may add web-specific counters, but browser must not change set activation, piece count, or bonus tier unless a browser-specific set rule is written in the detailed set entry.
 
 | path | seed state (<2) | online state (>=2) | full state (>=4) | current effect | next-step recommendation |
-| --- | --- | --- | --- | --- | --- |
+| --- | 
 | Ballistic | tracked only | UI online label | UI full label | none direct | add projectile consistency bonus |
 | Turret | tracked only | UI online label | UI full label | none direct | add turret uptime or targeting bonus |
 | Shield | tracked only | UI online label | UI full label | none direct | add shield regen cadence bonus |
