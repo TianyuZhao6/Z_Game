@@ -380,7 +380,7 @@ Set state and piece thresholds are original-version progression state. Browser t
 
 A8. QA Scenarios (Required Regression Set)
 | test_id | scenario | original-version expected result | browser comparison check |
-| --- | --- | --- | --- |
+| --- |
 | PROP-QA-01 | Buy coupon to cap and reroll shop | prices follow formula and never go below 1 | localStorage keeps coupon_level and browser card text does not hide current/next values |
 | PROP-QA-02 | Stack lockbox then trigger bandit and loan losses | coin floor protection always respected | browser reward/pickup visuals must not change protected coin math |
 | PROP-QA-03 | Apply mark_vulnerability and verify hit numbers | marked targets receive bonus exactly once per hit | browser scheduled mark updates preserve target priority and damage bonus |
