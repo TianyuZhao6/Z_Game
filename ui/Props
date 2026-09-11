@@ -405,7 +405,7 @@ A15. Boss Modifier Policy and Performance Safety Rules
 
 Boss Modifier Policy
 | effect_family | original-version boss treatment | browser comparison note | implementation note |
-| --- | --- | --- | --- |
+| --- | 
 | splash_damage | 40% to 60% effectiveness unless explicitly exempt | Browser FX caps may trim particles, but boss splash multiplier stays original unless mechanically_reduced is documented | clamp splash multiplier separately from direct hit damage |
 | damage_over_time | reduced tick value or capped stack count | Browser cadence may schedule ticks differently, but total boss tick value and stack cap stay original unless documented | define boss tick multiplier or stack cap |
 | hard_control | duration reduction or control immunity windows | Browser text/FX may merge, but control duration and immunity windows must compare against original values | define boss duration multiplier or immunity cooldown |
