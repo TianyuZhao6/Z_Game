@@ -422,7 +422,7 @@ Late-Wave Performance Safety Rules
 
 Recommended Runtime Safety Checklist
 | system_type | original-version safety control | browser comparison requirement | example |
-| --- | --- | --- | --- |
+| --- |
 | projectile burst | max active secondary projectiles | state whether browser drops, hides, or reduces pending projectiles after original damage is calculated | shrapnel_shells, shardstorm |
 | chain logic | unique target list per trigger | state whether browser headroom changes visible chains only or also chain count | shock_relay |
 | area decals | max active instances plus pooled cleanup | state browser cadence/cache behavior and whether original damage/slow stays authoritative | sticky_tar_flask, curing_paint |
