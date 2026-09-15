@@ -110,7 +110,7 @@ Implementation rows document browser delivery around original-version behavior. 
 
 Specific browser prop behavior matrix:
 | prop | browser runtime behavior | browser cap or cadence | player-facing text guidance |
-| --- | --- | --- | --- |
+| --- |
 | Piercing Rounds | Same pierce count and damage falloff as the original version; extra hits can create more damage text than browser will display | visible player bullets capped at 28 in lite render; damage text capped at 4 in default full profile | No card note; tooltip may say browser hides some repeated hit text in dense waves |
 | Ricochet Scope | Same ricochet count and bounce damage as the original version; routed bullets still simulate even if not all are drawn | visible player bullets capped at 28 in lite render | No card note; QA should confirm ricochet chains continue under render cap |
 | Shrapnel Shells | Same proc chance and shard damage as the original version; shard burst count is reduced only when pending-bullet headroom is low | pending soft cap uses max(10, WEB_LITE_RENDER_BULLET_CAP * 2), currently based on visible bullet cap 28 | Tooltip note should mention soft burst reduction, not a fixed shard cap |
