@@ -85,7 +85,7 @@ Browser source-of-truth map:
 Browser display decision table:
 Display decision rule: show browser copy to players only when the browser route changes planning information. If original gameplay is unchanged and only feedback is hidden, merged, bundled, or trimmed, keep card text on original values and put browser detail in tooltip, QA, or implementation notes.
 | original behavior | browser behavior | card note | tooltip note | pause/run summary note | example |
-| --- | --- | --- | --- | --- | --- |
+| --- | 
 | Original effect values stay authoritative | Visual-only FX trim | no | optional if confusing | no | Explosive damage unchanged; particles trimmed |
 | Original simulation count stays authoritative | Visible actor cap | only if player may notice missing actors | yes | yes for persistent actors | Nearest 8 turrets drawn; all turrets fire |
 | Original value and trigger stay authoritative | Text merge/drop | no | optional | no unless survival-critical | DOT text can merge; damage continues |
