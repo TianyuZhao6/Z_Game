@@ -69,7 +69,7 @@ Browser constants to cite in prop entries:
 
 Browser source-of-truth map:
 | browser doc topic | source file / runtime area | original-version baseline to verify | browser behavior to verify |
-| --- | --- | --- | --- |
+| --- | 
 | Quality profile, visible caps, URL flags | zgame/browser.py | Original version has no web quality cap unless the prop entry defines one | Current WEB_* constants, default quality payload, and query flag behavior |
 | Bullet, shrapnel, ricochet, pierce hit flow | zgame/player_projectiles.py | Original hit order, on-kill order, same-frame locks, and projectile release path | Pending-bullet helper, bullet source checks, and visible bullet cap behavior |
 | Explosive Rounds stats and VFX | ZGame.py | EXPLOSIVE_ROUNDS_* constants and trigger_explosive_rounds damage/chain behavior | FX spawn behavior and browser particle budget behavior |
