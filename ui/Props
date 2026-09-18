@@ -56,7 +56,7 @@ Browser URL flags that affect prop behavior or QA:
 
 Browser constants to cite in prop entries:
 | constant | current value or behavior | cite when documenting |
-| --- | --- | --- |
+| --- |
 | WEB_LITE_RENDER_BULLET_CAP | 28 visible player bullets | Piercing, Ricochet, Shrapnel, Shardstorm, Shock Relay |
 | WEB_LITE_RENDER_TURRET_CAP | 8 visible turrets | Auto-Turret, Stationary Turret, Summoner props |
 | WEB_LITE_RENDER_PICKUP_CAP | 12 visible pickups | Economy, Spoil Splitter, Paint Converter |
