@@ -98,7 +98,7 @@ Display decision rule: show browser copy to players only when the browser route 
 Implementation-backed browser prop behavior:
 Implementation rows document browser delivery around original-version behavior. Any browser cap, cadence, feature gate, or fallback listed here must also say whether original damage, reward, state, trigger order, or save data continues unchanged.
 | area | current implementation | prop documentation impact |
-| --- | --- | --- |
+| --- | 
 | Feature gates | WEB_ENABLE_AEGIS_PULSES, WEB_ENABLE_GROUND_SPIKES, WEB_ENABLE_CURING_PAINT, WEB_ENABLE_DOT_ROUNDS, and WEB_ENABLE_VULNERABILITY_MARKS default true in the web quality payload | These props are active on browser unless a future profile disables the gate |
 | Shrapnel bullets | Browser uses pending-bullet headroom from WEB_LITE_RENDER_BULLET_CAP * 2, not a fixed shrapnel-only cap | Describe soft burst reduction, not a hard live-shard limit |
 | Explosive rounds | Damage and chain behavior use original-version stats; FX particles are controlled by the global WEB_MAX_FX_PARTICLES budget | Mark as visual-budgeted, not mechanically reduced |
