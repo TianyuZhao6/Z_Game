@@ -42,7 +42,7 @@ Current browser implementation snapshot:
 
 Browser URL flags that affect prop behavior or QA:
 | flag | current effect | prop documentation impact |
-| --- | --- | --- |
+| --- |
 | `start=1` / `autostart=1` | starts combat directly in the browser route | Use for prop QA scenarios that need to skip menus |
 | `diag=1` / `profile=1` | enables browser profiler and diagnostic export | Required for verifying prop trigger counts, visible caps, and browser heartbeat |
 | `duration=` | controls diagnostic run duration when supported by the scenario harness | Use longer duration for late-wave prop burst checks |
