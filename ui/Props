@@ -5,7 +5,7 @@ Browser version rules:
 
 Original version vs browser version:
 | area | original version | browser version |
-| --- | --- | --- |
+| --- |
 | Simulation authority | Original-version runtime is the reference for damage, cooldowns, proc order, save keys, and level tables. | Browser should keep those values unless the prop entry lists a browser-specific cap, fallback, or reduced value. |
 | Rendering | Original version may draw every spawned bullet, pickup, turret, text, and particle allowed by the original runtime. | Browser may hide, merge, or trim visible actors and feedback while keeping simulation values authoritative. |
 | Overflow | Original version usually follows each prop s own max_active, cooldown, or entity cap. | Browser must state whether overflow is dropped, merged, credited directly, hidden visually, or spawn-count reduced. |
