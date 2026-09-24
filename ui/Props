@@ -69,7 +69,7 @@ Browser constants to cite in prop entries:
 
 Browser source-of-truth map:
 | browser doc topic | source file / runtime area | original-version baseline to verify | browser behavior to verify |
-| --- | 
+| --- |
 | Quality profile, visible caps, URL flags | zgame/browser.py | Original version has no web quality cap unless the prop entry defines one | Current WEB_* constants, default quality payload, and query flag behavior |
 | Bullet, shrapnel, ricochet, pierce hit flow | zgame/player_projectiles.py | Original hit order, on-kill order, same-frame locks, and projectile release path | Pending-bullet helper, bullet source checks, and visible bullet cap behavior |
 | Explosive Rounds stats and VFX | ZGame.py | EXPLOSIVE_ROUNDS_* constants and trigger_explosive_rounds damage/chain behavior | FX spawn behavior and browser particle budget behavior |
@@ -85,7 +85,7 @@ Browser source-of-truth map:
 Browser display decision table:
 Display decision rule: show browser copy to players only when the browser route changes planning information. If original gameplay is unchanged and only feedback is hidden, merged, bundled, or trimmed, keep card text on original values and put browser detail in tooltip, QA, or implementation notes.
 | original behavior | browser behavior | card note | tooltip note | pause/run summary note | example |
-| --- | 
+| --- |
 | Original effect values stay authoritative | Visual-only FX trim | no | optional if confusing | no | Explosive damage unchanged; particles trimmed |
 | Original simulation count stays authoritative | Visible actor cap | only if player may notice missing actors | yes | yes for persistent actors | Nearest 8 turrets drawn; all turrets fire |
 | Original value and trigger stay authoritative | Text merge/drop | no | optional | no unless survival-critical | DOT text can merge; damage continues |
@@ -98,7 +98,7 @@ Display decision rule: show browser copy to players only when the browser route 
 Implementation-backed browser prop behavior:
 Implementation rows document browser delivery around original-version behavior. Any browser cap, cadence, feature gate, or fallback listed here must also say whether original damage, reward, state, trigger order, or save data continues unchanged.
 | area | current implementation | prop documentation impact |
-| --- | 
+| --- |
 | Feature gates | WEB_ENABLE_AEGIS_PULSES, WEB_ENABLE_GROUND_SPIKES, WEB_ENABLE_CURING_PAINT, WEB_ENABLE_DOT_ROUNDS, and WEB_ENABLE_VULNERABILITY_MARKS default true in the web quality payload | These props are active on browser unless a future profile disables the gate |
 | Shrapnel bullets | Browser uses pending-bullet headroom from WEB_LITE_RENDER_BULLET_CAP * 2, not a fixed shrapnel-only cap | Describe soft burst reduction, not a hard live-shard limit |
 | Explosive rounds | Damage and chain behavior use original-version stats; FX particles are controlled by the global WEB_MAX_FX_PARTICLES budget | Mark as visual-budgeted, not mechanically reduced |
@@ -131,7 +131,7 @@ Specific browser prop behavior matrix:
 
 Browser diagnostics expected by prop:
 | prop or family | original-version baseline | browser counters/signals to inspect | pass condition |
-| --- | --- | --- | --- |
+| --- | --- |
 | Piercing/Ricochet | original hit count, pierce/bounce count, and damage falloff | web_visible_bullets, pending_bullets, prop_trigger_counts | visible bullets can cap at 28 while hit count and damage continue |
 | Shrapnel | original proc chance, shard damage, and intended shard count | pending_bullets, dropped_or_merged_count, prop_trigger_counts | shard burst reduces only when pending headroom is low; no unbounded pending list |
 | Explosive/Crit explosions | original splash damage, radius, chain order, and boss modifier | fx_particle_count, web_fx_trim_count, damage_done | particle count trims to budget while explosion damage remains expected |
