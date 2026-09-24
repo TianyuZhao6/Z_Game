@@ -217,7 +217,7 @@ Section Scan Guide (Table Order)
 - Utility / Control: CONTROL, SUMMON
 
 | prop_id | display_name | section | path_primary | path_secondary | role | rarity | base_price | max_level | trigger_type | scaling_summary | synergy_tags | tradeoff | ui_tag | implementation_status | notes |
-| --- | --- | --- | --- | --- | --- |
+| --- | --- |
 | piercing_rounds | Piercing Rounds | Core Offense | BALLISTIC | NONE | Pierce scaler | 1 | $12 | 5 | passive | +1 to +5 pierce, up to 16% falloff | pierce,wave_clear,projectile | none | OFF | implemented | Core Ballistic baseline; web:cap visible bullets 28, original pierce/damage simulation continues |
 | ricochet_scope | Ricochet Scope | Core Offense | BALLISTIC | NONE | Bounce scaler | 2 | $14 | 3 | passive | 1 to 3 ricochets, 90% to 75% bounce damage | ricochet,crit,wave_clear | lower single-target value in open maps | OFF | implemented | Core Ballistic baseline; web:cap visible bullets 28, original ricochet routing simulates |
 | shrapnel_shells | Shrapnel Shells | Core Offense | BALLISTIC | NONE | Death burst | 3 | $16 | 3 | on_kill | 25% to 45% proc, 3 to 4 shards | shrapnel,wave_clear,crit | performance-capped secondary spawns | OFF | implemented | Core Ballistic baseline; web:cap pending bullets by headroom, original shard damage preserved |
