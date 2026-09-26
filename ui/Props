@@ -134,7 +134,7 @@ Specific browser prop behavior matrix:
 
 Browser diagnostics expected by prop:
 | prop or family | original-version baseline | browser counters/signals to inspect | pass condition |
-| --- | --- |
+| --- |
 | Piercing/Ricochet | original hit count, pierce/bounce count, and damage falloff | web_visible_bullets, pending_bullets, prop_trigger_counts | visible bullets can cap at 28 while hit count and damage continue |
 | Shrapnel | original proc chance, shard damage, and intended shard count | pending_bullets, dropped_or_merged_count, prop_trigger_counts | shard burst reduces only when pending headroom is low; no unbounded pending list |
 | Explosive/Crit explosions | original splash damage, radius, chain order, and boss modifier | fx_particle_count, web_fx_trim_count, damage_done | particle count trims to budget while explosion damage remains expected |
