@@ -1,4 +1,7 @@
-﻿Browser Version Section
+﻿#TODO
+Make the possessions in pause/trading menu have different color for different path items.
+
+Browser Version Section
 Browser prop behavior should match the original version unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when the original version can handle more entities and effects.
 
 Browser version rules:
