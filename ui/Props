@@ -3,6 +3,10 @@ Make the possessions in pause/trading menu have different color for different pa
 the biome chosen interfacewill only shown the quart dice to random choose the next biome then after the 
 dice is rolled, the interface will show the biome name and the biome description 
 then the next level button will be shown.
+Add a pth of summon(to be done)
+
+Then for the props in the shopping or pause menu, they should be colored differently for different path items.
+And when player get all the path item, they can unlock the hidden path compensation.(huge reward)
 
 Browser Version Section
 Browser prop behavior should match the original version unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when the original version can handle more entities and effects.
