@@ -5,6 +5,7 @@ dice is rolled, the interface will show the biome name and the biome description
 then the next level button will be shown.
 Add a pth of summon(to be done)
 summon path props:
+included: turret
 
 Then for the props in the shopping or pause menu, they should be colored differently for different path items.
 And when player get all the path item, they can unlock the hidden path compensation.(huge reward)
