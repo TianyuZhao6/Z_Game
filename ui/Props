@@ -7,6 +7,7 @@ Add a pth of summon(to be done)
 summon path props:
 included: turret
 on going other props brainstorming
+Summon Path: Summons are autonomous co-pilot companions that move around the player or independently within a home radius, automatically target and attack enemies, have their own health bars, and grow stronger through improved stats, additional skills, and smarter AI behaviors such as positioning, threat prioritization, retreating, protecting the player, and contextual skill use; at 0 HP, a summon is downed for the rest of the current level but keeps all upgrades and is automatically reconstructed at the start of the next level rather than being permanently lost or reset.
 
 Then for the props in the shopping or pause menu, they should be colored differently for different path items.
 And when player get all the path item, they can unlock the hidden path compensation.(huge reward)
