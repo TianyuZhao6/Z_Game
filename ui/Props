@@ -3,10 +3,9 @@ Make the possessions in pause/trading menu have different color for different pa
 the biome chosen interfacewill only shown the quart dice to random choose the next biome then after the 
 dice is rolled, the interface will show the biome name and the biome description 
 then the next level button will be shown.
-Add a pth of summon(to be done)
-summon path props:
-included: turret
-on going other props brainstorming
+Add a path of summons (design drafted; runtime implementation pending).
+Summon path props include follower and stationary turrets, Arc Drone, Bulwark Golem,
+Mender Sprite, Ember Hound, Frost Raven, and Pack Tactics.
 Summon Path: Summons are autonomous co-pilot companions that move around the player or independently within a home radius, automatically target and attack enemies, have their own health bars, and grow stronger through improved stats, additional skills, and smarter AI behaviors such as positioning, threat prioritization, retreating, protecting the player, and contextual skill use; at 0 HP, a summon is downed for the rest of the current level but keeps all upgrades and is automatically reconstructed at the start of the next level rather than being permanently lost or reset.
 
 Then for the props in the shopping or pause menu, they should be colored differently for different path items.
@@ -138,6 +137,8 @@ Specific browser prop behavior matrix:
 | Reflect/retaliation props | Planned reflection and shield-hit buffs should hook into damage_player/enemy projectile events without recursive loops | enemy shots are disabled by default on normal browser route | Any ranged-reflect prop needs browser fallback or opt-in enemy-shot note |
 | Auto-Turret | Same saved level and simulated turret count up to max level 5; all owned follower turrets update and fire | lite renderer draws nearest 8 total turrets | Tooltip note only when many turrets are active: browser draws nearest 8 |
 | Stationary Turret | Same saved stationary_turret_count and placement restoration; all spawned stationary turrets remain obstacles and fire | lite renderer draws nearest 8 total turrets | Pause summary can explain hidden turrets still work when count is high |
+| Mobile summon companions | Planned companions keep original HP, targeting, attacks, cooldowns, downed state, and level-start reconstruction | proposed shared nearest-8 visible allied-actor budget with turrets; full simulation continues | Tooltip notes that hidden summons still act only if the visible cap is noticeable |
+| Pack Tactics | Same multiplicative summon stat rebuild and saved level as the original version; creates no actor | no additional browser cap or cadence | No browser card note required |
 | Coin and economy props | Meta changes and reward math use the same state as the original version; browser may limit visible pickup clutter | max spoils on field currently 8 in default full profile; lite renderer draws 12 pickups | Do not imply reduced rewards; describe bundled/hidden pickup visuals only if implemented |
 | Movement/control props | Planned movement auras, dash contact, and tar puddles should run on scheduled browser update lanes rather than every visual frame | use 20-24 Hz cadence for area/contact effects and global FX/text budgets | Tooltip should state effect values only; browser notes belong in detailed spec unless values change |
 | Crit/element props | Planned crit explosions, chill, and shock chains should follow the same bullet/status scheduling and pending-bullet/FX budgets | projectile-like chains use bullet headroom; VFX uses WEB_MAX_FX_PARTICLES | Avoid card notes unless browser reduces chain count, radius, or proc chance |
@@ -155,6 +156,7 @@ Browser diagnostics expected by prop:
 | Curing Paint | original ownership, intensity, radius, damage, and lifetime | paint_active_count, paint_render_refresh_ms, paint_damage_ticks | damage/ownership continue even when render layer is cached or skipped |
 | Aegis Pulse | original shield gate, cooldown, wave count, radius, and damage | pulse_count, update_cadence_hz, dmg_text_count | pulse damage follows cooldown and text budget does not hide trigger state |
 | Turrets | original owned turret count, saved placements, fire rate, and damage | web_visible_turrets, simulated_turret_count, turret_shots_fired | nearest 8 may be drawn, but all owned turrets continue firing |
+| Summon companions | original HP, target choice, attack count, downed state, and next-level reconstruction | web_visible_summons, simulated_summon_count, summon_attack_count, summon_down_count | presentation may cap while every companion continues simulation and reconstructs correctly |
 | Economy rewards | original reward value, payout order, and persistent counters | visible_pickups, spoils_on_field, coins_credited | visual caps never reduce earned coin value |
 | Enemy-shot reactions | original projectile-hit trigger, cooldown, reflect value, and range | WEB_SKIP_ENEMY_SHOTS, enemyshots flag, fallback_trigger_count | default route uses documented fallback or QA explicitly enables enemy shots |
 
@@ -177,6 +179,8 @@ Browser prop QA rows to add per high-risk prop:
 | WEB-PROP-05 | Aegis Pulse | listed shield gate, cooldown, radius, wave count, and damage | 24 Hz pulse-list update with unchanged shield-gated trigger | shield-gated cooldown and radius/damage values match original-version rules |
 | WEB-PROP-06 | Auto-Turret | owned follower turret count, fire rate, target selection, and damage | lite-render visible turret cap 8 | all owned turrets still fire while renderer prioritizes nearest visible turrets |
 | WEB-PROP-07 | Stationary Turret | saved stationary turret count, placement restore, obstacle state, and firing rules | lite-render visible turret cap 8 | saved turret count restores and offscreen/overflow turrets still participate in combat |
+| WEB-PROP-08 | Mobile summon companions | listed HP, target priority, attacks, cooldowns, downed state, and reconstruction | proposed shared nearest-8 allied-actor presentation cap | hidden companions keep acting; downed companions stay inactive until the next level and then return at full HP |
+| WEB-PROP-09 | Pack Tactics | listed damage, movement, and max-HP multipliers applied once from base stats | localStorage reload and stat rebuild | every affected summon receives one non-compounding bonus application after refresh |
 
 Prop Systems Specification
 
@@ -272,6 +276,12 @@ Section Scan Guide (Table Order)
 | time_dilation_boots | Time Dilation Boots | Utility / Control | CONTROL | NONE | Standstill aura | 2 | $16 | 3 | on_move | 1.8 to 2.6 tile slow pulse while stationary | slow,aura,positioning | requires standing still | CTL | planned | web:same original aura values, pulse cadence documented |
 | auto_turret | Auto-Turret | Utility / Control | SUMMON | CONTROL | Follower turret | 2 | $14 | 5 | passive | +1 turret per level, 0.33 to 0.42 damage ratio | turret,summon,sustained | count converts to quality after cap | SUM | implemented | Baseline turret path; web:visual original turret count/fire rules preserved, nearest 8 drawn |
 | stationary_turret | Stationary Turret | Utility / Control | SUMMON | CONTROL | Static turret | 1 | $14 | 99 | passive | +1 static turret per purchase, max 8 active suggested | turret,holdout,zone_control | immobile placement | SUM | implemented | Baseline stationary turret variant; web:visual original placement/fire rules preserved, nearest 8 drawn |
+| arc_drone | Arc Drone | Utility / Control | SUMMON | OFFENSE | Mobile chain attacker | 2 | $18 | 3 | passive | 0.30 to 0.46 bullet_base, 1 to 3 chain targets | summon,shock,wave_clear | modest single-target damage | SUM | planned | Fast orbiting summon; web:visual full simulation, shared nearest-8 summon draw cap proposed |
+| bulwark_golem | Bulwark Golem | Utility / Control | SUMMON | DEFENSE | Tank and bodyguard | 3 | $24 | 3 | passive | 90 to 210 HP, 20% to 40% contact interception | summon,guard,taunt,survival | low damage and slow movement | SUM | planned | Protects the player inside its home radius; web:visual full simulation, shared nearest-8 summon draw cap proposed |
+| mender_sprite | Mender Sprite | Utility / Control | SUMMON | DEFENSE | Support companion | 3 | $22 | 3 | passive | 6 to 14 shield every 8s to 6s | summon,shield,sustain,support | no direct damage | SUM | planned | Shield pulse cannot target downed summons; web:same shield values, FX/text may trim |
+| ember_hound | Ember Hound | Utility / Control | SUMMON | STATUS | Melee pursuit summon | 2 | $17 | 3 | passive | 0.45 to 0.75 bullet_base bite plus burn | summon,burn,bossing,melee | must enter melee range | SUM | planned | Chases priority targets then returns home; web:same damage and burn, feedback may trim |
+| frost_raven | Frost Raven | Utility / Control | SUMMON | CONTROL | Ranged slow and mark | 2 | $19 | 3 | passive | 16% to 28% slow, every 4th to 2nd hit marks | summon,chill,mark,elite_focus | lower raw damage | SUM | planned | Prioritizes unmarked elites; web:same targeting and status values, feedback may trim |
+| pack_tactics | Pack Tactics | Utility / Control | SUMMON | OFFENSE | Summon quality scaler | 3 | $26 | 4 | passive | +8% to +32% summon damage, +5% to +20% move speed | summon,command,quality,sustained | requires another active summon | SUM | planned | Improves existing summons instead of adding actors; web:same stats and save level |
 
 Specification Operations Addendum
 This addendum defines prop status semantics, runtime mapping, formulas, trigger order, balancing guardrails, QA, and telemetry.
@@ -346,6 +356,7 @@ Current Hard Caps (Runtime-Enforced by max_level or logic)
 - curing_paint 3, ground_spikes 3, bone_plating 5, aegis_pulse 5.
 - coupon 4, golden_interest 4, shady_loan 3, bandit_radar 4.
 - auto_turret 5, stationary_turret 99 (design soft cap still recommended).
+- arc_drone 3, bulwark_golem 3, mender_sprite 3, ember_hound 3, frost_raven 3, pack_tactics 4 (planned).
 
 Policy Rules
 1. Prefer explicit max_level for every stackable effect.
@@ -404,6 +415,8 @@ A8. QA Scenarios (Required Regression Set)
 | PROP-QA-09 | Wanted poster claim path on bandit death | bounty pays once and state flags clear correctly | browser localStorage keeps charges/payout state and spawn-density QA remains valid |
 | PROP-QA-10 | Shady loan across repayment and default branches | debt, waves, and HP penalties resolve correctly | browser save path preserves debt state and repayment/default ordering |
 | PROP-QA-11 | Auto and stationary turrets with save/load cycle | turret counts persist and restore correctly | browser render cap draws nearest 8 while all original turrets simulate/fire |
+| PROP-QA-12 | Down and reconstruct each mobile companion | prop levels persist, current-level summon stays inactive, next level restores full HP | browser localStorage keeps levels while temporary HP/downed state resets on the same transition |
+| PROP-QA-13 | Stack Pack Tactics with every summon type | each summon rebuilds once from base stats and receives the correct level bonus | browser refresh preserves levels and does not compound damage, speed, or HP bonuses |
 
 A9. Telemetry Specification
 Telemetry rows should keep original-version event fields authoritative and add browser fields only for web delivery, storage, layout, cap, or fallback details.
@@ -923,6 +936,146 @@ Per purchase: +1 stationary turret spawn each level at valid clear tile.
 Suggested tuning: same bullet damage as auto turret, +15% range, -10% fire interval.
 Hard safety cap suggestion: max 8 active stationary turrets on map; extra copies become +6% turret damage each.
 Original version: spawns stationary turrets from stationary_turret_count, restores placements through save/load, and applies the active-placement safety cap. Browser version: stationary turret simulation count currently follows the original stationary_turret_count and save/load restoration. The lite renderer caps visible turrets to the nearest 8, but offscreen/overflow stationary turrets still exist, block their tile through StationaryTurretObstacle, and fire normally. There is currently no browser-specific conversion from extra stationary turrets into damage.
+
+4.6. Summon Path Shared Rules
+Summon identity and lifetime:
+- Each companion prop creates one unique summon; Auto-Turret and Stationary Turret keep their existing count rules.
+- Companions spawn at level start with full HP and retain their purchased prop levels between levels.
+- At 0 HP, a companion becomes downed and cannot act again during the current level. It reconstructs at full HP when the next level begins.
+- Current summon HP, target, position, cooldowns, and downed state are temporary combat state. Save only the prop level; do not persist a mid-level downed state across a completed level transition.
+
+Movement and targeting:
+- Mobile summons stay within a 6-tile home radius of the player unless their prop lists another value.
+- Target priority is threat to player, marked elite, nearest valid enemy, then lowest-HP enemy. A prop-specific priority overrides this order only where stated.
+- A summon retreats toward the player below 25% HP and may attack while retreating if its range permits.
+- Summons do not block the player or one another. Only Bulwark Golem can intercept enemy contact movement.
+- Summon damage can trigger enemy death and reward resolution, but cannot trigger player-bullet-only props such as Ricochet Scope or Shrapnel Shells unless a future prop explicitly grants that interaction.
+
+Global summon safety:
+- Maximum mobile companions from unique props: 5. Turrets use their own existing caps.
+- A summon may change target at most 5 times per second to prevent target-thrashing.
+- Area scans run at 10 Hz; movement and attack cooldowns use the normal combat update.
+- Bosses receive full direct summon damage. Summon hard-control duration against bosses is 50% of the listed duration.
+
+Browser version: companion simulation, HP, targeting, attacks, cooldowns, and downed state should match the original version. Until a dedicated summon renderer budget exists, use a shared nearest-8 visible allied-actor budget with turrets for browser presentation only; hidden summons continue to move, attack, take damage, become downed, and reconstruct. Summon SFX may be coalesced and particles or damage text may be trimmed by the global browser budgets.
+
+4.7. Arc Drone
+ID: arc_drone
+Effect:
+Summon an orbiting drone that fires an electrical bolt which chains through nearby enemies.
+Rarity: 2
+Base Price: $18
+Max Level: 3
+META key: arc_drone_level
+Rules:
+Level 1: HP = 55, damage = 0.30 * bullet_base, fire interval = 1.15s, chain targets = 1
+Level 2: HP = 70, damage = 0.38 * bullet_base, fire interval = 1.05s, chain targets = 2
+Level 3: HP = 85, damage = 0.46 * bullet_base, fire interval = 0.95s, chain targets = 3
+Chain rule: each jump deals 75% of the previous hit and cannot revisit a target in the same attack.
+Positioning rule: orbit 1.5 to 2.5 tiles from the player and prefer the side opposite the nearest enemy cluster.
+Short tooltip: Orbiting summon whose bolts chain between enemies.
+Long tooltip: Summons one Arc Drone. Upgrades improve HP, bolt damage, fire rate, and chain count. A downed drone reconstructs next level.
+Original version: arc_drone_level owns the listed HP, damage, fire interval, chain count, orbit behavior, and level-start reconstruction. One Arc Drone is simulated, chain targets are unique per attack, and its temporary HP/downed state resets at the next level.
+Browser version: classification = render_capped. Damage, chain count, cooldown, targeting, and save level match the original version. The drone shares the proposed nearest-8 allied-actor presentation cap; hidden bolts and the drone still simulate, while arc FX and damage text may be trimmed. QA with `?start=1&diag=1` and compare summon attack count, chain hit count, and damage against the original version.
+
+4.8. Bulwark Golem
+ID: bulwark_golem
+Effect:
+Summon a slow defensive golem that positions between the player and the highest-threat nearby enemy.
+Rarity: 3
+Base Price: $24
+Max Level: 3
+META key: bulwark_golem_level
+Rules:
+Level 1: HP = 90, slam damage = 0.35 * bullet_base, intercept chance = 20%, taunt radius = 2.0 tiles
+Level 2: HP = 145, slam damage = 0.45 * bullet_base, intercept chance = 30%, taunt radius = 2.4 tiles
+Level 3: HP = 210, slam damage = 0.55 * bullet_base, intercept chance = 40%, taunt radius = 2.8 tiles
+Attack interval: 1.35s. Slam applies a 15% slow for 0.8s; boss slow duration is 0.4s.
+Intercept rule: when an enemy contact hit would damage the player and the golem is within 1.25 tiles, roll once to redirect that contact hit to the golem. Never intercept hazards, damage-over-time, or self-damage.
+Anti-loop rule: redirected damage cannot trigger player on-damage props and cannot be redirected again.
+Short tooltip: Durable summon that can intercept enemy contact hits.
+Long tooltip: Summons a Bulwark Golem with a slowing slam. It guards nearby space and may take enemy contact hits for you.
+Original version: bulwark_golem_level owns HP, slam values, taunt radius, and contact-intercept chance. Interception runs before player shield/HP routing, damages the golem once, and saves only the prop level between levels.
+Browser version: classification = render_capped. Golem HP, intercept rolls, damage routing, slam values, and reconstruction match the original version. The golem shares the proposed nearest-8 allied-actor presentation cap, but it remains a simulated interceptor while hidden. QA must compare player damage prevented, golem damage received, and ensure zero Retaliation/Mirror triggers from redirected hits.
+
+4.9. Mender Sprite
+ID: mender_sprite
+Effect:
+Summon a support sprite that grants a small temporary shield to the player or the most-injured active summon.
+Rarity: 3
+Base Price: $22
+Max Level: 3
+META key: mender_sprite_level
+Rules:
+Level 1: HP = 45, shield = 6, support interval = 8.0s, range = 3.0 tiles
+Level 2: HP = 60, shield = 10, support interval = 7.0s, range = 3.5 tiles
+Level 3: HP = 75, shield = 14, support interval = 6.0s, range = 4.0 tiles
+Target rule: choose the active in-range ally with the lowest HP percentage; treat the player as 10 percentage points lower when tied.
+Shield rule: sprite shield lasts 5s, refreshes duration instead of stacking, and cannot target a downed summon.
+Cap rule: temporary shield granted by Mender Sprite cannot exceed two casts of the current-level shield value on the player.
+Short tooltip: Support summon that shields the most-injured ally.
+Long tooltip: Summons a Mender Sprite. It periodically shields you or an injured active summon; its shield refreshes but does not stack.
+Original version: mender_sprite_level owns HP, shield amount, support interval, range, target selection, and temporary-shield cap. The support cooldown and temporary shield reset at level transition; the prop level persists.
+Browser version: classification = visual_only. Shield values, target choice, cooldown, cap, and save level match the original version. Pulse particles and shield text may be trimmed or merged, but the shield is still applied. QA with `?start=1&diag=1` by comparing shield gained, chosen target, cooldown count, and damage absorbed.
+
+4.10. Ember Hound
+ID: ember_hound
+Effect:
+Summon a melee hound that pursues dangerous enemies and applies a stacking burn with its bite.
+Rarity: 2
+Base Price: $17
+Max Level: 3
+META key: ember_hound_level
+Rules:
+Level 1: HP = 70, bite = 0.45 * bullet_base, burn = 0.06 * bullet_base per 0.5s for 2.0s
+Level 2: HP = 95, bite = 0.60 * bullet_base, burn = 0.08 * bullet_base per 0.5s for 2.5s
+Level 3: HP = 125, bite = 0.75 * bullet_base, burn = 0.10 * bullet_base per 0.5s for 3.0s
+Attack interval: 0.85s. Burn stacks up to 2 times per target and deals 60% value to bosses.
+Pursuit rule: may chase up to 7 tiles from the player for a marked elite or boss, then returns home if no attack lands for 2s.
+Short tooltip: Melee summon whose bites stack burning damage.
+Long tooltip: Summons an Ember Hound that pursues priority threats. Bites apply up to two burn stacks; bosses take reduced burn.
+Original version: ember_hound_level owns HP, bite damage, burn values, stack cap, pursuit leash, and reconstruction. Burn ticks use summon source ownership and cannot proc player-bullet-only effects.
+Browser version: classification = visual_only. Bite damage, burn stacks, tick totals, boss modifier, pursuit, and save level match the original version. Burn text may merge and flame FX may be trimmed; status processing should use the browser 20 Hz status lane without changing total tick damage. QA compares bite count, burn stacks, and total burn damage.
+
+4.11. Frost Raven
+ID: frost_raven
+Effect:
+Summon a ranged raven that chills enemies and periodically marks priority targets for all summons.
+Rarity: 2
+Base Price: $19
+Max Level: 3
+META key: frost_raven_level
+Rules:
+Level 1: HP = 50, hit = 0.24 * bullet_base, slow = 16% for 1.4s, mark every 4th hit
+Level 2: HP = 65, hit = 0.30 * bullet_base, slow = 22% for 1.7s, mark every 3rd hit
+Level 3: HP = 80, hit = 0.36 * bullet_base, slow = 28% for 2.0s, mark every 2nd hit
+Attack interval: 1.0s. Boss slow duration is 50% of the listed value.
+Mark rule: Raven Mark lasts 3s and makes all summons prefer that enemy; it does not add the damage bonus from Mark of Vulnerability.
+Priority rule: prefer an unmarked elite, then a boss, then the shared summon target order.
+Short tooltip: Ranged summon that chills and marks priority enemies.
+Long tooltip: Summons a Frost Raven. Its shots slow enemies, and repeated hits mark a target for every summon to focus.
+Original version: frost_raven_level owns HP, damage, slow, hit counter, mark cadence, priority order, and reconstruction. The hit counter and active Raven Mark reset at level transition; the prop level persists.
+Browser version: classification = visual_only. Targeting, hit counter, mark timing, slow, damage, and save level match the original version. Mark and chill feedback may be simplified or merged, but hidden visuals do not remove the status. QA compares mark target, mark interval, summon retarget count, and slow duration.
+
+4.12. Pack Tactics
+ID: pack_tactics
+Effect:
+Improve every active summon instead of creating another actor.
+Rarity: 3
+Base Price: $26
+Max Level: 4
+META key: pack_tactics_level
+Rules:
+Level 1: +8% summon damage, +5% summon movement speed, +6% summon max HP
+Level 2: +16% summon damage, +10% summon movement speed, +12% summon max HP
+Level 3: +24% summon damage, +15% summon movement speed, +18% summon max HP
+Level 4: +32% summon damage, +20% summon movement speed, +24% summon max HP
+Scope rule: affects mobile companions, Auto-Turrets, and Stationary Turrets. Movement speed has no effect on Stationary Turrets.
+Rebuild rule: apply bonuses from base summon stats whenever a summon spawns or the prop level changes; never compound from already-modified values.
+Short tooltip: Improves the damage, speed, and health of all summons.
+Long tooltip: Strengthens every summon. Turrets gain damage and health; mobile companions also gain movement speed. Adds no new actor.
+Original version: pack_tactics_level owns the listed multiplicative bonuses and applies them once during summon stat rebuild. The prop creates no entity, has no temporary combat state, and persists through the canonical META key.
+Browser version: classification = same_as_original. Stat bonuses, affected summon types, rebuild order, and save level match the original version. It adds no render or spawn load. QA compares rebuilt summon stats before and after localStorage refresh and confirms bonuses are not compounded.
 
 5. Crit, Element, and Synergy Props
 
