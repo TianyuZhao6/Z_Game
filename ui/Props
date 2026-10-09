@@ -4,7 +4,7 @@ the biome chosen interfacewill only shown the quart dice to random choose the ne
 dice is rolled, the interface will show the biome name and the biome description 
 then the next level button will be shown.
 Add a path of summons (design drafted; runtime implementation pending).
-Summon path props include follower and stationary turrets, Arc Drone, Bulwark Golem,
+Summon path props include follower and stationary turrets, Threadweaver, Bulwark Golem,
 Mender Sprite, Ember Hound, Frost Raven, and Pack Tactics.
 Summon Path: Summons are autonomous co-pilot companions that move around the player or independently within a home radius, automatically target and attack enemies, have their own health bars, and grow stronger through improved stats, additional skills, and smarter AI behaviors such as positioning, threat prioritization, retreating, protecting the player, and contextual skill use; at 0 HP, a summon is downed for the rest of the current level but keeps all upgrades and is automatically reconstructed at the start of the next level rather than being permanently lost or reset.
 
@@ -276,7 +276,7 @@ Section Scan Guide (Table Order)
 | time_dilation_boots | Time Dilation Boots | Utility / Control | CONTROL | NONE | Standstill aura | 2 | $16 | 3 | on_move | 1.8 to 2.6 tile slow pulse while stationary | slow,aura,positioning | requires standing still | CTL | planned | web:same original aura values, pulse cadence documented |
 | auto_turret | Auto-Turret | Utility / Control | SUMMON | CONTROL | Follower turret | 2 | $14 | 5 | passive | +1 turret per level, 0.33 to 0.42 damage ratio | turret,summon,sustained | count converts to quality after cap | SUM | implemented | Baseline turret path; web:visual original turret count/fire rules preserved, nearest 8 drawn |
 | stationary_turret | Stationary Turret | Utility / Control | SUMMON | CONTROL | Static turret | 1 | $14 | 99 | passive | +1 static turret per purchase, max 8 active suggested | turret,holdout,zone_control | immobile placement | SUM | implemented | Baseline stationary turret variant; web:visual original placement/fire rules preserved, nearest 8 drawn |
-| arc_drone | Arc Drone | Utility / Control | SUMMON | OFFENSE | Mobile chain attacker | 2 | $18 | 3 | passive | 0.30 to 0.46 bullet_base, 1 to 3 chain targets | summon,shock,wave_clear | modest single-target damage | SUM | planned | Fast orbiting summon; web:visual full simulation, shared nearest-8 summon draw cap proposed |
+| threadweaver | Threadweaver | Utility / Control | SUMMON | CONTROL | Tripwire ambush and repositioning | 2 | $18 | 3 | passive | 2.0 to 3.0 tile wire, 0.8 to 1.6 tile pull | summon,trap,reposition | one crossing target per wire; setup can fail | SUM | planned | Replaces Arc Drone's duplicate shooting/chain role; web:cap companion sprite only, armed wire stays visible |
 | bulwark_golem | Bulwark Golem | Utility / Control | SUMMON | DEFENSE | Tank and bodyguard | 3 | $24 | 3 | passive | 90 to 210 HP, 20% to 40% contact interception | summon,guard,taunt,survival | low damage and slow movement | SUM | planned | Protects the player inside its home radius; web:visual full simulation, shared nearest-8 summon draw cap proposed |
 | mender_sprite | Mender Sprite | Utility / Control | SUMMON | DEFENSE | Support companion | 3 | $22 | 3 | passive | 6 to 14 shield every 8s to 6s | summon,shield,sustain,support | no direct damage | SUM | planned | Shield pulse cannot target downed summons; web:same shield values, FX/text may trim |
 | ember_hound | Ember Hound | Utility / Control | SUMMON | STATUS | Melee pursuit summon | 2 | $17 | 3 | passive | 0.45 to 0.75 bullet_base bite plus burn | summon,burn,bossing,melee | must enter melee range | SUM | planned | Chases priority targets then returns home; web:same damage and burn, feedback may trim |
@@ -356,7 +356,7 @@ Current Hard Caps (Runtime-Enforced by max_level or logic)
 - curing_paint 3, ground_spikes 3, bone_plating 5, aegis_pulse 5.
 - coupon 4, golden_interest 4, shady_loan 3, bandit_radar 4.
 - auto_turret 5, stationary_turret 99 (design soft cap still recommended).
-- arc_drone 3, bulwark_golem 3, mender_sprite 3, ember_hound 3, frost_raven 3, pack_tactics 4 (planned).
+- threadweaver 3, bulwark_golem 3, mender_sprite 3, ember_hound 3, frost_raven 3, pack_tactics 4 (planned).
 
 Policy Rules
 1. Prefer explicit max_level for every stackable effect.
@@ -938,6 +938,7 @@ Hard safety cap suggestion: max 8 active stationary turrets on map; extra copies
 Original version: spawns stationary turrets from stationary_turret_count, restores placements through save/load, and applies the active-placement safety cap. Browser version: stationary turret simulation count currently follows the original stationary_turret_count and save/load restoration. The lite renderer caps visible turrets to the nearest 8, but offscreen/overflow stationary turrets still exist, block their tile through StationaryTurretObstacle, and fire normally. There is currently no browser-specific conversion from extra stationary turrets into damage.
 
 4.6. Summon Path Shared Rules
+Design review rule: each summon must introduce a distinct player interaction or tactical role. A familiar attack with a different element, appearance, or stat bonus is not enough. Review and revise one entry at a time; the remaining drafts are not yet approved as unique designs.
 Summon identity and lifetime:
 - Each companion prop creates one unique summon; Auto-Turret and Stationary Turret keep their existing count rules.
 - Companions spawn at level start with full HP and retain their purchased prop levels between levels.
@@ -959,24 +960,32 @@ Global summon safety:
 
 Browser version: companion simulation, HP, targeting, attacks, cooldowns, and downed state should match the original version. Until a dedicated summon renderer budget exists, use a shared nearest-8 visible allied-actor budget with turrets for browser presentation only; hidden summons continue to move, attack, take damage, become downed, and reconstruct. Summon SFX may be coalesced and particles or damage text may be trimmed by the global browser budgets.
 
-4.7. Arc Drone
-ID: arc_drone
+4.7. Threadweaver
+ID: threadweaver
+Status: planned; first individual summon redesign. Replaces the Arc Drone draft.
 Effect:
-Summon an orbiting drone that fires an electrical bolt which chains through nearby enemies.
+Summon a mechanical spider that stretches a tripwire across an approaching enemy's route. The first enemy to cross snaps the wire and is pulled toward its midpoint, letting the player lure a threat into a chosen lane or an existing hazard.
+Distinct role: autonomous trap placement and enemy repositioning. It has no repeating ranged attack, chain lightning, slow aura, or damage-over-time effect.
 Rarity: 2
 Base Price: $18
 Max Level: 3
-META key: arc_drone_level
+META key: threadweaver_level (proposed; replaces the unimplemented arc_drone_level draft)
 Rules:
-Level 1: HP = 55, damage = 0.30 * bullet_base, fire interval = 1.15s, chain targets = 1
-Level 2: HP = 70, damage = 0.38 * bullet_base, fire interval = 1.05s, chain targets = 2
-Level 3: HP = 85, damage = 0.46 * bullet_base, fire interval = 0.95s, chain targets = 3
-Chain rule: each jump deals 75% of the previous hit and cannot revisit a target in the same attack.
-Positioning rule: orbit 1.5 to 2.5 tiles from the player and prefer the side opposite the nearest enemy cluster.
-Short tooltip: Orbiting summon whose bolts chain between enemies.
-Long tooltip: Summons one Arc Drone. Upgrades improve HP, bolt damage, fire rate, and chain count. A downed drone reconstructs next level.
-Original version: arc_drone_level owns the listed HP, damage, fire interval, chain count, orbit behavior, and level-start reconstruction. One Arc Drone is simulated, chain targets are unique per attack, and its temporary HP/downed state resets at the next level.
-Browser version: classification = render_capped. Damage, chain count, cooldown, targeting, and save level match the original version. The drone shares the proposed nearest-8 allied-actor presentation cap; hidden bolts and the drone still simulate, while arc FX and damage text may be trimmed. QA with `?start=1&diag=1` and compare summon attack count, chain hit count, and damage against the original version.
+Level 1: HP = 55, wire length = 2.0 tiles, maximum pull = 0.8 tiles, reweave cooldown = 5.0s
+Level 2: HP = 70, wire length = 2.5 tiles, maximum pull = 1.2 tiles, reweave cooldown = 4.5s
+Level 3: HP = 85, wire length = 3.0 tiles, maximum pull = 1.6 tiles, reweave cooldown = 4.0s
+Placement: select the nearest enemy moving toward the player within the shared 6-tile home radius. Choose a midpoint 1 tile ahead of that enemy along its approach, then place endpoints perpendicular to that approach. Both endpoints and the full segment must lie on clear ground inside the home radius. If no valid placement exists, retry after 1s.
+Setup: the spider physically visits both endpoints at player base movement speed; the wire arms 0.5s after reaching the second endpoint. Cancel setup if interrupted by retreat, downing, or either endpoint leaving the home radius. A cancelled setup starts the reweave cooldown.
+Trigger: an armed wire lasts 4s and catches exactly one enemy whose movement crosses it. Resolve simultaneous crossings by earliest crossing time, then stable enemy ID. Enemies already touching it when it arms must leave and cross again to trigger it.
+Snap: deal 0.40 * bullet_base once and move the crossing enemy toward the midpoint, stopping at the listed pull distance, the midpoint, or a blocking obstacle. The wire then disappears. Bosses take the same hit but cannot be pulled; there is no stun or additional boss damage.
+Limits: one wire per spider, including a wire under construction. Reweave cooldown starts after a snap, expiry, or cancellation. Forced movement cannot trigger another Threadweaver wire during that displacement; player-bullet procs do not apply.
+Lifetime: downing the spider immediately removes its wire. Level transitions remove the wire, reset cooldown, and reconstruct the spider with purchased upgrades. Armed wires retain their placed endpoints even if the spider moves.
+Player interaction: lure an enemy across the visible wire to interrupt its approach or pull it into an existing damage zone. Running away from the setup can waste it; the spider cannot guarantee a catch.
+Short tooltip: Weaves a tripwire that snaps and pulls the first crossing enemy.
+Long tooltip: A spider lays one visible tripwire across an enemy approach. Lure a foe across to pull it toward the midpoint. Bosses take snap damage without being moved. A downed spider returns next level.
+Original version (planned): threadweaver_level owns the listed HP, geometry, pull distance, and reweave cooldown. Use swept movement-versus-segment checks during combat updates so fast crossings are not missed. One spider and one wire are allowed; only the prop level persists between levels.
+Browser version (planned): classification = render_capped. The spider shares the proposed nearest-8 allied-actor sprite budget; the armed wire and its endpoints are essential gameplay feedback and always draw when onscreen, outside the optional FX budget. Crossing, pull collision, damage, cooldown, and save level match the original design; no projectiles are spawned.
+QA acceptance (planned): verify a fast crossing triggers exactly once, simultaneous crossings catch only one enemy, blocked pulls stop at walls, bosses remain in place, and downing cancels the wire. With the spider sprite hidden by the browser cap, the onscreen wire must stay visible and produce the same catch and damage. Compare wire_trigger_count, pulled_distance, and damage_done; these counters are proposed, not existing runtime hooks.
 
 4.8. Bulwark Golem
 ID: bulwark_golem
