@@ -304,7 +304,7 @@ Status Promotion Rules
 A2. Runtime Field Map
 Implemented Shop Props (Current Runtime)
 | prop_id | meta_keys | apply_path | original runtime execution | browser comparison note | status |
-| --- | 
+| --- | --- |--- |--- |
 | piercing_rounds | pierce_level | shop catalog apply | bullet pierce charge consumed on enemy hit | preserve original pierce/damage; visible bullet cap only | implemented |
 | ricochet_scope | ricochet_level | shop catalog apply | bullet ricochet attempt and retarget | preserve original bounce routing/damage; visible bullet cap only | implemented |
 | shrapnel_shells | shrapnel_level | shop catalog apply | on-kill shrapnel spawn roll and splash bullets | preserve original proc/damage; apply pending-bullet headroom before spawn flood | implemented |
