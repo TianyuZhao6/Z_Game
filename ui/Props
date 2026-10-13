@@ -958,6 +958,14 @@ Global summon safety:
 - Area scans run at 10 Hz; movement and attack cooldowns use the normal combat update.
 - Bosses receive full direct summon damage. Summon hard-control duration against bosses is 50% of the listed duration.
 
+Visual direction (planned):
+- Path identity: use the existing Summoner violet (RGB 205, 150, 255) for SUM card borders, a small companion emblem, and restrained allied accents. Keep the creature's own materials and silhouette distinct; use shape and state icons as well as color.
+- Combat readability: companions have a thin dark outline, a small ground shadow, and a violet allied chevron at their feet. Keep their bodies smaller than the player's except for deliberate tank silhouettes; decorative glows must not cover enemy attack warnings.
+- Health and behavior: show a compact HP bar above each visible companion. Below 25% HP, add a broken-heart icon and a tucked/guarded retreat pose. Show a brief turn or windup before its ability, timed to the existing action rather than adding a new attack delay.
+- Downed and reconstructed: fold or collapse into an inert silhouette, dim the core, and replace the HP bar with a crossed companion icon. The pause entry reads "Downed - returns next level." At the next level start, a short assembly motion and relit core communicate reconstruction; the animation does not delay combat readiness.
+- Upgrades: add one readable physical detail at an upgrade milestone, such as a reinforced shell or larger tool. Keep the same silhouette and collision size; show exact level through the shop/pause badge rather than piling on particles.
+- Browser presentation: optional trails, sparks, and idle motion may be reduced. Preserve essential ability cues such as an armed tripwire; the pause roster must still show the HP/downed state of companions whose sprites are hidden by the visible-actor cap.
+
 Browser version: companion simulation, HP, targeting, attacks, cooldowns, and downed state should match the original version. Until a dedicated summon renderer budget exists, use a shared nearest-8 visible allied-actor budget with turrets for browser presentation only; hidden summons continue to move, attack, take damage, become downed, and reconstruct. Summon SFX may be coalesced and particles or damage text may be trimmed by the global browser budgets.
 
 4.7. Threadweaver
@@ -981,6 +989,12 @@ Snap: deal 0.40 * bullet_base once and move the crossing enemy toward the midpoi
 Limits: one wire per spider, including a wire under construction. Reweave cooldown starts after a snap, expiry, or cancellation. Forced movement cannot trigger another Threadweaver wire during that displacement; player-bullet procs do not apply.
 Lifetime: downing the spider immediately removes its wire. Level transitions remove the wire, reset cooldown, and reconstruct the spider with purchased upgrades. Armed wires retain their placed endpoints even if the spider moves.
 Player interaction: lure an enemy across the visible wire to interrupt its approach or pull it into an existing damage zone. Running away from the setup can waste it; the spider cannot guarantee a catch.
+Visual design (planned, first individual visual pass):
+- Silhouette: a low, six-legged clockwork spider with a pale thread spool on its back, dark jointed legs, and one violet core. A visible winding spool identifies its weaving role even at small sprite sizes.
+- Setup and arming: planting each endpoint makes a small fork-shaped anchor. A slack, dashed thread follows the spider to the second anchor; during the existing 0.5s arming period it straightens, then becomes a solid pale line with a dark edge and diamond endpoints. Dashed versus solid distinguishes inactive from armed without relying on color.
+- Snap and expiry: on a catch, the line contracts toward its midpoint with one brief impact tick on the caught enemy. The pull animation follows actual displacement and stops at obstacles; bosses show the hit tick without a tug. On expiry, the thread unwinds quietly. Remove the armed line immediately when its gameplay state ends.
+- Progression and icon: L2 adds spool braces and L3 adds a split spool housing; neither enlarges the hitbox. The shop icon shows the spider above two anchors joined by thread, using the shared SUM border.
+Visual acceptance: at 960x540, distinguish the spider from a turret and tell an unfinished wire from an armed wire over both light and dark ground. These distinctions must survive disabled optional particles and the browser companion sprite cap.
 Short tooltip: Weaves a tripwire that snaps and pulls the first crossing enemy.
 Long tooltip: A spider lays one visible tripwire across an enemy approach. Lure a foe across to pull it toward the midpoint. Bosses take snap damage without being moved. A downed spider returns next level.
 Original version (planned): threadweaver_level owns the listed HP, geometry, pull distance, and reweave cooldown. Use swept movement-versus-segment checks during combat updates so fast crossings are not missed. One spider and one wire are allowed; only the prop level persists between levels.
