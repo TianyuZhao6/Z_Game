@@ -1110,7 +1110,7 @@ Original version: pack_tactics_level owns the listed multiplicative bonuses and 
 Browser version: classification = same_as_original. Stat bonuses, affected summon types, rebuild order, and save level match the original version. It adds no render or spawn load. QA compares rebuilt summon stats before and after localStorage refresh and confirms bonuses are not compounded.
 
 4.13. Evolving Skull (working companion name)
-Status: design discussion; appearance sequence confirmed, gameplay proposal not yet approved. No runtime implementation or final shop roster entry yet.
+Status: design discussion; appearance sequence and first/second-stage ability direction confirmed. Detailed combat rules, tuning, and final-stage ability remain undecided. No runtime implementation or final shop roster entry yet.
 Identity: one unique, fully automatic companion occupying one equipped slot across all three stages. Duplicate purchases upgrade this same companion along a fixed progression; evolution levels are specific to this companion and remain undecided.
 
 Approved appearance sequence:
@@ -1120,13 +1120,17 @@ Approved appearance sequence:
 - Stage colors may change with evolution. Proposed palette for discussion: crimson petals with violet tendrils -> violet spirit fire with hot red eyes -> deep purple body-space with a bright crimson eye. Exact palettes and transition animations await selection.
 - Preserve a recognizable skull face and levitating posture through evolution; each stage must change the body as well as unlock a mechanic. Detailed concept art must be simplified into readable gameplay sprites before implementation.
 
-Ability proposal for discussion - Soul Harvest:
-- Shared identity: harvest finite soul charges and spend them on ghost attacks. This is a resource-building combat loop; it does not use Threadweaver's trap or pull.
-- Initial / Bloombone: automatically siphon a nearby living enemy to build a soul charge, then release the charge as a short-lived attacking spirit. Petals fill with light while charging and open on release. Living-target siphoning gives the initial form a way to fight before any enemy dies and during a lone-boss encounter.
-- Junior / Soulflame: retain the living-target siphon and gain charges from nearby enemy deaths, including kills by the player or other companions. This adds wave-clearing momentum; death rewards must be limited and cannot trigger an unbounded chain of spirit spawns.
-- Final / Rift Skull: retain harvesting and let a released spirit imitate one simplified attack from the harvested enemy's family. Only explicitly designed attack families are eligible; bosses use a bounded generic spirit attack rather than copying boss abilities. This adds enemy-dependent attack selection to the same harvesting role.
-- Spirits are temporary attack effects, not additional owned companions: no independent HP, equipment slots, upgrades, or recursive summoning. Charge limits, siphon rules, release timing, kill attribution, damage scaling, and spirit lifetime must be decided before implementation.
-- Current proposals do not approve names, numbers, evolution thresholds, copied attack families, or final color palettes. Resolve the core ability with the player first, then detail one stage at a time.
+Confirmed ability direction:
+- Initial / Bloombone: automatically fire projectiles that curve toward chosen enemies and deal direct damage on contact, rather than landing for an area burst. Start with one projectile per attack; upgrades unlock multiple projectiles launched simultaneously. Spread a volley across nearby enemies, concentrating all projectiles on the same enemy when only one target is available. Exact volley counts, distribution of surplus shots among multiple targets, tracking during flight, impact damage, and cooldown remain to be decided. Soul Harvest is not available at this stage.
+- Junior / Soulflame: keep the curved projectile attack and unlock Soul Harvest. Enemy deaths caused by this companion increase its damage and maximum HP. Nearby deaths caused solely by the player or other companions do not grant the bonus. Gain per kill, growth cap, effect on current HP when maximum HP rises, and detailed kill-attribution rules remain to be decided.
+- Soul Harvest lifetime: earned stat enhancement belongs to the current run and resets to zero on every fresh run; it must not accumulate across separate runs. Handling across level transitions, downing, unequipping, and a save/resume of the same run still needs explicit agreement. Keep this run-specific enhancement separate from purchased upgrades and evolution progression.
+- Final / Rift Skull: approved final appearance; new ability intentionally left open. Attack imitation is rejected. Do not add a replacement final-stage mechanic until it has been discussed with the player.
+- The earlier living-target siphon, soul-charge ammunition, and ghost-attack proposal is superseded. Soul Harvest now means personal stat growth from the skull's kills, unlocked by the first evolution.
+
+Visual feedback proposals for the confirmed mechanics:
+- Bloombone opens its bone petals before releasing a red-purple magic projectile; a short trail makes the curved flight readable. Multi-projectile upgrades release visibly separated arcs in the same volley, including when focusing on one target. Exact projectile color and impact effect await selection.
+- Soulflame briefly draws a soul wisp from an eligible slain enemy into its skull; the wisp illustrates the stat gain and is not a spawned combat ally or collectible. A compact stat readout should show the accumulated run bonus so growth is understandable without increasing glow indefinitely.
+- Projectile visuals must communicate curved flight toward an enemy and direct contact damage. Do not show a ground landing marker or splash explosion for this attack. Guidance after launch and behavior when a target dies remain to be decided.
 
 5. Crit, Element, and Synergy Props
 
