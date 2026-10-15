@@ -1148,7 +1148,7 @@ Visual feedback proposals for the confirmed mechanics:
 - Soulflame briefly draws a soul wisp from an eligible slain enemy into its skull; the wisp illustrates the stat gain and is not a spawned combat ally or collectible. A compact stat readout should show the accumulated run bonus so growth is understandable without increasing glow indefinitely.
 - Projectile visuals must communicate curved flight toward a moving enemy and direct contact damage. On target death, the visible trail bends toward the replacement target instead of teleporting the projectile. Do not show a ground landing marker or splash explosion for this attack.
 - At a wall hit, show the impact at the wall surface. A destructible wall uses its damage/break feedback; an indestructible wall shows a blocked impact. Do not draw a projectile continuing through a standing wall.
-
+    
 5. Crit, Element, and Synergy Props
 
 5.1. Razor Focus
