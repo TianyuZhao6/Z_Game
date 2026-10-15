@@ -18,7 +18,7 @@ Browser version rules:
 
 Original version vs browser version:
 | area | original version | browser version |
-| --- |
+| --- | --- | --- | --- |
 | Simulation authority | Original-version runtime is the reference for damage, cooldowns, proc order, save keys, and level tables. | Browser should keep those values unless the prop entry lists a browser-specific cap, fallback, or reduced value. |
 | Rendering | Original version may draw every spawned bullet, pickup, turret, text, and particle allowed by the original runtime. | Browser may hide, merge, or trim visible actors and feedback while keeping simulation values authoritative. |
 | Overflow | Original version usually follows each prop s own max_active, cooldown, or entity cap. | Browser must state whether overflow is dropped, merged, credited directly, hidden visually, or spawn-count reduced. |
@@ -939,9 +939,18 @@ Original version: spawns stationary turrets from stationary_turret_count, restor
 
 4.6. Summon Path Shared Rules
 Design review rule: each summon must introduce a distinct player interaction or tactical role. A familiar attack with a different element, appearance, or stat bonus is not enough. Review and revise one entry at a time; the remaining drafts are not yet approved as unique designs.
+Confirmed player decisions (2026-10-15; design only):
+- Control: fully automatic. Companions choose movement, targets, and ability timing themselves; no summon command buttons or manual ability activation.
+- Loadout: equip up to 3 different owned companions between levels. Existing Auto-Turrets and Stationary Turrets are excluded from these three slots. Unequipped companions remain owned and retain their purchased upgrades.
+- Build role: with investment, summons can become the player's main damage source. The player still fights and dodges; individual companions can specialize in support or control instead of direct damage.
+- Acquisition: individual companion props appear in the normal shop, with an occasional guaranteed summon offer. The guarantee frequency and offer-selection rules remain to be decided.
+- Duplicate purchases: upgrade the same unique companion through a fixed progression; do not create another copy or offer branching specializations. Each companion has its own evolution milestones rather than a shared level threshold. Each evolution visibly transforms its body and adds a new mechanic that deepens its existing role. Exact thresholds, number of stages, and individual evolution abilities remain to be decided.
+- Downing: at 0 HP, a companion remains inactive for the rest of the current level, with no mid-level replacement or revival. It returns at full HP next level with its upgrades and any unlocked evolution retained.
+- Evolution details, damage scaling, path bonuses, and final appearances remain under discussion. Existing detailed level tables and max levels are provisional and must be reconciled with the chosen evolution progression before implementation.
+- Art direction: magical, biological, and deliberately unreal. The floating skull is a separate companion with its own ability; revisit Threadweaver later. Its approved appearance sequence is Bloombone (initial) -> Soulflame (junior) -> Rift Skull (final). Colors may change with evolution; exact stage palettes remain to be chosen. The industrial, arcane-clockwork, and friendly mechanical spider proposals were rejected.
 Summon identity and lifetime:
 - Each companion prop creates one unique summon; Auto-Turret and Stationary Turret keep their existing count rules.
-- Companions spawn at level start with full HP and retain their purchased prop levels between levels.
+- Equipped companions spawn at level start with full HP and retain their purchased prop levels between levels; unequipped companions do not spawn.
 - At 0 HP, a companion becomes downed and cannot act again during the current level. It reconstructs at full HP when the next level begins.
 - Current summon HP, target, position, cooldowns, and downed state are temporary combat state. Save only the prop level; do not persist a mid-level downed state across a completed level transition.
 
@@ -953,24 +962,25 @@ Movement and targeting:
 - Summon damage can trigger enemy death and reward resolution, but cannot trigger player-bullet-only props such as Ricochet Scope or Shrapnel Shells unless a future prop explicitly grants that interaction.
 
 Global summon safety:
-- Maximum mobile companions from unique props: 5. Turrets use their own existing caps.
+- Maximum equipped mobile companions: 3 different owned companions, selected between levels. Turrets use their own existing caps and do not consume companion slots.
 - A summon may change target at most 5 times per second to prevent target-thrashing.
 - Area scans run at 10 Hz; movement and attack cooldowns use the normal combat update.
 - Bosses receive full direct summon damage. Summon hard-control duration against bosses is 50% of the listed duration.
 
 Visual direction (planned):
-- Path identity: use the existing Summoner violet (RGB 205, 150, 255) for SUM card borders, a small companion emblem, and restrained allied accents. Keep the creature's own materials and silhouette distinct; use shape and state icons as well as color.
+- Creature identity: favor living bone, organic growth, spectral tissue, floating body fragments, and impossible anatomy. Use crimson/red and deep purple magic with readable bone highlights. Avoid mechanical construction, metal armor, gears, tool attachments, and robotic faces for the new companion designs. Specific forms are still being selected one companion at a time.
+- Path identity: retain the existing Summoner violet (RGB 205, 150, 255) for SUM card borders, a small companion emblem, and allied accents. Red-purple creature effects need distinct allied shapes and outlines so they cannot be mistaken for enemy damage warnings; use shape and state icons as well as color.
 - Combat readability: companions have a thin dark outline, a small ground shadow, and a violet allied chevron at their feet. Keep their bodies smaller than the player's except for deliberate tank silhouettes; decorative glows must not cover enemy attack warnings.
 - Health and behavior: show a compact HP bar above each visible companion. Below 25% HP, add a broken-heart icon and a tucked/guarded retreat pose. Show a brief turn or windup before its ability, timed to the existing action rather than adding a new attack delay.
-- Downed and reconstructed: fold or collapse into an inert silhouette, dim the core, and replace the HP bar with a crossed companion icon. The pause entry reads "Downed - returns next level." At the next level start, a short assembly motion and relit core communicate reconstruction; the animation does not delay combat readiness.
-- Upgrades: add one readable physical detail at an upgrade milestone, such as a reinforced shell or larger tool. Keep the same silhouette and collision size; show exact level through the shop/pause badge rather than piling on particles.
+- Downed and reconstructed: let the creature's magic fade, its organic form become inert or dissolve into a small spectral remnant, and replace the HP bar with a crossed companion icon. The pause entry reads "Downed - returns next level." At the next level start, a short magical reformation communicates its return; the animation does not delay combat readiness. Exact motion depends on the chosen appearance.
+- Upgrades and evolution: ordinary upgrades may strengthen a small organic detail or glow. Evolution should visibly transform the body through a distinct growth, changed anatomy, or spectral form associated with the new mechanic. Preserve recognizable identity; art alone must not silently change collision size. Show exact level through the shop/pause badge rather than piling on particles.
 - Browser presentation: optional trails, sparks, and idle motion may be reduced. Preserve essential ability cues such as an armed tripwire; the pause roster must still show the HP/downed state of companions whose sprites are hidden by the visible-actor cap.
 
 Browser version: companion simulation, HP, targeting, attacks, cooldowns, and downed state should match the original version. Until a dedicated summon renderer budget exists, use a shared nearest-8 visible allied-actor budget with turrets for browser presentation only; hidden summons continue to move, attack, take damage, become downed, and reconstruct. Summon SFX may be coalesced and particles or damage text may be trimmed by the global browser budgets.
 
 4.7. Threadweaver
 ID: threadweaver
-Status: planned; first individual summon redesign. Replaces the Arc Drone draft.
+Status: deferred for later review. Replaces the Arc Drone draft. Mechanical spider appearance rejected; retain the unapproved gameplay draft for a future pass. The floating skull is a separate companion and does not inherit this ability.
 Effect:
 Summon a mechanical spider that stretches a tripwire across an approaching enemy's route. The first enemy to cross snaps the wire and is pulled toward its midpoint, letting the player lure a threat into a chosen lane or an existing hazard.
 Distinct role: autonomous trap placement and enemy repositioning. It has no repeating ranged attack, chain lightning, slow aura, or damage-over-time effect.
@@ -989,12 +999,11 @@ Snap: deal 0.40 * bullet_base once and move the crossing enemy toward the midpoi
 Limits: one wire per spider, including a wire under construction. Reweave cooldown starts after a snap, expiry, or cancellation. Forced movement cannot trigger another Threadweaver wire during that displacement; player-bullet procs do not apply.
 Lifetime: downing the spider immediately removes its wire. Level transitions remove the wire, reset cooldown, and reconstruct the spider with purchased upgrades. Armed wires retain their placed endpoints even if the spider moves.
 Player interaction: lure an enemy across the visible wire to interrupt its approach or pull it into an existing damage zone. Running away from the setup can waste it; the spider cannot guarantee a catch.
-Visual design (planned, first individual visual pass):
-- Silhouette: a low, six-legged clockwork spider with a pale thread spool on its back, dark jointed legs, and one violet core. A visible winding spool identifies its weaving role even at small sprite sizes.
-- Setup and arming: planting each endpoint makes a small fork-shaped anchor. A slack, dashed thread follows the spider to the second anchor; during the existing 0.5s arming period it straightens, then becomes a solid pale line with a dark edge and diamond endpoints. Dashed versus solid distinguishes inactive from armed without relying on color.
-- Snap and expiry: on a catch, the line contracts toward its midpoint with one brief impact tick on the caught enemy. The pull animation follows actual displacement and stops at obstacles; bosses show the hit tick without a tug. On expiry, the thread unwinds quietly. Remove the armed line immediately when its gameplay state ends.
-- Progression and icon: L2 adds spool braces and L3 adds a split spool housing; neither enlarges the hitbox. The shop icon shows the spider above two anchors joined by thread, using the shared SUM border.
-Visual acceptance: at 960x540, distinguish the spider from a turret and tell an unfinished wire from an armed wire over both light and dark ground. These distinctions must survive disabled optional particles and the browser companion sprite cap.
+Visual design (under revision):
+- The mechanical spider, spool, metal anchors, and brace upgrades are withdrawn as appearance proposals. Threadweaver needs its own supernatural appearance in a later design pass.
+- The floating skull has its own identity and evolution sequence in section 4.13; do not reuse its approved forms for Threadweaver.
+- If the trap mechanic is retained, keep inactive versus armed states readable by shape/line pattern, keep active trap feedback visible under browser caps, and make pull feedback follow actual displacement. These readability requirements do not prescribe mechanical-looking anchors or a physical spool.
+Visual acceptance: evaluate the chosen supernatural silhouette at gameplay size over light and dark ground, with optional particles disabled. Design the evolution appearance alongside its new mechanic after the base form and role are agreed.
 Short tooltip: Weaves a tripwire that snaps and pulls the first crossing enemy.
 Long tooltip: A spider lays one visible tripwire across an enemy approach. Lure a foe across to pull it toward the midpoint. Bosses take snap damage without being moved. A downed spider returns next level.
 Original version (planned): threadweaver_level owns the listed HP, geometry, pull distance, and reweave cooldown. Use swept movement-versus-segment checks during combat updates so fast crossings are not missed. One spider and one wire are allowed; only the prop level persists between levels.
@@ -1099,6 +1108,25 @@ Short tooltip: Improves the damage, speed, and health of all summons.
 Long tooltip: Strengthens every summon. Turrets gain damage and health; mobile companions also gain movement speed. Adds no new actor.
 Original version: pack_tactics_level owns the listed multiplicative bonuses and applies them once during summon stat rebuild. The prop creates no entity, has no temporary combat state, and persists through the canonical META key.
 Browser version: classification = same_as_original. Stat bonuses, affected summon types, rebuild order, and save level match the original version. It adds no render or spawn load. QA compares rebuilt summon stats before and after localStorage refresh and confirms bonuses are not compounded.
+
+4.13. Evolving Skull (working companion name)
+Status: design discussion; appearance sequence confirmed, gameplay proposal not yet approved. No runtime implementation or final shop roster entry yet.
+Identity: one unique, fully automatic companion occupying one equipped slot across all three stages. Duplicate purchases upgrade this same companion along a fixed progression; evolution levels are specific to this companion and remain undecided.
+
+Approved appearance sequence:
+- Initial - Bloombone: floating organic skull framed by bone petals, with living tendrils below. Use concept B from the floating-skull comparison as the initial-form reference.
+- Junior - Soulflame: a more exposed skull and separated jaw surrounded by living spirit fire. Use concept A as the junior-form reference.
+- Final - Rift Skull: separated bone fragments and horns orbiting a supernatural eye, held together by spectral tissue and magic. Use concept C as the final-form reference.
+- Stage colors may change with evolution. Proposed palette for discussion: crimson petals with violet tendrils -> violet spirit fire with hot red eyes -> deep purple body-space with a bright crimson eye. Exact palettes and transition animations await selection.
+- Preserve a recognizable skull face and levitating posture through evolution; each stage must change the body as well as unlock a mechanic. Detailed concept art must be simplified into readable gameplay sprites before implementation.
+
+Ability proposal for discussion - Soul Harvest:
+- Shared identity: harvest finite soul charges and spend them on ghost attacks. This is a resource-building combat loop; it does not use Threadweaver's trap or pull.
+- Initial / Bloombone: automatically siphon a nearby living enemy to build a soul charge, then release the charge as a short-lived attacking spirit. Petals fill with light while charging and open on release. Living-target siphoning gives the initial form a way to fight before any enemy dies and during a lone-boss encounter.
+- Junior / Soulflame: retain the living-target siphon and gain charges from nearby enemy deaths, including kills by the player or other companions. This adds wave-clearing momentum; death rewards must be limited and cannot trigger an unbounded chain of spirit spawns.
+- Final / Rift Skull: retain harvesting and let a released spirit imitate one simplified attack from the harvested enemy's family. Only explicitly designed attack families are eligible; bosses use a bounded generic spirit attack rather than copying boss abilities. This adds enemy-dependent attack selection to the same harvesting role.
+- Spirits are temporary attack effects, not additional owned companions: no independent HP, equipment slots, upgrades, or recursive summoning. Charge limits, siphon rules, release timing, kill attribution, damage scaling, and spirit lifetime must be decided before implementation.
+- Current proposals do not approve names, numbers, evolution thresholds, copied attack families, or final color palettes. Resolve the core ability with the player first, then detail one stage at a time.
 
 5. Crit, Element, and Synergy Props
 
