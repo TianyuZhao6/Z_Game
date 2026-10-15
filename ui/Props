@@ -944,16 +944,17 @@ Confirmed player decisions (2026-10-15; design only):
 - Loadout: equip up to 3 different owned companions between levels. Existing Auto-Turrets and Stationary Turrets are excluded from these three slots. Unequipped companions remain owned and retain their purchased upgrades.
 - Build role: with investment, summons can become the player's main damage source. The player still fights and dodges; individual companions can specialize in support or control instead of direct damage.
 - Enemy interaction: enemies can deliberately target nearby companions as well as the player. Exact target-selection priorities and switching rules remain to be designed; companions are not limited to taking incidental damage.
-- Acquisition: individual companion props appear in the normal shop, with an occasional guaranteed summon offer. The guarantee frequency and offer-selection rules remain to be decided.
+- Acquisition: individual companion props may appear in normal shop offers at any time. Every third shop visit in a run (3, 6, 9, ...) includes one guaranteed summon card. Which eligible summon cards qualify, reroll handling, and the fallback when no summon card is purchasable remain to be specified.
 - Duplicate purchases: upgrade the same unique companion through a fixed progression; do not create another copy or offer branching specializations. Each companion has its own evolution milestones rather than a shared level threshold. Each evolution visibly transforms its body and adds a new mechanic that deepens its existing role. Exact thresholds, number of stages, and individual evolution abilities remain to be decided.
 - Downing: at 0 HP, a companion remains inactive for the rest of the current level, with no mid-level replacement or revival. It returns at full HP next level with its upgrades and any unlocked evolution retained.
+- Fresh-run reset: reset companion ownership, purchased levels, evolutions, equipped loadout, harvested bonuses, and the summon-shop visit counter when starting a completely fresh run. Acquire and evolve companions again during each run. Resuming a saved run is not a fresh run and must preserve that run's progression.
 - Evolution details, damage scaling, path bonuses, and final appearances remain under discussion. Existing detailed level tables and max levels are provisional and must be reconciled with the chosen evolution progression before implementation.
 - Art direction: magical, biological, and deliberately unreal. The floating skull is a separate companion with its own ability; revisit Threadweaver later. Its approved appearance sequence is Bloombone (initial) -> Soulflame (junior) -> Rift Skull (final). Colors may change with evolution; exact stage palettes remain to be chosen. The industrial, arcane-clockwork, and friendly mechanical spider proposals were rejected.
 Summon identity and lifetime:
 - Each companion prop creates one unique summon; Auto-Turret and Stationary Turret keep their existing count rules.
 - Equipped companions spawn at level start with full HP and retain their purchased prop levels between levels; unequipped companions do not spawn.
 - At 0 HP, a companion becomes downed and cannot act again during the current level. It reconstructs at full HP when the next level begins.
-- Current summon HP, target, position, cooldowns, and downed state are temporary combat state. Save only the prop level; do not persist a mid-level downed state across a completed level transition.
+- At a completed level transition, reset temporary combat state and reconstruct equipped companions as specified above. Preserve run-owned companion levels, loadout, evolution progression, and any surviving per-companion run bonuses in the same-run save. Mid-level resume must respect the no-revival rule; precise combat-snapshot fields remain to be specified. A fresh run clears all companion progression.
 
 Movement and targeting:
 - Mobile summons stay within a 6-tile home radius of the player unless their prop lists another value.
@@ -1113,15 +1114,15 @@ Browser version: classification = same_as_original. Stat bonuses, affected summo
 
 4.13. Evolving Skull (working companion name)
 Status: design discussion; appearance sequence and first/second-stage ability direction confirmed. Detailed combat rules, tuning, and final-stage ability remain undecided. No runtime implementation or final shop roster entry yet.
-Identity: one unique, fully automatic companion occupying one equipped slot across all three stages. The first purchase grants level 1; each duplicate purchase adds one level along a fixed progression. This skull evolves into Soulflame at level 3 and Rift Skull at level 6. Its maximum purchasable level and exact per-level stats remain undecided.
+Identity: one unique, fully automatic companion occupying one equipped slot across all three stages. The first purchase grants level 1; each duplicate purchase adds one level along a fixed progression. This skull evolves into Soulflame at level 3 and Rift Skull at level 6. Maximum purchasable level is 6; remove further skull upgrade offers at that cap. Further strength comes from Soul Harvest and other summon props. Exact per-level stats remain to be tuned.
 
 Confirmed progression targets (initial playtest values):
 | form | companion levels | simultaneous projectiles per attack | Soul Harvest bonus cap for damage and max HP |
 | --- | --- | --- | --- |
 | Bloombone / initial | 1-2 | 1 at level 1; 3 at level 2 | unavailable; no Soul Harvest before level 3 |
 | Soulflame / junior | 3-5 | 3 | +100% each |
-| Rift Skull / final | 6 onward | 5 | +200% each |
-Confirmed volley progression: L1 = 1, L2 = 3, L3-L5 = 3, L6 onward = 5. Base damage, max HP, fire interval, and other per-level stats remain to be tuned.
+| Rift Skull / final | 6 (purchase cap) | 5 | +200% each |
+Confirmed volley progression: L1 = 1, L2 = 3, L3-L5 = 3, L6 = 5. Base damage, max HP, fire interval, and other per-level stats remain to be tuned.
 
 Approved appearance sequence:
 - Initial - Bloombone: floating organic skull framed by bone petals, with living tendrils below. Use concept B from the floating-skull comparison as the initial-form reference.
