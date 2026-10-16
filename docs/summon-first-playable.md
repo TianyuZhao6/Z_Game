@@ -1,5 +1,9 @@
 # First-playable summon checkpoint
 
+Historical checkpoint record. The current Eidolon sizing, avatars, viewport-relative
+Procession, beam and taller walls are documented in `summon-option-b.md`.
+Old screenshots below intentionally record the earlier recovery version.
+
 ## Scope and integration
 
 Continued the existing `zgame/summons.py` implementation. Homing volleys, harvest,
@@ -96,6 +100,9 @@ Checkpoint branch: `codex/summon-first-playable`, based on `web-demo` at
 `9f58f9d`. The previous branch is retained; nothing is pushed or deployed.
 
 ## Movement-facing and terrain art follow-up (2026-10-15)
+
+Superseded companion presentation and additional beam rules are documented in
+`summon-option-b.md` (2026-10-16). The map/wall changes below remain unchanged.
 
 All three evolutions face their actual movement using eight camera-relative
 views. Upright front/profile/rear art replaces the fixed image. Facing updates

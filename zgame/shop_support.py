@@ -18,11 +18,11 @@ def build_shop_catalog(game):
     catalog = [
         {
             "id": summons.SKULL_ID,
-            "name": "Evolving Skull",
+            "name": "Eidolon",
             "cost": 18,
             "rarity": 2,
             "max_level": 6,
-            "desc": "Automatic skull. Curved volleys; Soul Harvest at L3; Shadow Procession at L6.",
+            "desc": "Automatic skull. Curved volleys; Soul Harvest L3; Shadow Procession + 3s eye beam L6.",
             "apply": lambda: summons.purchase(meta),
         },
         {

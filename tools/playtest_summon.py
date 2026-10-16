@@ -39,7 +39,7 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
     card=next(c for c in shop_support.build_shop_catalog(game) if c["id"]==summons.SKULL_ID)
     for _ in range(tier):
         card["apply"]()
-    capture={"time":0.0,"cast":False,"shot":False,"down":False,"frame":False,"frames":0,"max_enemies":0,"facings":set()}
+    capture={"time":0.0,"cast":False,"beam":False,"shot":False,"down":False,"frame":False,"frames":0,"max_enemies":0,"facings":set(),"cast_positions":set()}
     original_start=summons.start_level
     original_update=summons.update
     renderer=game.render_game_iso_web_lite if lite else game.render_game_iso
@@ -68,6 +68,7 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
         original_update(g,gs,dt,enemies)
         capture["facings"].add(skull.facing)
         capture["cast"] |= skull.cast_left>0
+        capture["beam"] |= skull.beam_left>0
         capture["shot"] |= bool(skull.shots)
         if capture["down"]:
             assert skull.hp==0 and skull.harvest==0 and skull.charge==0
@@ -85,6 +86,28 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
             pygame.image.save(screen,str(evidence/f"{name}.png"))
             capture["frame"]=True
         skull=gs.companions[0]
+        if tier==6 and skull.beam_left>0 and skull.beam_end and not skull.beam_wall and "beam_frame" not in capture:
+            pygame.image.save(screen,str(evidence/f"{name}-beam.png"))
+            capture["beam_frame"]=True
+        if skull.cast_left>0:
+            capture["cast_positions"].add(p.rect.center)
+            cam=game.calculate_iso_camera(*p.rect.center)
+            # Check live paths against the moving camera, including delayed entries.
+            for row in skull.procession:
+                x,y=skull.procession_world(*row[:2])
+                sx,sy=game.iso_world_to_screen(x/game.CELL_SIZE,(y-game.INFO_BAR_HEIGHT)/game.CELL_SIZE,0,*cam)
+                assert abs(sx-row[0]*game.VIEW_W)<3
+                assert abs(sy-(game.INFO_BAR_HEIGHT+row[1]*(game.VIEW_H-game.INFO_BAR_HEIGHT)))<3
+            for label,remaining in (("entry",2.7),("moving",1.5),("exit",.4)):
+                if skull.cast_left<remaining and label not in capture:
+                    pygame.image.save(screen,str(evidence/f"{name}-procession-{label}.png"))
+                    capture[label]=True
+        if down and .45<skull.death_age<.55 and skull.hp<=0 and "dissolve_frame" not in capture:
+            # Focus the real camera on the downed actor, without moving entities.
+            sx,sy=game.iso_world_to_screen(skull.rect.centerx/game.CELL_SIZE,(skull.rect.centery-game.INFO_BAR_HEIGHT)/game.CELL_SIZE)
+            renderer(screen,gs,p,enemies,bullets,eshots,obstacles,override_cam=(sx-640,sy-360))
+            pygame.image.save(screen,str(evidence/f"{name}-dissolve.png"))
+            capture["dissolve_frame"]=True
         if name=="bloombone" and 2<t<8:
             for label, directions in (("front",(1,7)),("rear",(3,5))):
                 if skull.facing in directions and label not in capture:
@@ -118,6 +141,10 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
     assert capture["shot"],"No ordinary shots fired"
     if tier==6:
         assert capture["cast"],"Procession never triggered"
+        assert capture["beam"],"Eye beam never triggered"
+        points=capture["cast_positions"]
+        assert len(points)>20,"Player did not move during Procession"
+        assert max(x for x,y in points)-min(x for x,y in points)+max(y for x,y in points)-min(y for x,y in points)>game.CELL_SIZE
     assert skull.cast_left==0 and not skull.procession
     if down:
         print(f"{name}: level loop complete; checking snapshot resume",flush=True)

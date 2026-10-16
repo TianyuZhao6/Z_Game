@@ -65,18 +65,18 @@ def wall_tile(width, height, wall_h, color, seed, style="prism"):
     warm = color[0] > color[2]
     base = shade(color, lift=(seed%3-1)*3)
     dark = shade(base, .35)
-    # Two masonry faces with offset mortar joints and a narrow base course.
+    # Two visibly stacked masonry courses with staggered vertical joints.
     for a, b, factor in ((top[3], top[2], .53), (top[2], top[1], .72)):
         face = [a, b, (b[0], b[1]+wall_h), (a[0], a[1]+wall_h)]
         pygame.draw.polygon(surf, shade(base, factor), face)
-        for course in (.43, .86):
+        for course in (.5, .94):
             y = round(wall_h*course)
-            pygame.draw.line(surf, dark, (a[0],a[1]+y), (b[0],b[1]+y), 1)
+            pygame.draw.line(surf, dark, (a[0],a[1]+y), (b[0],b[1]+y), 2)
             pygame.draw.line(surf, shade(base, factor, 7), (a[0],a[1]+y+1), (b[0],b[1]+y+1), 1)
         for row, t in enumerate((.33, .68)):
             p = mix(a, b, t)
-            pygame.draw.line(surf, dark, (p[0],p[1]+round(row*wall_h*.43)),
-                             (p[0],p[1]+round((row+1)*wall_h*.43)), 1)
+            pygame.draw.line(surf, dark, (p[0],p[1]+round(row*wall_h*.5)),
+                             (p[0],p[1]+round((row+1)*wall_h*.5)), 1)
         pygame.draw.line(surf, shade(base,.32), face[2], face[3], 2)
     # Thick cap, softly faceted center, chipped edge highlights.
     pygame.draw.polygon(surf, shade(base,.77), top)
@@ -111,4 +111,6 @@ def wall_tile(width, height, wall_h, color, seed, style="prism"):
         pygame.draw.rect(surf, shade(base,.8), pillar, border_radius=4)
         pygame.draw.line(surf, shade(base,1.2), pillar.topleft, pillar.bottomleft, 2)
         pygame.draw.rect(surf, dark, pillar.inflate(-8,-12), 1, border_radius=2)
-    return surf, cx, top_y
+    # Raise the cap, never extend the taller wall down into the next floor tile.
+    # Anchor remains on the ground footprint for both cached and sorted renders.
+    return surf, cx, top_y+wall_h

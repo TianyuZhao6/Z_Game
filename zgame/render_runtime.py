@@ -496,8 +496,7 @@ def install(game):
 
     def _wall_sort_world_y(gx: int, gy: int) -> int:
         _, sy = iso_world_to_screen(gx, gy, 0, 0, 0)
-        wall_h = ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0)
-        return int(sy + ISO_CELL_H + wall_h)
+        return int(sy + ISO_CELL_H)
 
     def _wall_visual_color(ob) -> tuple[int, int, int]:
         base_col = (80, 101, 117) if getattr(ob, "type", "") == "Indestructible" else (137, 87, 83)
@@ -1087,7 +1086,7 @@ def install(game):
         screen.fill(MAP_BG)
         _render_counter(profiler, "r_bg_fill_ms", segment_started)
         segment_started = time.perf_counter()
-        _blit_web_static_background(screen, game_state, camx, camy, wall_h=max(12, int(ISO_WALL_Z * 0.7)))
+        _blit_web_static_background(screen, game_state, camx, camy, wall_h=ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
         _render_counter(profiler, "r_bg_static_ms", segment_started)
         _emit_recent_runtime_timing(profiler, "r_bg_floor_build_ms", "iso_floor_build")
         _emit_recent_runtime_timing(profiler, "r_bg_wall_build_ms", "web_wall_build")
@@ -1181,7 +1180,7 @@ def install(game):
         actors = []
         for companion in getattr(game_state, "companions", ()):
             sx, sy = iso_world_to_screen(companion.rect.centerx / CELL_SIZE, (companion.rect.centery - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
-            if _screen_visible_point(sx, sy, margin=160):
+            if _screen_visible_point(sx, sy, margin=companion.render_margin):
                 actors.append((sy, "companion", companion, sx, sy))
         turrets = getattr(game_state, "turrets", ())
         visible_turrets = []
@@ -1631,7 +1630,7 @@ def install(game):
                 if getattr(ob, "type", "") == "StationaryTurret":
                     continue
                 top_pts = iso_tile_points(gx, gy, camx, camy)
-                sort_y = top_pts[2][1] + wall_h_current
+                sort_y = top_pts[2][1]
                 drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": _wall_visual_color(ob)}))
         spoil_iter = (
             game_state.query_spoils_near_rect(view_world_rect, pad_px=CELL_SIZE)
@@ -1646,7 +1645,7 @@ def install(game):
             drawables.append(("coin", sy, {"cx": sx, "cy": sy, "r": s.r}))
         for companion in getattr(game_state, "companions", ()):
             sx, sy = iso_world_to_screen(companion.rect.centerx / CELL_SIZE, (companion.rect.centery - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
-            if _screen_visible_point(sx, sy, margin=160):
+            if _screen_visible_point(sx, sy, margin=companion.render_margin):
                 drawables.append(("companion", sy, {"cx": sx, "cy": sy, "obj": companion}))
         for t in getattr(game_state, "turrets", []):
             wx, wy = t.x / CELL_SIZE, (t.y - INFO_BAR_HEIGHT) / CELL_SIZE

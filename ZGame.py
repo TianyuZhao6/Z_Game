@@ -1069,10 +1069,10 @@ MAIN_BLOCK_HEALTH = 40
 USE_ISO = True  # True: 伪3D等距渲染；False: 保持现在的纯2D
 ISO_CELL_W = int(64 * WORLD_SCALE)  # 等距砖块在画面上的“菱形”宽
 ISO_CELL_H = int(32 * WORLD_SCALE)  # 等距砖块在画面上的“菱形”半高（顶点到中心）
-ISO_WALL_Z = int(22 * WORLD_SCALE)  # 障碍“墙体”抬起的高度（屏幕像素）
+ISO_WALL_Z = 2 * int(22 * WORLD_SCALE)  # Two stacked masonry courses; visual height only.
 ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
 SPATIAL_CELL = int(CELL_SIZE * 1.25)  # 统一网格大小
-WALL_STYLE = "prism"  # "billboard" | "prism" | "hybrid"; low carved masonry
+WALL_STYLE = "prism"  # "billboard" | "prism" | "hybrid"; two-course carved masonry
 ISO_EQ_GAIN = math.sqrt(2) * (ISO_CELL_W * 0.5)
 # --- unified UI palette (matches homepage style) ---
 UI_BG = (16, 19, 26)

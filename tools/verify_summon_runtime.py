@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import pygame
 import ZGame as game
-from zgame import summons, shop_support, shop_ui, persistence, app_flow, terrain_art, render_runtime
+from zgame import summons, summon_vfx, shop_support, shop_ui, persistence, app_flow, terrain_art, render_runtime
 
 
 class SkullTests(unittest.TestCase):
@@ -422,6 +422,7 @@ class SkullTests(unittest.TestCase):
         summons.start_level(game,self.gs,self.player)
         skull=self.gs.companions[0]
         self.assertEqual(skull.procession,rows)
+        self.assertTrue(skull.procession_relative)
         self.assertAlmostEqual(skull.cast_left,2.3)
         for _ in range(140):
             skull.update(1/60,self.enemies)
@@ -460,6 +461,297 @@ class SkullTests(unittest.TestCase):
             art=summons.sprite(i,120)
             self.assertEqual(art.get_at((0,0)).a,0)
         summons.loadout_button(game,screen)
+
+    def test_eidolon_stage_sizes_and_compact_collision(self):
+        skull = self.skull()
+        heights = []
+        body_size = skull.size
+        self.assertEqual(summon_vfx.VISUAL_SIZES,(96,144,216))
+        for stage,level in enumerate((1,3,6)):
+            skull.level = level
+            size = summon_vfx.canvas_size(level)
+            art = summons.directional_sprite(stage,size,0)
+            heights.append(art.get_bounding_rect(min_alpha=100).height)
+            self.assertLessEqual(abs(heights[-1]-summon_vfx.VISUAL_SIZES[stage]),
+                                 summon_vfx.VISUAL_SIZES[stage]*.08)
+            self.assertEqual(skull.size,body_size)
+            self.assertGreater(skull.render_margin,size+summon_vfx.HOVER_HEIGHT)
+        self.assertGreater(heights[0],89)  # Player sprite's nominal rendered height.
+        self.assertAlmostEqual(heights[1]/heights[0],1.5,delta=.08)
+        self.assertAlmostEqual(heights[2]/heights[1],1.5,delta=.08)
+
+    def test_taller_walls_keep_ground_anchor_and_physics(self):
+        wall=game.Obstacle(10,8,"Destructible")
+        before=(wall.rect.copy(),wall.health)
+        self.gs.obstacles[10,8]=wall
+        self.assertEqual(game.ISO_WALL_Z,2*int(22*game.WORLD_SCALE))
+        for color in ((80,101,117),(137,87,83)):
+            art,ax,ay=terrain_art.wall_tile(game.ISO_CELL_W,game.ISO_CELL_H,game.ISO_WALL_Z,color,0)
+            self.assertEqual(ay,1+game.ISO_WALL_Z)
+            self.assertEqual(art.get_bounding_rect().bottom-ay,game.ISO_CELL_H+1)
+        screen=pygame.display.get_surface()
+        game.render_game_iso(screen,self.gs,self.player,[],[],[])
+        with patch.object(game,"IS_WEB",True),patch.object(render_runtime,"IS_WEB",True),patch.object(terrain_art,"wall_tile",wraps=terrain_art.wall_tile) as material:
+            game.render_game_iso_web_lite(screen,self.gs,self.player,[],[],[])
+            self.assertTrue(material.called)
+            self.assertTrue(all(call.args[2]==game.ISO_WALL_Z for call in material.call_args_list))
+        self.assertEqual((wall.rect,wall.health),before)
+
+    def test_large_companions_render_at_all_screen_edges(self):
+        skull=self.skull()
+        screen=pygame.display.get_surface()
+        cam=game.calculate_iso_camera(*self.player.rect.center)
+        skull.procession_relative=True
+        for level in (1,3,6):
+            skull.level=level
+            # Bottom cases would previously cull a large, still-visible sprite.
+            points=((0,300),(1279,300),(640,80),(640,720+summon_vfx.canvas_size(level)//2),
+                    (0,100),(1279,100),(0,760),(1279,760))
+            for sx,sy in points:
+                x,y=skull.procession_world(sx/1280,(sy-game.INFO_BAR_HEIGHT)/(720-game.INFO_BAR_HEIGHT))
+                skull.x=x-skull.size/2
+                skull.y=y-game.INFO_BAR_HEIGHT-skull.size/2
+                skull.sync_rect()
+                for renderer in (game.render_game_iso,game.render_game_iso_web_lite):
+                    with patch.object(skull,"draw",wraps=skull.draw) as draw:
+                        renderer(screen,self.gs,self.player,[],[],[],override_cam=cam)
+                    self.assertTrue(draw.called,(level,sx,sy,renderer.__name__))
+
+    def test_active_procession_disk_resume_moves_and_recasts(self):
+        skull=self.skull()
+        skull.cast()
+        skull.update_procession(.4,[])
+        skull.persist()
+        with tempfile.TemporaryDirectory(prefix="eidolon-cast-") as folder,patch.object(game,"SAVE_FILE",str(Path(folder)/"save.json")):
+            persistence.save_snapshot(game,game.capture_snapshot(self.gs,self.player,[],0))
+            game._load_meta_from_save(persistence.load_save(game))
+            summons.start_level(game,self.gs,self.player)
+        restored=self.gs.companions[0]
+        self.assertTrue(restored.procession_relative)
+        before=restored.procession_world(*restored.procession[0][:2])
+        self.player.rect.move_ip(260,156)
+        after=restored.procession_world(*restored.procession[0][:2])
+        self.assertAlmostEqual(after[0]-before[0],260,delta=2)
+        self.assertAlmostEqual(after[1]-before[1],156,delta=2)
+        restored.update_procession(3,[])
+        restored.cast()
+        self.assertTrue(restored.procession_relative)
+        self.assertEqual(len(restored.procession),summons.PROCESSION_COUNT)
+
+    def test_shop_uses_exact_supplied_eidolon_avatars(self):
+        strip=pygame.image.load(ROOT/"assets/sprites/summons/eidolon-shop-avatars.png").convert_alpha()
+        avatars=[]
+        for stage,top in enumerate((5,183,357)):
+            art=summons.shop_avatar(stage,104)
+            raw=pygame.image.tobytes(art,"RGBA")
+            self.assertEqual(raw,pygame.image.tobytes(strip.subsurface((3,top,104,104)),"RGBA"))
+            avatars.append(raw)
+        self.assertEqual(len(set(avatars)),3)
+        self.assertEqual(shop_support.build_shop_catalog(game)[0]["name"],"Eidolon")
+
+    def test_shop_evolution_avatars_in_both_real_screens(self):
+        evidence=ROOT/"TEMP"/"summon-playtest"
+        evidence.mkdir(parents=True,exist_ok=True)
+        for web in (False,True):
+            for stage,level in enumerate((0,2,5)):
+                game.reset_run_state()
+                for _ in range(level):
+                    summons.purchase(game.META)
+                game.META.update(spoils=1000,summon_shop_visits=2,summon_shop_last_level=-1)
+                def events():
+                    pygame.image.save(pygame.display.get_surface(),str(evidence/f"eidolon-shop-{stage+1}-{'lite' if web else 'desktop'}.png"))
+                    return [pygame.event.Event(pygame.KEYDOWN,key=pygame.K_ESCAPE)]
+                with patch.object(summons,"shop_avatar",wraps=summons.shop_avatar) as avatar,patch.object(pygame.event,"get",side_effect=events),patch.object(game,"play_combat_bgm"),patch.object(game,"flush_events"),patch.object(game,"pause_from_overlay",return_value="home"),patch.object(game,"pause_from_overlay_web",return_value="home"):
+                    if web:
+                        asyncio.run(shop_ui.show_shop_screen_web(game,pygame.display.get_surface()))
+                    else:
+                        shop_ui.show_shop_screen(game,pygame.display.get_surface())
+                avatar.assert_called_with(stage,100)
+
+    def test_procession_spawns_on_current_view_edges_and_tracks_player(self):
+        skull=self.skull()
+        skull.cast()
+        for width,height in ((1280,720),(960,600)):
+            game.VIEW_W,game.VIEW_H=width,height
+            for dx,dy in ((0,0),(260,156),(-520,104)):
+                self.player.rect.move_ip(dx,dy)
+                cam=game.calculate_iso_camera(*self.player.rect.center)
+                for row in skull.procession:
+                    self.assertTrue(row[0] in (0,1) or row[1] in (0,1))
+                    x,y=skull.procession_world(*row[:2])
+                    screen=game.iso_world_to_screen(x/game.CELL_SIZE,(y-game.INFO_BAR_HEIGHT)/game.CELL_SIZE,0,*cam)
+                    self.assertAlmostEqual(screen[0],row[0]*width,delta=2)
+                    self.assertAlmostEqual(screen[1],game.INFO_BAR_HEIGHT+row[1]*(height-game.INFO_BAR_HEIGHT),delta=2)
+
+    def test_procession_damage_follows_player_without_teleport_sweep(self):
+        skull=self.skull()
+        skull.cast()
+        skull.procession=[[.5,.5,0,0,0,3,10,0]]
+        old=self.enemy(hp=100)
+        old.rect.center=skull.procession_world(.5,.5)
+        self.player.rect.move_ip(520,520)
+        new=self.enemy(hp=100)
+        new.rect.center=skull.procession_world(.5,.5)
+        between=self.enemy(hp=100)
+        between.rect.center=((old.rect.centerx+new.rect.centerx)//2,(old.rect.centery+new.rect.centery)//2)
+        skull.update_procession(.01,self.enemies)
+        self.assertEqual((old.hp,new.hp,between.hp),(100,90,100))
+
+    def test_old_world_space_cast_still_resumes(self):
+        skull=self.skull()
+        skull.cast_left=3
+        skull.procession=[[100,200,30,40,0,3,10,0]]
+        skull.persist()
+        game.META["skull_combat"].pop("procession_space")
+        summons.start_level(game,self.gs,self.player)
+        restored=self.gs.companions[0]
+        self.assertFalse(restored.procession_relative)
+        self.player.rect.move_ip(520,520)
+        self.assertEqual(restored.procession_world(100,200),(100,200))
+
+    def test_beam_is_one_smooth_straight_ray(self):
+        surface=pygame.Surface((400,150),pygame.SRCALPHA)
+        summon_vfx.draw_beam(surface,(20,30),(380,110))
+        alphas=set()
+        for x in range(40,360):
+            y=round(30+(x-20)*80/360)
+            self.assertGreater(surface.get_at((x,y)).a,200)
+            self.assertEqual(surface.get_at((x,y+12)).a,0)
+            self.assertEqual(surface.get_at((x,y-12)).a,0)
+            alphas.update(surface.get_at((x,y+dy)).a for dy in range(-8,9))
+        self.assertGreater(len(alphas),8)  # Filtered edges, not three hard bands.
+
+    def test_death_dissolves_once_and_resumes_without_replaying(self):
+        skull = self.skull()
+        skull.take_damage(99999)
+        self.assertEqual(skull.death_age,0)
+        skull.update(.5,[])
+        skull.take_damage(99999)
+        self.assertAlmostEqual(skull.death_age,.5)
+        skull.persist()
+        summons.start_level(game,self.gs,self.player)
+        skull = self.gs.companions[0]
+        self.assertAlmostEqual(skull.death_age,.5)
+        skull.update(2,[])
+        self.assertEqual(skull.death_age,summon_vfx.DEATH_DURATION)
+        art = summons.directional_sprite(2,72,1)
+        before = random.getstate()
+        first = summon_vfx.dissolve_frame(art,0)
+        late = summon_vfx.dissolve_frame(art,.9)
+        end = summon_vfx.dissolve_frame(art,1)
+        self.assertGreater(pygame.mask.from_surface(first).count(),pygame.mask.from_surface(late).count())
+        self.assertEqual(pygame.mask.from_surface(end).count(),0)
+        self.assertEqual(before,random.getstate())
+
+    def test_orb_trail_longer_and_time_bounded(self):
+        skull = self.skull(1)
+        self.enemy(15,8)
+        skull.update(1/60,self.enemies)
+        shot = skull.shots[0]
+        self.assertEqual(shot["visual_origin"],skull.eye_offset())
+        for _ in range(22):
+            skull.update_shots(1/60,self.enemies)
+        self.assertIn(shot,skull.shots)
+        self.assertGreater(len(shot["trail"]),8)
+        self.assertLessEqual(len(shot["trail"]),19)
+        screen = pygame.display.get_surface()
+        before = random.getstate()
+        summons.draw_effects(game,self.gs,screen,0,0)
+        self.assertEqual(before,random.getstate())
+
+    def test_beam_duration_damage_cooldown_and_stage_gate(self):
+        skull = self.skull()
+        enemy = self.enemy()
+        initial = enemy.hp
+        for _ in range(180):
+            skull.update_beam(1/60,self.enemies)
+        self.assertEqual(initial-enemy.hp,9*skull.damage)
+        self.assertEqual(skull.beam_left,0)
+        self.assertEqual(skull.beam_cd,12)
+        skull.update_beam(11.9,self.enemies)
+        self.assertEqual(enemy.hp,initial-9*skull.damage)
+        skull.update_beam(.11,self.enemies)
+        self.assertGreater(skull.beam_left,0)
+        skull.stop_beam()
+        skull.level = 3
+        skull.beam_cd = 0
+        skull.update_beam(1,self.enemies)
+        self.assertEqual(skull.beam_left,0)
+
+    def test_beam_lock_retarget_kill_harvest_not_charge(self):
+        skull = self.skull()
+        first = self.enemy(12,8,hp=1000)
+        skull.update_beam(.1,self.enemies)
+        second = self.enemy(11,8,hp=1000)
+        skull.update_beam(.1,self.enemies)
+        self.assertIs(skull.beam_target,first)
+        first.hp = 1
+        skull.update_beam(.1,self.enemies)
+        self.assertNotIn(first,self.enemies)
+        self.assertEqual((skull.harvest,skull.charge),(1,0))
+        remaining = skull.beam_left
+        skull.update_beam(.1,self.enemies)
+        self.assertIs(skull.beam_target,second)
+        self.assertLess(skull.beam_left,remaining)
+        self.assertLess(second.hp,1000)
+
+    def test_beam_wall_blocks_then_breaks_without_harvest(self):
+        skull = self.skull()
+        target = self.enemy(13,8)
+        wall = game.Obstacle(11,8,"Destructible")
+        wall.health = 10
+        self.gs.obstacles[11,8] = wall
+        original = target.hp
+        skull.update_beam(.1,self.enemies)
+        self.assertEqual(target.hp,original)
+        self.assertLess(wall.health,10)
+        skull.update_beam(.1,self.enemies)
+        self.assertNotIn((11,8),self.gs.obstacles)
+        self.assertEqual((skull.harvest,skull.charge),(0,0))
+        skull.update_beam(.1,self.enemies)
+        self.assertLess(target.hp,original)
+        self.gs.obstacles[11,8] = game.Obstacle(11,8,"Indestructible")
+        original = target.hp
+        skull.update_beam(.2,self.enemies)
+        self.assertEqual(target.hp,original)
+        self.assertIn((11,8),self.gs.obstacles)
+
+    def test_beam_save_resume_downing_and_no_target_timeout(self):
+        skull = self.skull()
+        target = self.enemy()
+        skull.update_beam(.35,self.enemies)
+        skull.persist()
+        left,credit = skull.beam_left,skull.beam_credit
+        summons.start_level(game,self.gs,self.player)
+        skull = self.gs.companions[0]
+        self.assertEqual((skull.beam_left,skull.beam_credit),(left,credit))
+        skull.update_beam(.1,self.enemies)
+        self.assertIs(skull.beam_target,target)
+        self.enemies.clear()
+        skull.update_beam(3,[])
+        self.assertEqual(skull.beam_left,0)
+        self.assertEqual(skull.beam_cd,12)
+        self.enemy()
+        skull.beam_cd = 0
+        skull.update_beam(.1,self.enemies)
+        skull.take_damage(99999)
+        self.assertEqual(skull.beam_left,0)
+        self.assertIsNone(skull.beam_end)
+
+    def test_beam_coexists_with_normal_attacks_and_procession(self):
+        skull = self.skull()
+        target = self.enemy()
+        target.is_boss = True
+        skull.charge = 15
+        skull.update(1/60,self.enemies)
+        self.assertGreater(skull.beam_left,0)
+        self.assertGreater(skull.cast_left,0)
+        self.assertEqual(len(skull.shots),5)
+        summons.enter_shop(game)
+        self.assertEqual(game.META["skull_combat"]["beam_left"],0)
+        self.gs.current_level=1
+        summons.start_level(game,self.gs,self.player)
+        self.assertEqual(self.gs.companions[0].beam_left,0)
 
     def test_actual_shop_purchase_desktop_and_async(self):
         for web in (False, True):

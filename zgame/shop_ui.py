@@ -193,7 +193,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
                 screen.blit(name_surf, name_surf.get_rect(midtop=(r.centerx, r.y + 10)))
                 if it.get('id') == summons.SKULL_ID:
                     level = min(6, int(meta.get('skull_level', 0)) + 1)
-                    art = summons.sprite(2 if level == 6 else 1 if level >= 3 else 0, 100)
+                    art = summons.shop_avatar(2 if level == 6 else 1 if level >= 3 else 0, 100)
                     screen.blit(art, art.get_rect(center=(r.centerx, r.centery)))
                 elif it.get('id') == 'auto_turret' and auto_turret_sprite:
                     sprite_top = r.y + 36
@@ -620,7 +620,7 @@ async def show_shop_screen_web(game, screen) -> Optional[str]:
                 screen.blit(name_surf, name_surf.get_rect(midtop=(r.centerx, r.y + 10)))
                 if it.get('id') == summons.SKULL_ID:
                     level = min(6, int(meta.get('skull_level', 0)) + 1)
-                    art = summons.sprite(2 if level == 6 else 1 if level >= 3 else 0, 100)
+                    art = summons.shop_avatar(2 if level == 6 else 1 if level >= 3 else 0, 100)
                     screen.blit(art, art.get_rect(center=(r.centerx, r.centery)))
                 elif it.get('id') == 'auto_turret' and auto_turret_sprite:
                     sprite_top = r.y + 36

@@ -8,6 +8,7 @@ import random
 
 import pygame
 from zgame.paths import asset_candidates, first_existing_path
+from zgame import summon_vfx
 
 SKULL_ID = "evolving_skull"
 MAX_COMPANIONS = 3
@@ -29,6 +30,10 @@ HOMING_STRENGTH = 6.0
 PROJECTILE_LIFETIME = 3.5
 PROCESSION_DAMAGE_MULT = 1.5
 PROCESSION_RADIUS_TILES = 0.8
+BEAM_DURATION = 3.0
+BEAM_COOLDOWN = 12.0
+BEAM_DPS_MULT = 3.0
+BEAM_TICK = .1
 
 
 def number(value, default=0.0, low=0.0, high=1e6):
@@ -76,7 +81,8 @@ def enter_shop(game):
     # The encounter has ended, even if the next map is not constructed yet.
     combat = game.META.get("skull_combat")
     if isinstance(combat, dict):
-        combat.update(charge=0, cast_left=0, procession=[], shots=[])
+        combat.update(charge=0, cast_left=0, procession=[], shots=[], beam_left=0,
+                      beam_cd=0, beam_credit=0, beam_tick=0, beam_target_hint=None)
 
 
 def loadout_button(game, screen):
@@ -103,6 +109,9 @@ def toggle_equipped(meta):
 
 @lru_cache(maxsize=24)
 def sprite(index, size=112, flip=False):
+    if index < 3:
+        art = directional_sprite(index, size, 1)
+        return pygame.transform.flip(art, True, False) if flip else art
     path = first_existing_path(asset_candidates("sprites", "summons", "skull-atlas.png"))
     atlas = pygame.image.load(path).convert_alpha()
     w, h = atlas.get_width() // 2, atlas.get_height() // 2
@@ -111,9 +120,20 @@ def sprite(index, size=112, flip=False):
     return pygame.transform.flip(out, True, False) if flip else out
 
 
+@lru_cache(maxsize=12)
+def shop_avatar(index, size=100):
+    """User-supplied avatar strip; retain the original artwork, not game sprites."""
+    path = first_existing_path(asset_candidates("sprites", "summons", "eidolon-shop-avatars.png"))
+    strip = pygame.image.load(path).convert_alpha()
+    # Three square cards in the supplied 107x465 screenshot; exclude dividers.
+    top = (5,183,357)[index]
+    cell = strip.subsurface((3,top,104,104))
+    return pygame.transform.smoothscale(cell,(size,size))
+
+
 @lru_cache(maxsize=1)
 def _direction_atlas():
-    path = first_existing_path(asset_candidates("sprites", "summons", "skull-directions.png"))
+    path = first_existing_path(asset_candidates("sprites", "summons", "skull-option-b.png"))
     return pygame.image.load(path).convert_alpha()
 
 
@@ -129,7 +149,7 @@ def directional_sprite(index, size, facing):
     w, h = atlas.get_size()
     cell = atlas.subsurface((column*w//5, index*h//3,
                             (column+1)*w//5-column*w//5, (index+1)*h//3-index*h//3))
-    art = pygame.transform.scale(cell, (int(size*.94), int(size*.94)))
+    art = pygame.transform.smoothscale(cell, (int(size*.94), int(size*.94)))
     if facing > 4:
         art = pygame.transform.flip(art, True, False)
     out = pygame.Surface((size, size), pygame.SRCALPHA)
@@ -263,6 +283,7 @@ class Skull:
                 break
         self.x, self.y = float(self.rect.x), float(self.rect.y-game.INFO_BAR_HEIGHT)
         self.facing = 0
+        self.death_age = summon_vfx.DEATH_DURATION
         self.hp = self.max_hp
         self.charge = 0
         self.hit_cd = self.quiet = self.fire_cd = self.clock = 0.0
@@ -270,8 +291,13 @@ class Skull:
         self.path_cd = 0.0
         self.shots = []
         self.procession = []
+        self.procession_relative = False  # Legacy saved casts use world coordinates.
         self.cast_left = 0.0
         self.hit_times = {}
+        self.beam_left = self.beam_cd = self.beam_tick = self.beam_credit = 0.0
+        self.beam_target = self.beam_target_hint = self.beam_end = None
+        self.beam_wall = False
+        self._beam_recipient = None
         if isinstance(saved, dict):
             self.hp = number(saved.get("hp", self.max_hp), self.max_hp, high=self.max_hp)
             self.charge = int(number(saved.get("charge", 0), high=15)) if self.level == 6 else 0
@@ -279,6 +305,15 @@ class Skull:
             self.fire_cd = number(saved.get("fire_cd", 0), high=FIRE_INTERVAL)
             self.hit_cd = number(saved.get("hit_cd", 0), high=1)
             self.facing = int(number(saved.get("facing", 0), high=7))
+            self.death_age = number(saved.get("death_age", summon_vfx.DEATH_DURATION), high=summon_vfx.DEATH_DURATION)
+            if self.level == 6:
+                self.beam_left = number(saved.get("beam_left",0), high=BEAM_DURATION)
+                self.beam_cd = number(saved.get("beam_cd",0), high=BEAM_COOLDOWN)
+                self.beam_credit = number(saved.get("beam_credit",0), high=self.damage*BEAM_DPS_MULT*BEAM_TICK+1)
+                self.beam_tick = number(saved.get("beam_tick",0), high=BEAM_TICK)
+                hint = saved.get("beam_target_hint")
+                if isinstance(hint,list) and len(hint)==3:
+                    self.beam_target_hint = [number(hint[0]),number(hint[1]),str(hint[2])]
             self.x = number(saved.get("x", self.x), self.x, high=game.GRID_SIZE*game.CELL_SIZE-self.size)
             self.y = number(saved.get("y", self.y), self.y, high=game.GRID_SIZE*game.CELL_SIZE-self.size)
             self.sync_rect()
@@ -286,6 +321,7 @@ class Skull:
                 self.rect.center = player.rect.center
                 self.x, self.y = float(self.rect.x), float(self.rect.y-game.INFO_BAR_HEIGHT)
             self.cast_left = number(saved.get("cast_left", 0), high=CAST_DURATION)
+            self.procession_relative = saved.get("procession_space") == "player_view"
             for row in saved.get("procession", [])[:PROCESSION_COUNT]:
                 if isinstance(row, list) and len(row) == 8:
                     self.procession.append([number(v, low=-1e6) for v in row])
@@ -298,6 +334,7 @@ class Skull:
             self.resume_grace = 0.0
         if self.hp <= 0:
             self.harvest = self.charge = 0
+            self.stop_beam()
         self.persist()
 
     @property
@@ -316,8 +353,13 @@ class Skull:
         self.game.META["skull_combat"] = {
             "level_index": int(getattr(self.state, "current_level", 0)), "hp": self.hp,
             "charge": self.charge, "quiet": self.quiet, "fire_cd": self.fire_cd, "hit_cd": self.hit_cd,
-            "x": self.x, "y": self.y, "facing": self.facing, "cast_left": self.cast_left,
+            "x": self.x, "y": self.y, "facing": self.facing, "death_age": self.death_age, "cast_left": self.cast_left,
             "procession": [list(row) for row in self.procession],
+            "procession_space": "player_view" if self.procession_relative else "world",
+            "beam_left": self.beam_left, "beam_cd": self.beam_cd,
+            "beam_tick": self.beam_tick, "beam_credit": self.beam_credit,
+            "beam_target_hint": ([*self.beam_target.rect.center,str(getattr(self.beam_target,"type","basic"))]
+                                 if self.beam_target is not None else self.beam_target_hint),
             "shots": [[s[k] for k in ("x", "y", "vx", "vy", "life", "damage")] for s in self.shots],
         }
 
@@ -330,6 +372,9 @@ class Skull:
             self.quiet = 0
         if self.hp <= 0:
             self.harvest = self.charge = 0
+            self.death_age = 0
+            self.facing = self.visual_facing
+            self.stop_beam()
         self.persist()
         return amount
 
@@ -393,25 +438,44 @@ class Skull:
         self.facing = movement_facing(self.x-start_x, self.y-start_y, self.facing)
 
     def cast(self):
-        game = self.game
         self.charge = 0
         self.cast_left = CAST_DURATION
         self.hit_times.clear()
         self.procession = []
-        width, top = game.GRID_SIZE*game.CELL_SIZE, game.INFO_BAR_HEIGHT
+        self.procession_relative = True
         for i in range(PROCESSION_COUNT):
             side = random.randrange(4)
-            a, b = random.uniform(0, width), random.uniform(0, width)
-            endpoints = (((0, top+a),(width, top+b)), ((width,top+a),(0,top+b)), ((a,top),(b,top+width)), ((a,top+width),(b,top)))
+            a, b = random.random(), random.random()
+            endpoints = (((0,a),(1,b)), ((1,a),(0,b)), ((a,0),(b,1)), ((a,1),(b,0)))
             start, end = endpoints[side]
             delay = i/(PROCESSION_COUNT-1)*.75
             duration = CAST_DURATION-delay
             # x, y, velocity, spawn delay, remaining crossing, snapshot damage, age
             self.procession.append([*start, (end[0]-start[0])/duration, (end[1]-start[1])/duration, delay, duration, self.damage*PROCESSION_DAMAGE_MULT, 0.0])
 
+    def procession_world(self, x, y):
+        """Convert viewport-relative paths to authoritative current world space.
+
+        Anchoring to the owner (not this companion or the cast location) keeps
+        delayed spawns, active skulls and collision together while moving. A
+        teleport reanchors the field without sweeping damage across the map.
+        """
+        if not self.procession_relative:
+            return x,y
+        game = self.game
+        px,py = self.owner.rect.center
+        cam = game.calculate_iso_camera(px,py)
+        sx,sy = game.iso_world_to_screen(px/game.CELL_SIZE,(py-game.INFO_BAR_HEIGHT)/game.CELL_SIZE,0,*cam)
+        dx = x*game.VIEW_W-sx
+        dy = game.INFO_BAR_HEIGHT+y*(game.VIEW_H-game.INFO_BAR_HEIGHT)-sy
+        return (px+game.CELL_SIZE*(dx/game.ISO_CELL_W+dy/game.ISO_CELL_H),
+                py+game.CELL_SIZE*(dy/game.ISO_CELL_H-dx/game.ISO_CELL_W))
+
     def update(self, dt, enemies):
         game, state = self.game, self.state
         self.clock += dt
+        if self.hp <= 0:
+            self.death_age = min(summon_vfx.DEATH_DURATION,self.death_age+dt)
         self.hit_cd = max(0, self.hit_cd-dt)
         self.resume_grace = max(0, self.resume_grace-dt)
         if self.hp > 0:
@@ -438,7 +502,7 @@ class Skull:
                     direction = pygame.Vector2(target.rect.center)-self.rect.center
                     angle = math.atan2(direction.y, direction.x)+(i-(count-1)/2)*.35+.35
                     speed = game.BULLET_SPEED*PROJECTILE_SPEED_MULT
-                    self.shots.append(dict(x=float(self.rect.centerx), y=float(self.rect.centery), vx=math.cos(angle)*speed, vy=math.sin(angle)*speed, target=target, damage=self.damage, life=PROJECTILE_LIFETIME, trail=[]))
+                    self.shots.append(dict(x=float(self.rect.centerx), y=float(self.rect.centery), vx=math.cos(angle)*speed, vy=math.sin(angle)*speed, target=target, damage=self.damage, life=PROJECTILE_LIFETIME, trail=[], visual_origin=self.eye_offset()))
                 self.fire_cd = FIRE_INTERVAL
             if self.level == 6 and self.charge == 15 and self.cast_left <= 0 and (len(alive) >= 5 or any(getattr(e,"is_boss",False) or getattr(e,"type","")=="bandit" for e in alive)):
                 self.cast()
@@ -447,8 +511,75 @@ class Skull:
                     self.take_damage(max(1, getattr(e,"attack",game.ENEMY_ATTACK))*getattr(state,"biome_enemy_contact_mult",1))
                     self.hit_cd = .6
         self.update_shots(dt, enemies)
+        self.update_beam(dt, enemies)
         self.update_procession(dt, enemies)
         self.persist()
+
+    def stop_beam(self):
+        self.beam_left = self.beam_tick = self.beam_credit = 0.0
+        self.beam_cd = BEAM_COOLDOWN
+        self.beam_target = self.beam_target_hint = self.beam_end = None
+        self._beam_recipient = None
+
+    def update_beam(self, dt, enemies):
+        """Additional Stage 3 skill, independent of Shadow Procession's charge."""
+        if self.level < 6 or self.hp <= 0:
+            return
+        game,state = self.game,self.state
+        candidates = [e for e in enemies if e.hp>0 and
+                      math.dist(e.rect.center,self.rect.center)<=ATTACK_RANGE_TILES*game.CELL_SIZE]
+        if self.beam_left<=0:
+            waiting = min(dt,self.beam_cd)
+            self.beam_cd = max(0,self.beam_cd-waiting)
+            dt -= waiting
+            if self.beam_cd>0 or dt<=0 or not candidates:
+                return
+            self.beam_left = BEAM_DURATION
+            self.beam_tick = self.beam_credit = 0.0
+        if self.beam_target not in candidates:
+            hint = self.beam_target_hint
+            restored = [e for e in candidates if hint and getattr(e,"type","basic")==hint[2]
+                        and math.dist(e.rect.center,hint[:2])<game.CELL_SIZE]
+            self.beam_target = (min(restored,key=lambda e:math.dist(e.rect.center,hint[:2])) if restored else
+                                min(candidates,key=lambda e:math.dist(e.rect.center,self.rect.center)) if candidates else None)
+            self.beam_target_hint = None
+        active_dt = min(dt,self.beam_left)
+        self.beam_left = max(0,self.beam_left-active_dt)
+        self.beam_tick += active_dt
+        target = self.beam_target
+        self.beam_end = None
+        recipient = None
+        wall = None
+        if target is not None:
+            wall = first_wall(game,state,self.rect.center,target.rect.center)
+            self.beam_wall = wall is not None
+            if wall:
+                self.beam_end = wall[2].rect.clipline(self.rect.center,target.rect.center)[0]
+                if wall[2].type == "Destructible":
+                    recipient = wall[2]
+            else:
+                self.beam_end = target.rect.center
+                recipient = target
+        if self._beam_recipient is not None and self._beam_recipient is not recipient:
+            self.beam_credit = 0.0
+        self._beam_recipient = recipient
+        if recipient is not None:
+            self.beam_credit += self.damage*BEAM_DPS_MULT*active_dt
+        else:
+            self.beam_credit = 0.0
+        # Accumulate fractions, then resolve normal kill/reward/shield handling
+        # at 10 Hz. No minimum-one-per-frame damage or render-dependent damage.
+        if self.beam_tick+1e-9>=BEAM_TICK or self.beam_left<=1e-9:
+            dealt = int(self.beam_credit+1e-9)
+            self.beam_credit -= dealt
+            self.beam_tick = max(0,self.beam_tick-BEAM_TICK)
+            if dealt>0 and recipient is not None:
+                if wall:
+                    damage_wall(game,state,wall[1],wall[2],dealt,self.owner)
+                else:
+                    damage_enemy(game,state,enemies,target,dealt,self)
+        if self.beam_left<=1e-9:
+            self.stop_beam()
 
     def update_shots(self, dt, enemies):
         game, state = self.game, self.state
@@ -467,7 +598,9 @@ class Skull:
                     velocity = pygame.Vector2(shot["vx"],shot["vy"]).lerp(desired, min(1,dt*HOMING_STRENGTH))
                     shot["vx"],shot["vy"] = velocity
             end = start[0]+shot["vx"]*dt, start[1]+shot["vy"]*dt
-            shot["trail"] = (shot["trail"]+[start])[-8:]
+            # Lifetime stamps bound trail length in time even at variable frame rates.
+            shot["trail"] = [p for p in shot["trail"] if p[2]-shot["life"] <= summon_vfx.TRAIL_SECONDS][-47:]
+            shot["trail"].append((*start,shot["life"]+dt))
             shot["x"],shot["y"] = end
             wall = first_wall(game, state, start, end, 3)
             hits = [(d,e) for e in enemies if e.hp > 0 and (d := segment_hit(e.rect,start,end,3)) is not None]
@@ -493,12 +626,12 @@ class Skull:
             if step <= 0 or s[5] <= 0:
                 continue
             step = min(step,s[5])
-            start = s[0],s[1]
+            start = self.procession_world(s[0],s[1])
             s[0] += s[2]*step
             s[1] += s[3]*step
             s[5] -= step
             s[7] += step
-            end = s[0],s[1]
+            end = self.procession_world(s[0],s[1])
             radius = game.CELL_SIZE*PROCESSION_RADIUS_TILES
             contacts = [(e,e.rect) for e in list(enemies) if e.hp > 0]
             contacts += [(ob,ob.rect) for gp,ob in nearby_walls(game,state,start,end,radius) if ob.type == "Destructible"]
@@ -517,17 +650,41 @@ class Skull:
             self.procession.clear()
             self.hit_times.clear()
 
+    @property
+    def visual_facing(self):
+        if self.beam_left>0 and self.beam_target is not None:
+            dx = self.beam_target.rect.centerx-self.rect.centerx
+            dy = self.beam_target.rect.centery-self.rect.centery
+            return movement_facing(dx,dy,self.facing)
+        return self.facing
+
+    def eye_offset(self):
+        return summon_vfx.eye_offset(summon_vfx.canvas_size(self.level),self.visual_facing,
+                                    math.sin(self.clock*3)*2,summon_vfx.stage_index(self.level))
+
+    @property
+    def render_margin(self):
+        return summon_vfx.canvas_size(self.level)+summon_vfx.HOVER_HEIGHT+32
+
     def draw(self, screen, sx, sy):
-        size = int(self.game.CELL_SIZE*2.8)
+        size = summon_vfx.canvas_size(self.level)
         index = 2 if self.level == 6 else 1 if self.level >= 3 else 0
-        art = directional_sprite(index, size, self.facing)
+        art = directional_sprite(index, size, self.visual_facing)
+        bob = math.sin(self.clock*3)*2
+        dest = art.get_rect(midbottom=(int(sx),int(sy-summon_vfx.HOVER_HEIGHT+bob)))
+        if self.hp > 0:
+            screen.blit(art,dest)
+        elif self.death_age < summon_vfx.DEATH_DURATION:
+            phase = int(self.death_age/summon_vfx.DEATH_DURATION*24)/24
+            fragments = summon_vfx.dissolve_frame(art,phase)
+            screen.blit(fragments,(dest.x-16,dest.y-16))
+        width = min(48,size-8)
+        y = dest.top-5
         if self.hp <= 0:
-            art = art.copy()
-            art.set_alpha(55)
-        bob = math.sin(self.clock*3)*3
-        screen.blit(art,art.get_rect(midbottom=(int(sx),int(sy-8+bob))))
-        width = 60
-        y = int(sy-size+5+bob)
+            # A small persistent status marker, not a permanently faded living sprite.
+            text = hud_font().render("DOWN",True,(132,99,148))
+            screen.blit(text,text.get_rect(midbottom=(int(sx),int(sy-6))))
+            return
         pygame.draw.rect(screen,(35,20,45),(int(sx-width/2),y,width,5))
         pygame.draw.rect(screen,(135,230,186),(int(sx-width/2),y,int(width*self.hp/self.max_hp),5))
         label = "DOWN" if self.hp <= 0 else f"{form(self.level)} +{self.harvest}%" + (f"  {self.charge}/15" if self.level==6 else "")
@@ -590,25 +747,33 @@ def draw_effects(game,state,screen,camx,camy):
     def project(x,y):
         return game.iso_world_to_screen(x/game.CELL_SIZE,(y-game.INFO_BAR_HEIGHT)/game.CELL_SIZE,0,camx,camy)
     for skull in getattr(state,"companions",()):
+        if skull.hp>0 and skull.beam_left>0 and skull.beam_end is not None:
+            sx,sy = project(*skull.rect.center)
+            dx,dy = skull.eye_offset()
+            ex,ey = project(*skull.beam_end)
+            summon_vfx.draw_beam(screen,(sx+dx,sy+dy),(ex,ey if skull.beam_wall else ey-10))
         for shot in skull.shots:
-            points = [project(*p) for p in shot["trail"]]+[project(shot["x"],shot["y"])]
-            if len(points)>1:
-                pygame.draw.lines(screen,(191,108,232),False,points,2)
-            pygame.draw.circle(screen,(255,190,232),points[-1],4)
+            offset = shot.get("visual_origin",skull.eye_offset())
+            points = []
+            for x,y,life in shot["trail"]+[(shot["x"],shot["y"],shot["life"])]:
+                sx,sy = project(x,y)
+                lift = max(0,1-(PROJECTILE_LIFETIME-life)/.22)
+                points.append((sx+offset[0]*lift,sy+offset[1]*lift))
+            summon_vfx.draw_orb(screen,points)
         for s in skull.procession:
             if s[4] > 0 or s[5] <= 0:
                 continue
-            sx,sy = project(s[0],s[1])
+            sx,sy = project(*skull.procession_world(s[0],s[1]))
             if not screen.get_rect().inflate(350,350).collidepoint(sx,sy):
                 continue
-            prev = project(s[0]-s[2]*.025,s[1]-s[3]*.025)
+            prev = project(*skull.procession_world(s[0]-s[2]*.025,s[1]-s[3]*.025))
             art = sprite(3,int(game.CELL_SIZE*2.8),sx<prev[0]).copy()
             art.set_alpha(int(115*min(1,s[5]/.25,s[7]/.12)))
             for i in range(1,7):
-                tx,ty = project(s[0]-s[2]*i*.018,s[1]-s[3]*i*.018)
+                tx,ty = project(*skull.procession_world(s[0]-s[2]*i*.018,s[1]-s[3]*i*.018))
                 tile = trail_tile(i)
                 screen.blit(tile,tile.get_rect(center=(int(tx),int(ty))))
-            screen.blit(art,art.get_rect(center=(int(sx),int(sy-20))))
+            screen.blit(art,art.get_rect(center=(int(sx),int(sy if skull.procession_relative else sy-20))))
 
 
 @lru_cache(maxsize=6)
