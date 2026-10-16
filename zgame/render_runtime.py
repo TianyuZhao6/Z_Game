@@ -10,6 +10,7 @@ from typing import List, Optional
 import pygame
 
 from zgame import runtime_state as rs
+from zgame import summons
 
 
 def install(game):
@@ -1225,6 +1226,10 @@ def install(game):
         stationary_sprite, _, _ = get_stationary_turret_assets()
 
         actors = []
+        for companion in getattr(game_state, "companions", ()):
+            sx, sy = iso_world_to_screen(companion.rect.centerx / CELL_SIZE, (companion.rect.centery - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
+            if _screen_visible_point(sx, sy, margin=160):
+                actors.append((sy, "companion", companion, sx, sy))
         turrets = getattr(game_state, "turrets", ())
         visible_turrets = []
         for turret in turrets:
@@ -1271,7 +1276,9 @@ def install(game):
             item_started = time.perf_counter()
             cx = int(sx)
             cy = int(sy)
-            if kind == "turret":
+            if kind == "companion":
+                obj.draw(screen, sx, sy)
+            elif kind == "turret":
                 if isinstance(obj, StationaryTurret):
                     if stationary_sprite:
                         rect = stationary_sprite.get_rect(midbottom=(cx, cy))
@@ -1403,6 +1410,8 @@ def install(game):
             actor_subsamples["projectile"] += (time.perf_counter() - draw_started) * 1000.0
         _emit_actor_subcounters(profiler, actor_subsamples)
         _render_counter(profiler, "r_projectile_ms", segment_started)
+
+        summons.draw_effects(game, game_state, screen, camx, camy)
 
         segment_started = time.perf_counter()
         if _web_feature_enabled("WEB_ENABLE_DAMAGE_TEXTS"):
@@ -1681,6 +1690,10 @@ def install(game):
             if not _screen_visible_point(sx, sy, margin=view_margin):
                 continue
             drawables.append(("coin", sy, {"cx": sx, "cy": sy, "r": s.r}))
+        for companion in getattr(game_state, "companions", ()):
+            sx, sy = iso_world_to_screen(companion.rect.centerx / CELL_SIZE, (companion.rect.centery - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
+            if _screen_visible_point(sx, sy, margin=160):
+                drawables.append(("companion", sy, {"cx": sx, "cy": sy, "obj": companion}))
         for t in getattr(game_state, "turrets", []):
             wx, wy = t.x / CELL_SIZE, (t.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
@@ -1875,6 +1888,8 @@ def install(game):
                 pygame.draw.circle(screen, (255, 224, 0), (cx, cy), r)
                 pygame.draw.circle(screen, (255, 255, 180), (cx, cy), r, 2)
                 actor_subsamples["pickup"] += (time.perf_counter() - item_started) * 1000.0
+            elif kind == "companion":
+                data["obj"].draw(screen, data["cx"], data["cy"])
             elif kind == "turret":
                 cx, cy = int(data["cx"]), int(data["cy"])
                 obj = data.get("obj")
@@ -2345,6 +2360,7 @@ def install(game):
         if hasattr(game_state, "draw_comet_corpses"):
             game_state.draw_comet_corpses(screen, camx, camy)
         _render_counter(profiler, "r_hazard_ms", segment_started)
+        summons.draw_effects(game, game_state, screen, camx, camy)
         segment_started = time.perf_counter()
         if _should_draw_fog_overlay(game_state, player):
             game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)

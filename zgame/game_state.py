@@ -965,6 +965,8 @@ def install(game):
             self.ground_spikes = remaining
 
         def damage_player(self, player, dmg, kind='hp'):
+            if getattr(player, 'is_companion', False):
+                return player.take_damage(dmg)
             if getattr(player, '_ultimate_debug', False):
                 player.hp = max(player.hp, getattr(player, 'max_hp', game.PLAYER_MAX_HP))
                 return 0

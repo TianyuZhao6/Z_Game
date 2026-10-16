@@ -85,6 +85,13 @@ def install(game):
                         return
                     self.alive = False
                     return
+            for companion in getattr(game_state, 'companions', ()):
+                if companion.hp > 0 and r.colliderect(companion.rect):
+                    if companion.hit_cd <= 0:
+                        companion.take_damage(self.dmg * max(1.0, getattr(game_state, 'biome_enemy_contact_mult', 1.0)))
+                        companion.hit_cd = 0.6
+                    self.alive = False
+                    return
             if r.colliderect(player.rect):
                 if getattr(player, 'hit_cd', 0.0) <= 0.0:
                     mult = getattr(game_state, 'biome_enemy_contact_mult', 1.0)

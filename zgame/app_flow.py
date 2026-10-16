@@ -21,6 +21,7 @@ from zgame.browser import (
     is_web_interaction_event,
 )
 from zgame import runtime_state as rs
+from zgame import summons
 
 
 def _append_verified_bullet(game, bullets, bullet, player=None) -> None:
@@ -462,6 +463,7 @@ def _enemy_contact_damage(game, game_state, enemy) -> int:
 
 
 def _web_simple_enemy_move(game, enemy, player, game_state, obstacles, *, dt: float, attack_interval: float = 0.5) -> None:
+    player = summons.enemy_target(game, game_state, enemy, player)
     enemy._foot_prev = getattr(enemy, "_foot_curr", (enemy.rect.centerx, enemy.rect.bottom))
     frame_scale = dt * 60.0
     if not hasattr(enemy, "attack_timer"):
@@ -488,7 +490,7 @@ def _web_simple_enemy_move(game, enemy, player, game_state, obstacles, *, dt: fl
     gx = int(cx // game.CELL_SIZE)
     gy = int((cy - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
     target_x, target_y = px, py
-    ff_next = getattr(game_state, "ff_next", None)
+    ff_next = None if getattr(player, "is_companion", False) else getattr(game_state, "ff_next", None)
     try:
         if ff_next is not None and 0 <= gx < len(ff_next) and 0 <= gy < len(ff_next[gx]):
             next_gp = ff_next[gx][gy]
@@ -730,6 +732,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
     if added_stationary and hasattr(game_state, 'mark_nav_dirty'):
         game_state.mark_nav_dirty()
     game_state.turrets = turrets
+    summons.start_level(game, game_state, player)
     ztype_map = {'enemy_fast': 'fast', 'enemy_tank': 'tank', 'enemy_strong': 'strong', 'basic': 'basic'}
     zt = ztype_map.get(chosen_enemy_type, 'basic')
     enemies = [game.Enemy(pos, speed=game.ENEMY_SPEED, ztype=zt) for pos in enemy_starts]
@@ -1196,6 +1199,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                     bullets.remove(b)
                     _release_bullet(game_state, b)
         player.hit_cd = max(0.0, player.hit_cd - dt)
+        summons.update(game, game_state, dt, enemies)
         _flush_pending_bullets(game, bullets, game_state, player)
         _profile_mark(profiler, "enemy_move")
         _web_diag_trace(game, profiler, f"enemy_move en={len(enemies)}")
@@ -1423,6 +1427,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     if (added_stationary or stationary_from_save) and hasattr(game_state, 'mark_nav_dirty'):
         game_state.mark_nav_dirty()
     game_state.turrets = turrets
+    summons.start_level(game, game_state, player)
     enemies: List[game.Enemy] = []
     for z in snap.get('enemies', []):
         zobj = game.Enemy((0, 0), attack=int(z.get('attack', game.ENEMY_ATTACK)), speed=int(z.get('speed', game.ENEMY_SPEED)), ztype=z.get('type', 'basic'), hp=int(z.get('hp', 30)))
@@ -1746,6 +1751,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                     wave_index += 1
                     runtime['_max_wave_reached'] = max(runtime.get('_max_wave_reached', 0), wave_index)
         player.hit_cd = max(0.0, player.hit_cd - dt)
+        summons.update(game, game_state, dt, enemies)
         pgx = int(player.rect.centerx // game.CELL_SIZE)
         pgy = int((player.rect.centery - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
         _profile_mark(profiler, "flow")
