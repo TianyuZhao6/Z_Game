@@ -205,7 +205,7 @@ def damage_wall(game, state, gp, ob, damage, player):
         player.add_xp(game.XP_PLAYER_BLOCK)
 
 
-def damage_enemy(game, state, enemies, target, damage, skull, normal=False):
+def damage_enemy(game, state, enemies, target, damage, skull, normal=False, beam=False):
     """Resolve a personal kill once, without applying player weapon proc effects."""
     if target.hp <= 0 or getattr(target, "_death_processed", False):
         return
@@ -229,7 +229,7 @@ def damage_enemy(game, state, enemies, target, damage, skull, normal=False):
     if target.hp > 0:
         return
     target._death_processed = True
-    skull.on_kill(normal)
+    skull.on_kill(normal or beam)
     game.increment_kill_count()
     game._bandit_death_notice(target, state)
     x, y = target.rect.center
@@ -378,15 +378,20 @@ class Skull:
         self.persist()
         return amount
 
-    def on_kill(self, normal):
+    def gain_procession_charge(self, amount=1):
+        if self.hp > 0 and self.level == 6:
+            self.charge = min(15, self.charge+max(0,int(amount)))
+            self.persist()
+
+    def on_kill(self, charges_skill):
         if self.hp <= 0:
             return
         if self.level >= 3:
             ratio = self.hp / self.max_hp
             self.harvest = min(200 if self.level == 6 else 100, self.harvest+1)
             self.hp = self.max_hp*ratio
-        if normal and self.level == 6:
-            self.charge = min(15, self.charge+1)
+        if charges_skill:
+            self.gain_procession_charge()
 
     def navigate(self, goal, dt):
         game, state = self.game, self.state
@@ -577,7 +582,7 @@ class Skull:
                 if wall:
                     damage_wall(game,state,wall[1],wall[2],dealt,self.owner)
                 else:
-                    damage_enemy(game,state,enemies,target,dealt,self)
+                    damage_enemy(game,state,enemies,target,dealt,self,beam=True)
         if self.beam_left<=1e-9:
             self.stop_beam()
 
@@ -679,7 +684,10 @@ class Skull:
             fragments = summon_vfx.dissolve_frame(art,phase)
             screen.blit(fragments,(dest.x-16,dest.y-16))
         width = min(48,size-8)
-        y = dest.top-5
+        font = hud_font()
+        # The large final form can extend above the viewport. Keep its compact
+        # status stack below the top HUD instead of losing both bars offscreen.
+        y = max(self.game.INFO_BAR_HEIGHT+font.get_linesize()+4,dest.top-13)
         if self.hp <= 0:
             # A small persistent status marker, not a permanently faded living sprite.
             text = hud_font().render("DOWN",True,(132,99,148))
@@ -687,10 +695,12 @@ class Skull:
             return
         pygame.draw.rect(screen,(35,20,45),(int(sx-width/2),y,width,5))
         pygame.draw.rect(screen,(135,230,186),(int(sx-width/2),y,int(width*self.hp/self.max_hp),5))
-        label = "DOWN" if self.hp <= 0 else f"{form(self.level)} +{self.harvest}%" + (f"  {self.charge}/15" if self.level==6 else "")
-        if 0 < self.hp < self.max_hp and self.quiet >= REGEN_DELAY:
-            label += "  REGEN"
-        font = hud_font()
+        # Second bar is dim/empty until the final evolution unlocks Procession.
+        pygame.draw.rect(screen,(45,30,60),(int(sx-width/2),y+8,width,5))
+        if self.level == 6:
+            color = (244,168,255) if self.charge == 15 else (174,95,232)
+            pygame.draw.rect(screen,color,(int(sx-width/2),y+8,int(width*self.charge/15),5))
+        label = f"Eidolon +{self.harvest}%"
         text = font.render(label,True,(228,200,248))
         screen.blit(text,text.get_rect(midbottom=(int(sx),y-2)))
 

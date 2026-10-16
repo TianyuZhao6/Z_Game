@@ -1236,7 +1236,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                         game.verify_enemy_special_runtime(z)
                     if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
                         z._death_processed = True
-                        game.increment_kill_count()
+                        game.increment_kill_count(game_state=game_state)
                         game._bandit_death_notice(z, game_state)
                         if getattr(z, '_comet_death', False) and (not getattr(z, '_comet_fx_done', False)):
                             z._comet_fx_done = True
@@ -1797,7 +1797,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
                     game.verify_enemy_special_runtime(z)
                 if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
                     z._death_processed = True
-                    game.increment_kill_count()
+                    game.increment_kill_count(game_state=game_state)
                     game._bandit_death_notice(z, game_state)
                     if getattr(z, '_comet_death', False) and (not getattr(z, '_comet_fx_done', False)):
                         z._comet_fx_done = True

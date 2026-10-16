@@ -240,7 +240,7 @@ def install(game):
                         return
                     if z.hp <= 0 and (not getattr(z, '_death_processed', False)):
                         z._death_processed = True
-                        game.increment_kill_count()
+                        game.increment_kill_count(game_state=game_state)
                         cx, cy = (z.rect.centerx, z.rect.centery)
                         if int(meta.get('explosive_rounds_level', 0)) > 0:
                             if getattr(z, 'is_boss', False):

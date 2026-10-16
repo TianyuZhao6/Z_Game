@@ -3370,13 +3370,18 @@ def _bandit_death_notice(z, game_state):
     )
 
 
-def increment_kill_count(amount: int = 1) -> None:
+def increment_kill_count(amount: int = 1, *, game_state=None) -> None:
     """Track total enemy kills this run for scaling effects."""
     meta = _meta_state()
     try:
         meta["kill_count"] = int(meta.get("kill_count", 0)) + int(amount)
     except Exception:
         meta["kill_count"] = int(amount)
+    if game_state is not None:
+        # Player weapons/props share the confirmed-death path. Summon deaths
+        # award their own harvest/charge and deliberately omit this argument.
+        for companion in getattr(game_state, "companions", ()):
+            companion.gain_procession_charge(amount)
 
 
 def is_action_event(event, action: str) -> bool:

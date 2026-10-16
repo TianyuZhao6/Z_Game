@@ -13,6 +13,8 @@ The final revision also includes the user's additional taller-wall request.
   different atlas-row padding. Stage 1 exceeds the player's nominal 89 px
   sprite height; later stages grow about 1.5x. Collision remains 0.44 tile.
 - Both renderers use stage-aware culling margins, including hovering art and UI.
+- HUD: Eidolon +X% harvest label, HP bar, then purple skill-charge bar. No
+  numeric charge text or REGEN suffix. Charge is dim before stage 3, bright when full.
 - Shop name is Eidolon. Both shop screens use the three exact supplied avatars,
   selecting the evolution granted by the next purchase. Save identifier remains
   `evolving_skull` for compatibility.
@@ -33,10 +35,12 @@ the intervening map. Same-level save/load retains normalized paths and remaining
 time; old world-space saved casts finish compatibly, then subsequent casts use
 viewport space.
 
-Existing rules remain: 15 normal kills charge one cast; at least five enemies
+Charge update: 15 combined player weapon/prop and Eidolon projectile/beam kills
+charge one cast; at least five enemies
 or a boss/Bandit enables release; 24 crossings finish within three seconds;
 shared 0.3-second contact gap; 1.5x cast-time shot damage; spectral wall passage,
-destructible-wall damage, no skill-kill recharge. Released casts finish on downing
+destructible-wall damage, no Shadow Procession kill recharge. Player kills do not
+increase Soul Harvest. Released casts finish on downing
 without awarding harvest or charge to the downed companion.
 
 ## Beam and other preserved mechanics
@@ -46,7 +50,7 @@ then cools down for twelve seconds. Damage is 3x current projectile damage per
 second, including harvest. Normal fire continues. Walls block the ray and
 destructible walls take damage. Target death/out-of-range permits retargeting
 without restarting duration. Downing stops the beam; same-level saves restore
-duration/cooldown and a target hint. Beam kills grant harvest, not skill charge.
+duration/cooldown and a target hint. Beam kills grant both harvest and skill charge.
 
 Movement-facing, homing, harvest caps, health, regeneration, downing,
 progression, shop economy and saves remain intact. No new summon or skill added.
@@ -61,7 +65,8 @@ captures supersede the prior Option B presentation captures.
 
 ## Verification
 
-49 summon/integration checks pass, including all evolution avatars in both real
+52 summon/integration checks pass, including combined kill charging, compact
+two-bar HUD, all evolution avatars in both real
 shop screens, visible size ratios, compact collision, edge/corner culling,
 smooth beam pixels, viewport-relative damage, resize, active-cast disk save/load
 and recast, old-save compatibility, wall height/ground anchoring and unchanged

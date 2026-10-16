@@ -100,7 +100,7 @@ class SkullTests(unittest.TestCase):
         skull.on_kill(True)
         self.assertEqual((skull.harvest,skull.charge),(0,0))
 
-    def test_charge_requires_normal_kills(self):
+    def test_procession_kills_excluded_from_charge(self):
         skull=self.skull()
         for _ in range(20):
             skull.on_kill(False)
@@ -268,6 +268,71 @@ class SkullTests(unittest.TestCase):
         dead.hp=0
         skull.update_shots(.01,self.enemies)
         self.assertTrue(all(s["target"] is replacement for s in skull.shots))
+
+    def test_player_and_eidolon_kills_share_charge_not_harvest(self):
+        skull=self.skull()
+        # Real player projectile death hook: a second update cannot count twice.
+        target=self.enemy(hp=1)
+        bullet=game.Bullet(*target.rect.center,0,0,max_dist=400,damage=100,source="player")
+        bullet.update(.01,self.gs,self.enemies,self.player)
+        bullet.update(.01,self.gs,self.enemies,self.player)
+        self.assertEqual((skull.charge,skull.harvest),(1,0))
+        self.assertEqual(game.META["kill_count"],1)
+        target=self.enemy(hp=1)
+        summons.damage_enemy(game,self.gs,self.enemies,target,100,skull,normal=True)
+        self.assertEqual((skull.charge,skull.harvest),(2,1))
+        # Player prop/DoT deaths use the same confirmed-death hook in both loops.
+        game.increment_kill_count(20,game_state=self.gs)
+        self.assertEqual((skull.charge,skull.harvest),(15,1))
+        summons.start_level(game,self.gs,self.player)
+        self.assertEqual(self.gs.companions[0].charge,15)
+
+    def test_player_charge_stage_down_storage_and_active_cast_rules(self):
+        skull=self.skull(3)
+        game.increment_kill_count(game_state=self.gs)
+        self.assertEqual((skull.charge,skull.harvest),(0,0))
+        skull.level=6
+        skull.cast()
+        game.increment_kill_count(15,game_state=self.gs)
+        self.assertEqual(skull.charge,15)
+        self.assertGreater(skull.cast_left,0)
+        skull.take_damage(99999)
+        game.increment_kill_count(game_state=self.gs)
+        self.assertEqual(skull.charge,0)
+        self.gs.companions=[]
+        game.increment_kill_count(10,game_state=self.gs)
+        self.assertEqual(game.META["skull_combat"]["charge"],0)
+
+    def test_eidolon_label_and_two_status_bars(self):
+        skull=self.skull()
+        skull.harvest=58
+        skull.hp=skull.max_hp/2
+        skull.charge=4
+        skull.quiet=10
+        screen=pygame.Surface((400,500),pygame.SRCALPHA)
+        font=summons.hud_font()
+        from unittest.mock import Mock
+        tracked_font=Mock(wraps=font)
+        with patch.object(summons,"hud_font",return_value=tracked_font):
+            skull.draw(screen,200,450)
+        tracked_font.render.assert_called_once_with("Eidolon +58%",True,(228,200,248))
+        y=450-summon_vfx.HOVER_HEIGHT-summon_vfx.canvas_size(6)-13
+        self.assertEqual(screen.get_at((180,y))[:3],(135,230,186))
+        self.assertEqual(screen.get_at((220,y))[:3],(35,20,45))
+        self.assertEqual(screen.get_at((180,y+8))[:3],(174,95,232))
+        self.assertEqual(screen.get_at((200,y+8))[:3],(45,30,60))
+        skull.charge=15
+        skull.draw(screen,200,450)
+        self.assertEqual(screen.get_at((220,y+8))[:3],(244,168,255))
+        screen.fill((0,0,0,0))
+        skull.draw(screen,200,300)
+        clamped_y=game.INFO_BAR_HEIGHT+font.get_linesize()+4
+        self.assertEqual(screen.get_at((220,clamped_y+8))[:3],(244,168,255))
+        skull.level=3
+        screen.fill((0,0,0,0))
+        skull.draw(screen,200,450)
+        y=450-summon_vfx.HOVER_HEIGHT-summon_vfx.canvas_size(3)-13
+        self.assertEqual(screen.get_at((180,y+8))[:3],(45,30,60))
 
     def test_enemy_target_and_damage_routing(self):
         skull=self.skull()
@@ -678,7 +743,7 @@ class SkullTests(unittest.TestCase):
         skull.update_beam(1,self.enemies)
         self.assertEqual(skull.beam_left,0)
 
-    def test_beam_lock_retarget_kill_harvest_not_charge(self):
+    def test_beam_lock_retarget_kill_harvest_and_charge(self):
         skull = self.skull()
         first = self.enemy(12,8,hp=1000)
         skull.update_beam(.1,self.enemies)
@@ -688,7 +753,7 @@ class SkullTests(unittest.TestCase):
         first.hp = 1
         skull.update_beam(.1,self.enemies)
         self.assertNotIn(first,self.enemies)
-        self.assertEqual((skull.harvest,skull.charge),(1,0))
+        self.assertEqual((skull.harvest,skull.charge),(1,1))
         remaining = skull.beam_left
         skull.update_beam(.1,self.enemies)
         self.assertIs(skull.beam_target,second)

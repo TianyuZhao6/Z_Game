@@ -160,7 +160,7 @@ def patched_game():
         )
     )
     ZGame.spawn_dot_rounds_hit_vfx = lambda game_state, x, y: sink.dot_vfx.append((x, y))
-    ZGame.increment_kill_count = lambda amount=1: setattr(sink, "kills", sink.kills + amount)
+    ZGame.increment_kill_count = lambda amount=1, *, game_state=None: setattr(sink, "kills", sink.kills + amount)
     ZGame._bandit_death_notice = lambda z, game_state: setattr(
         sink, "bandit_notices", sink.bandit_notices + 1
     )
