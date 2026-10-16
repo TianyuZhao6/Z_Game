@@ -27,6 +27,14 @@ The final revision also includes the user's additional taller-wall request.
 
 ## Shadow Procession
 
+Visual power pass: each spectral skull now carries a tapering wake about 3.25
+sprite-lengths long, made of staggered violet/magenta shadow tiles and broken
+light ribbons. All wakes draw behind the skull faces, fade at entry/exit, and
+remain visible when a head is just outside the viewport. Four deterministic
+animation phases and a bounded rotation cache avoid combat RNG and per-frame
+particle allocations. Trails remain cosmetic: no damage, extra hits or charge.
+Current real-game capture: `evidence/eidolon-long-procession-trails.png`.
+
 New casts store normalized viewport positions and velocities. Each update maps
 those paths to the current player-centered camera for both contact damage and
 drawing. Delayed entries therefore appear at the current screen boundary.
@@ -65,7 +73,8 @@ captures supersede the prior Option B presentation captures.
 
 ## Verification
 
-52 summon/integration checks pass, including combined kill charging, compact
+54 summon/integration checks pass, including long directional trail bounds,
+fade/cache behavior, unchanged combat state/RNG, combined kill charging, compact
 two-bar HUD, all evolution avatars in both real
 shop screens, visible size ratios, compact collision, edge/corner culling,
 smooth beam pixels, viewport-relative damage, resize, active-cast disk save/load

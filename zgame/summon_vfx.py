@@ -8,6 +8,92 @@ DEATH_DURATION = 1.3
 TRAIL_SECONDS = .28
 VISUAL_SIZES = (96, 144, 216)
 HOVER_HEIGHT = 38
+PROCESSION_TRAIL_LENGTH = 2.4  # Skull sprite lengths, presentation only.
+
+
+@lru_cache(maxsize=8)
+def procession_wake(size, phase):
+    """Right-facing spectral wake: broken tile smoke and narrow energy ribbons.
+
+    Deterministic decoration must never consume the combat random stream.
+    Fixed animation phases keep 24 simultaneous wakes inexpensive to render.
+    """
+    length = round(size*PROCESSION_TRAIL_LENGTH)
+    height = round(size*.95)
+    layer = pygame.Surface((length+16,height+16),pygame.SRCALPHA)
+    cy = layer.get_height()/2
+    # Broad translucent stream, interrupted by the facets below rather than a
+    # solid laser cone. The remote end dissolves into widely spaced fragments.
+    for strand in range(3):
+        points=[]
+        for step in range(25):
+            t=step/24
+            x=8+t*length
+            spread=t*size*.09
+            y=cy+math.sin(t*15+strand*2+phase*.7)*spread+(strand-1)*size*.08*t
+            points.append((x,y))
+        for step in range(1,len(points)):
+            t=step/(len(points)-1)
+            alpha=int(90*t**1.5)
+            color=(161,57,203,alpha) if strand!=1 else (209,50,135,alpha)
+            pygame.draw.line(layer,color,points[step-1],points[step],max(2,int(size*.22*t)))
+    # Staggered isometric fragments leave black gaps like the approved concept.
+    for i in range(170):
+        seed=(i*73+i*i*19)%997
+        t=.04+.94*((i*37)%211)/210
+        x=8+t*length
+        spread=size*(.02+.18*t)
+        wave=math.sin(t*18+phase*.7)*size*.04*t
+        y=cy+((seed%101)/50-1)*spread+wave
+        w=size*(.045+(seed%7)*.012)*(.2+.8*t)
+        h=w*.52
+        alpha=int((70+seed%100)*t**1.5)
+        palette=((146,64,199),(200,114,231),(247,83,161),(45,18,65))
+        color=(*palette[i%4],alpha)
+        pygame.draw.polygon(layer,color,((x-w,y),(x,y-h),(x+w,y),(x,y+h)))
+    # Three broken, flowing highlights give direction without becoming beams.
+    for strand in range(3):
+        for step in range(2,30):
+            if (step+strand*3)%7==0:
+                continue
+            pts=[]
+            for j in (step,step+1):
+                t=j/31
+                x=8+t*length
+                y=cy+(strand-1)*size*.08*t+math.sin(t*20+strand*2+phase*.7)*size*.04*t
+                pts.append((x,y))
+            t=step/31
+            color=(255,129,207,int(160*t)) if strand==1 else (210,155,255,int(125*t))
+            pygame.draw.line(layer,color,*pts,max(1,round(size*.018*t)))
+    return layer
+
+
+@lru_cache(maxsize=96)
+def oriented_procession_wake(size, phase, direction):
+    return pygame.transform.rotate(procession_wake(size,phase),-direction*360/64)
+
+
+def procession_heading(velocity):
+    angle=math.atan2(velocity[1],velocity[0])
+    sector=round(angle*64/math.tau)%64
+    return sector,pygame.Vector2(math.cos(sector*math.tau/64),math.sin(sector*math.tau/64))
+
+
+def draw_procession_wake(screen, head, velocity, size, age, remaining, phase):
+    direction=pygame.Vector2(velocity)
+    if direction.length_squared()<.01 or age<=0 or remaining<=0:
+        return
+    sector,axis=procession_heading(velocity)
+    # Match placement to the cached rotation, avoiding an offset at its tip.
+    length=round(size*PROCESSION_TRAIL_LENGTH)
+    center=pygame.Vector2(head)-axis*(length/2)
+    art=oriented_procession_wake(size,phase%4,sector)
+    dest=art.get_rect(center=(round(center.x),round(center.y)))
+    if not screen.get_rect().colliderect(dest):
+        return
+    # Shared cached pixels are never mutated; alpha is a per-blit surface flag.
+    art.set_alpha(round(255*min(1,age/.3,remaining/.35)))
+    screen.blit(art,dest)
 
 
 def stage_index(level):

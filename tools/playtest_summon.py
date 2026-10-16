@@ -53,7 +53,7 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
         p._ultimate_debug=True
         p.xp_to_next=100000
         if tier==6:
-            gs.companions[0].charge=15
+            gs.companions[0].charge=summons.PROCESSION_KILL_THRESHOLD
         if biome=="Windy Plains":
             gs.spawn_hurricane(p.rect.centerx+3*game.CELL_SIZE,p.rect.centery)
 

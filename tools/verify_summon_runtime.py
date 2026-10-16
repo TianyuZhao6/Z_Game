@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 from pathlib import Path
 import random
@@ -93,46 +94,46 @@ class SkullTests(unittest.TestCase):
         for _ in range(150):
             skull.on_kill(True)
         self.assertEqual(skull.harvest,200)
-        self.assertEqual(skull.charge,15)
+        self.assertEqual(skull.charge,150)
 
     def test_bloombone_cannot_harvest(self):
         skull=self.skull(2)
         skull.on_kill(True)
         self.assertEqual((skull.harvest,skull.charge),(0,0))
 
-    def test_procession_kills_excluded_from_charge(self):
+    def test_procession_kills_charge_once_and_preserve_overflow(self):
         skull=self.skull()
-        for _ in range(20):
-            skull.on_kill(False)
-        self.assertEqual(skull.charge,0)
-        for _ in range(30):
-            skull.on_kill(True)
-        self.assertEqual(skull.charge,15)
+        for _ in range(35):
+            target=self.enemy(hp=1)
+            summons.damage_enemy(game,self.gs,self.enemies,target,100,skull)
+            summons.damage_enemy(game,self.gs,self.enemies,target,100,skull)
+        self.assertEqual(skull.charge,35)
+        self.assertEqual(game.META["kill_count"],35)
         harvest=skull.harvest
         skull.cast()
-        self.assertEqual((skull.charge,skull.harvest),(0,harvest))
+        self.assertEqual((skull.charge,skull.harvest),(5,harvest))
 
     def test_trigger_and_boss_exception(self):
         skull=self.skull()
         boss=self.enemy()
         boss.is_boss=True
-        skull.charge=14
+        skull.charge=summons.PROCESSION_KILL_THRESHOLD-1
         skull.update(.01,self.enemies)
         self.assertEqual(skull.cast_left,0)
-        skull.charge=15
+        skull.charge=summons.PROCESSION_KILL_THRESHOLD
         skull.update(.01,self.enemies)
         self.assertGreater(skull.cast_left,0)
-        skull.charge=15
+        skull.charge=summons.PROCESSION_KILL_THRESHOLD
         old=skull.procession
         skull.update(.01,self.enemies)
         self.assertIs(skull.procession,old)
-        self.assertEqual(skull.charge,15)
+        self.assertEqual(skull.charge,summons.PROCESSION_KILL_THRESHOLD)
 
     def test_waits_with_four_and_casts_with_five(self):
         skull=self.skull()
         for i in range(4):
             self.enemy(12,i+5)
-        skull.charge=15
+        skull.charge=summons.PROCESSION_KILL_THRESHOLD
         skull.update(.01,self.enemies)
         self.assertEqual(skull.cast_left,0)
         self.enemy(13,9)
@@ -152,7 +153,7 @@ class SkullTests(unittest.TestCase):
         self.assertEqual((skull.harvest,skull.charge),(0,0))
         skull.update(1,self.enemies)
         self.assertGreater(skull.cast_left,0)
-        skull.update(2,self.enemies)
+        skull.update(4,self.enemies)
         self.assertFalse(skull.procession)
         self.assertEqual(skull.hp,0)
 
@@ -249,7 +250,7 @@ class SkullTests(unittest.TestCase):
         skull.update_procession(.01,self.enemies)
         self.assertIs(self.gs.obstacles[12,8],wall)
 
-    def test_personal_kill_once_and_skill_kill_does_not_charge(self):
+    def test_personal_and_skill_kills_charge_once(self):
         skull=self.skull()
         target=self.enemy(hp=1)
         summons.damage_enemy(game,self.gs,self.enemies,target,100,skull,True)
@@ -257,7 +258,7 @@ class SkullTests(unittest.TestCase):
         self.assertEqual((skull.harvest,skull.charge),(1,1))
         target=self.enemy(hp=1)
         summons.damage_enemy(game,self.gs,self.enemies,target,100,skull,False)
-        self.assertEqual((skull.harvest,skull.charge),(2,1))
+        self.assertEqual((skull.harvest,skull.charge),(2,2))
         self.assertEqual(game.META["kill_count"],2)
 
     def test_retarget_dead_target(self):
@@ -283,9 +284,9 @@ class SkullTests(unittest.TestCase):
         self.assertEqual((skull.charge,skull.harvest),(2,1))
         # Player prop/DoT deaths use the same confirmed-death hook in both loops.
         game.increment_kill_count(20,game_state=self.gs)
-        self.assertEqual((skull.charge,skull.harvest),(15,1))
+        self.assertEqual((skull.charge,skull.harvest),(22,1))
         summons.start_level(game,self.gs,self.player)
-        self.assertEqual(self.gs.companions[0].charge,15)
+        self.assertEqual(self.gs.companions[0].charge,22)
 
     def test_player_charge_stage_down_storage_and_active_cast_rules(self):
         skull=self.skull(3)
@@ -321,7 +322,7 @@ class SkullTests(unittest.TestCase):
         self.assertEqual(screen.get_at((220,y))[:3],(35,20,45))
         self.assertEqual(screen.get_at((180,y+8))[:3],(174,95,232))
         self.assertEqual(screen.get_at((200,y+8))[:3],(45,30,60))
-        skull.charge=15
+        skull.charge=summons.PROCESSION_KILL_THRESHOLD
         skull.draw(screen,200,450)
         self.assertEqual(screen.get_at((220,y+8))[:3],(244,168,255))
         screen.fill((0,0,0,0))
@@ -489,7 +490,7 @@ class SkullTests(unittest.TestCase):
         self.assertEqual(skull.procession,rows)
         self.assertTrue(skull.procession_relative)
         self.assertAlmostEqual(skull.cast_left,2.3)
-        for _ in range(140):
+        for _ in range(260):
             skull.update(1/60,self.enemies)
         self.assertEqual(skull.cast_left,0)
         self.assertFalse(skull.procession)
@@ -598,7 +599,7 @@ class SkullTests(unittest.TestCase):
         after=restored.procession_world(*restored.procession[0][:2])
         self.assertAlmostEqual(after[0]-before[0],260,delta=2)
         self.assertAlmostEqual(after[1]-before[1],156,delta=2)
-        restored.update_procession(3,[])
+        restored.update_procession(5,[])
         restored.cast()
         self.assertTrue(restored.procession_relative)
         self.assertEqual(len(restored.procession),summons.PROCESSION_COUNT)
@@ -642,7 +643,7 @@ class SkullTests(unittest.TestCase):
                 self.player.rect.move_ip(dx,dy)
                 cam=game.calculate_iso_camera(*self.player.rect.center)
                 for row in skull.procession:
-                    self.assertTrue(row[0] in (0,1) or row[1] in (0,1))
+                    self.assertTrue(row[0]<0 or row[0]>1 or row[1]<0 or row[1]>1)
                     x,y=skull.procession_world(*row[:2])
                     screen=game.iso_world_to_screen(x/game.CELL_SIZE,(y-game.INFO_BAR_HEIGHT)/game.CELL_SIZE,0,*cam)
                     self.assertAlmostEqual(screen[0],row[0]*width,delta=2)
@@ -685,6 +686,134 @@ class SkullTests(unittest.TestCase):
             self.assertEqual(surface.get_at((x,y-12)).a,0)
             alphas.update(surface.get_at((x,y+dy)).a for dy in range(-8,9))
         self.assertGreater(len(alphas),8)  # Filtered edges, not three hard bands.
+
+    def test_procession_wake_is_long_directional_and_visual_only(self):
+        screen=pygame.Surface((800,400),pygame.SRCALPHA)
+        before=random.getstate()
+        summon_vfx.draw_procession_wake(screen,(600,200),(10,0),140,1,2,0)
+        bounds=screen.get_bounding_rect(min_alpha=5)
+        self.assertGreater(bounds.left,240)
+        self.assertLess(bounds.left,320)
+        self.assertGreater(bounds.width,280)
+        self.assertLess(bounds.width,360)
+        self.assertLessEqual(bounds.right,610)
+        # Left-going ghosts leave their wake on the right, not in front.
+        screen.fill((0,0,0,0))
+        summon_vfx.draw_procession_wake(screen,(100,200),(-10,0),140,1,2,0)
+        self.assertGreater(screen.get_bounding_rect(min_alpha=5).right,400)
+        # A head outside the screen must not prematurely cull its visible tail.
+        screen.fill((0,0,0,0))
+        summon_vfx.draw_procession_wake(screen,(900,200),(10,0),140,1,2,0)
+        self.assertGreater(pygame.mask.from_surface(screen,5).count(),0)
+        self.assertEqual(before,random.getstate())
+        art=summon_vfx.procession_wake(140,0)
+        self.assertIs(art,summon_vfx.procession_wake(140,0))
+
+    def test_procession_wake_fades_and_does_not_change_combat(self):
+        screen=pygame.Surface((800,400),pygame.SRCALPHA)
+        summon_vfx.draw_procession_wake(screen,(600,200),(10,0),140,1,2,0)
+        full=pygame.mask.from_surface(screen,40).count()
+        screen.fill((0,0,0,0))
+        summon_vfx.draw_procession_wake(screen,(600,200),(10,0),140,1,.03,0)
+        self.assertLess(pygame.mask.from_surface(screen,40).count(),full)
+        skull=self.skull()
+        skull.cast()
+        skull.update_procession(.5,[])
+        rows=copy.deepcopy(skull.procession)
+        before=random.getstate()
+        summon_vfx.oriented_procession_wake.cache_clear()
+        summons.draw_effects(game,self.gs,screen,*game.calculate_iso_camera(*self.player.rect.center))
+        self.assertEqual(rows,skull.procession)
+        self.assertEqual(before,random.getstate())
+        self.assertEqual((skull.charge,skull.harvest),(0,0))
+
+    def test_diagonal_routes_emit_through_three_seconds_and_exit_once(self):
+        skull=self.skull()
+        before=random.getstate()
+        skull.cast()
+        self.assertEqual(before,random.getstate())
+        rows=copy.deepcopy(skull.procession)
+        self.assertEqual(len(rows),24)
+        self.assertGreater(max(s[4] for s in rows),2.8)
+        quadrants=set()
+        for row in rows:
+            vx,vy=row[2]*1280,row[3]*680
+            angle=abs(math.degrees(math.atan2(abs(vy),abs(vx))))
+            self.assertGreaterEqual(angle,27.9)
+            self.assertLessEqual(angle,62.1)
+            quadrants.add((vx>0,vy>0))
+            self.assertLess(row[5],1.5)
+            ex,ey=row[0]+row[2]*row[5],row[1]+row[3]*row[5]
+            self.assertTrue(ex<0 or ex>1 or ey<0 or ey>1)
+        self.assertEqual(len(quadrants),4)
+        skull.update_procession(2.5,[])
+        self.assertTrue(any(s[4]>0 for s in skull.procession))
+        self.assertLess(len(skull.procession),24)  # Earlier crossings already removed.
+        skull.update_procession(.5,[])
+        self.assertEqual(skull.cast_left,0)
+        self.assertTrue(skull.procession)  # Late emissions drain instead of disappearing.
+        skull.update_procession(2,[])
+        self.assertFalse(skull.procession)
+        for i in range(24):
+            self.assertEqual(summons.procession_route(i,1280,680,78),summons.procession_route(i,1280,680,78))
+
+    def test_overflow_waits_for_drain_and_survives_save(self):
+        skull=self.skull()
+        skull.gain_procession_charge(67)
+        skull.cast()
+        self.assertEqual(skull.charge,37)
+        rows=copy.deepcopy(skull.procession)
+        self.assertFalse(skull.cast())
+        self.assertEqual(skull.procession,rows)
+        skull.update_procession(3.05,[])
+        self.assertEqual(skull.cast_left,0)
+        self.assertFalse(skull.cast())
+        skull.persist()
+        summons.start_level(game,self.gs,self.player)
+        skull=self.gs.companions[0]
+        self.assertEqual(skull.charge,37)
+        self.assertTrue(skull.procession)
+        skull.update_procession(2,[])
+        boss=self.enemy(hp=100000)
+        boss.is_boss=True
+        skull.update(.01,self.enemies)
+        self.assertGreater(skull.cast_left,0)
+        self.assertEqual(skull.charge,7)
+        self.assertEqual(len(skull.procession),24)
+        with patch.object(summons,"PROCESSION_KILL_THRESHOLD",10):
+            skull.update_procession(5,[])
+            skull.gain_procession_charge(3)
+            skull.update(.01,self.enemies)
+            self.assertGreater(skull.cast_left,0)
+            self.assertEqual(skull.charge,0)
+
+    def test_head_rotation_matches_tail_heading_and_rear_attachment(self):
+        skull=self.skull()
+        skull.procession_relative=True
+        screen=pygame.Surface((1280,720),pygame.SRCALPHA)
+        for vx,vy in ((.5,.5),(-.5,.5),(.5,-.5),(-.5,-.5)):
+            skull.procession=[[.5,.5,vx,vy,0,1,10,.5]]
+            with patch.object(summon_vfx,"draw_procession_wake") as tail,patch.object(summons,"procession_head",wraps=summons.procession_head) as head:
+                summons.draw_effects(game,self.gs,screen,*game.calculate_iso_camera(*self.player.rect.center))
+            velocity=tail.call_args.args[2]
+            sector,axis=summon_vfx.procession_heading(velocity)
+            size=head.call_args.args[0]
+            head.assert_called_once_with(size,sector)
+            rear=pygame.Vector2(tail.call_args.args[1])
+            self.assertAlmostEqual((pygame.Vector2(640,380)-rear).dot(axis),size*.24,delta=2)
+            expected=pygame.transform.rotate(summons.sprite(3,size),-sector*360/64)
+            self.assertEqual(pygame.image.tobytes(summons.procession_head(size,sector),"RGBA"),pygame.image.tobytes(expected,"RGBA"))
+
+    def test_wake_rear_is_fainter_and_narrower(self):
+        art=summon_vfx.procession_wake(140,0)
+        def profile(lo,hi):
+            values=[(y,art.get_at((x,y)).a) for x in range(lo,hi) for y in range(art.get_height())]
+            ys=[y for y,a in values if a>5]
+            return sum(a for y,a in values),max(ys)-min(ys)
+        rear=profile(30,80)
+        front=profile(260,310)
+        self.assertLess(rear[0],front[0]*.5)
+        self.assertLess(rear[1],front[1])
 
     def test_death_dissolves_once_and_resumes_without_replaying(self):
         skull = self.skull()
@@ -807,7 +936,7 @@ class SkullTests(unittest.TestCase):
         skull = self.skull()
         target = self.enemy()
         target.is_boss = True
-        skull.charge = 15
+        skull.charge = summons.PROCESSION_KILL_THRESHOLD
         skull.update(1/60,self.enemies)
         self.assertGreater(skull.beam_left,0)
         self.assertGreater(skull.cast_left,0)

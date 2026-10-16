@@ -22,6 +22,8 @@ REGEN_RATE = 0.02
 CAST_DURATION = 3.0
 CONTACT_GAP = 0.3
 PROCESSION_COUNT = 24
+PROCESSION_KILL_THRESHOLD = 30
+PROCESSION_CROSSING_SPEED = 1.1  # Viewport diagonals per second.
 ATTACK_RANGE_TILES = 7
 FOLLOW_DISTANCE_TILES = 2.5
 HOME_RADIUS_TILES = 6
@@ -42,6 +44,32 @@ def number(value, default=0.0, low=0.0, high=1e6):
         return min(high, max(low, value)) if math.isfinite(value) else default
     except (TypeError, ValueError):
         return default
+
+
+def procession_route(index, width, height, margin):
+    """Fixed diagonal sweep families clipped against padded screen edges.
+
+    Angles are measured in screen pixels, not stretched normalized space.
+    Every route crosses once through a distributed interior point, then exits.
+    """
+    angle = math.radians((28,42,58,34,48,62)[index//4%6])
+    sx,sy = ((1,1),(-1,1),(1,-1),(-1,-1))[index%4]
+    vx,vy = sx*math.cos(angle),sy*math.sin(angle)
+    px = width*(.25+((index*7)%11)*.05)
+    py = height*(.25+((index*3)%11)*.05)
+    tx=sorted(((-margin-px)/vx,(width+margin-px)/vx))
+    ty=sorted(((-margin-py)/vy,(height+margin-py)/vy))
+    enter,leave=max(tx[0],ty[0]),min(tx[1],ty[1])
+    start=((px+vx*enter)/width,(py+vy*enter)/height)
+    end=((px+vx*leave)/width,(py+vy*leave)/height)
+    duration=(leave-enter)/(math.hypot(width,height)*PROCESSION_CROSSING_SPEED)
+    return start,end,duration
+
+
+@lru_cache(maxsize=64)
+def procession_head(size, sector):
+    # Approved ghost artwork points right (screen +X); no flip or yaw view.
+    return pygame.transform.rotate(sprite(3,size),-sector*360/64)
 
 
 def ensure_meta(meta):
@@ -229,7 +257,9 @@ def damage_enemy(game, state, enemies, target, damage, skull, normal=False, beam
     if target.hp > 0:
         return
     target._death_processed = True
-    skull.on_kill(normal or beam)
+    # Every confirmed Eidolon death counts, including Procession; the shared
+    # death guard above prevents duplicates. Active casts never overlap.
+    skull.on_kill(True)
     game.increment_kill_count()
     game._bandit_death_notice(target, state)
     x, y = target.rect.center
@@ -300,7 +330,7 @@ class Skull:
         self._beam_recipient = None
         if isinstance(saved, dict):
             self.hp = number(saved.get("hp", self.max_hp), self.max_hp, high=self.max_hp)
-            self.charge = int(number(saved.get("charge", 0), high=15)) if self.level == 6 else 0
+            self.charge = int(number(saved.get("charge", 0))) if self.level == 6 else 0
             self.quiet = number(saved.get("quiet", 0), high=REGEN_DELAY)
             self.fire_cd = number(saved.get("fire_cd", 0), high=FIRE_INTERVAL)
             self.hit_cd = number(saved.get("hit_cd", 0), high=1)
@@ -380,7 +410,7 @@ class Skull:
 
     def gain_procession_charge(self, amount=1):
         if self.hp > 0 and self.level == 6:
-            self.charge = min(15, self.charge+max(0,int(amount)))
+            self.charge += max(0,int(amount))
             self.persist()
 
     def on_kill(self, charges_skill):
@@ -443,20 +473,20 @@ class Skull:
         self.facing = movement_facing(self.x-start_x, self.y-start_y, self.facing)
 
     def cast(self):
-        self.charge = 0
+        if self.cast_left > 0 or self.procession:
+            return False
+        self.charge = max(0,self.charge-PROCESSION_KILL_THRESHOLD)
         self.cast_left = CAST_DURATION
         self.hit_times.clear()
         self.procession = []
         self.procession_relative = True
         for i in range(PROCESSION_COUNT):
-            side = random.randrange(4)
-            a, b = random.random(), random.random()
-            endpoints = (((0,a),(1,b)), ((1,a),(0,b)), ((a,0),(b,1)), ((a,1),(b,0)))
-            start, end = endpoints[side]
-            delay = i/(PROCESSION_COUNT-1)*.75
-            duration = CAST_DURATION-delay
+            start,end,duration = procession_route(i,self.game.VIEW_W,
+                self.game.VIEW_H-self.game.INFO_BAR_HEIGHT,self.game.CELL_SIZE*1.5)
+            delay = i/PROCESSION_COUNT*CAST_DURATION
             # x, y, velocity, spawn delay, remaining crossing, snapshot damage, age
             self.procession.append([*start, (end[0]-start[0])/duration, (end[1]-start[1])/duration, delay, duration, self.damage*PROCESSION_DAMAGE_MULT, 0.0])
+        return True
 
     def procession_world(self, x, y):
         """Convert viewport-relative paths to authoritative current world space.
@@ -509,7 +539,7 @@ class Skull:
                     speed = game.BULLET_SPEED*PROJECTILE_SPEED_MULT
                     self.shots.append(dict(x=float(self.rect.centerx), y=float(self.rect.centery), vx=math.cos(angle)*speed, vy=math.sin(angle)*speed, target=target, damage=self.damage, life=PROJECTILE_LIFETIME, trail=[], visual_origin=self.eye_offset()))
                 self.fire_cd = FIRE_INTERVAL
-            if self.level == 6 and self.charge == 15 and self.cast_left <= 0 and (len(alive) >= 5 or any(getattr(e,"is_boss",False) or getattr(e,"type","")=="bandit" for e in alive)):
+            if self.level == 6 and self.charge >= PROCESSION_KILL_THRESHOLD and self.cast_left <= 0 and not self.procession and (len(alive) >= 5 or any(getattr(e,"is_boss",False) or getattr(e,"type","")=="bandit" for e in alive)):
                 self.cast()
             for e in alive:
                 if self.hit_cd <= 0 and game.circle_touch(e, self):
@@ -620,10 +650,11 @@ class Skull:
                 self.shots.remove(shot)
 
     def update_procession(self, dt, enemies):
-        if self.cast_left <= 0:
+        if self.cast_left <= 0 and not self.procession:
             return
         game, state = self.game, self.state
-        active_dt = min(dt,self.cast_left)
+        # Three-second emission window; late skulls finish their one-way crossing.
+        active_dt = dt
         self.cast_left = max(0,self.cast_left-dt)
         for s in self.procession:
             step = max(0,active_dt-max(0,s[4]))
@@ -651,8 +682,8 @@ class Skull:
                     damage_wall(game,state,gp,obj,s[6],self.owner)
                 else:
                     damage_enemy(game,state,enemies,obj,s[6],self)
-        if self.cast_left <= 0:
-            self.procession.clear()
+        self.procession[:] = [s for s in self.procession if s[5]>1e-9]
+        if not self.procession and self.cast_left <= 0:
             self.hit_times.clear()
 
     @property
@@ -698,8 +729,8 @@ class Skull:
         # Second bar is dim/empty until the final evolution unlocks Procession.
         pygame.draw.rect(screen,(45,30,60),(int(sx-width/2),y+8,width,5))
         if self.level == 6:
-            color = (244,168,255) if self.charge == 15 else (174,95,232)
-            pygame.draw.rect(screen,color,(int(sx-width/2),y+8,int(width*self.charge/15),5))
+            color = (244,168,255) if self.charge >= PROCESSION_KILL_THRESHOLD else (174,95,232)
+            pygame.draw.rect(screen,color,(int(sx-width/2),y+8,int(width*min(1,self.charge/PROCESSION_KILL_THRESHOLD)),5))
         label = f"Eidolon +{self.harvest}%"
         text = font.render(label,True,(228,200,248))
         screen.blit(text,text.get_rect(midbottom=(int(sx),y-2)))
@@ -770,24 +801,25 @@ def draw_effects(game,state,screen,camx,camy):
                 lift = max(0,1-(PROJECTILE_LIFETIME-life)/.22)
                 points.append((sx+offset[0]*lift,sy+offset[1]*lift))
             summon_vfx.draw_orb(screen,points)
-        for s in skull.procession:
+        heads = []
+        for index,s in enumerate(skull.procession):
             if s[4] > 0 or s[5] <= 0:
                 continue
             sx,sy = project(*skull.procession_world(s[0],s[1]))
-            if not screen.get_rect().inflate(350,350).collidepoint(sx,sy):
+            # A full-second projected vector avoids integer-pixel angle jitter
+            # in these long wakes; this does not advance the simulated skull.
+            prev = project(*skull.procession_world(s[0]-s[2],s[1]-s[3]))
+            size = int(game.CELL_SIZE*2.8)
+            center = (int(sx),int(sy if skull.procession_relative else sy-20))
+            velocity = (sx-prev[0],sy-prev[1])
+            sector,axis = summon_vfx.procession_heading(velocity)
+            rear = pygame.Vector2(center)-axis*size*.24
+            summon_vfx.draw_procession_wake(screen,rear,velocity,size,
+                                           s[7],s[5],int(skull.clock*8)+index)
+            if not screen.get_rect().inflate(size*2,size*2).collidepoint(*center):
                 continue
-            prev = project(*skull.procession_world(s[0]-s[2]*.025,s[1]-s[3]*.025))
-            art = sprite(3,int(game.CELL_SIZE*2.8),sx<prev[0]).copy()
+            art = procession_head(size,sector).copy()
             art.set_alpha(int(115*min(1,s[5]/.25,s[7]/.12)))
-            for i in range(1,7):
-                tx,ty = project(*skull.procession_world(s[0]-s[2]*i*.018,s[1]-s[3]*i*.018))
-                tile = trail_tile(i)
-                screen.blit(tile,tile.get_rect(center=(int(tx),int(ty))))
-            screen.blit(art,art.get_rect(center=(int(sx),int(sy if skull.procession_relative else sy-20))))
-
-
-@lru_cache(maxsize=6)
-def trail_tile(index):
-    tile = pygame.Surface((26,16),pygame.SRCALPHA)
-    pygame.draw.polygon(tile,(171,114,196,90-index*11),((13,0),(26,8),(13,16),(0,8)))
-    return tile
+            heads.append((art,art.get_rect(center=center)))
+        # Keep the skull faces readable on top of all overlapping wakes.
+        screen.blits(heads)
