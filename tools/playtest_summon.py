@@ -26,7 +26,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 import pygame
 import ZGame as game
-from zgame import summons,app_flow,shop_support
+from zgame import summons,app_flow,shop_support,render_runtime
 
 
 async def scenario(name, tier, level, biome=None, lite=False, down=False):
@@ -39,7 +39,7 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
     card=next(c for c in shop_support.build_shop_catalog(game) if c["id"]==summons.SKULL_ID)
     for _ in range(tier):
         card["apply"]()
-    capture={"time":0.0,"cast":False,"shot":False,"down":False,"frame":False,"frames":0,"max_enemies":0}
+    capture={"time":0.0,"cast":False,"shot":False,"down":False,"frame":False,"frames":0,"max_enemies":0,"facings":set()}
     original_start=summons.start_level
     original_update=summons.update
     renderer=game.render_game_iso_web_lite if lite else game.render_game_iso
@@ -66,6 +66,7 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
             skull.take_damage(skull.max_hp*5)
             capture["down"]=True
         original_update(g,gs,dt,enemies)
+        capture["facings"].add(skull.facing)
         capture["cast"] |= skull.cast_left>0
         capture["shot"] |= bool(skull.shots)
         if capture["down"]:
@@ -75,12 +76,20 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
         capture["enemies"]=enemies
 
     def render(screen,gs,p,enemies,bullets,eshots,obstacles=None,**kw):
-        result=renderer(screen,gs,p,enemies,bullets,eshots,obstacles,**kw)
+        # Exercise actual web wall caches when testing the lite renderer.
+        with patch.object(game,"IS_WEB",lite), patch.object(render_runtime,"IS_WEB",lite):
+            result=renderer(screen,gs,p,enemies,bullets,eshots,obstacles,**kw)
         capture["frames"]+=1
         t=capture["time"]
         if not capture["frame"] and (1.1<t<2.4):
             pygame.image.save(screen,str(evidence/f"{name}.png"))
             capture["frame"]=True
+        skull=gs.companions[0]
+        if name=="bloombone" and 2<t<8:
+            for label, directions in (("front",(1,7)),("rear",(3,5))):
+                if skull.facing in directions and label not in capture:
+                    pygame.image.save(screen,str(evidence/f"facing-{label}.png"))
+                    capture[label]=True
         if down and capture["down"] and "down_frame" not in capture:
             pygame.image.save(screen,str(evidence/f"{name}-downed.png"))
             capture["down_frame"]=True
@@ -105,6 +114,7 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
     assert capture["frames"]>=500
     assert capture["player"].rect.center!=capture["start_pos"]
     assert skull.rect.center!=capture["skull_start"]
+    assert len(capture["facings"])>=3, "Skull did not turn while navigating"
     assert capture["shot"],"No ordinary shots fired"
     if tier==6:
         assert capture["cast"],"Procession never triggered"

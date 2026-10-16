@@ -45,7 +45,7 @@ strong; player movement/fighting is still needed. No unrelated prop rebalancing.
 
 ## Verification
 
-- `python tools/verify_summon_runtime.py`: 26 checks, including both actual shop
+- `python tools/verify_summon_runtime.py`: 32 checks, including both actual shop
   screens, purchases, equip toggle, damage isolation, shield absorption, enemy
   variants, boss targeting, save-file round trips, downed reload, transitions,
   harvest, trigger rules, retargeting, compact navigation, offscreen damage,
@@ -81,7 +81,8 @@ gameplay rewrite. Existing regression suites found no failing scenarios.
 
 Only this companion is implemented; other summon designs remain deferred. The
 three-slot limit is reserved, not an implementation of three different species.
-The approved atlas uses bobbing/mirroring rather than authored animation frames.
+The companion now uses authored directional views plus bobbing; it does not yet
+have separate frame-by-frame idle, attack, or turning animations.
 Human feel/balance testing and a real browser/Pyodide run remain. Random crossing
 coverage intentionally does not guarantee every target is hit. Summon state is
 preserved by the existing progress-save workflow even though that workflow
@@ -93,3 +94,28 @@ This is a local first-playable checkpoint, not a deployment. No user save files
 were used by the tests; disk-save checks use isolated temporary directories.
 Checkpoint branch: `codex/summon-first-playable`, based on `web-demo` at
 `9f58f9d`. The previous branch is retained; nothing is pushed or deployed.
+
+## Movement-facing and terrain art follow-up (2026-10-15)
+
+All three evolutions face their actual movement using eight camera-relative
+views. Upright front/profile/rear art replaces the fixed image. Facing updates
+after wall collision resolution, holds while idle/blocked, uses a small angular
+hysteresis to prevent flicker, and survives same-level saves. Old saves default
+to facing forward. Collision size, navigation, damage and skill rules are unchanged.
+
+The native terrain renderer now draws dark beveled stone slabs with restrained
+grain, chips and sparse carved wards. Permanent walls use blue-gray banded stone
+and an inset seal; breakable walls use warm fractured masonry. Low prism walls
+replace the old tall pillar overlay. Both renderers share cached deterministic
+materials, without consuming gameplay randomness. Damage tints are quantized
+and the lightweight wall cache refreshes on damage as well as removal.
+
+Validation: 32 summon/art checks + 9 bullet checks + 13 game-state checks passed.
+All five actual-level-loop scenarios passed (565 frames each); each asserts at
+least three facing directions occurred. The lightweight scenario now enables
+the real web render/cache flags during rendering. This still runs on desktop
+Python, not in a browser. Human visual/feel approval remains with the player.
+
+New real runtime captures: `docs/evidence/summon-facing-front.png`,
+`docs/evidence/summon-facing-rear.png`, and `docs/evidence/summon-terrain-lite.png`.
+These are unedited automated gameplay captures, not generated mockups.

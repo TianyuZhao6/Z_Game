@@ -5,6 +5,15 @@ Bloombone, Soulflame, Rift Skull, Shadow Procession. Runtime slices the atlas,
 scales with nearest-neighbor sampling, and applies procession translucency/fades.
 The companion sprite canvas is 2.8 tiles; its physical body is only 0.44 tile.
 
+`skull-directions.png` adds five upright views for each evolution in a 5-column,
+3-row transparent atlas (Bloombone, Soulflame, Rift Skull). Columns are front,
+front-right, right profile, rear-right, rear. Mirroring supplies the other three
+directions. Gameplay uses this sheet; the original atlas remains for shop icons
+and Shadow Procession. Fixed cell anchors and size are shared across rotations.
+The built-in image-generation tool produced these views using the original
+atlas as the identity reference. The complete prompt is in
+`skull-directions-prompt.md`. No original asset was overwritten.
+
 Generated using the built-in image-generation tool, guided by the approved
 floating-skull comparison. No existing game assets were overwritten.
 

@@ -1072,7 +1072,7 @@ ISO_CELL_H = int(32 * WORLD_SCALE)  # 等距砖块在画面上的“菱形”半
 ISO_WALL_Z = int(22 * WORLD_SCALE)  # 障碍“墙体”抬起的高度（屏幕像素）
 ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
 SPATIAL_CELL = int(CELL_SIZE * 1.25)  # 统一网格大小
-WALL_STYLE = "hybrid"  # "billboard" | "prism" | "hybrid"
+WALL_STYLE = "prism"  # "billboard" | "prism" | "hybrid"; low carved masonry
 ISO_EQ_GAIN = math.sqrt(2) * (ISO_CELL_W * 0.5)
 # --- unified UI palette (matches homepage style) ---
 UI_BG = (16, 19, 26)

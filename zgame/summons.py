@@ -111,6 +111,47 @@ def sprite(index, size=112, flip=False):
     return pygame.transform.flip(out, True, False) if flip else out
 
 
+@lru_cache(maxsize=1)
+def _direction_atlas():
+    path = first_existing_path(asset_candidates("sprites", "summons", "skull-directions.png"))
+    return pygame.image.load(path).convert_alpha()
+
+
+@lru_cache(maxsize=72)
+def directional_sprite(index, size, facing):
+    """Eight upright yaw views: S, SE, E, NE, N, NW, W, SW.
+
+    The atlas supplies five rightward views; the leftward views are mirrored.
+    Keep a fixed cell/anchor instead of trimming each silhouette independently.
+    """
+    atlas = _direction_atlas()
+    column = facing if facing <= 4 else 8 - facing
+    w, h = atlas.get_size()
+    cell = atlas.subsurface((column*w//5, index*h//3,
+                            (column+1)*w//5-column*w//5, (index+1)*h//3-index*h//3))
+    art = pygame.transform.scale(cell, (int(size*.94), int(size*.94)))
+    if facing > 4:
+        art = pygame.transform.flip(art, True, False)
+    out = pygame.Surface((size, size), pygame.SRCALPHA)
+    out.blit(art, art.get_rect(center=(size//2, size//2)))
+    return out
+
+
+def movement_facing(dx, dy, previous):
+    """World movement to isometric camera yaw, with a quiet sector boundary.
+
+    Use unrounded displacement, not camera/screen positions. The 2:1 screen
+    foreshortening must not turn a world diagonal into an incorrect side view.
+    """
+    if dx*dx + dy*dy < 1e-8:
+        return previous
+    angle = math.atan2(dx-dy, dx+dy)
+    offset = (angle - previous*math.pi/4 + math.pi) % math.tau - math.pi
+    if abs(offset) <= math.pi/8 + math.radians(6):
+        return previous
+    return int(math.floor(angle/(math.pi/4) + .5)) % 8
+
+
 def segment_hit(rect, start, end, radius=0):
     hit = rect.inflate(int(radius * 2), int(radius * 2)).clipline(start, end)
     if not hit:
@@ -221,6 +262,7 @@ class Skull:
                 self.rect.center = (gx+.5)*c, (gy+.5)*c+game.INFO_BAR_HEIGHT
                 break
         self.x, self.y = float(self.rect.x), float(self.rect.y-game.INFO_BAR_HEIGHT)
+        self.facing = 0
         self.hp = self.max_hp
         self.charge = 0
         self.hit_cd = self.quiet = self.fire_cd = self.clock = 0.0
@@ -236,6 +278,7 @@ class Skull:
             self.quiet = number(saved.get("quiet", 0), high=REGEN_DELAY)
             self.fire_cd = number(saved.get("fire_cd", 0), high=FIRE_INTERVAL)
             self.hit_cd = number(saved.get("hit_cd", 0), high=1)
+            self.facing = int(number(saved.get("facing", 0), high=7))
             self.x = number(saved.get("x", self.x), self.x, high=game.GRID_SIZE*game.CELL_SIZE-self.size)
             self.y = number(saved.get("y", self.y), self.y, high=game.GRID_SIZE*game.CELL_SIZE-self.size)
             self.sync_rect()
@@ -273,7 +316,7 @@ class Skull:
         self.game.META["skull_combat"] = {
             "level_index": int(getattr(self.state, "current_level", 0)), "hp": self.hp,
             "charge": self.charge, "quiet": self.quiet, "fire_cd": self.fire_cd, "hit_cd": self.hit_cd,
-            "x": self.x, "y": self.y, "cast_left": self.cast_left,
+            "x": self.x, "y": self.y, "facing": self.facing, "cast_left": self.cast_left,
             "procession": [list(row) for row in self.procession],
             "shots": [[s[k] for k in ("x", "y", "vx", "vy", "life", "damage")] for s in self.shots],
         }
@@ -335,6 +378,7 @@ class Skull:
             self.path.pop(0)
             return
         delta.scale_to_length(step)
+        start_x, start_y = self.x, self.y
         for axis in (0, 1):
             old = self.x, self.y
             if axis == 0:
@@ -346,6 +390,7 @@ class Skull:
                 self.x, self.y = old
                 self.sync_rect()
                 self.path_cd = 0
+        self.facing = movement_facing(self.x-start_x, self.y-start_y, self.facing)
 
     def cast(self):
         game = self.game
@@ -475,7 +520,7 @@ class Skull:
     def draw(self, screen, sx, sy):
         size = int(self.game.CELL_SIZE*2.8)
         index = 2 if self.level == 6 else 1 if self.level >= 3 else 0
-        art = sprite(index,size)
+        art = directional_sprite(index, size, self.facing)
         if self.hp <= 0:
             art = art.copy()
             art.set_alpha(55)

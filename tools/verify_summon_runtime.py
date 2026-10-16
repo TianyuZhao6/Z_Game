@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import pygame
 import ZGame as game
-from zgame import summons, shop_support, shop_ui, persistence, app_flow
+from zgame import summons, shop_support, shop_ui, persistence, app_flow, terrain_art, render_runtime
 
 
 class SkullTests(unittest.TestCase):
@@ -315,6 +315,93 @@ class SkullTests(unittest.TestCase):
             self.assertFalse(skull.rect.colliderect(wall.rect))
         self.assertLess(summons.math.dist(skull.rect.center,goal),c)
         self.assertLess(skull.size,c/2)
+
+    def test_facing_uses_all_eight_isometric_directions(self):
+        # World axes project diagonally; screen-horizontal travel is a world diagonal.
+        vectors = [(1,1),(1,0),(1,-1),(0,-1),(-1,-1),(-1,0),(-1,1),(0,1)]
+        skull = self.skull()
+        for expected, (dx,dy) in enumerate(vectors):
+            with self.subTest(direction=expected):
+                skull.path_cd = 10
+                goal = (skull.rect.centerx+dx*100, skull.rect.centery+dy*100)
+                skull.path = [goal]
+                skull.navigate(goal, 1/60)
+                self.assertEqual(skull.facing, expected)
+        skull.path = []
+        skull.navigate(skull.rect.center, 1/60)
+        self.assertEqual(skull.facing, 7)
+        for facing in range(8):
+            self.assertEqual(summons.movement_facing(0,0,facing), facing)
+
+    def test_blocked_motion_does_not_turn_skull(self):
+        skull = self.skull()
+        c = game.CELL_SIZE
+        gx, gy = 10, 10
+        wall = game.Obstacle(gx, gy, "Indestructible")
+        self.gs.obstacles[gx,gy] = wall
+        skull.x, skull.y = wall.rect.left-skull.size, wall.rect.centery-game.INFO_BAR_HEIGHT-skull.size/2
+        skull.sync_rect()
+        before = skull.x, skull.y
+        skull.facing = 4
+        skull.path_cd = 10
+        skull.path = [(skull.rect.centerx+100,skull.rect.centery)]
+        skull.navigate(skull.path[0],1/60)
+        self.assertEqual((skull.x,skull.y), before)
+        self.assertEqual(skull.facing, 4)
+
+    def test_facing_roundtrips_and_accepts_old_saves(self):
+        skull = self.skull()
+        skull.facing = 5
+        skull.persist()
+        summons.start_level(game,self.gs,self.player)
+        self.assertEqual(self.gs.companions[0].facing, 5)
+        del game.META["skull_combat"]["facing"]
+        summons.start_level(game,self.gs,self.player)
+        self.assertEqual(self.gs.companions[0].facing, 0)
+
+    def test_directional_atlas_unique_views_and_transparency(self):
+        for stage in range(3):
+            images = []
+            for facing in range(8):
+                art = summons.directional_sprite(stage,146,facing)
+                self.assertEqual(art.get_size(),(146,146))
+                self.assertEqual(art.get_at((0,0)).a,0)
+                self.assertGreater(pygame.mask.from_surface(art).count(),4000)
+                images.append(pygame.image.tobytes(art,"RGBA"))
+            self.assertEqual(len(set(images)),8)
+
+    def test_terrain_art_cached_deterministic_and_no_gameplay_rng(self):
+        before = random.getstate()
+        tiles = []
+        for seed in range(16):
+            art = terrain_art.floor_tile(game.ISO_CELL_W,game.ISO_CELL_H,seed)
+            tiles.append(pygame.image.tobytes(art,"RGBA"))
+            self.assertIs(art,terrain_art.floor_tile(game.ISO_CELL_W,game.ISO_CELL_H,seed))
+            self.assertEqual(art.get_at((0,0)).a,0)
+        self.assertEqual(len(set(tiles)),16)
+        for color in ((80,101,117),(137,87,83)):
+            for style in ("prism","hybrid"):
+                art,ax,ay = terrain_art.wall_tile(game.ISO_CELL_W,game.ISO_CELL_H,game.ISO_WALL_Z,color,0,style)
+                self.assertEqual(ax,(game.ISO_CELL_W+2)//2)
+                self.assertGreaterEqual(ay,1)
+                self.assertEqual(art.get_at((0,0)).a,0)
+        self.assertEqual(before,random.getstate())
+
+    def test_web_wall_material_refreshes_after_damage_and_removal(self):
+        self.skull()
+        wall = game.Obstacle(10,8,"Destructible")
+        self.gs.obstacles[10,8] = wall
+        screen = pygame.display.get_surface()
+        with patch.object(game,"IS_WEB",True), patch.object(render_runtime,"IS_WEB",True):
+            game.render_game_iso_web_lite(screen,self.gs,self.player,[],[],[])
+            original = self.gs._web_wall_layer_cache
+            self.assertIsNotNone(original["surface"])
+            wall.health = game.OBSTACLE_HEALTH*.2
+            game.render_game_iso_web_lite(screen,self.gs,self.player,[],[],[])
+            self.assertNotEqual(original["key"],self.gs._web_wall_layer_cache["key"])
+            del self.gs.obstacles[10,8]
+            game.render_game_iso_web_lite(screen,self.gs,self.player,[],[],[])
+            self.assertIsNone(self.gs._web_wall_layer_cache["surface"])
 
     def test_reset_and_old_save_compatibility(self):
         self.skull()
