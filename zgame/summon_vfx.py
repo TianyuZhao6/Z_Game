@@ -215,19 +215,19 @@ def dissolve_frame(art, phase):
 def draw_beam(screen, origin, end):
     """Focused eye-ray: soft narrow envelope, thick magenta body, bright core."""
     a,b = pygame.Vector2(origin),pygame.Vector2(end)
-    clip = screen.get_rect().inflate(16,16).clipline(a,b)
+    clip = screen.get_rect().inflate(24,24).clipline(a,b)
     if not clip:
         return
     a,b = map(pygame.Vector2,clip)
-    bounds = pygame.Rect(min(a.x,b.x)-8,min(a.y,b.y)-8,abs(a.x-b.x)+17,abs(a.y-b.y)+17)
+    bounds = pygame.Rect(min(a.x,b.x)-12,min(a.y,b.y)-12,abs(a.x-b.x)+25,abs(a.y-b.y)+25)
     # Supersample one straight segment, then filter down. Thick integer-pixel
     # lines produced a staircase at shallow angles, especially in the lite view.
     scale = 2
     layer = pygame.Surface((bounds.w*scale,bounds.h*scale),pygame.SRCALPHA)
     a,b = (a-bounds.topleft)*scale,(b-bounds.topleft)*scale
-    pygame.draw.line(layer,(166,39,206,55),a,b,11*scale)
-    pygame.draw.line(layer,(235,64,172,180),a,b,6*scale)
-    pygame.draw.line(layer,(255,220,249,250),a,b,3*scale)
-    pygame.draw.circle(layer,(255,158,225,155),b,5*scale)
-    pygame.draw.circle(layer,(255,236,252,240),b,2*scale)
+    pygame.draw.line(layer,(166,39,206,55),a,b,16*scale)
+    pygame.draw.line(layer,(235,64,172,180),a,b,9*scale)
+    pygame.draw.line(layer,(255,220,249,250),a,b,4*scale)
+    pygame.draw.circle(layer,(255,158,225,155),b,7*scale)
+    pygame.draw.circle(layer,(255,236,252,240),b,3*scale)
     screen.blit(pygame.transform.smoothscale(layer,bounds.size),bounds)

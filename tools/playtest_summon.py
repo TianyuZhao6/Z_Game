@@ -42,6 +42,13 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
     capture={"time":0.0,"cast":False,"beam":False,"shot":False,"down":False,"frame":False,"frames":0,"max_enemies":0,"facings":set(),"cast_positions":set()}
     original_start=summons.start_level
     original_update=summons.update
+    original_cast=summons.Skull.cast
+    def checked_cast(skull):
+        result=original_cast(skull)
+        if result:
+            assert skull.charge==0,"Skill release did not empty charge"
+            assert game.META["skull_combat"]["charge"]==0,"Reset was not persisted"
+        return result
     renderer=game.render_game_iso_web_lite if lite else game.render_game_iso
     evidence=ROOT/"TEMP"/"summon-playtest"
     evidence.mkdir(parents=True,exist_ok=True)
@@ -89,6 +96,9 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
         if tier==6 and skull.beam_left>0 and skull.beam_end and not skull.beam_wall and "beam_frame" not in capture:
             pygame.image.save(screen,str(evidence/f"{name}-beam.png"))
             capture["beam_frame"]=True
+        if skull.cast_left>0 and skull.charge==0 and "empty_meter" not in capture:
+            pygame.image.save(screen,str(evidence/f"{name}-empty-meter.png"))
+            capture["empty_meter"]=True
         if skull.cast_left>0:
             capture["cast_positions"].add(p.rect.center)
             cam=game.calculate_iso_camera(*p.rect.center)
@@ -129,7 +139,7 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
         return 1/60
 
     started=time.perf_counter()
-    with patch.object(summons,"start_level",side_effect=start), patch.object(summons,"update",side_effect=update), patch.object(game,"render_game_iso",side_effect=render), patch.object(game,"binding_pressed",side_effect=input_pressed), patch.object(app_flow,"_frame_dt",side_effect=step), patch.object(app_flow,"_effective_level_time_limit",return_value=9), patch.object(game,"play_combat_bgm"), patch.object(game,"play_focus_cinematic_iso"), patch.object(game,"play_focus_chain_iso"):
+    with patch.object(summons.Skull,"cast",checked_cast), patch.object(summons,"start_level",side_effect=start), patch.object(summons,"update",side_effect=update), patch.object(game,"render_game_iso",side_effect=render), patch.object(game,"binding_pressed",side_effect=input_pressed), patch.object(app_flow,"_frame_dt",side_effect=step), patch.object(app_flow,"_effective_level_time_limit",return_value=9), patch.object(game,"play_combat_bgm"), patch.object(game,"play_focus_cinematic_iso"), patch.object(game,"play_focus_chain_iso"):
         result=await app_flow.main_run_level(game,game.get_level_config(level),"basic")
     skull=capture["state"].companions[0]
     assert result[0]=="success",result[0]
