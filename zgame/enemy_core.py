@@ -4,6 +4,7 @@ import math
 import random
 from typing import Dict, List, Optional, Tuple
 import pygame
+from zgame import summons
 
 def install(game):
     def _meta():
@@ -316,6 +317,7 @@ def install(game):
             return min(cands, key=lambda c: (c[0] - px) ** 2 + (c[1] - py) ** 2)
 
         def move_and_attack(self, player, obstacles, game_state, attack_interval=0.5, dt=1 / 60):
+            player = summons.enemy_target(game, game_state, self, player)
             self._foot_prev = getattr(self, '_foot_curr', (self.rect.centerx, self.rect.bottom))
             frame_scale = dt * 60.0
             self._lod_bucket = self._web_lod_bucket(player)
@@ -500,7 +502,7 @@ def install(game):
                 cx0, cy0 = (self.rect.centerx, self.rect.centery)
                 gx = int(cx0 // game.CELL_SIZE)
                 gy = int((cy0 - game.INFO_BAR_HEIGHT) // game.CELL_SIZE)
-                ff = getattr(game_state, 'ff_next', None)
+                ff = None if getattr(player, 'is_companion', False) else getattr(game_state, 'ff_next', None)
                 fd = getattr(game_state, 'ff_dist', None)
                 step = ff[gx][gy] if ff is not None and 0 <= gx < game.GRID_SIZE and (0 <= gy < game.GRID_SIZE) else None
                 boss_simple = getattr(self, 'is_boss', False) or getattr(self, 'type', '') in ('boss_mist', 'boss_mem')
@@ -939,6 +941,7 @@ def install(game):
                         break
 
         def update_special(self, dt: float, player: 'Player', enemies: List['Enemy'], enemy_shots: List['EnemyShot'], game_state: 'GameState'=None):
+            player = summons.enemy_target(game, game_state, self, player)
             cx, cy = (self.rect.centerx, self.rect.centery)
             px, py = (player.rect.centerx, player.rect.centery)
             self._lod_bucket = self._web_lod_bucket(player)

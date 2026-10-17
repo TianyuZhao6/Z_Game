@@ -350,6 +350,7 @@ def capture_snapshot(game, game_state, player, enemies, current_level: int, chos
         "mode": "snapshot",
         "version": 3,
         "meta": {
+            **copy.deepcopy(game.META),
             "current_level": int(current_level),
             "chosen_enemy_type": str(chosen_enemy_type or "basic"),
             "biome": getattr(game_state, "biome_active", state.get("_next_biome")),

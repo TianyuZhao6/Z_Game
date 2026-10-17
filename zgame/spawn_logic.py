@@ -16,6 +16,13 @@ def _meta(game):
     return rs.meta(game)
 
 
+def _register_spawned_enemy(game_state, enemies, enemy):
+    enemies.append(enemy)
+    spatial = getattr(game_state, "spatial", None)
+    if spatial is not None:
+        spatial.insert(enemy)
+
+
 def _grid_positions(game):
     cache_key = "_spawn_grid_positions_cache"
     cached = getattr(game, cache_key, None)
@@ -201,7 +208,7 @@ def _begin_wave_spawn_plan(game, game_state, player, current_level: int, wave_in
             bandit.radar_slow_left = float(dur)
             bandit.radar_ring_period = 2.0
             bandit.radar_ring_phase = 0.0
-        enemies.append(bandit)
+        _register_spawned_enemy(game_state, enemies, bandit)
         plan["spawned_types"].append("bandit")
         game_state.bandit_spawned_this_level = True
         game_state.pending_focus = ("bandit", (cx, cy))
@@ -306,8 +313,8 @@ def continue_wave_spawn_plan(game, game_state, player, enemies, cap: int, plan, 
                     )
                 game_state.focus_queue = getattr(game_state, "focus_queue", [])
                 game_state.focus_queue += [("boss", focus_one), ("boss", focus_two)]
-                enemies.append(boss_one)
-                enemies.append(boss_two)
+                _register_spawned_enemy(game_state, enemies, boss_one)
+                _register_spawned_enemy(game_state, enemies, boss_two)
                 spawned_types.extend(["boss_mem_twin", "boss_mem_twin"])
                 boss_done = True
             elif current_level in game.MISTWEAVER_LEVELS:
@@ -321,7 +328,7 @@ def continue_wave_spawn_plan(game, game_state, player, enemies, cap: int, plan, 
                     boss.shield_hp / float(max(1, boss.max_hp)) if getattr(boss, "shield_hp", 0) > 0 else 0.0
                 )
                 boss._spawn_wave_tag = wave_index
-                enemies.append(boss)
+                _register_spawned_enemy(game_state, enemies, boss)
                 spawned_types.append("boss_mist")
                 focus = (int(boss.rect.centerx), int(boss.rect.centery))
                 game_state.focus_queue = getattr(game_state, "focus_queue", [])
@@ -349,7 +356,7 @@ def continue_wave_spawn_plan(game, game_state, player, enemies, cap: int, plan, 
                     )
                 game_state.focus_queue = getattr(game_state, "focus_queue", [])
                 game_state.focus_queue.append(("boss", focus))
-                enemies.append(boss)
+                _register_spawned_enemy(game_state, enemies, boss)
                 spawned_types.append("boss_mem")
                 boss_done = True
             continue
@@ -366,7 +373,7 @@ def continue_wave_spawn_plan(game, game_state, player, enemies, cap: int, plan, 
         )
         enemy._spawn_wave_tag = wave_index
         game.apply_biome_on_enemy_spawn(enemy, game_state)
-        enemies.append(enemy)
+        _register_spawned_enemy(game_state, enemies, enemy)
         spawned_types.append(str(enemy_type or getattr(enemy, "type", "unknown")))
         remaining_budget = max(0, remaining_budget - int(game.THREAT_COSTS.get(enemy_type, 0) or 0))
         spawned += 1

@@ -106,6 +106,7 @@ from zgame.paths import (
     first_existing_path as _first_existing_path,
 )
 from zgame import entity_core as entity_core_support
+from zgame import summons
 from zgame import enemy_core as enemy_core_support
 from zgame import enemy_projectiles as enemy_projectiles_support
 from zgame import enemy_subclasses as enemy_subclasses_support
@@ -1068,10 +1069,10 @@ MAIN_BLOCK_HEALTH = 40
 USE_ISO = True  # True: 伪3D等距渲染；False: 保持现在的纯2D
 ISO_CELL_W = int(64 * WORLD_SCALE)  # 等距砖块在画面上的“菱形”宽
 ISO_CELL_H = int(32 * WORLD_SCALE)  # 等距砖块在画面上的“菱形”半高（顶点到中心）
-ISO_WALL_Z = int(22 * WORLD_SCALE)  # 障碍“墙体”抬起的高度（屏幕像素）
+ISO_WALL_Z = 2 * int(22 * WORLD_SCALE)  # Two stacked masonry courses; visual height only.
 ISO_SHADOW_ALPHA = 90  # 椭圆阴影透明度
 SPATIAL_CELL = int(CELL_SIZE * 1.25)  # 统一网格大小
-WALL_STYLE = "hybrid"  # "billboard" | "prism" | "hybrid"
+WALL_STYLE = "prism"  # "billboard" | "prism" | "hybrid"; two-course carved masonry
 ISO_EQ_GAIN = math.sqrt(2) * (ISO_CELL_W * 0.5)
 # --- unified UI palette (matches homepage style) ---
 UI_BG = (16, 19, 26)
@@ -1832,6 +1833,14 @@ META = {
     "crit": 0.0,  # 暴击率 +X（0~1）
     "coin_magnet_radius": 0,  # 磁吸金币的额外拾取半径（像素）
     "auto_turret_level": 0,  # 自动炮台等级（每级多一个炮台）
+    "skull_level": 0,
+    "skull_harvest": 0,
+    "skull_combat": None,
+    "equipped_companions": [],
+    "summon_shop_visits": 0,
+    "summon_shop_last_level": -1,
+    "summon_damage_mult": 1.0,
+    "summon_hp_mult": 1.0,
     "stationary_turret_count": 0,
     "pierce_level": 0,  # 每发子弹可额外穿透的“击杀次数”
     "ricochet_level": 0,  # 每发子弹可弹射的次数
@@ -1884,6 +1893,14 @@ def reset_run_state():
         "crit": 0.0,
         "coin_magnet_radius": 0,
         "auto_turret_level": 0,
+        "skull_level": 0,
+        "skull_harvest": 0,
+        "skull_combat": None,
+        "equipped_companions": [],
+        "summon_shop_visits": 0,
+        "summon_shop_last_level": -1,
+        "summon_damage_mult": 1.0,
+        "summon_hp_mult": 1.0,
         "stationary_turret_count": 0,
         "pierce_level": 0,
         "ricochet_level": 0,
@@ -1957,6 +1974,7 @@ def _load_meta_from_save(save_data: dict | None) -> None:
     meta_in = dict(save_data.get("meta", {}))
     sanitize_meta_range(meta_in)
     _ensure_meta_defaults(meta_in)
+    summons.ensure_meta(meta_in)
     save_data["meta"] = meta_in
     _meta_state().update(meta_in)
     _ensure_meta_defaults()
@@ -2547,6 +2565,7 @@ PROP_PATH_TAGS = {
     "shrapnel_shells": ("ballistic",),
     "explosive_rounds": ("ballistic",),
     "auto_turret": ("turret",),
+    "evolving_skull": ("summoner",),
     "stationary_turret": ("turret",),
     "carapace": ("shield",),
     "bone_plating": ("shield",),
@@ -2574,6 +2593,8 @@ def prop_level_from_meta(prop_id: str, meta=None) -> int | None:
     if m is None or not hasattr(m, "get"):
         return None
     iid = str(prop_id or "")
+    if iid == "evolving_skull":
+        return int(m.get("skull_level", 0))
     if iid == "coin_magnet":
         return int(m.get("coin_magnet_radius", 0) // 60)
     if iid == "auto_turret":
@@ -2705,6 +2726,8 @@ def detailed_prop_tooltip_text(it, lvl: int | None, meta=None):
         return None
     iid = it.get("id")
     path_txt = prop_path_label(iid)
+    if iid == "evolving_skull":
+        return "[Summoner] " + summons.description(m)
     cur_lvl = 0 if lvl is None else int(lvl)
     max_lvl = it.get("max_level")
     if iid == "shady_loan":
@@ -3347,13 +3370,18 @@ def _bandit_death_notice(z, game_state):
     )
 
 
-def increment_kill_count(amount: int = 1) -> None:
+def increment_kill_count(amount: int = 1, *, game_state=None) -> None:
     """Track total enemy kills this run for scaling effects."""
     meta = _meta_state()
     try:
         meta["kill_count"] = int(meta.get("kill_count", 0)) + int(amount)
     except Exception:
         meta["kill_count"] = int(amount)
+    if game_state is not None:
+        # Player weapons/props share the confirmed-death path. Summon deaths
+        # award their own harvest/charge and deliberately omit this argument.
+        for companion in getattr(game_state, "companions", ()):
+            companion.gain_procession_charge(amount)
 
 
 def is_action_event(event, action: str) -> bool:
@@ -5510,7 +5538,7 @@ def _apply_aegis_pulse_damage(player, game_state: "GameState", enemies, cx: floa
     for gp, ob in list(getattr(game_state, "obstacles", {}).items()):
         if getattr(ob, "type", "") != "Destructible":
             continue
-        # circle-rect intersection using closest point clamp
+        # circle-rect intersection using closest point clampd
         rect = ob.rect
         closest_x = min(max(cx, rect.left), rect.right)
         closest_y = min(max(cy, rect.top), rect.bottom)

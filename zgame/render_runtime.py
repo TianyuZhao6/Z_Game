@@ -10,6 +10,8 @@ from typing import List, Optional
 import pygame
 
 from zgame import runtime_state as rs
+from zgame import summons
+from zgame import terrain_art
 
 
 def install(game):
@@ -52,7 +54,6 @@ def install(game):
 
     _ellipse_surface_cache: dict[tuple[int, int, tuple[int, ...], int], pygame.Surface] = {}
     _iso_tile_surface_cache: dict[tuple[int, int, tuple[int, ...], int], pygame.Surface] = {}
-    _iso_wall_surface_cache: dict[tuple[str, int, tuple[int, ...]], tuple[pygame.Surface, int, int]] = {}
     _text_surface_cache: dict[tuple[int, bool, tuple[int, ...], str], pygame.Surface] = {}
     _filled_surface_cache: dict[tuple[int, int, tuple[int, ...]], pygame.Surface] = {}
     _rounded_rect_surface_cache: dict[tuple[int, int, tuple[int, ...], int, int], pygame.Surface] = {}
@@ -404,72 +405,19 @@ def install(game):
         sx, sy = iso_world_to_screen(gx, gy, 0, camx, camy)
         screen.blit(surf, (int(sx - ISO_CELL_W // 2 - 1), int(sy - 1)))
 
-    def _cached_iso_wall_surface(style: str, color: tuple[int, ...], *, wall_h: int) -> tuple[pygame.Surface, int, int]:
+    def _cached_iso_wall_surface(style: str, color: tuple[int, ...], *, wall_h: int, seed: int = 0) -> tuple[pygame.Surface, int, int]:
         rgba = tuple(max(0, min(255, int(v))) for v in color)
         style_name = str(style or "billboard")
         wall_h = max(0, int(wall_h))
-        key = (style_name, wall_h, rgba)
-        cached = _iso_wall_surface_cache.get(key)
-        if cached is not None:
-            return cached
-        if style_name == "billboard":
-            surf = _cached_iso_tile_surface(rgba, border=0)
-            cached = (surf, int(ISO_CELL_W // 2 + 1), 1)
-            _iso_wall_surface_cache[key] = cached
-            return cached
-
-        pad_top = 0
-        rect_w = rect_h = 0
-        if style_name == "hybrid":
-            rect_h = int(ISO_CELL_H * 1.8)
-            rect_w = int(ISO_CELL_W * 0.35)
-            pad_top = max(0, rect_h - ISO_CELL_H // 2)
-        w = int(ISO_CELL_W) + 2
-        h = int(ISO_CELL_H) + wall_h + pad_top + 2
-        surf = pygame.Surface((w, h), pygame.SRCALPHA)
-        cx = w // 2
-        top_y = pad_top + 1
-        top = [
-            (cx, top_y),
-            (w - 1, top_y + ISO_CELL_H // 2),
-            (cx, top_y + ISO_CELL_H),
-            (1, top_y + ISO_CELL_H // 2),
-        ]
-        r = [
-            top[1],
-            (top[1][0], top[1][1] + wall_h),
-            (top[2][0], top[2][1] + wall_h),
-            top[2],
-        ]
-        l = [
-            top[3],
-            top[2],
-            (top[2][0], top[2][1] + wall_h),
-            (top[3][0], top[3][1] + wall_h),
-        ]
-        c_top = rgba
-        c_r = tuple(max(0, int(c * 0.78)) for c in rgba[:3])
-        c_l = tuple(max(0, int(c * 0.58)) for c in rgba[:3])
-        pygame.draw.polygon(surf, c_l, l)
-        pygame.draw.polygon(surf, c_r, r)
-        pygame.draw.polygon(surf, c_top, top)
-        if style_name == "hybrid":
-            pillar = pygame.Rect(0, 0, max(2, rect_w), max(2, rect_h))
-            pillar.midbottom = (cx, top_y + ISO_CELL_H // 2)
-            pygame.draw.rect(surf, rgba, pillar, border_radius=max(1, rect_w // 3))
-        try:
-            surf = surf.convert_alpha()
-        except Exception:
-            pass
-        cached = (surf, cx, top_y)
-        _iso_wall_surface_cache[key] = cached
-        return cached
+        if style_name != "billboard":
+            return terrain_art.wall_tile(int(ISO_CELL_W), int(ISO_CELL_H), wall_h, rgba, seed, style_name)
+        return _cached_iso_tile_surface(rgba, border=0), int(ISO_CELL_W // 2 + 1), 1
 
     def _blit_cached_iso_wall(screen: pygame.Surface, gx: int, gy: int, color: tuple[int, ...],
                               camx: float, camy: float, *, wall_h: int | None = None) -> None:
         if wall_h is None:
             wall_h = ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0)
-        surf, anchor_x, anchor_y = _cached_iso_wall_surface(WALL_STYLE, color, wall_h=wall_h)
+        surf, anchor_x, anchor_y = _cached_iso_wall_surface(WALL_STYLE, color, wall_h=wall_h, seed=terrain_art.variant(gx, gy)%4)
         sx, sy = iso_world_to_screen(gx, gy, 0, camx, camy)
         screen.blit(surf, (int(sx - anchor_x), int(sy - anchor_y)))
 
@@ -510,9 +458,9 @@ def install(game):
         height = max(1, int(math.ceil(float(max_y or 0.0))) - y0 + 3)
         surface = pygame.Surface((width, height))
         surface.fill(MAP_BG)
-        tile = _cached_iso_tile_surface(MAP_GRID, border=1)
         for gx in range(GRID_SIZE):
             for gy in range(GRID_SIZE):
+                tile = terrain_art.floor_tile(int(ISO_CELL_W), int(ISO_CELL_H), terrain_art.variant(gx, gy))
                 sx, sy = iso_world_to_screen(gx, gy, 0, 0, 0)
                 surface.blit(tile, (int(sx - ISO_CELL_W // 2 - 1 - x0), int(sy - 1 - y0)))
         try:
@@ -548,14 +496,13 @@ def install(game):
 
     def _wall_sort_world_y(gx: int, gy: int) -> int:
         _, sy = iso_world_to_screen(gx, gy, 0, 0, 0)
-        wall_h = ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0)
-        return int(sy + ISO_CELL_H + wall_h)
+        return int(sy + ISO_CELL_H)
 
     def _wall_visual_color(ob) -> tuple[int, int, int]:
-        base_col = (120, 120, 120) if getattr(ob, "type", "") == "Indestructible" else (200, 80, 80)
+        base_col = (80, 101, 117) if getattr(ob, "type", "") == "Indestructible" else (137, 87, 83)
         if getattr(ob, "type", "") == "Destructible" and getattr(ob, "health", None) is not None:
-            t = max(0.4, min(1.0, float(ob.health) / float(max(1, OBSTACLE_HEALTH))))
-            base_col = (int(200 * t), int(80 * t), int(80 * t))
+            t = max(0.4, min(1.0, math.ceil(4 * float(ob.health) / float(max(1, OBSTACLE_HEALTH))) / 4))
+            base_col = tuple(int(c*t) for c in base_col)
         return base_col
 
     def _get_web_wall_order(game_state) -> list[tuple[int, int, int]]:
@@ -581,8 +528,13 @@ def install(game):
         return entries
 
     def _get_web_wall_layer_cache(game_state, *, wall_h: int) -> dict[str, object]:
+        # Damage does not remove an obstacle, so the structural revision alone
+        # cannot invalidate the cached wall tint. Quantized colors bound churn.
+        damage_key = tuple((gp, _wall_visual_color(ob)) for gp, ob in game_state.obstacles.items()
+                           if getattr(ob, "type", "") == "Destructible")
         key = (
             int(getattr(game_state, "_obstacle_revision", 0) or 0),
+            damage_key,
             int(wall_h),
             int(GRID_SIZE),
             int(ISO_CELL_W),
@@ -604,6 +556,7 @@ def install(game):
                 WALL_STYLE,
                 _wall_visual_color(ob),
                 wall_h=wall_h,
+                seed=terrain_art.variant(gx, gy)%4,
             )
             sx, sy = iso_world_to_screen(gx, gy, 0, 0, 0)
             left = int(sx - anchor_x)
@@ -1133,7 +1086,7 @@ def install(game):
         screen.fill(MAP_BG)
         _render_counter(profiler, "r_bg_fill_ms", segment_started)
         segment_started = time.perf_counter()
-        _blit_web_static_background(screen, game_state, camx, camy, wall_h=max(12, int(ISO_WALL_Z * 0.7)))
+        _blit_web_static_background(screen, game_state, camx, camy, wall_h=ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
         _render_counter(profiler, "r_bg_static_ms", segment_started)
         _emit_recent_runtime_timing(profiler, "r_bg_floor_build_ms", "iso_floor_build")
         _emit_recent_runtime_timing(profiler, "r_bg_wall_build_ms", "web_wall_build")
@@ -1225,6 +1178,10 @@ def install(game):
         stationary_sprite, _, _ = get_stationary_turret_assets()
 
         actors = []
+        for companion in getattr(game_state, "companions", ()):
+            sx, sy = iso_world_to_screen(companion.rect.centerx / CELL_SIZE, (companion.rect.centery - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
+            if _screen_visible_point(sx, sy, margin=companion.render_margin):
+                actors.append((sy, "companion", companion, sx, sy))
         turrets = getattr(game_state, "turrets", ())
         visible_turrets = []
         for turret in turrets:
@@ -1271,7 +1228,9 @@ def install(game):
             item_started = time.perf_counter()
             cx = int(sx)
             cy = int(sy)
-            if kind == "turret":
+            if kind == "companion":
+                obj.draw(screen, sx, sy)
+            elif kind == "turret":
                 if isinstance(obj, StationaryTurret):
                     if stationary_sprite:
                         rect = stationary_sprite.get_rect(midbottom=(cx, cy))
@@ -1404,6 +1363,8 @@ def install(game):
         _emit_actor_subcounters(profiler, actor_subsamples)
         _render_counter(profiler, "r_projectile_ms", segment_started)
 
+        summons.draw_effects(game, game_state, screen, camx, camy)
+
         segment_started = time.perf_counter()
         if _web_feature_enabled("WEB_ENABLE_DAMAGE_TEXTS"):
             for d in getattr(game_state, "dmg_texts", []):
@@ -1487,7 +1448,6 @@ def install(game):
         gx_max = min(GRID_SIZE - 1, int(px_grid + game.VIEW_W // ISO_CELL_W) + margin)
         gy_min = max(0, int(py_grid - game.VIEW_H // ISO_CELL_H) - margin)
         gy_max = min(GRID_SIZE - 1, int(py_grid + game.VIEW_H // ISO_CELL_H) + margin)
-        grid_col = MAP_GRID
         if IS_WEB:
             segment_started = time.perf_counter()
             _blit_iso_floor(screen, camx, camy)
@@ -1497,7 +1457,9 @@ def install(game):
             segment_started = time.perf_counter()
             for gx in range(gx_min, gx_max + 1):
                 for gy in range(gy_min, gy_max + 1):
-                    _blit_cached_iso_tile(screen, gx, gy, grid_col, camx, camy, border=1)
+                    tile = terrain_art.floor_tile(int(ISO_CELL_W), int(ISO_CELL_H), terrain_art.variant(gx, gy))
+                    sx, sy = iso_world_to_screen(gx, gy, 0, camx, camy)
+                    screen.blit(tile, (int(sx - ISO_CELL_W // 2 - 1), int(sy - 1)))
             _render_counter(profiler, "r_bg_floor_ms", segment_started)
         _render_counter(profiler, "r_bg_ms", bg_total_started)
         view_margin = max(int(CELL_SIZE), int(ISO_CELL_W))
@@ -1668,7 +1630,7 @@ def install(game):
                 if getattr(ob, "type", "") == "StationaryTurret":
                     continue
                 top_pts = iso_tile_points(gx, gy, camx, camy)
-                sort_y = top_pts[2][1] + wall_h_current
+                sort_y = top_pts[2][1]
                 drawables.append(("wall", sort_y, {"gx": gx, "gy": gy, "color": _wall_visual_color(ob)}))
         spoil_iter = (
             game_state.query_spoils_near_rect(view_world_rect, pad_px=CELL_SIZE)
@@ -1681,6 +1643,10 @@ def install(game):
             if not _screen_visible_point(sx, sy, margin=view_margin):
                 continue
             drawables.append(("coin", sy, {"cx": sx, "cy": sy, "r": s.r}))
+        for companion in getattr(game_state, "companions", ()):
+            sx, sy = iso_world_to_screen(companion.rect.centerx / CELL_SIZE, (companion.rect.centery - INFO_BAR_HEIGHT) / CELL_SIZE, 0, camx, camy)
+            if _screen_visible_point(sx, sy, margin=companion.render_margin):
+                drawables.append(("companion", sy, {"cx": sx, "cy": sy, "obj": companion}))
         for t in getattr(game_state, "turrets", []):
             wx, wy = t.x / CELL_SIZE, (t.y - INFO_BAR_HEIGHT) / CELL_SIZE
             sx, sy = iso_world_to_screen(wx, wy, 0, camx, camy)
@@ -1875,6 +1841,8 @@ def install(game):
                 pygame.draw.circle(screen, (255, 224, 0), (cx, cy), r)
                 pygame.draw.circle(screen, (255, 255, 180), (cx, cy), r, 2)
                 actor_subsamples["pickup"] += (time.perf_counter() - item_started) * 1000.0
+            elif kind == "companion":
+                data["obj"].draw(screen, data["cx"], data["cy"])
             elif kind == "turret":
                 cx, cy = int(data["cx"]), int(data["cy"])
                 obj = data.get("obj")
@@ -2345,6 +2313,7 @@ def install(game):
         if hasattr(game_state, "draw_comet_corpses"):
             game_state.draw_comet_corpses(screen, camx, camy)
         _render_counter(profiler, "r_hazard_ms", segment_started)
+        summons.draw_effects(game, game_state, screen, camx, camy)
         segment_started = time.perf_counter()
         if _should_draw_fog_overlay(game_state, player):
             game_state.draw_fog_overlay(screen, camx, camy, player, obstacles)

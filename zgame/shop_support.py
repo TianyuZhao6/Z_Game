@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 from zgame import runtime_state as rs
+from zgame import summons
 
 
 def _state(game):
@@ -15,6 +16,15 @@ def _meta(game):
 def build_shop_catalog(game):
     meta = _meta(game)
     catalog = [
+        {
+            "id": summons.SKULL_ID,
+            "name": "Eidolon",
+            "cost": 18,
+            "rarity": 2,
+            "max_level": 6,
+            "desc": "Automatic skull. Curved volleys; Soul Harvest L3; Shadow Procession + 3s eye beam L6.",
+            "apply": lambda: summons.purchase(meta),
+        },
         {
             "id": "coin_magnet",
             "name": "Coin Magnet",
@@ -321,6 +331,13 @@ def roll_offers(game, catalog, locked_ids: list[str]):
                 break
     pool = [card for card in pool if card.get("id") not in locked_ids]
     offers = locked_cards[:4]
+    # A guaranteed companion on the third visit, including its rerolls. A fifth
+    # card is allowed when all four existing slots are locked; locks are respected.
+    guarantee = int(_meta(game).get("summon_shop_visits", 0)) > 0 and int(_meta(game).get("summon_shop_visits", 0)) % 3 == 0
+    guaranteed = next((card for card in pool if card.get("id") == summons.SKULL_ID), None) if guarantee else None
+    if guaranteed is not None and len(offers) < 4:
+        offers.append(guaranteed)
+        pool.remove(guaranteed)
     if len(offers) < 4 and pool:
         weighted_pool = [card for card in pool if rarity_weights.get(int(card.get("rarity", 1)), 0.0) > 0]
         source_pool = weighted_pool or pool
@@ -365,9 +382,11 @@ def roll_offers(game, catalog, locked_ids: list[str]):
             if card in offers or prop_at_cap(game, card):
                 continue
             offers.append(card)
-        fallback_pool = [card for card in fallback_pool if not prop_at_cap(game, card)] or fallback_pool
+        fallback_pool = [card for card in fallback_pool if not prop_at_cap(game, card)]
         while len(offers) < 4 and fallback_pool:
             offers.append(random.choice(fallback_pool))
+    if guaranteed is not None and guaranteed not in offers:
+        offers.append(guaranteed)
     offers.append(next(card for card in catalog if card.get("id") == "reroll"))
     return offers
 

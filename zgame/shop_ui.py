@@ -9,6 +9,7 @@ from typing import Optional
 import pygame
 from zgame.browser import is_web_interaction_event
 from zgame import shop_support
+from zgame import summons
 from zgame import runtime_state as rs
 
 
@@ -23,6 +24,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
     """Spend META['spoils'] on small upgrades. ESC opens Pause; return action or None when closed."""
     runtime = _runtime(game)
     meta = _meta(game)
+    summons.enter_shop(game)
     if not runtime.get('_resume_shop_cache', False):
         game._clear_shop_cache()
     runtime['_resume_shop_cache'] = False
@@ -101,6 +103,7 @@ def show_shop_screen(game, screen) -> Optional[str]:
         screen.blit(title_surf, title_surf.get_rect(center=(game.VIEW_W // 2, 80)))
         money_surf = font.render(f"Coins: {meta['spoils']}", True, (255, 230, 120))
         screen.blit(money_surf, money_surf.get_rect(center=(game.VIEW_W // 2, 130)))
+        companion_button = summons.loadout_button(game, screen)
         now_ms = pygame.time.get_ticks()
         overlay_surf = None
         overlay_alpha = 255
@@ -188,7 +191,11 @@ def show_shop_screen(game, screen) -> Optional[str]:
             else:
                 name_surf = font.render(it['name'], True, (235, 235, 235))
                 screen.blit(name_surf, name_surf.get_rect(midtop=(r.centerx, r.y + 10)))
-                if it.get('id') == 'auto_turret' and auto_turret_sprite:
+                if it.get('id') == summons.SKULL_ID:
+                    level = min(6, int(meta.get('skull_level', 0)) + 1)
+                    art = summons.shop_avatar(2 if level == 6 else 1 if level >= 3 else 0, 100)
+                    screen.blit(art, art.get_rect(center=(r.centerx, r.centery)))
+                elif it.get('id') == 'auto_turret' and auto_turret_sprite:
                     sprite_top = r.y + 36
                     sprite_bottom = r.bottom - 36
                     sprite_center_y = (sprite_top + sprite_bottom) // 2
@@ -370,6 +377,9 @@ def show_shop_screen(game, screen) -> Optional[str]:
                         hovered_uid = uid
                         break
             if ev.type == pygame.MOUSEBUTTONDOWN:
+                if ev.button == 1 and companion_button.collidepoint(ev.pos):
+                    summons.toggle_equipped(meta)
+                    continue
                 if close.collidepoint(ev.pos):
                     game.flush_events()
                     if int(meta.get('golden_interest_level', 0)) > 0:
@@ -442,6 +452,7 @@ async def show_shop_screen_web(game, screen) -> Optional[str]:
     """Async web shop screen with cooperative yields for browser runtimes."""
     runtime = _runtime(game)
     meta = _meta(game)
+    summons.enter_shop(game)
     if not runtime.get('_resume_shop_cache', False):
         game._clear_shop_cache()
     runtime['_resume_shop_cache'] = False
@@ -519,6 +530,7 @@ async def show_shop_screen_web(game, screen) -> Optional[str]:
         screen.blit(title_surf, title_surf.get_rect(center=(game.VIEW_W // 2, 80)))
         money_surf = font.render(f"Coins: {meta['spoils']}", True, (255, 230, 120))
         screen.blit(money_surf, money_surf.get_rect(center=(game.VIEW_W // 2, 130)))
+        companion_button = summons.loadout_button(game, screen)
         now_ms = pygame.time.get_ticks()
         overlay_surf = None
         overlay_alpha = 255
@@ -606,7 +618,11 @@ async def show_shop_screen_web(game, screen) -> Optional[str]:
             else:
                 name_surf = font.render(it['name'], True, (235, 235, 235))
                 screen.blit(name_surf, name_surf.get_rect(midtop=(r.centerx, r.y + 10)))
-                if it.get('id') == 'auto_turret' and auto_turret_sprite:
+                if it.get('id') == summons.SKULL_ID:
+                    level = min(6, int(meta.get('skull_level', 0)) + 1)
+                    art = summons.shop_avatar(2 if level == 6 else 1 if level >= 3 else 0, 100)
+                    screen.blit(art, art.get_rect(center=(r.centerx, r.centery)))
+                elif it.get('id') == 'auto_turret' and auto_turret_sprite:
                     sprite_top = r.y + 36
                     sprite_bottom = r.bottom - 36
                     sprite_center_y = (sprite_top + sprite_bottom) // 2
@@ -720,6 +736,9 @@ async def show_shop_screen_web(game, screen) -> Optional[str]:
                         hovered_uid = uid
                         break
             if ev.type == pygame.MOUSEBUTTONDOWN:
+                if ev.button == 1 and companion_button.collidepoint(ev.pos):
+                    summons.toggle_equipped(meta)
+                    continue
                 if close.collidepoint(ev.pos):
                     game.flush_events()
                     if int(meta.get('golden_interest_level', 0)) > 0:
