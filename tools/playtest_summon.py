@@ -54,7 +54,7 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
         p.xp_to_next=100000
         if tier==6:
             gs.companions[0].charge=summons.PROCESSION_KILL_THRESHOLD
-        if biome=="Windy Plains":
+        if biome=="Domain of Wind":
             gs.spawn_hurricane(p.rect.centerx+3*game.CELL_SIZE,p.rect.centery)
 
     def update(g,gs,dt,enemies):
@@ -164,7 +164,8 @@ async def main():
     await scenario("bloombone",2,0)
     await scenario("soulflame-mist",3,1,"Misty Forest")
     await scenario("rift-hell",6,2,"Scorched Hell",down=True)
-    await scenario("rift-lite-wind",6,3,"Windy Plains",lite=True)
+    await scenario("rift-lite-wind",6,3,"Domain of Wind",lite=True)
+    await scenario("rift-stone",6,3,"Bastion of Stone")
     await scenario("rift-boss",6,4)
     print("Real level-loop scenarios passed. Evidence: TEMP/summon-playtest",flush=True)
     pygame.quit()

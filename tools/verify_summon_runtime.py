@@ -70,6 +70,116 @@ class SkullTests(unittest.TestCase):
         self.assertEqual(game.META["skull_level"],6)
         self.assertEqual(game.META["equipped_companions"],[summons.SKULL_ID])
 
+    def test_hell_buffs_all_summon_attacks_once_and_does_not_leak(self):
+        self.gs.biome_active="Scorched Hell"
+        skull=self.skull()
+        expected=summons.BASE_DAMAGE[5]*2
+        self.assertEqual(skull.damage,expected)
+        target=self.enemy()
+        with patch.object(skull,"update_shots"):
+            skull.update(.01,self.enemies)
+        self.assertTrue(all(s["damage"]==expected for s in skull.shots))
+        skull.cast()
+        self.assertEqual(skull.procession[0][6],expected*summons.PROCESSION_DAMAGE_MULT)
+        skull.beam_credit=skull.beam_tick=0
+        skull.beam_left=3
+        skull.beam_target=target
+        hp=target.hp
+        skull.update_beam(.1,self.enemies)
+        self.assertAlmostEqual(hp-target.hp,int(expected*summons.BEAM_DPS_MULT*.1),delta=1)
+        skull.persist()
+        summons.start_level(game,self.gs,self.player)
+        self.assertEqual(self.gs.companions[0].damage,expected)
+        self.gs.current_level+=1
+        self.gs.biome_active=None
+        summons.start_level(game,self.gs,self.player)
+        self.assertEqual(self.gs.companions[0].damage,summons.BASE_DAMAGE[5])
+
+    def test_stone_shield_absorbs_overflows_and_does_not_harvest_refill(self):
+        self.gs.biome_active="Bastion of Stone"
+        skull=self.skull()
+        hp=skull.hp
+        self.assertEqual(skull.shield_hp,hp*.5)
+        skull.quiet=4
+        skull.take_damage(20)
+        self.assertEqual(skull.hp,hp)
+        self.assertEqual(skull.shield_hp,hp*.5-20)
+        self.assertEqual(skull.quiet,0)
+        shield=skull.shield_hp
+        skull.on_kill(True)
+        self.assertEqual(skull.shield_hp,shield)
+        hp=skull.hp
+        skull.take_damage(shield+7)
+        self.assertEqual(skull.shield_hp,0)
+        self.assertEqual(skull.hp,hp-7)
+        skull.take_damage(99999)
+        self.assertEqual(skull.hp,0)
+        self.assertEqual(skull.shield_hp,0)
+
+    def test_stone_shield_save_depletion_transition_and_legacy_save(self):
+        self.gs.biome_active="Bastion of Stone"
+        skull=self.skull()
+        initial=skull.shield_hp
+        skull.take_damage(17)
+        with tempfile.TemporaryDirectory(prefix="eidolon-shield-") as folder,patch.object(game,"SAVE_FILE",str(Path(folder)/"save.json")):
+            persistence.save_snapshot(game,game.capture_snapshot(self.gs,self.player,[],0))
+            game._load_meta_from_save(persistence.load_save(game))
+            summons.start_level(game,self.gs,self.player)
+        skull=self.gs.companions[0]
+        self.assertEqual(skull.shield_hp,initial-17)
+        skull.take_damage(initial)
+        summons.start_level(game,self.gs,self.player)
+        self.assertEqual(self.gs.companions[0].shield_hp,0)
+        game.META["skull_combat"].pop("shield_hp")
+        game.META["skull_combat"].pop("shield_max")
+        summons.start_level(game,self.gs,self.player)
+        self.assertEqual(self.gs.companions[0].shield_hp,initial)
+        self.gs.current_level+=1
+        self.gs.biome_active=None
+        summons.start_level(game,self.gs,self.player)
+        self.assertEqual(self.gs.companions[0].shield_hp,0)
+        self.gs.current_level+=1
+        self.gs.biome_active="Bastion of Stone"
+        summons.start_level(game,self.gs,self.player)
+        self.assertEqual(self.gs.companions[0].shield_hp,initial)
+
+    def test_wind_speed_is_temporary_and_mist_does_not_change_summon_stats(self):
+        skull=self.skull()
+        base=skull.movement_speed
+        damage=skull.damage
+        self.gs.biome_active="Domain of Wind"
+        self.assertAlmostEqual(skull.movement_speed,base*1.12)
+        start=skull.x
+        skull.path_cd=10
+        skull.path=[(skull.rect.centerx+100,skull.rect.centery)]
+        skull.navigate(skull.path[0],.01)
+        self.assertAlmostEqual(skull.x-start,base*1.12*.01)
+        self.gs.biome_active="Misty Forest"
+        self.assertEqual(skull.movement_speed,base)
+        self.assertEqual(skull.damage,damage)
+
+    def test_stone_outline_follows_all_stage_silhouettes_and_disappears(self):
+        self.gs.biome_active="Bastion of Stone"
+        skull=self.skull()
+        for stage,level in enumerate((1,3,6)):
+            skull.level=level
+            for facing in range(8):
+                skull.facing=facing
+                art=summons.directional_sprite(stage,summon_vfx.canvas_size(level),facing)
+                outline=summon_vfx.shield_outline(art)
+                self.assertIs(outline,summon_vfx.shield_outline(art))
+                body=pygame.mask.from_surface(art,32)
+                border=pygame.mask.from_surface(outline,1)
+                self.assertGreater(border.count(),0)
+                self.assertIsNone(border.overlap(body,(3,3)))
+        screen=pygame.Surface((1280,720),pygame.SRCALPHA)
+        with patch.object(summon_vfx,"shield_outline",wraps=summon_vfx.shield_outline) as draw:
+            skull.draw(screen,640,500)
+            draw.assert_called_once()
+            skull.shield_hp=0
+            skull.draw(screen,640,500)
+            draw.assert_called_once()
+
     def test_volley_spreads_and_lone_target_focuses(self):
         skull = self.skull(6)
         a,b = self.enemy(),self.enemy(12,9)
@@ -733,7 +843,7 @@ class SkullTests(unittest.TestCase):
         skull.cast()
         self.assertEqual(before,random.getstate())
         rows=copy.deepcopy(skull.procession)
-        self.assertEqual(len(rows),24)
+        self.assertEqual(len(rows),36)
         self.assertGreater(max(s[4] for s in rows),2.8)
         quadrants=set()
         for row in rows:
@@ -748,13 +858,13 @@ class SkullTests(unittest.TestCase):
         self.assertEqual(len(quadrants),4)
         skull.update_procession(2.5,[])
         self.assertTrue(any(s[4]>0 for s in skull.procession))
-        self.assertLess(len(skull.procession),24)  # Earlier crossings already removed.
+        self.assertLess(len(skull.procession),36)  # Earlier crossings already removed.
         skull.update_procession(.5,[])
         self.assertEqual(skull.cast_left,0)
         self.assertTrue(skull.procession)  # Late emissions drain instead of disappearing.
         skull.update_procession(2,[])
         self.assertFalse(skull.procession)
-        for i in range(24):
+        for i in range(36):
             self.assertEqual(summons.procession_route(i,1280,680,78),summons.procession_route(i,1280,680,78))
 
     def test_overflow_waits_for_drain_and_survives_save(self):
@@ -779,7 +889,7 @@ class SkullTests(unittest.TestCase):
         skull.update(.01,self.enemies)
         self.assertGreater(skull.cast_left,0)
         self.assertEqual(skull.charge,7)
-        self.assertEqual(len(skull.procession),24)
+        self.assertEqual(len(skull.procession),36)
         with patch.object(summons,"PROCESSION_KILL_THRESHOLD",10):
             skull.update_procession(5,[])
             skull.gain_procession_charge(3)
@@ -801,8 +911,35 @@ class SkullTests(unittest.TestCase):
             head.assert_called_once_with(size,sector)
             rear=pygame.Vector2(tail.call_args.args[1])
             self.assertAlmostEqual((pygame.Vector2(640,380)-rear).dot(axis),size*.24,delta=2)
-            expected=pygame.transform.rotate(summons.sprite(3,size),-sector*360/64)
+            angle=sector*360/64
+            source=summons.sprite(3,size)
+            if axis.x<0:
+                source=pygame.transform.flip(source,True,False)
+                angle-=180
+            # A tilted but upright crown: the artwork's up vector stays in
+            # the upper half-plane while its nose still follows the route.
+            self.assertGreater(math.cos(math.radians(angle)),0)
+            expected=pygame.transform.rotate(source,-angle)
             self.assertEqual(pygame.image.tobytes(summons.procession_head(size,sector),"RGBA"),pygame.image.tobytes(expected,"RGBA"))
+
+    def test_regular_shots_are_larger_deeper_and_twenty_percent_slower(self):
+        skull=self.skull(1)
+        self.enemy()
+        with patch.object(skull,"update_shots"):
+            skull.update(1/60,self.enemies)
+        self.assertEqual(len(skull.shots),1)
+        shot=skull.shots[0]
+        self.assertAlmostEqual(math.hypot(shot["vx"],shot["vy"]),game.BULLET_SPEED*.75*.8)
+        shot["target"]=None
+        start=pygame.Vector2(shot["x"],shot["y"])
+        skull.update_shots(.01,[])
+        self.assertAlmostEqual(start.distance_to((shot["x"],shot["y"])),game.BULLET_SPEED*.60*.01)
+        self.assertEqual(summon_vfx.ORB_RADIUS,9)
+        screen=pygame.Surface((100,100),pygame.SRCALPHA)
+        summon_vfx.draw_orb(screen,[(50,50)])
+        self.assertGreater(screen.get_bounding_rect().w,13)
+        body=screen.get_at((55,50))
+        self.assertEqual(tuple(body),(151,43,226,220))
 
     def test_wake_rear_is_fainter_and_narrower(self):
         art=summon_vfx.procession_wake(140,0)

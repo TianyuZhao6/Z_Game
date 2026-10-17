@@ -27,13 +27,22 @@ The final revision also includes the user's additional taller-wall request.
 
 ## Shadow Procession
 
-Visual power pass: each spectral skull now carries a tapering wake about 3.25
-sprite-lengths long, made of staggered violet/magenta shadow tiles and broken
-light ribbons. All wakes draw behind the skull faces, fade at entry/exit, and
-remain visible when a head is just outside the viewport. Four deterministic
-animation phases and a bounded rotation cache avoid combat RNG and per-frame
-particle allocations. Trails remain cosmetic: no damage, extra hits or charge.
-Current real-game capture: `evidence/eidolon-long-procession-trails.png`.
+Directional pass: the approved right-facing ghost art and wake share the same
+64-sector heading derived from the screen-space velocity. Left-going heads are
+mirrored before diagonal tilting, keeping crowns above jaws instead of upside
+down; their noses still follow the route. The wake attaches 0.24 sprite-lengths behind the head center, under its
+existing rear wisps. It is now 2.4 sprite-lengths long (formerly 3.25), relatively
+solid at the front and narrower/fainter at the rear. Four deterministic phases
+and bounded rotation caches avoid combat RNG and particle-object allocation.
+Trails remain cosmetic. Current capture: `evidence/eidolon-upright-procession.png`.
+
+36 predetermined sweeps emit every 1/12 second over a three-second window
+(50% more skulls than the previous 24).
+Six screen-space angles (28, 34, 42, 48, 58, 62 degrees) cover all four diagonal
+quadrants, with distributed interior crossing points. Routes start/end beyond
+viewport edges and travel at 1.1 viewport diagonals/second. Heads never reverse,
+bounce or clamp to an edge; finished rows are removed promptly. Late emissions
+finish their crossing after the emission window; another cast waits for them.
 
 New casts store normalized viewport positions and velocities. Each update maps
 those paths to the current player-centered camera for both contact damage and
@@ -43,15 +52,23 @@ the intervening map. Same-level save/load retains normalized paths and remaining
 time; old world-space saved casts finish compatibly, then subsequent casts use
 viewport space.
 
-Charge update: 15 combined player weapon/prop and Eidolon projectile/beam kills
-charge one cast; at least five enemies
-or a boss/Bandit enables release; 24 crossings finish within three seconds;
-shared 0.3-second contact gap; 1.5x cast-time shot damage; spectral wall passage,
-destructible-wall damage, no Shadow Procession kill recharge. Player kills do not
-increase Soul Harvest. Released casts finish on downing
-without awarding harvest or charge to the downed companion.
+The configurable `PROCESSION_KILL_THRESHOLD` defaults to 30. Combined player
+weapon/prop and Eidolon kills (including beam and Procession) count once through
+the existing death guard. Casting subtracts 30 rather than resetting or capping
+the counter. Overflow survives save/load and can fund later sequential casts;
+casts never stack during emission or the final crossing drain. Existing >=5
+enemies or boss/Bandit encounter gate remains. Player kills do not grant harvest.
+Level transitions/downing/fresh runs still reset progress. Released casts finish
+on downing, without harvest or charge rewards for the downed companion.
+Contact damage stays 1.5x cast-time shot damage, 0.8-tile radius, shared 0.3-second
+hit spacing, and spectral wall passage with damage to destructible walls only.
 
 ## Beam and other preserved mechanics
+
+Regular homing orbs now have a 9 px visual radius (formerly 6), a deeper
+saturated violet body and a slightly thicker curved trail. Travel speed is
+60% of normal bullet speed (formerly 75%, a 20% reduction). Fire interval,
+damage, homing, lifetime and the 3 px collision padding are unchanged.
 
 Stage 3 beam automatically locks a target within seven tiles for three seconds,
 then cools down for twelve seconds. Damage is 3x current projectile damage per
@@ -63,6 +80,22 @@ duration/cooldown and a target hint. Beam kills grant both harvest and skill cha
 Movement-facing, homing, harvest caps, health, regeneration, downing,
 progression, shop economy and saves remain intact. No new summon or skill added.
 
+## Summon biome buffs
+
+Eidolon reads the active level biome, independently of player weapon stats.
+Scorched Hell doubles its normal shots, beam and Procession damage exactly once.
+Domain of Wind gives its navigation the same 12% movement-speed bonus as the player.
+Bastion of Stone grants a non-regenerating shield worth 50% of level-entry maximum
+HP. Damage depletes shield before HP; overflow reaches HP and shield hits reset
+the regeneration delay. A cached blue outline follows the current sprite's full
+silhouette, including disconnected horns, and disappears when depleted/downed.
+The existing two-bar HUD is unchanged. Shield capacity and remainder persist
+through same-level saves (including zero); harvest never refills them. A new
+Stone level grants a fresh shield, other levels remove it. Legacy saves without
+shield fields receive the entry shield once. Mist's XP bonus stays player-owned.
+No enemy/player biome rules, turret systems or environmental hazard behavior changed.
+Capture: `evidence/eidolon-stone-shield.png`.
+
 ## Cleanup
 
 Removed the unused `assets/sprites/summons/skull-directions.png` and
@@ -73,15 +106,18 @@ captures supersede the prior Option B presentation captures.
 
 ## Verification
 
-54 summon/integration checks pass, including long directional trail bounds,
-fade/cache behavior, unchanged combat state/RNG, combined kill charging, compact
+64 summon/integration checks pass, including biome damage, shield absorption/save/
+transition behavior, all-stage silhouette outlines, temporary Wind speed, upright mirrored heads, larger/deeper
+orbs and reduced shot speed, diagonal route families, emission/
+exit lifecycle, shared head/tail rotation and rear anchor, tapered trail bounds,
+fade/cache behavior, unchanged rendering RNG, 30-kill trigger and saved overflow, compact
 two-bar HUD, all evolution avatars in both real
 shop screens, visible size ratios, compact collision, edge/corner culling,
 smooth beam pixels, viewport-relative damage, resize, active-cast disk save/load
 and recast, old-save compatibility, wall height/ground anchoring and unchanged
 wall physics. The existing 9 projectile and 13 game-state scenarios also pass.
 
-The actual level-loop runner passed five scenarios, 565 rendered frames each (all stages, Mist, Hell,
+The actual level-loop runner passed six scenarios, 565 rendered frames each (all stages, Mist, Hell, Stone,
 Wind/tornado, lightweight rendering, boss encounter and downed snapshot resume).
 It checks moving-camera path alignment every active-cast frame and captures
 entry/mid/exit states. Test fixtures seed purchases/charge and protect the player;

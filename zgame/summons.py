@@ -21,13 +21,13 @@ REGEN_DELAY = 5.0
 REGEN_RATE = 0.02
 CAST_DURATION = 3.0
 CONTACT_GAP = 0.3
-PROCESSION_COUNT = 24
+PROCESSION_COUNT = 36
 PROCESSION_KILL_THRESHOLD = 30
 PROCESSION_CROSSING_SPEED = 1.1  # Viewport diagonals per second.
 ATTACK_RANGE_TILES = 7
 FOLLOW_DISTANCE_TILES = 2.5
 HOME_RADIUS_TILES = 6
-PROJECTILE_SPEED_MULT = 0.75
+PROJECTILE_SPEED_MULT = 0.60
 HOMING_STRENGTH = 6.0
 PROJECTILE_LIFETIME = 3.5
 PROCESSION_DAMAGE_MULT = 1.5
@@ -68,8 +68,14 @@ def procession_route(index, width, height, margin):
 
 @lru_cache(maxsize=64)
 def procession_head(size, sector):
-    # Approved ghost artwork points right (screen +X); no flip or yaw view.
-    return pygame.transform.rotate(sprite(3,size),-sector*360/64)
+    # Mirror left-going heads before the diagonal tilt: their crown stays above
+    # their jaw instead of turning upside down on the left half of the circle.
+    art = sprite(3,size)
+    angle = sector*360/64
+    if 90 < angle < 270:
+        art = pygame.transform.flip(art,True,False)
+        angle -= 180
+    return pygame.transform.rotate(art,-angle)
 
 
 def ensure_meta(meta):
@@ -315,6 +321,8 @@ class Skull:
         self.facing = 0
         self.death_age = summon_vfx.DEATH_DURATION
         self.hp = self.max_hp
+        self.shield_max = round(self.max_hp*.5) if getattr(state,"biome_active",None) == "Bastion of Stone" else 0
+        self.shield_hp = self.shield_max
         self.charge = 0
         self.hit_cd = self.quiet = self.fire_cd = self.clock = 0.0
         self.path = []
@@ -330,6 +338,9 @@ class Skull:
         self._beam_recipient = None
         if isinstance(saved, dict):
             self.hp = number(saved.get("hp", self.max_hp), self.max_hp, high=self.max_hp)
+            if self.shield_max:
+                self.shield_max = number(saved.get("shield_max",self.shield_max),self.shield_max,high=self.max_hp*.5)
+                self.shield_hp = number(saved.get("shield_hp",self.shield_max),self.shield_max,high=self.shield_max)
             self.charge = int(number(saved.get("charge", 0))) if self.level == 6 else 0
             self.quiet = number(saved.get("quiet", 0), high=REGEN_DELAY)
             self.fire_cd = number(saved.get("fire_cd", 0), high=FIRE_INTERVAL)
@@ -363,6 +374,7 @@ class Skull:
         else:
             self.resume_grace = 0.0
         if self.hp <= 0:
+            self.shield_hp = 0
             self.harvest = self.charge = 0
             self.stop_beam()
         self.persist()
@@ -373,7 +385,13 @@ class Skull:
 
     @property
     def damage(self):
-        return BASE_DAMAGE[self.level-1] * (1+self.harvest/100) * max(0.1, number(self.game.META.get("summon_damage_mult", 1), 1))
+        biome_mult = 2 if getattr(self.state,"biome_active",None) == "Scorched Hell" else 1
+        return BASE_DAMAGE[self.level-1] * (1+self.harvest/100) * max(0.1, number(self.game.META.get("summon_damage_mult", 1), 1)) * biome_mult
+
+    @property
+    def movement_speed(self):
+        biome_mult = 1.12 if getattr(self.state,"biome_active",None) == "Domain of Wind" else 1
+        return self.game.PLAYER_SPEED*60*.9*biome_mult
 
     def sync_rect(self):
         self.rect.topleft = round(self.x), round(self.y+self.game.INFO_BAR_HEIGHT)
@@ -382,6 +400,7 @@ class Skull:
         self.game.META["skull_harvest"] = self.harvest
         self.game.META["skull_combat"] = {
             "level_index": int(getattr(self.state, "current_level", 0)), "hp": self.hp,
+            "shield_hp": self.shield_hp, "shield_max": self.shield_max,
             "charge": self.charge, "quiet": self.quiet, "fire_cd": self.fire_cd, "hit_cd": self.hit_cd,
             "x": self.x, "y": self.y, "facing": self.facing, "death_age": self.death_age, "cast_left": self.cast_left,
             "procession": [list(row) for row in self.procession],
@@ -397,10 +416,13 @@ class Skull:
         if self.hp <= 0:
             return 0
         amount = max(0, amount)
-        self.hp = max(0, self.hp-amount)
+        blocked = min(self.shield_hp,amount)
+        self.shield_hp -= blocked
+        self.hp = max(0, self.hp-(amount-blocked))
         if amount:
             self.quiet = 0
         if self.hp <= 0:
+            self.shield_hp = 0
             self.harvest = self.charge = 0
             self.death_age = 0
             self.facing = self.visual_facing
@@ -453,7 +475,7 @@ class Skull:
         goal = self.path[0]
         delta = pygame.Vector2(goal)-self.rect.center
         distance = delta.length()
-        step = min(distance, self.game.PLAYER_SPEED*60*.9*dt)
+        step = min(distance, self.movement_speed*dt)
         if distance < 3:
             self.path.pop(0)
             return
@@ -710,6 +732,10 @@ class Skull:
         dest = art.get_rect(midbottom=(int(sx),int(sy-summon_vfx.HOVER_HEIGHT+bob)))
         if self.hp > 0:
             screen.blit(art,dest)
+            if self.shield_hp > 0:
+                outline = summon_vfx.shield_outline(art)
+                outline.set_alpha(160+round(40*math.sin(self.clock*6)))
+                screen.blit(outline,(dest.x-3,dest.y-3))
         elif self.death_age < summon_vfx.DEATH_DURATION:
             phase = int(self.death_age/summon_vfx.DEATH_DURATION*24)/24
             fragments = summon_vfx.dissolve_frame(art,phase)

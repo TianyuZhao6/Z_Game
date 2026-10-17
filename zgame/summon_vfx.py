@@ -6,6 +6,7 @@ import pygame
 
 DEATH_DURATION = 1.3
 TRAIL_SECONDS = .28
+ORB_RADIUS = 9  # Presentation only; projectile contact radius remains unchanged.
 VISUAL_SIZES = (96, 144, 216)
 HOVER_HEIGHT = 38
 PROCESSION_TRAIL_LENGTH = 2.4  # Skull sprite lengths, presentation only.
@@ -16,7 +17,7 @@ def procession_wake(size, phase):
     """Right-facing spectral wake: broken tile smoke and narrow energy ribbons.
 
     Deterministic decoration must never consume the combat random stream.
-    Fixed animation phases keep 24 simultaneous wakes inexpensive to render.
+    Fixed animation phases keep the staggered wakes inexpensive to render.
     """
     length = round(size*PROCESSION_TRAIL_LENGTH)
     height = round(size*.95)
@@ -128,14 +129,14 @@ def mote(radius, alpha=180):
     radius = max(1, radius)
     surf = pygame.Surface((radius*2+2,radius*2+2),pygame.SRCALPHA)
     center = radius+1, radius+1
-    pygame.draw.circle(surf,(150,52,225,alpha//5),center,radius)
-    pygame.draw.circle(surf,(201,103,252,alpha//2),center,max(1,radius-2))
-    pygame.draw.circle(surf,(246,206,255,alpha),center,max(1,radius-4))
+    pygame.draw.circle(surf,(103,25,193,alpha//3),center,radius)
+    pygame.draw.circle(surf,(151,43,226,alpha),center,max(1,radius-3))
+    pygame.draw.circle(surf,(211,133,255,alpha),center,max(1,radius//3))
     return surf
 
 
 def draw_orb(screen, points):
-    """Restrained orb with a bounded, curved, alpha-tapered particle tail."""
+    """Saturated violet orb with a bounded, curved, alpha-tapered tail."""
     if not points:
         return
     # Limit the visible tail in screen space without affecting the trajectory.
@@ -160,15 +161,27 @@ def draw_orb(screen, points):
         for i in range(1,len(tail)):
             t = i/(len(tail)-1)
             a,b = tail[i-1]-bounds.topleft,tail[i]-bounds.topleft
-            pygame.draw.line(layer,(161,65,222,int(85*t)),a,b,3 if t>.55 else 1)
-            pygame.draw.line(layer,(217,143,255,int(155*t*t)),a,b,1)
+            pygame.draw.line(layer,(121,32,204,int(135*t)),a,b,5 if t>.55 else 2)
+            pygame.draw.line(layer,(179,71,239,int(190*t*t)),a,b,2)
             if i%3==0:
                 # Small side motes, never a wide bloom cloud.
                 p = (round(a.x+math.sin(i*2.4)*3),round(a.y+math.cos(i*1.7)*3))
-                pygame.draw.circle(layer,(187,88,239,int(120*t)),p,1)
+                pygame.draw.circle(layer,(155,48,224,int(150*t)),p,1)
         screen.blit(layer,bounds)
-    head = mote(6)
+    head = mote(ORB_RADIUS,220)
     screen.blit(head,head.get_rect(center=points[-1]))
+
+
+@lru_cache(maxsize=96)
+def shield_outline(art):
+    """Cached silhouette shell including disconnected horns/tendrils, not a box."""
+    mask = pygame.mask.from_surface(art,32)
+    size = art.get_width()+6,art.get_height()+6
+    shell = pygame.mask.Mask(size)
+    for dx,dy in ((-3,0),(3,0),(0,-3),(0,3),(-2,-2),(2,-2),(-2,2),(2,2)):
+        shell.draw(mask,(3+dx,3+dy))
+    shell.erase(mask,(3,3))
+    return shell.to_surface(setcolor=(90,180,255,255),unsetcolor=(0,0,0,0))
 
 
 @lru_cache(maxsize=96)
