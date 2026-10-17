@@ -19,11 +19,12 @@ VOLLEY = (1, 3, 3, 3, 3, 5)
 FIRE_INTERVAL = 1.25
 REGEN_DELAY = 5.0
 REGEN_RATE = 0.02
-CAST_DURATION = 3.0
+CAST_DURATION = 2.5
+PROCESSION_COOLDOWN = 5.0  # Starts after the last crossing; intentionally no HUD.
 CONTACT_GAP = 0.3
 PROCESSION_COUNT = 36
 PROCESSION_KILL_THRESHOLD = 30
-PROCESSION_CROSSING_SPEED = 1.1  # Viewport diagonals per second.
+PROCESSION_CROSSING_SPEED = 0.52  # Viewport diagonals per second; 20% slower.
 ATTACK_RANGE_TILES = 7
 FOLLOW_DISTANCE_TILES = 2.5
 HOME_RADIUS_TILES = 6
@@ -115,7 +116,7 @@ def enter_shop(game):
     # The encounter has ended, even if the next map is not constructed yet.
     combat = game.META.get("skull_combat")
     if isinstance(combat, dict):
-        combat.update(charge=0, cast_left=0, procession=[], shots=[], beam_left=0,
+        combat.update(charge=0, cast_left=0, procession_cd=0, procession=[], shots=[], beam_left=0,
                       beam_cd=0, beam_credit=0, beam_tick=0, beam_target_hint=None)
 
 
@@ -331,6 +332,7 @@ class Skull:
         self.procession = []
         self.procession_relative = False  # Legacy saved casts use world coordinates.
         self.cast_left = 0.0
+        self.procession_cd = 0.0
         self.hit_times = {}
         self.beam_left = self.beam_cd = self.beam_tick = self.beam_credit = 0.0
         self.beam_target = self.beam_target_hint = self.beam_end = None
@@ -362,6 +364,7 @@ class Skull:
                 self.rect.center = player.rect.center
                 self.x, self.y = float(self.rect.x), float(self.rect.y-game.INFO_BAR_HEIGHT)
             self.cast_left = number(saved.get("cast_left", 0), high=CAST_DURATION)
+            self.procession_cd = number(saved.get("procession_cd",0),high=PROCESSION_COOLDOWN)
             self.procession_relative = saved.get("procession_space") == "player_view"
             for row in saved.get("procession", [])[:PROCESSION_COUNT]:
                 if isinstance(row, list) and len(row) == 8:
@@ -403,6 +406,7 @@ class Skull:
             "shield_hp": self.shield_hp, "shield_max": self.shield_max,
             "charge": self.charge, "quiet": self.quiet, "fire_cd": self.fire_cd, "hit_cd": self.hit_cd,
             "x": self.x, "y": self.y, "facing": self.facing, "death_age": self.death_age, "cast_left": self.cast_left,
+            "procession_cd": self.procession_cd,
             "procession": [list(row) for row in self.procession],
             "procession_space": "player_view" if self.procession_relative else "world",
             "beam_left": self.beam_left, "beam_cd": self.beam_cd,
@@ -495,9 +499,11 @@ class Skull:
         self.facing = movement_facing(self.x-start_x, self.y-start_y, self.facing)
 
     def cast(self):
-        if self.cast_left > 0 or self.procession:
+        if self.cast_left > 0 or self.procession or self.procession_cd > 0:
             return False
-        self.charge = max(0,self.charge-PROCESSION_KILL_THRESHOLD)
+        # Every release empties the meter, including any surplus banked while
+        # waiting. Only kills earned after this cast can refill it.
+        self.charge = 0
         self.cast_left = CAST_DURATION
         self.hit_times.clear()
         self.procession = []
@@ -508,6 +514,7 @@ class Skull:
             delay = i/PROCESSION_COUNT*CAST_DURATION
             # x, y, velocity, spawn delay, remaining crossing, snapshot damage, age
             self.procession.append([*start, (end[0]-start[0])/duration, (end[1]-start[1])/duration, delay, duration, self.damage*PROCESSION_DAMAGE_MULT, 0.0])
+        self.persist()
         return True
 
     def procession_world(self, x, y):
@@ -561,7 +568,7 @@ class Skull:
                     speed = game.BULLET_SPEED*PROJECTILE_SPEED_MULT
                     self.shots.append(dict(x=float(self.rect.centerx), y=float(self.rect.centery), vx=math.cos(angle)*speed, vy=math.sin(angle)*speed, target=target, damage=self.damage, life=PROJECTILE_LIFETIME, trail=[], visual_origin=self.eye_offset()))
                 self.fire_cd = FIRE_INTERVAL
-            if self.level == 6 and self.charge >= PROCESSION_KILL_THRESHOLD and self.cast_left <= 0 and not self.procession and (len(alive) >= 5 or any(getattr(e,"is_boss",False) or getattr(e,"type","")=="bandit" for e in alive)):
+            if self.level == 6 and self.charge >= PROCESSION_KILL_THRESHOLD and self.cast_left <= 0 and not self.procession and self.procession_cd <= 0 and (len(alive) >= 5 or any(getattr(e,"is_boss",False) or getattr(e,"type","")=="bandit" for e in alive)):
                 self.cast()
             for e in alive:
                 if self.hit_cd <= 0 and game.circle_touch(e, self):
@@ -673,9 +680,11 @@ class Skull:
 
     def update_procession(self, dt, enemies):
         if self.cast_left <= 0 and not self.procession:
+            self.procession_cd = max(0,self.procession_cd-dt)
             return
         game, state = self.game, self.state
-        # Three-second emission window; late skulls finish their one-way crossing.
+        # Emission ends at 2.5 seconds; released skulls finish before cooldown.
+        finish_in = max(self.cast_left,max((max(0,s[4])+s[5] for s in self.procession),default=0))
         active_dt = dt
         self.cast_left = max(0,self.cast_left-dt)
         for s in self.procession:
@@ -707,6 +716,7 @@ class Skull:
         self.procession[:] = [s for s in self.procession if s[5]>1e-9]
         if not self.procession and self.cast_left <= 0:
             self.hit_times.clear()
+            self.procession_cd = max(0,PROCESSION_COOLDOWN-max(0,dt-finish_in))
 
     @property
     def visual_facing(self):

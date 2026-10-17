@@ -19,7 +19,7 @@ The final revision also includes the user's additional taller-wall request.
   selecting the evolution granted by the next purchase. Save identifier remains
   `evolving_skull` for compatibility.
 - The eye beam is a single straight ray, supersampled for smooth edges:
-  6 px magenta body, 3 px core, faint 11 px envelope. No spiral or side rays.
+  9 px magenta body, 4 px core, faint 16 px envelope. No spiral or side rays.
 - Walls have double their old visual height, with two staggered masonry courses.
   Caps rise above the original ground footprint; depth sorting uses the base,
   not the raised cap. Lightweight rendering no longer shortens these walls.
@@ -36,13 +36,14 @@ solid at the front and narrower/fainter at the rear. Four deterministic phases
 and bounded rotation caches avoid combat RNG and particle-object allocation.
 Trails remain cosmetic. Current capture: `evidence/eidolon-upright-procession.png`.
 
-36 predetermined sweeps emit every 1/12 second over a three-second window
+36 predetermined sweeps emit evenly over a 2.5-second window
 (50% more skulls than the previous 24).
 Six screen-space angles (28, 34, 42, 48, 58, 62 degrees) cover all four diagonal
 quadrants, with distributed interior crossing points. Routes start/end beyond
-viewport edges and travel at 1.1 viewport diagonals/second. Heads never reverse,
+viewport edges and travel at 0.52 viewport diagonals/second (another 20% slower
+than the previous 0.65). Heads never reverse,
 bounce or clamp to an edge; finished rows are removed promptly. Late emissions
-finish their crossing after the emission window; another cast waits for them.
+finish their crossing after the emission window, then a hidden five-second cooldown begins.
 
 New casts store normalized viewport positions and velocities. Each update maps
 those paths to the current player-centered camera for both contact damage and
@@ -54,9 +55,9 @@ viewport space.
 
 The configurable `PROCESSION_KILL_THRESHOLD` defaults to 30. Combined player
 weapon/prop and Eidolon kills (including beam and Procession) count once through
-the existing death guard. Casting subtracts 30 rather than resetting or capping
-the counter. Overflow survives save/load and can fund later sequential casts;
-casts never stack during emission or the final crossing drain. Existing >=5
+the existing death guard. Each successful cast clears all charge, including
+surplus, so the purple meter empties. Only new kills refill it; that new progress survives save/load.
+casts never stack during emission, the final crossing drain, or cooldown. Kill progress continues during cooldown; remaining cooldown persists in same-level saves and resets at level transitions. No cooldown indicator is added. Existing >=5
 enemies or boss/Bandit encounter gate remains. Player kills do not grant harvest.
 Level transitions/downing/fresh runs still reset progress. Released casts finish
 on downing, without harvest or charge rewards for the downed companion.
@@ -106,11 +107,11 @@ captures supersede the prior Option B presentation captures.
 
 ## Verification
 
-64 summon/integration checks pass, including biome damage, shield absorption/save/
+67 summon/integration checks pass, including empty-on-cast HUD and post-cast refill, biome damage, shield absorption/save/
 transition behavior, all-stage silhouette outlines, temporary Wind speed, upright mirrored heads, larger/deeper
 orbs and reduced shot speed, diagonal route families, emission/
 exit lifecycle, shared head/tail rotation and rear anchor, tapered trail bounds,
-fade/cache behavior, unchanged rendering RNG, 30-kill trigger and saved overflow, compact
+fade/cache behavior, unchanged rendering RNG, 30-kill trigger and saved progress, compact
 two-bar HUD, all evolution avatars in both real
 shop screens, visible size ratios, compact collision, edge/corner culling,
 smooth beam pixels, viewport-relative damage, resize, active-cast disk save/load
