@@ -53,7 +53,7 @@ the intervening map. Same-level save/load retains normalized paths and remaining
 time; old world-space saved casts finish compatibly, then subsequent casts use
 viewport space.
 
-The configurable `PROCESSION_KILL_THRESHOLD` defaults to 30. Combined player
+The configurable `PROCESSION_KILL_THRESHOLD` defaults to 40. Combined player
 weapon/prop and Eidolon kills (including beam and Procession) count once through
 the existing death guard. Each successful cast clears all charge, including
 surplus, so the purple meter empties. Only new kills refill it; that new progress survives save/load.
@@ -111,7 +111,7 @@ captures supersede the prior Option B presentation captures.
 transition behavior, all-stage silhouette outlines, temporary Wind speed, upright mirrored heads, larger/deeper
 orbs and reduced shot speed, diagonal route families, emission/
 exit lifecycle, shared head/tail rotation and rear anchor, tapered trail bounds,
-fade/cache behavior, unchanged rendering RNG, 30-kill trigger and saved progress, compact
+fade/cache behavior, unchanged rendering RNG, 40-kill trigger and saved progress, compact
 two-bar HUD, all evolution avatars in both real
 shop screens, visible size ratios, compact collision, edge/corner culling,
 smooth beam pixels, viewport-relative damage, resize, active-cast disk save/load

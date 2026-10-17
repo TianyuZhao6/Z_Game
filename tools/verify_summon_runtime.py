@@ -224,6 +224,7 @@ class SkullTests(unittest.TestCase):
         self.assertEqual((skull.charge,skull.harvest),(0,harvest))
 
     def test_trigger_and_boss_exception(self):
+        self.assertEqual(summons.PROCESSION_KILL_THRESHOLD,40)
         skull=self.skull()
         boss=self.enemy()
         boss.is_boss=True
@@ -418,7 +419,7 @@ class SkullTests(unittest.TestCase):
         skull=self.skull()
         skull.harvest=58
         skull.hp=skull.max_hp/2
-        skull.charge=4
+        skull.charge=summons.PROCESSION_KILL_THRESHOLD//4
         skull.quiet=10
         screen=pygame.Surface((400,500),pygame.SRCALPHA)
         font=summons.hud_font()
@@ -885,8 +886,8 @@ class SkullTests(unittest.TestCase):
         skull.gain_procession_charge(67)
         skull.cast()
         self.assertEqual(skull.charge,0)
-        skull.gain_procession_charge(37)
-        self.assertEqual(skull.charge,37)
+        skull.gain_procession_charge(summons.PROCESSION_KILL_THRESHOLD+7)
+        self.assertEqual(skull.charge,summons.PROCESSION_KILL_THRESHOLD+7)
         rows=copy.deepcopy(skull.procession)
         self.assertFalse(skull.cast())
         self.assertEqual(skull.procession,rows)
@@ -896,7 +897,7 @@ class SkullTests(unittest.TestCase):
         skull.persist()
         summons.start_level(game,self.gs,self.player)
         skull=self.gs.companions[0]
-        self.assertEqual(skull.charge,37)
+        self.assertEqual(skull.charge,summons.PROCESSION_KILL_THRESHOLD+7)
         self.assertTrue(skull.procession)
         skull.update_procession(2,[])
         self.assertGreater(skull.procession_cd,0)
@@ -943,7 +944,7 @@ class SkullTests(unittest.TestCase):
         screen.fill((0,0,0,0))
         skull.draw(screen,640,500)
         self.assertEqual(with_cd,pygame.image.tobytes(screen,"RGBA"))
-        skull.gain_procession_charge(23)
+        skull.gain_procession_charge(summons.PROCESSION_KILL_THRESHOLD-7)
         boss=self.enemy()
         boss.is_boss=True
         skull.update(.01,self.enemies)
@@ -963,15 +964,15 @@ class SkullTests(unittest.TestCase):
         skull.cast()
         self.assertEqual(meter_width(),0)
         self.assertEqual(game.META["skull_combat"]["charge"],0)
-        for i in range(15):
+        for i in range(summons.PROCESSION_KILL_THRESHOLD//2):
             target=self.enemy(hp=1)
             summons.damage_enemy(game,self.gs,self.enemies,target,100,skull)
         self.assertEqual(meter_width(),24)
         self.assertFalse(skull.cast())  # Rejected requests must not clear progress.
-        self.assertEqual(skull.charge,15)
+        self.assertEqual(skull.charge,summons.PROCESSION_KILL_THRESHOLD//2)
         skull.persist()
         summons.start_level(game,self.gs,self.player)
-        self.assertEqual(self.gs.companions[0].charge,15)
+        self.assertEqual(self.gs.companions[0].charge,summons.PROCESSION_KILL_THRESHOLD//2)
 
     def test_cooldown_coarse_step_reset_and_old_save_defaults(self):
         skull=self.skull()
