@@ -194,5 +194,6 @@ def illustrated_wall(width, height, wall_h, color, seed):
     result.blit(art,(1,1))
     if pygame.display.get_surface() is not None:
         result = result.convert_alpha()
-    result.set_alpha(255, pygame.RLEACCEL)
+    # Walls also composite into an RGBA cache. RLE's SDL2 blit path can
+    # turn their translucent edge/shadow pixels opaque on that destination.
     return result,(width+2)//2,1+wall_h

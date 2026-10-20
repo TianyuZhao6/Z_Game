@@ -69,6 +69,27 @@ class EnvironmentTests(unittest.TestCase):
             area = pygame.Rect(round(sx-50),round(sy-110),100,140).clip(native.get_rect())
             self.assertEqual(pixels(native.subsurface(area)),pixels(browser.subsurface(area)),pos)
 
+    def test_lite_wall_cache_preserves_translucent_edges_after_direct_render(self):
+        from zgame import terrain_art
+        for kind,color in (("Indestructible",(75,91,119)),("Destructible",(147,135,144))):
+            with self.subTest(kind=kind):
+                self.state.obstacles.clear()
+                self.state.obstacles[10,8] = game.Obstacle(10,8,kind,health=20)
+                self.render()  # Exercise the optimized direct blit before cache assembly.
+                self.render(lite=True)
+                cache = self.state._web_wall_layer_cache
+                source,ax,ay = terrain_art.wall_tile(game.ISO_CELL_W,game.ISO_CELL_H,
+                    game.ISO_WALL_Z,color,terrain_art.variant(10,8)%4,game.WALL_STYLE)
+                sx,sy = game.iso_world_to_screen(10,8,0,0,0)
+                left,top = int(sx-ax)-cache["x0"],int(sy-ay)-cache["y0"]
+                translucent = 0
+                for y in range(source.get_height()):
+                    for x in range(source.get_width()):
+                        alpha = source.get_at((x,y)).a
+                        translucent += 0 < alpha < 255
+                        self.assertEqual(cache["surface"].get_at((left+x,top+y)).a,alpha,(x,y))
+                self.assertGreater(translucent,100)
+
     def test_player_marker_only_when_foreground_wall_covers_the_core(self):
         for lite,web_full in ((False,False),(True,False),(False,True)):
             self.state.obstacles.clear()
