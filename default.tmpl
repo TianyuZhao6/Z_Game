@@ -625,6 +625,7 @@ function zgameDiagEnabled() {
 
 function ensureZGameDiagDom() {
     if (!zgameDiagEnabled()) return null;
+    if (!document.body) return null; // First animation frame can precede <body>.
     let node = window.__zgame_diag_dom;
     if (node && node.isConnected) return node;
     node = document.createElement("pre");

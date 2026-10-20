@@ -1,5 +1,7 @@
 """Extracted UI flow from ZGame.py."""
 from __future__ import annotations
+
+from zgame.neural_environment import region_name, region_style
 import asyncio
 import copy
 import math
@@ -837,12 +839,12 @@ def show_biome_picker_in_shop(game, screen) -> str:
             if c['revealed']:
                 pygame.draw.rect(screen, (60, 66, 70), r, border_radius=12)
                 pygame.draw.rect(screen, (200, 200, 210), r, 2, border_radius=12)
-                name = c['name'].upper()
+                name = region_name(c['name']).upper()
                 parts = name.split()
                 text_lines = [' '.join(parts[:2]), ' '.join(parts[2:])] if len(parts) > 2 else [name]
                 ty = r.centery - len(text_lines) * 22 // 2
                 for line in text_lines:
-                    surf = font.render(line, True, (240, 240, 240))
+                    surf = font.render(line, True, region_style(c['name'])[2])
                     screen.blit(surf, surf.get_rect(center=(r.centerx, ty)))
                     ty += 28
                 if chosen == c['name']:
@@ -930,12 +932,12 @@ async def show_biome_picker_in_shop_web(game, screen) -> str:
             if c['revealed']:
                 pygame.draw.rect(screen, (60, 66, 70), r, border_radius=12)
                 pygame.draw.rect(screen, (200, 200, 210), r, 2, border_radius=12)
-                name = c['name'].upper()
+                name = region_name(c['name']).upper()
                 parts = name.split()
                 text_lines = [' '.join(parts[:2]), ' '.join(parts[2:])] if len(parts) > 2 else [name]
                 ty = r.centery - len(text_lines) * 22 // 2
                 for line in text_lines:
-                    surf = font.render(line, True, (240, 240, 240))
+                    surf = font.render(line, True, region_style(c['name'])[2])
                     screen.blit(surf, surf.get_rect(center=(r.centerx, ty)))
                     ty += 28
                 if chosen == c['name']:

@@ -6,6 +6,7 @@ these details do not create obstacles or change their collision rectangles.
 from functools import lru_cache
 
 import pygame
+from zgame.neural_environment import illustrated_wall
 
 
 def variant(gx, gy):
@@ -57,6 +58,10 @@ def floor_tile(width, height, seed):
 @lru_cache(maxsize=256)
 def wall_tile(width, height, wall_h, color, seed, style="prism"):
     """Warm fractured masonry versus cool banded permanent stone."""
+    if style == "prism":
+        illustrated = illustrated_wall(width, height, wall_h, color, seed)
+        if illustrated is not None:
+            return illustrated
     pad_top = max(0, int(height*1.8)-height//2) if style == "hybrid" else 0
     surf = pygame.Surface((width+2, height+wall_h+pad_top+2), pygame.SRCALPHA)
     cx, top_y = (width+2)//2, pad_top+1

@@ -18,6 +18,8 @@ from unittest.mock import patch
 
 parser=argparse.ArgumentParser()
 parser.add_argument("--visible",action="store_true")
+parser.add_argument("--environment-stress",action="store_true",
+                    help="Exercise the approved environment with a dense mixed fight in every region.")
 args=parser.parse_args()
 if not args.visible:
     os.environ.setdefault("SDL_VIDEODRIVER","dummy")
@@ -69,6 +71,20 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
         capture["max_enemies"]=max(capture["max_enemies"],len(enemies))
         t=capture["time"]
         skull=gs.companions[0]
+        if args.environment_stress and "stress_injected" not in capture:
+            # Fixture only: all movement, targeting, projectiles, collisions,
+            # hazards and rendering still execute through the real level loop.
+            capture["stress_injected"]=True
+            px,py=capture["player"].rect.center
+            cells=[(x,y) for x in range(2,game.GRID_SIZE-2) for y in range(2,game.GRID_SIZE-2)
+                   if (x,y) not in gs.obstacles and
+                   3*game.CELL_SIZE < abs((x+.5)*game.CELL_SIZE-px)+abs((y+.5)*game.CELL_SIZE+game.INFO_BAR_HEIGHT-py) < 9*game.CELL_SIZE]
+            random.shuffle(cells)
+            kinds=("basic","fast","tank","ranged","shielder","ravager")
+            for i,pos in enumerate(cells[:60]):
+                enemy=game.Enemy(pos,speed=game.ENEMY_SPEED,ztype=kinds[i%len(kinds)])
+                enemy.is_elite = i%11 == 0
+                enemies.append(enemy)
         if down and t>=4.5 and not capture["down"]:
             skull.take_damage(skull.max_hp*5)
             capture["down"]=True
@@ -149,13 +165,18 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
     assert skull.rect.center!=capture["skull_start"]
     assert len(capture["facings"])>=3, "Skull did not turn while navigating"
     assert capture["shot"],"No ordinary shots fired"
+    if args.environment_stress:
+        assert capture["max_enemies"]>=50,"Dense fight did not reach the target population"
     if tier==6:
         assert capture["cast"],"Procession never triggered"
         assert capture["beam"],"Eye beam never triggered"
         points=capture["cast_positions"]
         assert len(points)>20,"Player did not move during Procession"
         assert max(x for x,y in points)-min(x for x,y in points)+max(y for x,y in points)-min(y for x,y in points)>game.CELL_SIZE
-    assert skull.cast_left==0 and not skull.procession
+    # A dense fight can legitimately earn another cast just before the timer
+    # ends. The original sparse fixtures still check the completed-cast cleanup.
+    if not args.environment_stress:
+        assert skull.cast_left==0 and not skull.procession
     if down:
         print(f"{name}: level loop complete; checking snapshot resume",flush=True)
         payload=game.capture_snapshot(capture["state"],capture["player"],capture["enemies"],level)
@@ -171,6 +192,14 @@ async def main():
     pygame.display.set_mode((1280,720))
     game.VIEW_W,game.VIEW_H=1280,720
     random.seed(947)
+    if args.environment_stress:
+        await scenario("environment-dense-wind",6,3,"Domain of Wind")
+        await scenario("environment-dense-forest-lite",3,1,"Misty Forest",lite=True)
+        await scenario("environment-dense-fire",6,2,"Scorched Hell")
+        await scenario("environment-dense-mountain",6,3,"Bastion of Stone")
+        print("Dense environment level-loop scenarios passed.",flush=True)
+        pygame.quit()
+        return
     await scenario("bloombone",2,0)
     await scenario("soulflame-mist",3,1,"Misty Forest")
     await scenario("rift-hell",6,2,"Scorched Hell",down=True)

@@ -33,6 +33,9 @@ class SkullTests(unittest.TestCase):
         self.original_level = getattr(game, "current_level", 0)
         self.original_view = game.VIEW_W, game.VIEW_H
         game.reset_run_state()
+        # Shop tests queue transitions. A subsequent renderer test must exercise
+        # gameplay instead of short-circuiting to the previous test's transition.
+        game.clear_menu_transition_state()
         game.current_level = 0
         game.VIEW_W, game.VIEW_H = 1280, 720
         random.seed(123)
@@ -662,11 +665,18 @@ class SkullTests(unittest.TestCase):
         wall=game.Obstacle(10,8,"Destructible")
         before=(wall.rect.copy(),wall.health)
         self.gs.obstacles[10,8]=wall
-        self.assertEqual(game.ISO_WALL_Z,2*int(22*game.WORLD_SCALE))
+        sprite=game._load_shop_sprite("characters/player/sheets/player.png",
+            (int(self.player.size*2*game.PLAYER_SPRITE_SCALE),
+             int(self.player.size*2.4*game.PLAYER_SPRITE_SCALE)),allow_upscale=True)
+        body_height=sprite.get_bounding_rect(min_alpha=100).height
+        self.assertGreaterEqual(game.ISO_WALL_Z/body_height,1.8)
+        self.assertLessEqual(game.ISO_WALL_Z/body_height,2.4)
         for color in ((80,101,117),(137,87,83)):
             art,ax,ay=terrain_art.wall_tile(game.ISO_CELL_W,game.ISO_CELL_H,game.ISO_WALL_Z,color,0)
             self.assertEqual(ay,1+game.ISO_WALL_Z)
-            self.assertEqual(art.get_bounding_rect().bottom-ay,game.ISO_CELL_H+1)
+            # Transparent sprite padding may differ; its foot stays on the
+            # original tile, while extra height rises above the ground anchor.
+            self.assertAlmostEqual(art.get_bounding_rect().bottom-ay,game.ISO_CELL_H,delta=2)
         screen=pygame.display.get_surface()
         game.render_game_iso(screen,self.gs,self.player,[],[],[])
         with patch.object(game,"IS_WEB",True),patch.object(render_runtime,"IS_WEB",True),patch.object(terrain_art,"wall_tile",wraps=terrain_art.wall_tile) as material:
