@@ -188,6 +188,9 @@ def install(game):
             if placed >= rest_needed:
                 break
             cluster_size = random.randint(3, 6)
+            # Ruins read as short connected wall runs, not alternating pillars.
+            axis = random.choice(((1,0),(0,1)))
+            cluster_type = "Indestructible" if random.random() < 0.65 else "Destructible"
             wave = [seed]
             visited = set()
             while wave and placed < rest_needed and len(visited) < cluster_size:
@@ -195,13 +198,18 @@ def install(game):
                 if cur in visited or cur in obstacles or cur in forbidden:
                     continue
                 visited.add(cur)
-                typ = "Indestructible" if random.random() < 0.65 else "Destructible"
+                typ = cluster_type
                 hp = game.OBSTACLE_HEALTH if typ == "Destructible" else None
                 obstacles[cur] = game.Obstacle(cur[0], cur[1], typ, health=hp)
                 placed += 1
                 x, y = cur
                 neigh = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+                # Stack the chosen forward direction last so the next cell
+                # extends this wall. The remaining neighbors allow a short turn.
+                forward = (x+axis[0],y+axis[1])
+                neigh.remove(forward)
                 random.shuffle(neigh)
+                neigh.append(forward)
                 for nb in neigh:
                     if 0 <= nb[0] < grid_size and 0 <= nb[1] < grid_size and nb not in visited:
                         wave.append(nb)

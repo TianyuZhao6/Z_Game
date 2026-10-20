@@ -13,7 +13,7 @@ from zgame.paths import asset_candidates, first_existing_path
 
 
 REGIONS = {
-    "Domain of Wind": ("Wind", "风", (102, 175, 206), 6.4),
+    "Domain of Wind": ("Wind", "风", (70, 161, 224), 6.4),
     "Misty Forest": ("Forest", "林", (87, 170, 133), 7.8),
     "Scorched Hell": ("Fire", "火", (211, 120, 83), 5.6),
     "Bastion of Stone": ("Mountain", "山", (174, 151, 103), 9.2),
@@ -29,7 +29,7 @@ def region_name(legacy_id):
     return region_style(legacy_id)[0]
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=6)
 def source_asset(name):
     path = first_existing_path(asset_candidates("sprites", "environment", name))
     return pygame.image.load(path) if path else None
@@ -40,11 +40,10 @@ def ground_material():
     source = source_asset("neural-stone-v1.png")
     if source is None:
         return None
-    # Deliberate three-pixel clusters, including on the browser renderer.
-    tile = pygame.transform.smoothscale(source, (256, 128))
-    tile = pygame.transform.scale(tile, (768, 384))
+    # Preserve plate boundaries instead of erasing them in a tiny intermediate.
+    tile = pygame.transform.smoothscale(source, (1024, 512))
     veil = pygame.Surface(tile.get_size(), pygame.SRCALPHA)
-    veil.fill((28, 35, 53, 100))
+    veil.fill((23, 30, 50, 24))
     tile.blit(veil, (0,0))
     return tile
 
@@ -56,14 +55,76 @@ def floor_outline(grid, cell_w, cell_h, x0, y0, info):
             (int(-grid*cell_w/2-x0), int(grid*cell_h/2+info-y0))]
 
 
+@lru_cache(maxsize=2)
+def abyss_view(size):
+    source = source_asset("neural-abyss.png")
+    if source is None:
+        return None
+    # Overscan permits slow, bounded camera parallax without exposing a seam.
+    scale = max((size[0]+160)/source.get_width(),(size[1]+100)/source.get_height())
+    result = pygame.transform.smoothscale(source,
+        (math.ceil(source.get_width()*scale),math.ceil(source.get_height()*scale)))
+    return result.convert() if pygame.display.get_surface() else result
+
+
+@lru_cache(maxsize=4)
+def cliff_strip(cell_w, cell_h, reverse=False):
+    source = source_asset("neural-cliff.png")
+    if source is None:
+        return None
+    # The painted rim runs from (2%,14%) to (98%,80%). Align those
+    # anchors to twelve cell edges; hanging fibers remain outside collision.
+    span_x,span_y = cell_w*6,cell_h*6
+    width,height = round(span_x/.96),round(span_y/.66)
+    result = pygame.transform.smoothscale(source,(width,height))
+    if reverse:
+        result = pygame.transform.flip(result,True,False)
+    return result,round(width*.02),round(height*.14)
+
+
+def draw_platform_rim(screen, camx, camy, grid, cell_w, cell_h, info, front=True):
+    # Decorative only: the playable outline and pathfinding stay unchanged.
+    for reverse in (False,True):
+        cached = cliff_strip(cell_w,cell_h,reverse)
+        if cached is None:
+            continue
+        sprite,pad_x,pad_y = cached
+        if front:
+            start_x = (-1 if not reverse else 1)*grid*cell_w/2
+            start_y = info+grid*cell_h/2
+        else:
+            start_x,start_y = 0,info
+        direction = -1 if reverse else 1
+        for step in range(0,grid,12):
+            span = min(12,grid-step)
+            art = sprite
+            if span != 12:
+                art = pygame.transform.smoothscale(sprite,
+                    (round(sprite.get_width()*span/12),round(sprite.get_height()*span/12)))
+            x = start_x+direction*step*cell_w/2-camx
+            y = start_y+step*cell_h/2-camy
+            if reverse:
+                x -= art.get_width()-pad_x
+            else:
+                x -= pad_x
+            rect = art.get_rect(topleft=(round(x),round(y-pad_y)))
+            if rect.colliderect(screen.get_rect()):
+                screen.blit(art,rect)
+
+
+def draw_abyss(screen, camx, camy, grid, cell_w, cell_h, info):
+    art = abyss_view(screen.get_size())
+    if art is not None:
+        x = (screen.get_width()-art.get_width())//2-int(55*math.tanh(camx/900))
+        y = (screen.get_height()-art.get_height())//2-int(35*math.tanh(camy/600))
+        screen.blit(art,(x,y))
+    draw_platform_rim(screen,camx,camy,grid,cell_w,cell_h,info,front=False)
+
+
 def paint_floor(surface, grid, cell_w, cell_h, x0, y0, info):
-    """One continuous material across cells, with a quiet abyss outside the rim."""
+    """Continuous mineral cortex, transparent beyond the playable platform."""
     width, height = surface.get_size()
-    surface.fill((16, 19, 34))
-    # Soft depth behind the playable plane, independent of the selected region.
-    for y in range(0, height, 4):
-        t = y / max(1, height)
-        pygame.draw.rect(surface, (int(19+14*t), int(22+10*t), int(39+19*t)), (0,y,width,4))
+    surface.fill((0, 0, 0, 0))
     ground = pygame.Surface((width, height), pygame.SRCALPHA)
     tile = ground_material()
     if tile is None:
@@ -78,17 +139,14 @@ def paint_floor(surface, grid, cell_w, cell_h, x0, y0, info):
     mask = pygame.Surface((width, height), pygame.SRCALPHA)
     pygame.draw.polygon(mask, (255,255,255,255), outline)
     ground.blit(mask, (0,0), special_flags=pygame.BLEND_RGBA_MULT)
-    # The lip adds depth without introducing any new collision geometry.
-    pygame.draw.polygon(surface, (26,25,43), [(x,y+16) for x,y in outline])
     surface.blit(ground, (0,0))
-    pygame.draw.lines(surface, (60,58,84), False, [outline[1],outline[2],outline[3]], 2)
 
 
 @lru_cache(maxsize=4)
 def network_paths(grid, region):
-    """Connected jittered mesh in world tile coordinates, not per-tile decals."""
+    """Organic axons with tapered dendrites; all randomness is art-local."""
     rng = random.Random(91417)
-    spacing = 5.4
+    spacing = 6.0
     count = math.ceil(grid/spacing)+2
     nodes = {}
     for row in range(count):
@@ -108,27 +166,38 @@ def network_paths(grid, region):
             b = nodes[neighbor]
             dx,dy = b[0]-a[0],b[1]-a[1]
             length = max(.01, math.hypot(dx,dy))
-            bend = rng.uniform(-.75,.75)
-            steps = 9 if name in ("Wind","Forest") else 4
+            bend = rng.uniform(-1.25,1.25)
+            steps = 28
+            phase = rng.uniform(0,math.tau)
             pts = []
             for i in range(steps+1):
                 t = i/steps
                 sway = math.sin(math.pi*t)*bend
-                if name == "Wind":
-                    sway += math.sin(t*math.tau)*.25
+                sway += math.sin(math.pi*t)*math.sin(t*math.tau*2+phase)*.22
                 if name == "Fire":
-                    sway += (rng.uniform(-.35,.35) if 0<i<steps else 0)
+                    sway += math.sin(math.pi*t)*math.sin(t*math.tau*5+phase)*.11
+                elif name == "Mountain":
+                    sway *= .7
                 pts.append((a[0]+dx*t-dy/length*sway, a[1]+dy*t+dx/length*sway))
             paths.append((tuple(pts), True))
             # Dim rootlike tributaries; the same calm density in all regions.
-            n = 2 if name == "Forest" else 1
+            n = 6 if name == "Forest" else 4
             for k in range(n):
                 mid = pts[(k+1)*steps//(n+1)]
                 side = -1 if rng.random()<.5 else 1
-                tip = (mid[0]-dy/length*side*1.25+dx*.12,
-                       mid[1]+dx/length*side*1.25+dy*.12)
-                branch = (mid, ((mid[0]+tip[0])*.5+.13,(mid[1]+tip[1])*.5-.1), tip)
+                extent = rng.uniform(.6,1.6)
+                tip = (mid[0]-dy/length*side*extent+dx*.12,
+                       mid[1]+dx/length*side*extent+dy*.12)
+                branch = tuple((mid[0]+(tip[0]-mid[0])*t+math.sin(t*math.pi*2)*.10,
+                                mid[1]+(tip[1]-mid[1])*t+math.sin(t*math.pi)*.19)
+                               for t in (i/12 for i in range(13)))
                 paths.append((branch,False))
+                # Tiny forks occur only near a branch, leaving wide quiet gaps.
+                for j in (5,9):
+                    fork = branch[j]
+                    end = (fork[0]+dx/length*.42,fork[1]+dy/length*.42)
+                    paths.append(((fork,((fork[0]+end[0])*.5+.08,
+                                         (fork[1]+end[1])*.5-.05),end),False))
     return tuple(paths)
 
 
@@ -143,12 +212,16 @@ def network_surface(grid, cell_w, cell_h, info, size, x0, y0, region):
     # Draw halos first so crossings never erase a previously drawn core.
     for pts,main in projected:
         if main:
-            pygame.draw.lines(layer, (*color,16), False, pts, 9)
-            pygame.draw.lines(layer, (*color,34), False, pts, 5)
+            for radius,alpha in ((14,12),(9,25),(5,55)):
+                pygame.draw.circle(layer, (*color,alpha), pts[0], radius)
+            pygame.draw.lines(layer, (*color,12), False, pts, 19)
+            pygame.draw.lines(layer, (*color,27), False, pts, 9)
+            pygame.draw.lines(layer, (*color,62), False, pts, 5)
     for pts,main in projected:
-        pygame.draw.lines(layer, (*color,158 if main else 45), False, pts, 2 if main else 1)
+        core = tuple(min(255,int(c*1.12+20)) for c in color)
+        pygame.draw.lines(layer, (*core,215 if main else 105), False, pts, 2 if main else 1)
         if main:
-            pygame.draw.circle(layer, (*color,185), pts[0], 2)
+            pygame.draw.circle(layer, (*core,240), pts[0], 2)
     mask = pygame.Surface(size, pygame.SRCALPHA)
     pygame.draw.polygon(mask, (255,255,255,255), floor_outline(grid,cell_w,cell_h,x0,y0,info))
     layer.blit(mask, (0,0), special_flags=pygame.BLEND_RGBA_MULT)
@@ -161,7 +234,7 @@ def draw_network(screen, cache, grid, cell_w, cell_h, info, region, camx, camy, 
     layer = network_surface(grid,cell_w,cell_h,info,cache["surface"].get_size(),
                             cache["x0"],cache["y0"],region)
     period = region_style(region)[3]
-    layer.set_alpha(round(158+35*math.sin(ticks*.001*math.tau/period)), pygame.RLEACCEL)
+    layer.set_alpha(round(190+60*math.sin(ticks*.001*math.tau/period)), pygame.RLEACCEL)
     # Source crop keeps both desktop and browser work bounded by the viewport.
     dest = pygame.Rect(round(cache["x0"]-camx),round(cache["y0"]-camy),*layer.get_size())
     visible = dest.clip(screen.get_rect())
@@ -172,7 +245,7 @@ def draw_network(screen, cache, grid, cell_w, cell_h, info, region, camx, camy, 
 
 @lru_cache(maxsize=128)
 def illustrated_wall(width, height, wall_h, color, seed):
-    atlas = source_asset("neural-walls-v2.png")
+    atlas = source_asset("neural-walls-v1.png")
     if atlas is None:
         return None
     fragile = color[0] > color[2]
@@ -183,8 +256,9 @@ def illustrated_wall(width, height, wall_h, color, seed):
     art = cell.subsurface(bounds)
     # Preserve exact footprint/ground anchor, but let the cap rise above it.
     target = (width, wall_h+height)
-    art = pygame.transform.smoothscale(art, (max(1,width//2),max(1,target[1]//2)))
-    art = pygame.transform.scale(art, target)
+    art = pygame.transform.smoothscale(art, target)
+    if seed & 4:
+        art = pygame.transform.flip(art, True, False)
     if fragile:
         damage = min(1.0, max(.4, color[0]/147))
         tint = round(255*damage)

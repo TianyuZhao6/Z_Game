@@ -414,8 +414,14 @@ def install(game):
             return terrain_art.wall_tile(int(ISO_CELL_W), int(ISO_CELL_H), wall_h, rgba, seed, style_name)
         return _cached_iso_tile_surface(rgba, border=0), int(ISO_CELL_W // 2 + 1), 1
 
+    def _wall_art_seed(game_state, gx, gy):
+        obstacles = game_state.obstacles
+        along_x = sum((gx+d,gy) in obstacles for d in (-1,1))
+        along_y = sum((gx,gy+d) in obstacles for d in (-1,1))
+        return terrain_art.variant(gx,gy)%4 + (4 if along_y>along_x else 0)
+
     def _blit_cached_iso_wall(screen: pygame.Surface, gx: int, gy: int, color: tuple[int, ...],
-                              camx: float, camy: float, *, wall_h: int | None = None) -> None:
+                              camx: float, camy: float, *, wall_h: int | None = None, seed=None) -> None:
         if wall_h is None:
             wall_h = ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0)
         sx, sy = iso_world_to_screen(gx, gy, 0, camx, camy)
@@ -424,7 +430,8 @@ def install(game):
         if (sx + ISO_CELL_W < 0 or sx - ISO_CELL_W > screen.get_width()
                 or sy + ISO_CELL_H < 0 or sy - wall_h > screen.get_height()):
             return
-        surf, anchor_x, anchor_y = _cached_iso_wall_surface(WALL_STYLE, color, wall_h=wall_h, seed=terrain_art.variant(gx, gy)%4)
+        surf, anchor_x, anchor_y = _cached_iso_wall_surface(WALL_STYLE, color, wall_h=wall_h,
+            seed=terrain_art.variant(gx,gy)%4 if seed is None else seed)
         screen.blit(surf, (int(sx - anchor_x), int(sy - anchor_y)), special_flags=pygame.BLEND_ALPHA_SDL2)
 
     def _get_iso_floor_cache() -> dict[str, object]:
@@ -462,12 +469,11 @@ def install(game):
         y0 = int(math.floor(float(min_y or 0.0))) - 2
         width = max(1, int(math.ceil(float(max_x or 0.0))) - x0 + 3)
         height = max(1, int(math.ceil(float(max_y or 0.0))) - y0 + 3)
-        surface = pygame.Surface((width, height))
-        surface.fill(MAP_BG)
+        surface = pygame.Surface((width, height), pygame.SRCALPHA)
         neural_environment.paint_floor(surface, GRID_SIZE, ISO_CELL_W, ISO_CELL_H,
                                        x0, y0, INFO_BAR_HEIGHT)
         try:
-            surface = surface.convert()
+            surface = surface.convert_alpha()
         except Exception:
             pass
         cached = {"key": key, "surface": surface, "x0": x0, "y0": y0}
@@ -476,6 +482,7 @@ def install(game):
         return cached
 
     def _blit_iso_floor(screen: pygame.Surface, camx: float, camy: float) -> None:
+        neural_environment.draw_abyss(screen, camx, camy, GRID_SIZE, ISO_CELL_W, ISO_CELL_H, INFO_BAR_HEIGHT)
         cache = _get_iso_floor_cache()
         surface = cache.get("surface")
         if not isinstance(surface, pygame.Surface):
@@ -499,13 +506,6 @@ def install(game):
         _, sy = iso_world_to_screen(gx, gy, 0, 0, 0)
         return int(sy + ISO_CELL_H)
 
-    def _draw_region_label(screen, game_state):
-        name, _, color, _ = neural_environment.region_style(getattr(game_state,"biome_active",None))
-        label = _cached_text_surface(name.upper(), color, size=20)
-        rect = label.get_rect(topright=(screen.get_width()-18, INFO_BAR_HEIGHT+12))
-        pygame.draw.rect(screen, (20,24,38), rect.inflate(18,10), border_radius=5)
-        screen.blit(label, rect)
-
     def _draw_player_wall_hint(screen, game_state, px, py, camx, camy):
         # A quiet core outline keeps the player locatable behind a tall wall.
         center = (int(px), int(py-32))
@@ -518,7 +518,7 @@ def install(game):
             if abs(sx-px)>ISO_CELL_W or abs(sy-py)>ISO_WALL_Z+ISO_CELL_H:
                 continue
             surf,ax,ay = _cached_iso_wall_surface(WALL_STYLE,_wall_visual_color(ob),
-                wall_h=ISO_WALL_Z,seed=terrain_art.variant(gx,gy)%4)
+                wall_h=ISO_WALL_Z,seed=_wall_art_seed(game_state,gx,gy))
             local = (center[0]-int(sx-ax),center[1]-int(sy-ay))
             if surf.get_rect().collidepoint(local) and surf.get_at(local).a>100:
                 halo = _cached_ellipse_surface(28,28,(104,204,231,110),line_width=2)
@@ -584,7 +584,7 @@ def install(game):
                 WALL_STYLE,
                 _wall_visual_color(ob),
                 wall_h=wall_h,
-                seed=terrain_art.variant(gx, gy)%4,
+                seed=_wall_art_seed(game_state,gx,gy),
             )
             sx, sy = iso_world_to_screen(gx, gy, 0, 0, 0)
             left = int(sx - anchor_x)
@@ -1118,6 +1118,7 @@ def install(game):
         neural_environment.draw_network(screen, _get_iso_floor_cache(), GRID_SIZE,
             ISO_CELL_W, ISO_CELL_H, INFO_BAR_HEIGHT, getattr(game_state,"biome_active",None),
             camx, camy, pygame.time.get_ticks())
+        neural_environment.draw_platform_rim(screen,camx,camy,GRID_SIZE,ISO_CELL_W,ISO_CELL_H,INFO_BAR_HEIGHT)
         _blit_web_wall_layer(screen, game_state, camx, camy,
             wall_h=ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
         _render_counter(profiler, "r_bg_static_ms", segment_started)
@@ -1270,7 +1271,8 @@ def install(game):
             cy = int(sy)
             if kind == "wall":
                 gx,gy = obj
-                _blit_cached_iso_wall(screen,gx,gy,_wall_visual_color(game_state.obstacles[obj]),camx,camy)
+                _blit_cached_iso_wall(screen,gx,gy,_wall_visual_color(game_state.obstacles[obj]),camx,camy,
+                    seed=_wall_art_seed(game_state,gx,gy))
                 actor_subsamples["wall"] += (time.perf_counter()-item_started)*1000.0
             elif kind == "companion":
                 obj.draw(screen, sx, sy)
@@ -1435,7 +1437,6 @@ def install(game):
             player,
             time_left=_runtime().get("_time_left_runtime"),
         )
-        _draw_region_label(screen, game_state)
         bosses = _find_all_bosses(enemies)
         if len(bosses) >= 2:
             draw_boss_hp_bars_twin(screen, bosses[:2])
@@ -1500,6 +1501,7 @@ def install(game):
         neural_environment.draw_network(screen, _get_iso_floor_cache(), GRID_SIZE,
             ISO_CELL_W, ISO_CELL_H, INFO_BAR_HEIGHT, getattr(game_state,"biome_active",None),
             camx, camy, pygame.time.get_ticks())
+        neural_environment.draw_platform_rim(screen,camx,camy,GRID_SIZE,ISO_CELL_W,ISO_CELL_H,INFO_BAR_HEIGHT)
         _render_counter(profiler, "r_bg_floor_ms", segment_started)
         _emit_recent_runtime_timing(profiler, "r_bg_floor_build_ms", "iso_floor_build")
         _render_counter(profiler, "r_bg_ms", bg_total_started)
@@ -1861,7 +1863,7 @@ def install(game):
             item_started = time.perf_counter()
             if kind == "wall":
                 gx, gy, col = data["gx"], data["gy"], data["color"]
-                _blit_cached_iso_wall(screen, gx, gy, col, camx, camy)
+                _blit_cached_iso_wall(screen, gx, gy, col, camx, camy,seed=_wall_art_seed(game_state,gx,gy))
                 actor_subsamples["wall"] += (time.perf_counter() - item_started) * 1000.0
             elif kind == "coin":
                 cx, cy, r = data["cx"], data["cy"], data["r"]
@@ -2413,7 +2415,6 @@ def install(game):
             time_left=_runtime().get("_time_left_runtime"),
             enemies=enemies,
         )
-        _draw_region_label(screen, game_state)
         bosses = _find_all_bosses(enemies)
         if len(bosses) >= 2:
             draw_boss_hp_bars_twin(screen, bosses[:2])

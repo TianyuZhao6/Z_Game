@@ -1121,7 +1121,7 @@ MON_ATK_GROWTH_PER_WAVE = 0.03  # ATK 每波 +3% 复利
 MON_SOFTCAP_LEVEL = 10  # 关卡软帽起点
 MON_SOFTCAP_FACTOR = 0.40  # 软帽后有效增长强度只有 40%
 # --- map fill tuning ---
-OBSTACLE_DENSITY = 0.14  # proportion of tiles to become obstacles (including clusters)
+OBSTACLE_DENSITY = 0.065  # open combat platforms with a few readable ruin clusters
 DECOR_DENSITY = 0.06  # proportion of tiles to place non-blocking decorations
 MIN_ITEMS = 8  # ensure enough items on larger maps
 DESTRUCTIBLE_RATIO = 0.3
