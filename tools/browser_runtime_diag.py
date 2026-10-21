@@ -607,7 +607,8 @@ def build_recommendations(scenario_name: str, export_data: dict[str, Any]) -> li
     return recommendations
 
 
-def run_scenario(chrome_path: Path, scenario: Scenario, base_url: str, debug_port: int) -> dict[str, Any]:
+def run_scenario(chrome_path: Path, scenario: Scenario, base_url: str, debug_port: int,
+                 *, movement: bool = False) -> dict[str, Any]:
     url = scenario_url(base_url, scenario)
     reset_server_diag(base_url, scenario.name)
     user_data_dir = Path(tempfile.mkdtemp(prefix=f"zgame-browser-diag-{scenario.name}-"))
@@ -622,6 +623,10 @@ def run_scenario(chrome_path: Path, scenario: Scenario, base_url: str, debug_por
     latest_py_export: dict[str, Any] | None = None
     console_events: list[dict[str, Any]] = []
     ws = None
+    held_keys: set[str] = set()
+    movement_started = None
+    movement_phases: set[int] = set()
+    input_id = 100
     try:
         try:
             target = wait_cdp_target(debug_port)
@@ -644,6 +649,23 @@ def run_scenario(chrome_path: Path, scenario: Scenario, base_url: str, debug_por
                         saw_runtime_export = True
             except Exception:
                 pass
+            if movement and ws is not None and observed_py_frames:
+                if movement_started is None:
+                    movement_started = time.time()
+                    ws.send(json.dumps({"id": input_id, "method": "Runtime.evaluate",
+                                        "params": {"expression": "document.querySelector('canvas')?.focus()"}}))
+                    input_id += 1
+                directions = ({'d'}, {'s'}, {'a','s'}, {'w','d'}, {'a'}, {'w'})
+                phase = int((time.time()-movement_started)/3) % len(directions)
+                movement_phases.add(phase)
+                desired = directions[phase]
+                for event,keys in (("keyUp",held_keys-desired),("keyDown",desired-held_keys)):
+                    for key in sorted(keys):
+                        ws.send(json.dumps({"id": input_id, "method": "Input.dispatchKeyEvent",
+                            "params": {"type": event,"key": key,"code": 'Key'+key.upper(),
+                                       "windowsVirtualKeyCode": ord(key.upper())}}))
+                        input_id += 1
+                held_keys = set(desired)
             if proc.poll() is not None:
                 break
             time.sleep(1.0)
@@ -709,6 +731,7 @@ def run_scenario(chrome_path: Path, scenario: Scenario, base_url: str, debug_por
         "server_status": status,
         "real_browser_runtime_exercised": bool(saw_runtime_export),
         "console_events": console_events[-24:],
+        "movement_phases_sent": sorted(movement_phases),
     }
     return export_data
 
@@ -854,6 +877,8 @@ def main() -> None:
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
     parser.add_argument("--server-port", type=int, default=8765)
     parser.add_argument("--chrome-debug-port", type=int, default=9222)
+    parser.add_argument("--movement", action="store_true",
+                        help="Send real WASD inputs through horizontal, vertical and diagonal phases.")
     parser.add_argument(
         "--scenario",
         action="append",
@@ -881,7 +906,7 @@ def main() -> None:
             raise ValueError(f"Unknown scenario(s): {missing}. Known scenarios: {known}")
         for scenario in scenarios:
             debug_port = find_free_port(int(args.chrome_debug_port))
-            export_data = run_scenario(chrome, scenario, base_url, debug_port)
+            export_data = run_scenario(chrome, scenario, base_url, debug_port, movement=args.movement)
             raw_path = raw_dir / f"{scenario.name}.json"
             raw_path.write_text(json.dumps(export_data, ensure_ascii=False, indent=2), encoding="utf-8")
             all_exports.append(export_data)

@@ -41,7 +41,7 @@ def ground_material():
     if source is None:
         return None
     # Preserve plate boundaries instead of erasing them in a tiny intermediate.
-    tile = pygame.transform.smoothscale(source, (1024, 512))
+    tile = pygame.transform.smoothscale(source, (1536, 768))
     veil = pygame.Surface(tile.get_size(), pygame.SRCALPHA)
     veil.fill((23, 30, 50, 24))
     tile.blit(veil, (0,0))
@@ -56,15 +56,46 @@ def floor_outline(grid, cell_w, cell_h, x0, y0, info):
 
 
 @lru_cache(maxsize=2)
-def abyss_view(size):
+def abyss_view(size, grid, cell_w, cell_h):
     source = source_asset("neural-abyss.png")
     if source is None:
         return None
-    # Overscan permits slow, bounded camera parallax without exposing a seam.
-    scale = max((size[0]+160)/source.get_width(),(size[1]+100)/source.get_height())
+    # Cover the complete playable camera range, rather than saturating motion
+    # with tanh. No tiling/reset is necessary anywhere around this platform.
+    pad_x = grid*cell_w*.14+160
+    pad_y = grid*cell_h*.14+160
+    scale = max((size[0]+pad_x)/source.get_width(),(size[1]+pad_y)/source.get_height())
     result = pygame.transform.smoothscale(source,
         (math.ceil(source.get_width()*scale),math.ceil(source.get_height()*scale)))
     return result.convert() if pygame.display.get_surface() else result
+
+
+def abyss_camera_offset(size, camx, camy, grid, cell_h, info, depth):
+    # All layers use the same world center, at different depth ratios.
+    return ((camx+size[0]*.5)*depth,
+            (camy+size[1]*.5-info-grid*cell_h*.5)*depth)
+
+
+@lru_cache(maxsize=2)
+def distant_formation(reverse=False):
+    source = source_asset("neural-cliff.png")
+    if source is None:
+        return None
+    image = pygame.transform.smoothscale(source,(860,430))
+    if reverse:
+        image = pygame.transform.flip(image,True,False)
+    # Atmospheric distance: preserve the cutout, soften its dark contrast and
+    # keep its buds much dimmer than gameplay signals.
+    image.fill((175,168,205,160),special_flags=pygame.BLEND_RGBA_MULT)
+    return image
+
+
+@lru_cache(maxsize=2)
+def atmosphere_glow(size):
+    small = pygame.Surface((96,96),pygame.SRCALPHA)
+    for radius in range(47,0,-1):
+        pygame.draw.circle(small,(166,139,199,round(18*(1-radius/48)**2)),(48,48),radius)
+    return pygame.transform.smoothscale(small,size)
 
 
 @lru_cache(maxsize=4)
@@ -112,13 +143,68 @@ def draw_platform_rim(screen, camx, camy, grid, cell_w, cell_h, info, front=True
                 screen.blit(art,rect)
 
 
-def draw_abyss(screen, camx, camy, grid, cell_w, cell_h, info):
-    art = abyss_view(screen.get_size())
+def _draw_abyss_layers(screen, camx, camy, grid, cell_w, cell_h, info, ticks):
+    size = screen.get_size()
+    art = abyss_view(size,grid,cell_w,cell_h)
     if art is not None:
-        x = (screen.get_width()-art.get_width())//2-int(55*math.tanh(camx/900))
-        y = (screen.get_height()-art.get_height())//2-int(35*math.tanh(camy/600))
+        dx,dy = abyss_camera_offset(size,camx,camy,grid,cell_h,info,.14)
+        x = round((size[0]-art.get_width())*.5-dx)
+        y = round((size[1]-art.get_height())*.5-dy)
         screen.blit(art,(x,y))
+        glow = atmosphere_glow((280,280))
+        glow.set_alpha(round(140+90*math.sin(ticks*math.tau/13)))
+        screen.blit(glow,(round(x+art.get_width()*.835-140),round(y+art.get_height()*.16-140)))
+    dx,dy = abyss_camera_offset(size,camx,camy,grid,cell_h,info,.40)
+    for i,(wx,wy) in enumerate(((-1450,450),(1450,500),(300,-1000))):
+        image = distant_formation(bool(i%2))
+        if image is None:
+            continue
+        rect = image.get_rect(center=(round(size[0]*.5+wx*.40-dx),
+                                      round(size[1]*.5+wy*.40-dy)))
+        if rect.colliderect(screen.get_rect()):
+            screen.blit(image,rect)
+    # Slow haze is independent of camera displacement; it complements rather
+    # than substitutes for the genuine positional parallax above.
+    haze = atmosphere_glow((720,280))
+    hx,hy = abyss_camera_offset(size,camx,camy,grid,cell_h,info,.24)
+    haze.set_alpha(round(130+35*math.sin(ticks*.19)))
+    screen.blit(haze,(round(size[0]*.48-hx+32*math.sin(ticks*.08)),
+                      round(size[1]*.52-hy+12*math.sin(ticks*.11))))
     draw_platform_rim(screen,camx,camy,grid,cell_w,cell_h,info,front=False)
+
+
+@lru_cache(maxsize=1)
+def abyss_scene(size, camx, camy, grid, cell_w, cell_h, info, atmosphere_step):
+    # Reuse the whole opaque composition while the camera rests. Slow haze
+    # and thirteen-second illumination need only ten updates per second.
+    # Camera coordinates are part of the key: movement is never throttled.
+    frame = pygame.Surface(size)
+    _draw_abyss_layers(frame,camx,camy,grid,cell_w,cell_h,info,atmosphere_step*.1)
+    return frame.convert() if pygame.display.get_surface() else frame
+
+
+def draw_abyss(screen, camx, camy, grid, cell_w, cell_h, info):
+    camera_key=(screen.get_size(),camx,camy,grid,cell_w,cell_h,info)
+    atmosphere_step=pygame.time.get_ticks()//100
+    moved=camera_key != getattr(draw_abyss,'_last_camera',None)
+    draw_abyss._last_camera=camera_key
+    if moved:
+        # A moving view cannot reuse the composition. Paint directly instead
+        # of allocating/converting a full-screen surface and copying it again.
+        _draw_abyss_layers(screen,camx,camy,grid,cell_w,cell_h,info,atmosphere_step*.1)
+        return
+    frame = abyss_scene(*camera_key,atmosphere_step)
+    screen.blit(frame,(0,0))
+
+
+def view_inside_platform(size, camx, camy, grid, cell_w, cell_h, info):
+    """The convex platform can fully cover a view, avoiding hidden backdrop work."""
+    for x,y in ((0,0),(size[0]-1,0),(0,size[1]-1),(size[0]-1,size[1]-1)):
+        sx,sy = x+camx,y+camy-info
+        gx,gy = sy/cell_h+sx/cell_w,sy/cell_h-sx/cell_w
+        if not (1 < gx < grid-1 and 1 < gy < grid-1):
+            return False
+    return True
 
 
 def paint_floor(surface, grid, cell_w, cell_h, x0, y0, info):
@@ -241,33 +327,111 @@ def draw_network(screen, cache, grid, cell_w, cell_h, info, region, camx, camy, 
     if visible.width and visible.height:
         screen.blit(layer, visible.topleft, visible.move(-dest.x,-dest.y),
                     special_flags=pygame.BLEND_ALPHA_SDL2)
+    # Local synapses breathe out of phase. This is a real animation layer,
+    # independent of the mineral floor and not a baked luminous texture.
+    glow = synapse_glow(region)
+    seen = set()
+    for path,main in network_paths(grid,region):
+        if not main or path[0] in seen:
+            continue
+        x,y = path[0]
+        seen.add((x,y))
+        if not (1 < x < grid-1 and 1 < y < grid-1):
+            continue
+        sx,sy = round((x-y)*cell_w*.5-camx),round((x+y)*cell_h*.5+info-camy)
+        if not screen.get_rect().inflate(40,40).collidepoint(sx,sy):
+            continue
+        strength = (1+math.sin(ticks*.001*math.tau/period+x*.7+y*.4))*.5
+        glow.set_alpha(round(90+150*strength))
+        screen.blit(glow,(sx-18,sy-18))
 
 
-@lru_cache(maxsize=128)
+@lru_cache(maxsize=4)
+def synapse_glow(region):
+    color = region_style(region)[2]
+    glow = pygame.Surface((36,36),pygame.SRCALPHA)
+    for radius in range(18,0,-1):
+        alpha = round(105*(1-radius/19)**2)
+        pygame.draw.circle(glow,(*color,alpha),(18,18),radius)
+    pygame.draw.circle(glow,(190,225,245,200),(18,18),1)
+    return glow
+
+
+def wall_variant(gx, gy, obstacles):
+    """Stable spatial families plus topology; never consume gameplay RNG.
+
+    Nearby cells share a height family, so runs remain coherent. The family
+    depends on world position, not surviving neighbors, and survives save/load.
+    Bits: 0..1 detail, 2 facing, 3..4 height, 5 corner, 6 end, 7 bare roots.
+    """
+    from zgame.terrain_art import variant
+    nx = sum((gx+d,gy) in obstacles for d in (-1,1))
+    ny = sum((gx,gy+d) in obstacles for d in (-1,1))
+    detail = variant(gx,gy)
+    family = variant(gx//7,gy//7)%4
+    endpoint = nx+ny<=1
+    corner = nx>0 and ny>0
+    decorated = detail%5==0 or (endpoint and detail%2==0)
+    return ((detail%4) | (4 if ny>nx else 0) | (family<<3)
+            | (32 if corner else 0) | (64 if endpoint else 0)
+            | (0 if decorated else 128))
+
+
+def wall_extrusion(wall_h, seed):
+    scale = (1.0,.50,.78,1.18)[(seed>>3)&3]
+    return max(32,round(wall_h*scale)+(6 if seed&32 else 0)-(8 if seed&64 else 0))
+
+
+@lru_cache(maxsize=256)
 def illustrated_wall(width, height, wall_h, color, seed):
-    atlas = source_asset("neural-walls-v1.png")
+    atlas = source_asset("neural-walls.png")
     if atlas is None:
         return None
     fragile = color[0] > color[2]
-    idx = (2 if fragile else 0) + seed%2
-    cw = atlas.get_width()//4
+    idx = 1 if fragile else 0
+    cw = atlas.get_width()//2
     cell = atlas.subsurface((idx*cw,0,cw,atlas.get_height()))
     bounds = cell.get_bounding_rect(min_alpha=20)
     art = cell.subsurface(bounds)
-    # Preserve exact footprint/ground anchor, but let the cap rise above it.
-    target = (width, wall_h+height)
-    art = pygame.transform.smoothscale(art, target)
+    wall_h = wall_extrusion(wall_h,seed)
+    # Map the stone cap (80% of the cutout width) onto the actual diamond.
+    # Roots overhang; they must not shrink the collision-sized stone body.
+    # Scale cap and extrusion separately so neighboring tops meet at 2:1.
+    out_w = round(width/0.80)
+    cap_end = round(art.get_height()*.38)
+    roots_start = round(art.get_height()*.93)
+    roots_h = max(5,round(height*.28))
+    result = pygame.Surface((out_w+2,wall_h+height+roots_h+2),pygame.SRCALPHA)
+    for source_y,source_h,dest_y,dest_h in (
+        (0,cap_end,1,height),
+        (cap_end,roots_start-cap_end,1+height,wall_h),
+        (roots_start,art.get_height()-roots_start,1+height+wall_h,roots_h)):
+        strip = art.subsurface((0,source_y,art.get_width(),source_h))
+        result.blit(pygame.transform.smoothscale(strip,(out_w,dest_h)),(1,dest_y))
     if seed & 4:
-        art = pygame.transform.flip(art, True, False)
+        result = pygame.transform.flip(result, True, False)
+    if seed&128:
+        # Suppress bright buds on most blocks using the existing cutout;
+        # native mask/blend operations avoid Python pixel loops on browser
+        # cache misses (newly exposed endpoints and damaged wall variants).
+        body = result.subsurface((0,height,result.get_width(),result.get_height()-height))
+        buds = pygame.mask.from_threshold(body,(205,176,229,255),(65,75,60,255))
+        tint = buds.to_surface(setcolor=(128,128,128,255),unsetcolor=(255,255,255,255))
+        body.blit(tint,(0,0),special_flags=pygame.BLEND_RGB_MULT)
+        result.fill((255,255,255,89),(0,height+wall_h+1,result.get_width(),roots_h+1),
+                    special_flags=pygame.BLEND_RGBA_MULT)
+    # End and weathered cap chips alter silhouette, not the ground footprint.
+    if seed&64 or ((seed>>3)&3)==3:
+        cx = (out_w+2)//2
+        notch = 5+(seed&3)*2
+        pygame.draw.polygon(result,(0,0,0,0),
+            [(cx-notch,0),(cx+notch,0),(cx+notch//2,8),(cx-3,5)])
     if fragile:
         damage = min(1.0, max(.4, color[0]/147))
         tint = round(255*damage)
-        art.fill((tint,tint,tint,255), special_flags=pygame.BLEND_RGBA_MULT)
-    result = pygame.Surface((width+2,height+wall_h+2),pygame.SRCALPHA)
-    pygame.draw.ellipse(result, (9,12,23,100), (2,wall_h+height//2,width-2,height//2))
-    result.blit(art,(1,1))
+        result.fill((tint,tint,tint,255), special_flags=pygame.BLEND_RGBA_MULT)
     if pygame.display.get_surface() is not None:
         result = result.convert_alpha()
     # Walls also composite into an RGBA cache. RLE's SDL2 blit path can
     # turn their translucent edge/shadow pixels opaque on that destination.
-    return result,(width+2)//2,1+wall_h
+    return result,(out_w+2)//2,1+wall_h

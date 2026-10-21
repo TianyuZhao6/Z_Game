@@ -79,7 +79,7 @@ class EnvironmentTests(unittest.TestCase):
                 self.render(lite=True)
                 cache = self.state._web_wall_layer_cache
                 source,ax,ay = terrain_art.wall_tile(game.ISO_CELL_W,game.ISO_CELL_H,
-                    game.ISO_WALL_Z,color,terrain_art.variant(10,8)%4,game.WALL_STYLE)
+                    game.ISO_WALL_Z,color,art.wall_variant(10,8,self.state.obstacles),game.WALL_STYLE)
                 sx,sy = game.iso_world_to_screen(10,8,0,0,0)
                 left,top = int(sx-ax)-cache["x0"],int(sy-ay)-cache["y0"]
                 translucent = 0
@@ -192,6 +192,42 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(len(signatures),4)
         self.assertEqual(random_before,random.getstate())
 
+    def test_abyss_is_visible_beyond_transparent_floor_in_all_renderers(self):
+        self.player = game.Player((20,4))
+        camera = game.calculate_iso_camera(*self.player.rect.center)
+        area = pygame.Rect(1000,80,180,150)
+        baseline = None
+        for region in art.REGIONS:
+            self.state.biome_active = region
+            for lite,web in ((False,False),(True,False),(False,True)):
+                frame = self.render(lite,camera=camera,web_full=web)
+                section = frame.subsurface(area)
+                signature = pixels(section)
+                if baseline is None:
+                    baseline = signature
+                    colors = {tuple(section.get_at((x,y))) for x in range(0,180,12)
+                              for y in range(0,150,12)}
+                    self.assertGreater(len(colors),40,"Abyss must contain painted depth, not a flat fill")
+                self.assertEqual(signature,baseline,"Ground region must not recolor backdrop or add a badge")
+        self.assertEqual(game._iso_floor_cache['surface'].get_at((0,0)).a,0)
+
+    def test_open_layouts_keep_spawn_connected_after_wall_run_generation(self):
+        for seed in (12,41,98,337,901):
+            random.seed(seed)
+            obs,items,pos,_,_,_ = game.generate_game_entities(game.GRID_SIZE,20,10,6,game.MAIN_BLOCK_HEALTH)
+            self.assertLess(len(obs)/(game.GRID_SIZE**2),.08)
+            blocked = {p for p,ob in obs.items() if ob.type=='Indestructible'}
+            reached = {pos}
+            pending = [pos]
+            while pending:
+                x,y = pending.pop()
+                for cell in ((x+1,y),(x-1,y),(x,y+1),(x,y-1)):
+                    if (0<=cell[0]<game.GRID_SIZE and 0<=cell[1]<game.GRID_SIZE
+                            and cell not in blocked and cell not in reached):
+                        reached.add(cell)
+                        pending.append(cell)
+            self.assertGreaterEqual(len(reached)/(game.GRID_SIZE**2-len(blocked)),.98)
+
     def test_random_layouts_cameras_and_renderer_ground_parity(self):
         for seed in (12,41,98,337,901):
             random.seed(seed)
@@ -212,6 +248,85 @@ class EnvironmentTests(unittest.TestCase):
             native,lite = self.render(),self.render(True)
             self.assertEqual(pixels(native.subsurface((100,100,250,150))),
                              pixels(lite.subsurface((100,100,250,150))))
+
+    def test_wall_families_are_varied_stable_and_do_not_change_collision(self):
+        for seed in (12,41,98,337,901):
+            random.seed(seed)
+            obs,_,_,_,_,_ = game.generate_game_entities(game.GRID_SIZE,70,10,6,game.MAIN_BLOCK_HEALTH)
+            before = [(p,o.rect.copy(),o.health) for p,o in obs.items()]
+            rng = random.getstate()
+            selected = {p:art.wall_variant(*p,obs) for p in obs}
+            restored = dict(reversed(list(obs.items())))
+            self.assertEqual(selected,{p:art.wall_variant(*p,restored) for p in restored})
+            self.assertGreaterEqual(len({(v>>3)&3 for v in selected.values()}),3)
+            self.assertEqual({bool(v&128) for v in selected.values()},{False,True})
+            heights = {art.wall_extrusion(game.ISO_WALL_Z,v) for v in selected.values()}
+            self.assertGreaterEqual(len(heights),4)
+            self.assertLess(min(heights),game.ISO_WALL_Z*.6)
+            self.assertGreater(max(heights),game.ISO_WALL_Z)
+            isolated = sum(all(q not in obs for q in ((x-1,y),(x+1,y),(x,y-1),(x,y+1))) for x,y in obs)
+            self.assertLess(isolated/len(obs),.15)
+            # Destroying a neighbor may expose an endpoint, but cannot reroll
+            # the remaining formation's height family or decoration detail.
+            removed = next(iter(restored))
+            del restored[removed]
+            for p in restored:
+                self.assertEqual(selected[p]&27,art.wall_variant(*p,restored)&27)
+            self.assertEqual(before,[(p,o.rect,o.health) for p,o in obs.items()])
+            self.assertEqual(rng,random.getstate())
+
+    def test_background_actual_blits_follow_camera_at_distinct_depths(self):
+        class RecordedScreen:
+            def __init__(self):
+                self.surface = pygame.Surface((1280,720))
+                self.blits = []
+            def get_size(self): return self.surface.get_size()
+            def get_rect(self): return self.surface.get_rect()
+            def blit(self,source,dest,*args,**kw):
+                rect = self.surface.blit(source,dest,*args,**kw)
+                self.blits.append((source,tuple(dest)[:2]))
+                return rect
+        def draw(camera,ticks=1000):
+            target = RecordedScreen()
+            art._draw_abyss_layers(target,*camera,game.GRID_SIZE,game.ISO_CELL_W,game.ISO_CELL_H,game.INFO_BAR_HEIGHT,ticks*.001)
+            return target
+        start=(0,0)
+        original=draw(start)
+        for delta in ((200,0),(0,200),(200,200)):
+            moved=draw(delta)
+            for sprite,depth in ((art.abyss_view((1280,720),game.GRID_SIZE,game.ISO_CELL_W,game.ISO_CELL_H),.14),
+                                 (art.distant_formation(True),.40)):
+                a=next(pos for source,pos in original.blits if source is sprite)
+                b=next(pos for source,pos in moved.blits if source is sprite)
+                for axis in (0,1):
+                    self.assertAlmostEqual(b[axis]-a[axis],-delta[axis]*depth,delta=1)
+            self.assertNotEqual(pixels(original.surface),pixels(moved.surface))
+        self.assertNotEqual(pixels(original.surface),pixels(draw(start,6000).surface))
+        self.assertIs(original.blits[0][0],draw(start).blits[0][0])
+        args=((1280,720),0,0,game.GRID_SIZE,game.ISO_CELL_W,game.ISO_CELL_H,game.INFO_BAR_HEIGHT)
+        cached=art.abyss_scene(*args,10)
+        self.assertIs(cached,art.abyss_scene(*args,10))
+        self.assertNotEqual(pixels(cached),pixels(art.abyss_scene(*args,60)))
+        # Moving/direct and stationary/cached composition must be identical.
+        with patch.object(pygame.time,'get_ticks',return_value=1000):
+            for camera in ((0,0),(240,180)):
+                direct=pygame.Surface((1280,720))
+                reused=pygame.Surface((1280,720))
+                art.draw_abyss(direct,*camera,game.GRID_SIZE,game.ISO_CELL_W,game.ISO_CELL_H,game.INFO_BAR_HEIGHT)
+                art.draw_abyss(reused,*camera,game.GRID_SIZE,game.ISO_CELL_W,game.ISO_CELL_H,game.INFO_BAR_HEIGHT)
+                self.assertEqual(pixels(direct),pixels(reused))
+
+    def test_background_covers_camera_extremes_without_tiling_or_gaps(self):
+        for size in ((1280,720),(1920,1080)):
+            backdrop=art.abyss_view(size,game.GRID_SIZE,game.ISO_CELL_W,game.ISO_CELL_H)
+            for gx,gy in ((0,0),(0,36),(36,0),(36,36),(18,18)):
+                camx=(gx-gy)*game.ISO_CELL_W*.5-size[0]*.5
+                camy=(gx+gy)*game.ISO_CELL_H*.5+game.INFO_BAR_HEIGHT-size[1]*.5
+                for shake in (-20,20):
+                    dx,dy=art.abyss_camera_offset(size,camx+shake,camy+shake,game.GRID_SIZE,game.ISO_CELL_H,game.INFO_BAR_HEIGHT,.14)
+                    rect=backdrop.get_rect(topleft=(round((size[0]-backdrop.get_width())*.5-dx),
+                                                   round((size[1]-backdrop.get_height())*.5-dy)))
+                    self.assertTrue(rect.contains(pygame.Rect((0,0),size)))
 
     def test_legacy_regions_roundtrip_with_effects_and_existing_save_is_untouched(self):
         save = Path(game.SAVE_FILE)

@@ -562,7 +562,8 @@ class SkullTests(unittest.TestCase):
         for color in ((80,101,117),(137,87,83)):
             for style in ("prism","hybrid"):
                 art,ax,ay = terrain_art.wall_tile(game.ISO_CELL_W,game.ISO_CELL_H,game.ISO_WALL_Z,color,0,style)
-                self.assertEqual(ax,(game.ISO_CELL_W+2)//2)
+                self.assertEqual(ax,art.get_width()//2)
+                self.assertLessEqual(art.get_width(),math.ceil(game.ISO_CELL_W*1.35))
                 self.assertGreaterEqual(ay,1)
                 self.assertEqual(art.get_at((0,0)).a,0)
         self.assertEqual(before,random.getstate())
@@ -676,7 +677,10 @@ class SkullTests(unittest.TestCase):
             self.assertEqual(ay,1+game.ISO_WALL_Z)
             # Transparent sprite padding may differ; its foot stays on the
             # original tile, while extra height rises above the ground anchor.
-            self.assertAlmostEqual(art.get_bounding_rect().bottom-ay,game.ISO_CELL_H,delta=2)
+            # Root cutouts extend a few pixels beyond the unchanged stone foot.
+            foot = art.get_bounding_rect().bottom-ay
+            self.assertGreaterEqual(foot,game.ISO_CELL_H-2)
+            self.assertLessEqual(foot,game.ISO_CELL_H+14)
         screen=pygame.display.get_surface()
         game.render_game_iso(screen,self.gs,self.player,[],[],[])
         with patch.object(game,"IS_WEB",True),patch.object(render_runtime,"IS_WEB",True),patch.object(terrain_art,"wall_tile",wraps=terrain_art.wall_tile) as material:

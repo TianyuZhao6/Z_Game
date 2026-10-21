@@ -20,6 +20,8 @@ parser=argparse.ArgumentParser()
 parser.add_argument("--visible",action="store_true")
 parser.add_argument("--environment-stress",action="store_true",
                     help="Exercise the approved environment with a dense mixed fight in every region.")
+parser.add_argument("--edge-motion",action="store_true",
+                    help="Capture actual horizontal, vertical and diagonal gameplay near the abyss.")
 args=parser.parse_args()
 if not args.visible:
     os.environ.setdefault("SDL_VIDEODRIVER","dummy")
@@ -57,6 +59,18 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
 
     def start(g,gs,p):
         original_start(g,gs,p)
+        if args.edge_motion:
+            free = min(((x,y) for x in range(17,25) for y in range(3,7) if (x,y) not in gs.obstacles),
+                       key=lambda q:abs(q[0]-20)+abs(q[1]-4))
+            position = game.Player(free)
+            p.x,p.y = position.x,position.y
+            p.rect.topleft = position.rect.topleft
+            companion = gs.companions[0]
+            companion.x,companion.y = p.x+game.CELL_SIZE*2,p.y
+            companion.rect.topleft = (round(companion.x),round(companion.y)+game.INFO_BAR_HEIGHT)
+            capture['motion_frames']=[]
+            capture['motion_samples']=[]
+            capture['camera_positions']=[]
         capture.update(state=gs,player=p,start_pos=p.rect.center,skull_start=gs.companions[0].rect.center)
         # Keep the player alive so the complete downed/cleanup timeline is tested.
         p._ultimate_debug=True
@@ -105,6 +119,18 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
             result=renderer(screen,gs,p,enemies,bullets,eshots,obstacles,**kw)
         capture["frames"]+=1
         t=capture["time"]
+        if args.edge_motion:
+            camera = game.calculate_iso_camera(*p.rect.center)
+            capture['camera_positions'].append(camera)
+            for label,when in (('parallax-a',.7),('parallax-b',3.2)):
+                if t>=when and label not in capture:
+                    capture[label]=True
+                    pygame.image.save(screen,str(evidence/f'{name}-{label}.png'))
+                    capture['motion_samples'].append({'capture':label,'time':t,
+                        'camera':camera,'player':p.rect.center})
+            if not lite and len(capture['motion_frames'])<int(t*4) and len(capture['motion_frames'])<32:
+                from PIL import Image
+                capture['motion_frames'].append(Image.frombytes('RGB',screen.get_size(),pygame.image.tobytes(screen,'RGB')))
         if not capture["frame"] and (1.1<t<2.4):
             pygame.image.save(screen,str(evidence/f"{name}.png"))
             capture["frame"]=True
@@ -146,6 +172,10 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
 
     def input_pressed(keys,action):
         t=capture["time"]
+        if args.edge_motion:
+            directions=(("move_right",),("move_down",),("move_left","move_down"),
+                        ("move_up","move_right"),("move_left",),("move_up",))
+            return action in directions[int(t/1.3)%len(directions)]
         direction=("move_right","move_down","move_left","move_up")[int(t/1.7)%4]
         return action==direction
 
@@ -167,6 +197,16 @@ async def scenario(name, tier, level, biome=None, lite=False, down=False):
     assert capture["shot"],"No ordinary shots fired"
     if args.environment_stress:
         assert capture["max_enemies"]>=50,"Dense fight did not reach the target population"
+    if args.edge_motion:
+        import json
+        cameras=capture['camera_positions']
+        assert max(x for x,y in cameras)-min(x for x,y in cameras)>game.CELL_SIZE
+        assert max(y for x,y in cameras)-min(y for x,y in cameras)>game.CELL_SIZE
+        (evidence/f'{name}-motion.json').write_text(json.dumps(capture['motion_samples'],indent=2),encoding='utf-8')
+        frames=capture['motion_frames']
+        if frames:
+            frames[0].save(evidence/f'{name}-motion.webp',save_all=True,append_images=frames[1:],
+                           duration=250,loop=0,quality=80,method=4)
     if tier==6:
         assert capture["cast"],"Procession never triggered"
         assert capture["beam"],"Eye beam never triggered"
@@ -192,6 +232,12 @@ async def main():
     pygame.display.set_mode((1280,720))
     game.VIEW_W,game.VIEW_H=1280,720
     random.seed(947)
+    if args.edge_motion:
+        await scenario('environment-edge-native',3,0,'Domain of Wind')
+        await scenario('environment-edge-lite',3,1,'Misty Forest',lite=True)
+        print('Actual edge movement and parallax captures passed.',flush=True)
+        pygame.quit()
+        return
     if args.environment_stress:
         await scenario("environment-dense-wind",6,3,"Domain of Wind")
         await scenario("environment-dense-forest-lite",3,1,"Misty Forest",lite=True)

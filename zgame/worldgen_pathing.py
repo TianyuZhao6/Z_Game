@@ -183,7 +183,9 @@ def install(game):
         random.shuffle(base_candidates)
         placed = 0
 
-        cluster_seeds = base_candidates[: max(1, rest_needed // 6)]
+        # Keep proposing runs until the target is met. A fixed seed budget
+        # left a large remainder that used to become scattered single pillars.
+        cluster_seeds = base_candidates
         for seed in cluster_seeds:
             if placed >= rest_needed:
                 break

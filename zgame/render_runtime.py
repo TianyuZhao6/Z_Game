@@ -415,10 +415,7 @@ def install(game):
         return _cached_iso_tile_surface(rgba, border=0), int(ISO_CELL_W // 2 + 1), 1
 
     def _wall_art_seed(game_state, gx, gy):
-        obstacles = game_state.obstacles
-        along_x = sum((gx+d,gy) in obstacles for d in (-1,1))
-        along_y = sum((gx,gy+d) in obstacles for d in (-1,1))
-        return terrain_art.variant(gx,gy)%4 + (4 if along_y>along_x else 0)
+        return neural_environment.wall_variant(gx,gy,game_state.obstacles)
 
     def _blit_cached_iso_wall(screen: pygame.Surface, gx: int, gy: int, color: tuple[int, ...],
                               camx: float, camy: float, *, wall_h: int | None = None, seed=None) -> None:
@@ -428,7 +425,7 @@ def install(game):
         # Account for the raised cap: a wall whose foot is below the viewport
         # may still be visible. Skip only when the entire sprite is outside.
         if (sx + ISO_CELL_W < 0 or sx - ISO_CELL_W > screen.get_width()
-                or sy + ISO_CELL_H < 0 or sy - wall_h > screen.get_height()):
+                or sy + ISO_CELL_H + 14 < 0 or sy - (wall_h*1.25+8) > screen.get_height()):
             return
         surf, anchor_x, anchor_y = _cached_iso_wall_surface(WALL_STYLE, color, wall_h=wall_h,
             seed=terrain_art.variant(gx,gy)%4 if seed is None else seed)
@@ -482,11 +479,21 @@ def install(game):
         return cached
 
     def _blit_iso_floor(screen: pygame.Surface, camx: float, camy: float) -> None:
-        neural_environment.draw_abyss(screen, camx, camy, GRID_SIZE, ISO_CELL_W, ISO_CELL_H, INFO_BAR_HEIGHT)
         cache = _get_iso_floor_cache()
         surface = cache.get("surface")
         if not isinstance(surface, pygame.Surface):
             return
+        if neural_environment.view_inside_platform(screen.get_size(),camx,camy,
+                GRID_SIZE,ISO_CELL_W,ISO_CELL_H,INFO_BAR_HEIGHT):
+            # Interior floor is opaque: do not draw a hidden backdrop or pay
+            # for full-screen alpha blending. Keep alpha for real edge views.
+            opaque = cache.get("opaque")
+            if opaque is None:
+                opaque = surface.convert()
+                cache["opaque"] = opaque
+            surface = opaque
+        else:
+            neural_environment.draw_abyss(screen,camx,camy,GRID_SIZE,ISO_CELL_W,ISO_CELL_H,INFO_BAR_HEIGHT)
         dest_x = int(cache.get("x0", 0) - camx)
         dest_y = int(cache.get("y0", 0) - camy)
         view_w, view_h = screen.get_size()
@@ -515,7 +522,7 @@ def install(game):
             if _wall_sort_world_y(gx,gy)-camy <= py:
                 continue
             sx,sy = iso_world_to_screen(gx,gy,0,camx,camy)
-            if abs(sx-px)>ISO_CELL_W or abs(sy-py)>ISO_WALL_Z+ISO_CELL_H:
+            if abs(sx-px)>ISO_CELL_W or abs(sy-py)>ISO_WALL_Z*1.25+ISO_CELL_H+8:
                 continue
             surf,ax,ay = _cached_iso_wall_surface(WALL_STYLE,_wall_visual_color(ob),
                 wall_h=ISO_WALL_Z,seed=_wall_art_seed(game_state,gx,gy))
