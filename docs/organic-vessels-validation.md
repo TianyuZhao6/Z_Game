@@ -1,5 +1,7 @@
 # Organic vessels and reference-derived structures — October 21, 2026
 
+> Historical validation record. Superseded media were removed during the palette cleanup; recover those files from checkpoint `0aa3e05`. Current retained captures and measurements are indexed in `evidence/README.md` (archived).
+
 ## Delivered implementation
 
 The approved stone floor, abyss/parallax, region identities, map generator,

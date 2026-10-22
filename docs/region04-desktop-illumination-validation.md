@@ -1,5 +1,7 @@
 # Region 04 desktop neural illumination validation
 
+> Historical validation record. Superseded media were removed during the palette cleanup; recover those files from checkpoint `0aa3e05`. Current retained captures and measurements are indexed in `evidence/README.md` (archived).
+
 Validated 2026-10-22. Scope: native desktop ground-network illumination. Browser work is deferred.
 
 The cyan-blue network now has visible, asynchronous illumination changes while preserving the existing vessel layout. Checklist items 1–5 are verified against rendered evidence and runtime checks. Item 6 remains partial: network rendering is inexpensive, but the complete scene does not meet the desktop 60 FPS budget. The remaining measured cost is primarily the existing background/environment composition.
@@ -24,11 +26,11 @@ All images below use the actual game renderer at 1280×720, seed 41, the same la
 
 | State | Real animation time | Previous renderer | Current renderer |
 |---|---:|---|---|
-| Dim | 3022 ms | [Before](evidence/region04-illumination/before-dim.png) | [Dim](evidence/region04-illumination/after-dim.png) |
-| Intermediate | 4534 ms | [Before](evidence/region04-illumination/before-rising.png) | [Intermediate](evidence/region04-illumination/after-rising.png) |
-| Peak | 6045 ms | [Before](evidence/region04-illumination/before-peak.png) | [Peak](evidence/region04-illumination/after-peak.png) |
+| Dim | 3022 ms | `evidence/region04-illumination/before-dim.png` (archived) | `evidence/region04-illumination/after-dim.png` (archived) |
+| Intermediate | 4534 ms | `evidence/region04-illumination/before-rising.png` (archived) | `evidence/region04-illumination/after-rising.png` (archived) |
+| Peak | 6045 ms | `evidence/region04-illumination/before-peak.png` (archived) | [Peak](evidence/region04-illumination/after-peak.png) |
 
-[Continuous breathing capture](evidence/region04-illumination/breathing.webp): 80 frames sampled every 100 ms, eight seconds, one play to avoid a false discontinuity between unrelated periods. [Live combat frame](evidence/region04-illumination/live-combat.png) and [moving-camera combat capture](evidence/region04-illumination/live-camera.webp) show the effect with actual actors and effects. The latter is a condensed gameplay capture, not a timing reference for the breathing period.
+`evidence/region04-illumination/breathing.webp` (archived): 80 frames sampled every 100 ms, eight seconds, one play to avoid a false discontinuity between unrelated periods. `evidence/region04-illumination/live-combat.png` (archived) and `evidence/region04-illumination/live-camera.webp` (archived) show the effect with actual actors and effects. The latter is a condensed gameplay capture, not a timing reference for the breathing period.
 
 Visual review confirms the dim base remains visible; the central vessel and junctions become noticeably brighter at peak; other groups change in different directions at the same times. Cyan illumination remains subordinate to the player and combat. Curved branching, tapering terminals, darker spaces, and obstacle occlusion remain intact. This validates the requested network behavior, not pixel-for-pixel equivalence to the concept painting or final user aesthetic approval.
 

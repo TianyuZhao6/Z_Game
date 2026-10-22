@@ -1,0 +1,701 @@
+[
+  {
+    "path": "TEMP/environment-browser-checkpoint.log",
+    "bytes": 303
+  },
+  {
+    "path": "TEMP/environment-browser-validation-final.log",
+    "bytes": 293
+  },
+  {
+    "path": "TEMP/environment-browser-validation.log",
+    "bytes": 281
+  },
+  {
+    "path": "TEMP/environment-checkpoint-assets.log",
+    "bytes": 208
+  },
+  {
+    "path": "TEMP/environment-checkpoint-build.log",
+    "bytes": 19702
+  },
+  {
+    "path": "TEMP/environment-edge-motion.log",
+    "bytes": 296
+  },
+  {
+    "path": "TEMP/environment-final-tests.log",
+    "bytes": 2274
+  },
+  {
+    "path": "TEMP/environment-forest-final.log",
+    "bytes": 152
+  },
+  {
+    "path": "TEMP/environment-integration-tests.log",
+    "bytes": 1457
+  },
+  {
+    "path": "TEMP/environment-live-loop.log",
+    "bytes": 685
+  },
+  {
+    "path": "TEMP/environment-living-browser-cached-motion.log",
+    "bytes": 299
+  },
+  {
+    "path": "TEMP/environment-living-browser-cached.log",
+    "bytes": 285
+  },
+  {
+    "path": "TEMP/environment-living-browser-motion-final.log",
+    "bytes": 297
+  },
+  {
+    "path": "TEMP/environment-living-browser-motion.log",
+    "bytes": 285
+  },
+  {
+    "path": "TEMP/environment-living-browser-optimized.log",
+    "bytes": 291
+  },
+  {
+    "path": "TEMP/environment-living-browser.log",
+    "bytes": 283
+  },
+  {
+    "path": "TEMP/environment-living-build.log",
+    "bytes": 19702
+  },
+  {
+    "path": "TEMP/environment-living-combat.log",
+    "bytes": 2456
+  },
+  {
+    "path": "TEMP/environment-living-preview.log",
+    "bytes": 137
+  },
+  {
+    "path": "TEMP/environment-living-summon.log",
+    "bytes": 8657
+  },
+  {
+    "path": "TEMP/environment-living-tests.log",
+    "bytes": 2275
+  },
+  {
+    "path": "TEMP/environment-living-webassets.log",
+    "bytes": 208
+  },
+  {
+    "path": "TEMP/environment-perf-browser-after.log",
+    "bytes": 1344
+  },
+  {
+    "path": "TEMP/environment-perf-browser.log",
+    "bytes": 1347
+  },
+  {
+    "path": "TEMP/environment-perf-native-after.log",
+    "bytes": 694
+  },
+  {
+    "path": "TEMP/environment-perf-native.log",
+    "bytes": 698
+  },
+  {
+    "path": "TEMP/environment-refinement-assets.log",
+    "bytes": 208
+  },
+  {
+    "path": "TEMP/environment-refinement-browser-final.log",
+    "bytes": 289
+  },
+  {
+    "path": "TEMP/environment-refinement-browser.log",
+    "bytes": 299
+  },
+  {
+    "path": "TEMP/environment-refinement-build.log",
+    "bytes": 18457
+  },
+  {
+    "path": "TEMP/environment-refinement-bullets.log",
+    "bytes": 272
+  },
+  {
+    "path": "TEMP/environment-refinement-live.log",
+    "bytes": 498
+  },
+  {
+    "path": "TEMP/environment-refinement-preview.log",
+    "bytes": 137
+  },
+  {
+    "path": "TEMP/environment-refinement-state.log",
+    "bytes": 335
+  },
+  {
+    "path": "TEMP/environment-refinement-summon.log",
+    "bytes": 8657
+  },
+  {
+    "path": "TEMP/environment-refinement-tests.log",
+    "bytes": 1788
+  },
+  {
+    "path": "TEMP/environment-stress.log",
+    "bytes": 498
+  },
+  {
+    "path": "TEMP/environment-summon-tests.log",
+    "bytes": 8656
+  },
+  {
+    "path": "TEMP/environment-web-assets.log",
+    "bytes": 208
+  },
+  {
+    "path": "TEMP/environment-web-build.log",
+    "bytes": 17155
+  },
+  {
+    "path": "TEMP/network-batching-tests.log",
+    "bytes": 635
+  },
+  {
+    "path": "TEMP/network-breath-0.png",
+    "bytes": 2845145
+  },
+  {
+    "path": "TEMP/network-breath-1200.png",
+    "bytes": 2842266
+  },
+  {
+    "path": "TEMP/network-final-batch-native.log",
+    "bytes": 996
+  },
+  {
+    "path": "TEMP/network-final-blend-test.log",
+    "bytes": 310
+  },
+  {
+    "path": "TEMP/network-final-captures.log",
+    "bytes": 106
+  },
+  {
+    "path": "TEMP/network-final-combat.log",
+    "bytes": 146
+  },
+  {
+    "path": "TEMP/network-final-environment-tests.log",
+    "bytes": 1272
+  },
+  {
+    "path": "TEMP/network-final-vessel-tests.log",
+    "bytes": 888
+  },
+  {
+    "path": "TEMP/network-refinement-build.log",
+    "bytes": 26759
+  },
+  {
+    "path": "TEMP/network-refinement-environment-tests.log",
+    "bytes": 2441
+  },
+  {
+    "path": "TEMP/network-refinement-performance-batched.log",
+    "bytes": 696
+  },
+  {
+    "path": "TEMP/network-refinement-performance-blits.log",
+    "bytes": 698
+  },
+  {
+    "path": "TEMP/network-refinement-performance-final.log",
+    "bytes": 700
+  },
+  {
+    "path": "TEMP/network-refinement-performance-tight.log",
+    "bytes": 698
+  },
+  {
+    "path": "TEMP/network-refinement-performance.log",
+    "bytes": 696
+  },
+  {
+    "path": "TEMP/network-refinement-postbuild.log",
+    "bytes": 208
+  },
+  {
+    "path": "TEMP/network-refinement-summon-tests.log",
+    "bytes": 8657
+  },
+  {
+    "path": "TEMP/organic-map-98.log",
+    "bytes": 294
+  },
+  {
+    "path": "TEMP/organic-vessels-captures.log",
+    "bytes": 104
+  },
+  {
+    "path": "TEMP/organic-vessels-combat.log",
+    "bytes": 498
+  },
+  {
+    "path": "TEMP/organic-vessels-edge.log",
+    "bytes": 296
+  },
+  {
+    "path": "TEMP/organic-vessels-network-tests.log",
+    "bytes": 739
+  },
+  {
+    "path": "TEMP/organic-vessels-postbuild.log",
+    "bytes": 208
+  },
+  {
+    "path": "TEMP/organic-vessels-summon-tests.log",
+    "bytes": 8657
+  },
+  {
+    "path": "TEMP/organic-vessels-web-build.log",
+    "bytes": 23582
+  },
+  {
+    "path": "TEMP/environment-preview/fire-lite.png",
+    "bytes": 1617790
+  },
+  {
+    "path": "TEMP/environment-preview/fire.png",
+    "bytes": 1621568
+  },
+  {
+    "path": "TEMP/environment-preview/forest-lite.png",
+    "bytes": 1624648
+  },
+  {
+    "path": "TEMP/environment-preview/forest.png",
+    "bytes": 1627267
+  },
+  {
+    "path": "TEMP/environment-preview/isolated-lite-fixed.png",
+    "bytes": 275181
+  },
+  {
+    "path": "TEMP/environment-preview/isolated-lite.png",
+    "bytes": 274913
+  },
+  {
+    "path": "TEMP/environment-preview/isolated-native.png",
+    "bytes": 277444
+  },
+  {
+    "path": "TEMP/environment-preview/mountain-lite.png",
+    "bytes": 1622832
+  },
+  {
+    "path": "TEMP/environment-preview/mountain.png",
+    "bytes": 1626297
+  },
+  {
+    "path": "TEMP/environment-preview/refined-abyss.png",
+    "bytes": 2713357
+  },
+  {
+    "path": "TEMP/environment-preview/refined-breathing.webp",
+    "bytes": 2898790
+  },
+  {
+    "path": "TEMP/environment-preview/refined-center.png",
+    "bytes": 2663796
+  },
+  {
+    "path": "TEMP/environment-preview/wind-lite.png",
+    "bytes": 1622593
+  },
+  {
+    "path": "TEMP/environment-preview/wind.png",
+    "bytes": 1626064
+  },
+  {
+    "path": "TEMP/network-refinement/refined-abyss.png",
+    "bytes": 2690977
+  },
+  {
+    "path": "TEMP/network-refinement/refined-branching.png",
+    "bytes": 996028
+  },
+  {
+    "path": "TEMP/network-refinement/refined-breathing.webp",
+    "bytes": 2738798
+  },
+  {
+    "path": "TEMP/network-refinement/refined-center.png",
+    "bytes": 2644806
+  },
+  {
+    "path": "TEMP/organic-map-98/fire-lite.png",
+    "bytes": 1592292
+  },
+  {
+    "path": "TEMP/organic-map-98/fire.png",
+    "bytes": 1588946
+  },
+  {
+    "path": "TEMP/organic-map-98/forest-lite.png",
+    "bytes": 1588349
+  },
+  {
+    "path": "TEMP/organic-map-98/forest.png",
+    "bytes": 1585172
+  },
+  {
+    "path": "TEMP/organic-map-98/mountain-lite.png",
+    "bytes": 1591532
+  },
+  {
+    "path": "TEMP/organic-map-98/mountain.png",
+    "bytes": 1588269
+  },
+  {
+    "path": "TEMP/organic-map-98/wind-lite.png",
+    "bytes": 1592549
+  },
+  {
+    "path": "TEMP/organic-map-98/wind.png",
+    "bytes": 1588879
+  },
+  {
+    "path": "TEMP/region04-light/before_environment.py",
+    "bytes": 24293
+  },
+  {
+    "path": "TEMP/region04-light/before_vessels.py",
+    "bytes": 8008
+  },
+  {
+    "path": "TEMP/region04-light/captures.log",
+    "bytes": 46
+  },
+  {
+    "path": "TEMP/region04-light/environment-tests.log",
+    "bytes": 1282
+  },
+  {
+    "path": "TEMP/region04-light/live.json",
+    "bytes": 2416
+  },
+  {
+    "path": "TEMP/region04-light/live.log",
+    "bytes": 148
+  },
+  {
+    "path": "TEMP/region04-light/live.py",
+    "bytes": 1809
+  },
+  {
+    "path": "TEMP/region04-light/profile-before-node-format.json",
+    "bytes": 16519
+  },
+  {
+    "path": "TEMP/region04-light/profile.log",
+    "bytes": 796
+  },
+  {
+    "path": "TEMP/region04-light/vessel-tests.log",
+    "bytes": 1049
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-fire-beam.png",
+    "bytes": 1578932
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-fire-empty-meter.png",
+    "bytes": 1578932
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-fire-procession-entry.png",
+    "bytes": 1578932
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-fire-procession-exit.png",
+    "bytes": 1637255
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-fire-procession-moving.png",
+    "bytes": 1630526
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-fire.png",
+    "bytes": 1619611
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-forest-lite.png",
+    "bytes": 1223027
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-mountain-beam.png",
+    "bytes": 1574129
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-mountain-empty-meter.png",
+    "bytes": 1574129
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-mountain-procession-entry.png",
+    "bytes": 1574129
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-mountain-procession-exit.png",
+    "bytes": 1637190
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-mountain-procession-moving.png",
+    "bytes": 1678336
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-mountain.png",
+    "bytes": 1662715
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-wind-beam.png",
+    "bytes": 1577853
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-wind-empty-meter.png",
+    "bytes": 1577853
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-wind-procession-entry.png",
+    "bytes": 1577853
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-wind-procession-exit.png",
+    "bytes": 1626957
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-wind-procession-moving.png",
+    "bytes": 1670844
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-dense-wind.png",
+    "bytes": 1661827
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-edge-lite-motion.json",
+    "bytes": 341
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-edge-lite-parallax-a.png",
+    "bytes": 1257951
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-edge-lite-parallax-b.png",
+    "bytes": 1270333
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-edge-lite.png",
+    "bytes": 1252287
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-edge-native-motion.json",
+    "bytes": 341
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-edge-native-motion.webp",
+    "bytes": 4108410
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-edge-native-parallax-a.png",
+    "bytes": 1559350
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-edge-native-parallax-b.png",
+    "bytes": 1552693
+  },
+  {
+    "path": "TEMP/summon-playtest/environment-edge-native.png",
+    "bytes": 1545220
+  },
+  {
+    "path": "TEMP/summon-playtest/network-hierarchy-combat-beam.png",
+    "bytes": 1573483
+  },
+  {
+    "path": "TEMP/summon-playtest/network-hierarchy-combat-empty-meter.png",
+    "bytes": 1573483
+  },
+  {
+    "path": "TEMP/summon-playtest/network-hierarchy-combat-procession-entry.png",
+    "bytes": 1573483
+  },
+  {
+    "path": "TEMP/summon-playtest/network-hierarchy-combat-procession-exit.png",
+    "bytes": 1631467
+  },
+  {
+    "path": "TEMP/summon-playtest/network-hierarchy-combat-procession-moving.png",
+    "bytes": 1668344
+  },
+  {
+    "path": "TEMP/summon-playtest/network-hierarchy-combat.png",
+    "bytes": 1657081
+  },
+  {
+    "path": "TEMP/summon-playtest/region04-illumination-live-beam.png",
+    "bytes": 1553520
+  },
+  {
+    "path": "TEMP/summon-playtest/region04-illumination-live-empty-meter.png",
+    "bytes": 1553520
+  },
+  {
+    "path": "TEMP/summon-playtest/region04-illumination-live-motion.json",
+    "bytes": 341
+  },
+  {
+    "path": "TEMP/summon-playtest/region04-illumination-live-motion.webp",
+    "bytes": 5520280
+  },
+  {
+    "path": "TEMP/summon-playtest/region04-illumination-live-parallax-a.png",
+    "bytes": 1609687
+  },
+  {
+    "path": "TEMP/summon-playtest/region04-illumination-live-parallax-b.png",
+    "bytes": 1601627
+  },
+  {
+    "path": "TEMP/summon-playtest/region04-illumination-live-procession-entry.png",
+    "bytes": 1553520
+  },
+  {
+    "path": "TEMP/summon-playtest/region04-illumination-live-procession-exit.png",
+    "bytes": 1600404
+  },
+  {
+    "path": "TEMP/summon-playtest/region04-illumination-live-procession-moving.png",
+    "bytes": 1617475
+  },
+  {
+    "path": "TEMP/summon-playtest/region04-illumination-live.png",
+    "bytes": 1622602
+  },
+  {
+    "path": "docs/evidence/network-hierarchy/dense-combat.png",
+    "bytes": 1668344,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/network-hierarchy/refined-abyss.png",
+    "bytes": 2688529,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/network-hierarchy/refined-branching.png",
+    "bytes": 995162,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/network-hierarchy/refined-breathing.webp",
+    "bytes": 2700890,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/network-hierarchy/refined-center.png",
+    "bytes": 2641472,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/neural-refined-abyss.png",
+    "bytes": 2702112,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/neural-refined-breathing.webp",
+    "bytes": 2820946,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/neural-refined-combat.png",
+    "bytes": 1644333,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/organic-vessels/dense-combat.png",
+    "bytes": 1661827,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/organic-vessels/edge-movement.webp",
+    "bytes": 4108410,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/organic-vessels/random-map-98.png",
+    "bytes": 1588879,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/organic-vessels/refined-abyss.png",
+    "bytes": 2713217,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/organic-vessels/refined-branching.png",
+    "bytes": 1004021,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/organic-vessels/refined-breathing.webp",
+    "bytes": 2906444,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/organic-vessels/refined-center.png",
+    "bytes": 2663378,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/region04-illumination/after-dim.png",
+    "bytes": 1492111,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/region04-illumination/after-rising.png",
+    "bytes": 1489174,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/region04-illumination/before-dim.png",
+    "bytes": 1502655,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/region04-illumination/before-peak.png",
+    "bytes": 1503008,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/region04-illumination/before-rising.png",
+    "bytes": 1504728,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/region04-illumination/breathing.webp",
+    "bytes": 5081136,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/region04-illumination/live-camera.webp",
+    "bytes": 5524422,
+    "recoverable_from": "0aa3e05"
+  },
+  {
+    "path": "docs/evidence/region04-illumination/live-combat.png",
+    "bytes": 1617526,
+    "recoverable_from": "0aa3e05"
+  }
+]

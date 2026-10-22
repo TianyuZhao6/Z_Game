@@ -62,8 +62,8 @@ class NetworkScreen:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--baseline', default='5d8cc16')
-    parser.add_argument('--output', type=Path, default=ROOT/'docs/evidence/region04-illumination')
+    parser.add_argument('--baseline', default='0aa3e05')
+    parser.add_argument('--output', type=Path, default=ROOT/'docs/evidence/region04-palette')
     parser.add_argument('--profile-only', action='store_true')
     parser.add_argument('--captures-only', action='store_true')
     args = parser.parse_args()
@@ -98,7 +98,7 @@ def main():
     def render(module, ticks, enemies=(), cam=camera):
         with patch.object(render_runtime,'neural_environment',module), patch.object(pygame.time,'get_ticks',return_value=ticks):
             game.render_game_iso(screen,state,player,list(enemies),[],[],override_cam=cam,copy_frame=False)
-    metadata = dict(seed=41,region=state.biome_active,camera=camera,target_group_phase=phase,
+    metadata = dict(baseline=args.baseline,seed=41,region=state.biome_active,camera=camera,target_group_phase=phase,
                     period_seconds=period,times_ms=times,topology_matches_checkpoint=True)
     if not args.profile_only:
         for name,module in modules.items():

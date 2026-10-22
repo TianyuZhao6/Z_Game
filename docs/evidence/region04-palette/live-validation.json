@@ -1,0 +1,122 @@
+{
+  "wall_destroyed": [
+    24,
+    18
+  ],
+  "real_projectile_hits": 2,
+  "network_seed": 293194784,
+  "initial_blockers_preserved": true,
+  "topology_unchanged_every_update": true,
+  "render_samples": 545,
+  "metrics": {
+    "network_base_ms": {
+      "mean": 0.214,
+      "p95": 0.276
+    },
+    "network_glow_ms": {
+      "mean": 0.485,
+      "p95": 0.644
+    },
+    "network_nodes_ms": {
+      "mean": 0.37,
+      "p95": 0.478
+    },
+    "network_total_ms": {
+      "mean": 1.417,
+      "p95": 1.753
+    },
+    "r_actor_ms": {
+      "mean": 2.001,
+      "p95": 2.866
+    },
+    "r_bg_fill_ms": {
+      "mean": 0.178,
+      "p95": 0.196
+    },
+    "r_bg_floor_ms": {
+      "mean": 19.359,
+      "p95": 21.189
+    },
+    "r_bg_ms": {
+      "mean": 19.572,
+      "p95": 21.395
+    },
+    "r_enemy_actor_ms": {
+      "mean": 0.39,
+      "p95": 1.045
+    },
+    "r_fog_ms": {
+      "mean": 0.003,
+      "p95": 0.006
+    },
+    "r_fx_ms": {
+      "mean": 0.039,
+      "p95": 0.094
+    },
+    "r_ghost_ms": {
+      "mean": 0.004,
+      "p95": 0.003
+    },
+    "r_ground_ms": {
+      "mean": 0.044,
+      "p95": 0.177
+    },
+    "r_hazard_ms": {
+      "mean": 0.479,
+      "p95": 0.614
+    },
+    "r_hurricane_ms": {
+      "mean": 0.002,
+      "p95": 0.002
+    },
+    "r_lantern_ms": {
+      "mean": 0.005,
+      "p95": 0.006
+    },
+    "r_paint_ms": {
+      "mean": 2.651,
+      "p95": 3.833
+    },
+    "r_pickup_actor_ms": {
+      "mean": 0.376,
+      "p95": 0.582
+    },
+    "r_player_actor_ms": {
+      "mean": 0.074,
+      "p95": 0.101
+    },
+    "r_projectile_actor_ms": {
+      "mean": 0.006,
+      "p95": 0.016
+    },
+    "r_targeting_ms": {
+      "mean": 0.005,
+      "p95": 0.005
+    },
+    "r_text_ms": {
+      "mean": 0.072,
+      "p95": 0.243
+    },
+    "r_transition_ms": {
+      "mean": 0.004,
+      "p95": 0.005
+    },
+    "r_turret_actor_ms": {
+      "mean": 0.22,
+      "p95": 0.018
+    },
+    "r_ui_ms": {
+      "mean": 0.418,
+      "p95": 0.483
+    },
+    "r_wall_actor_ms": {
+      "mean": 0.682,
+      "p95": 1.275
+    },
+    "render_total_ms": {
+      "mean": 27.991,
+      "p95": 33.693
+    }
+  },
+  "note": "Actual dense level-loop render timings, excluding screenshot encoding. Simulation uses fixed 1/60 dt; this is not a display-refresh or whole-loop FPS measurement."
+}

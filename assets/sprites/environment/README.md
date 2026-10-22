@@ -24,8 +24,17 @@ modulates the light above a subtle dark groove. A static narrow base remains
 visible while the inner energy and glow breathe on varied 4.3–6.7 second cycles.
 Secondary vessels and capillaries use 52% and 36% of the primary illumination,
 respectively; larger junctions have stronger compact blooms. Region 04/Mountain
-uses restrained cyan-blue rather than the previous gold palette. The other
-region colors are unchanged. Node cutouts are converted once to the display's
+uses cold cyan-blue vessels, electric-blue glow, and selective white-blue cores.
+`NETWORK_PALETTES` in `zgame/neural_environment.py` defines independent
+`base_line`, `inner_line`, `outer_glow`, `node_core`, `node_glow`, and
+`ambient_glow` colors for each legacy region key. Wind stays airy blue,
+Forest jade, Fire coral, and Mountain cold blue. Ambient lavender is confined
+to Mountain's faint outer halo. Source node hue is discarded through grayscale
+before palette tinting, so warm and green regions do not inherit a cyan core.
+Palette colors are baked into existing cached stamps; breathing only changes
+their opacity, with no extra per-frame layers or geometry changes. Edit these
+source configs before starting a run (runtime hot-swapping is not provided).
+Node cutouts are converted once to the display's
 alpha format to avoid slow repeated format conversion. Offscreen groups are skipped; visible
 groups use one batched blit call, with regular alpha on desktop and the measured
 faster SDL2 alpha path in WebAssembly. There are no traveling dots.

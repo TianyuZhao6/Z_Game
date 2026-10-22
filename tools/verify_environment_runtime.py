@@ -274,11 +274,39 @@ class EnvironmentTests(unittest.TestCase):
                            'Actual composited light needs a perceptible dim/peak difference')
         self.assertLess(frames[0].getextrema()[2][1],frames[1].getextrema()[2][1])
         self.assertLess(frames[1].getextrema()[2][1],frames[2].getextrema()[2][1])
-        color=art.region_style('Bastion of Stone')[2]
+        color=art.network_palette('Bastion of Stone').inner_line
         self.assertGreater(color[2],color[0]*2,'Region 04 must use cyan-blue instead of gold')
         expected=pygame.Surface((1,1),pygame.SRCALPHA).convert_alpha().get_masks()
         for index in range(4): self.assertEqual(art.illustrated_node('Bastion of Stone',index)[0].get_masks(),expected)
         art.network_material.cache_clear(); art.network_surface.cache_clear()
+
+    def test_palette_recolors_vessels_and_nodes_without_changing_coverage(self):
+        from zgame.vessel_network import network_geometry
+        geometry=network_geometry(8,'Mountain',41)
+        signatures=set(); coverage=None
+        try:
+            # Hold geometry constant so palette changes cannot hide a layout change.
+            with patch.object(art,'network_geometry',return_value=geometry):
+                for region,palette in art.NETWORK_PALETTES.items():
+                    base,stamps=art.network_material(8,82,41,40,(657,409),-328,0,region,41)
+                    alpha=(pygame.image.tobytes(base,'RGBA')[3::4],
+                           tuple((pos,phase,pygame.image.tobytes(s,'RGBA')[3::4])
+                                 for s,pos,phase in stamps))
+                    if coverage is None: coverage=alpha
+                    else: self.assertEqual(coverage,alpha,'Recoloring must not move or reshape vessels')
+                    signatures.add((pixels(base),tuple(pixels(s) for s,_,_ in stamps)))
+                    for index in range(4):
+                        node,anchor=art.illustrated_node(region,index)
+                        self.assertEqual(tuple(node.get_at(anchor))[:3],palette.node_core,
+                                         'Node core must follow its biome, not baked cyan')
+                    major,anchor=art.illustrated_node(region,2)
+                    minor,small_anchor=art.illustrated_node(region,0)
+                    self.assertGreater(major.get_at(anchor).a,minor.get_at(small_anchor).a)
+            self.assertEqual(len(signatures),4,'Each biome must actually recolor the cached material')
+            self.assertIs(geometry,network_geometry(8,'Mountain',41))
+            self.assertEqual(art.network_palette('unknown'),art.network_palette(art.DEFAULT_REGION))
+        finally:
+            art.network_material.cache_clear(); art.network_surface.cache_clear()
 
     def test_saved_network_layout_survives_wall_destruction_and_real_resume(self):
         import asyncio

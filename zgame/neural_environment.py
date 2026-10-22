@@ -4,6 +4,7 @@ Legacy region IDs deliberately remain save/gameplay keys. Art uses local seeded
 randomness and cached surfaces, never the combat RNG or collision grid.
 """
 from functools import lru_cache
+from dataclasses import dataclass
 import math
 import sys
 
@@ -21,6 +22,33 @@ REGIONS = {
     "Bastion of Stone": ("Mountain", "山", (48, 155, 225), 9.2),
 }
 DEFAULT_REGION = "Domain of Wind"
+
+
+@dataclass(frozen=True)
+class NetworkPalette:
+    """Independent light colors; geometry and source alpha are biome-neutral."""
+    base_line: tuple
+    inner_line: tuple
+    outer_glow: tuple
+    node_core: tuple
+    node_glow: tuple
+    ambient_glow: tuple
+
+
+NETWORK_PALETTES = {
+    "Domain of Wind": NetworkPalette((48,112,185), (100,200,255), (65,145,245),
+                                     (226,247,255), (113,200,255), (101,110,190)),
+    "Misty Forest": NetworkPalette((35,112,91), (83,205,154), (41,151,118),
+                                  (215,255,233), (100,221,163), (78,111,137)),
+    "Scorched Hell": NetworkPalette((137,61,53), (255,136,100), (223,73,67),
+                                   (255,238,216), (255,157,113), (139,65,115)),
+    "Bastion of Stone": NetworkPalette((43,110,200), (62,174,255), (42,112,245),
+                                      (225,246,255), (69,155,255), (107,87,182)),
+}
+
+
+def network_palette(legacy_id):
+    return NETWORK_PALETTES.get(legacy_id, NETWORK_PALETTES[DEFAULT_REGION])
 
 
 def region_style(legacy_id):
@@ -283,8 +311,7 @@ def batch_network_stamps(stamps):
 def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=91417, blocked=()):
     """Cache tight branch stamps; only their opacity changes during play."""
     underlay = pygame.Surface(size,pygame.SRCALPHA)
-    color = region_style(region)[2]
-    core = tuple(min(255,round(c*.80+76)) for c in color)
+    palette = network_palette(region)
     paths,_ = network_geometry(grid,region_name(region),seed,blocked)
     stamps=[]
     # Use the actual stone material's luminance to break up emissive coverage.
@@ -309,15 +336,20 @@ def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=9141
         n=len(points)
         for k in range(n-1):
             strength=(path.strengths[k]+path.strengths[k+1])*.5
-            pygame.draw.polygon(underlay,(*color,round((38+26*hierarchy)*strength)),
+            pygame.draw.polygon(underlay,(*palette.base_line,round((52+48*hierarchy)*strength)),
                                 (base[k],base[k+1],base[2*n-2-k],base[2*n-1-k]))
-        for multiplier,alpha in ((7,20),(3.5,64),(1.7,142),(.65,255)):
+        # Four colors share one cached stamp, so palette control adds no blits.
+        # Lavender is confined to the faint outermost halo, never the core.
+        for multiplier,alpha,color in ((7,16,palette.ambient_glow),
+                                       (3.5,72,palette.outer_glow),
+                                       (1.7,156,palette.outer_glow),
+                                       (.65,255,palette.inner_line)):
             outline=ribbon(local,path.radii,multiplier*cell_w/82*2)
             n=len(local)
             left_edge,right_edge=outline[:n],outline[n:][::-1]
             for k in range(n-1):
                 strength=(path.strengths[k]+path.strengths[k+1])*.5*hierarchy
-                ink=(*(core if multiplier<1 else color),round(alpha*strength))
+                ink=(*color,round(alpha*strength))
                 pygame.draw.polygon(stamp,ink,(left_edge[k],left_edge[k+1],right_edge[k+1],right_edge[k]))
         stamp=pygame.transform.smoothscale(stamp,(width,height))
         material=pygame.Surface((width,height))
@@ -356,11 +388,11 @@ def illustrated_node(region, index):
     source = source_asset('neural-parts-v2/'+names[index]+'.png')
     if source is None:
         return synapse_glow(region), (18,18)
-    # Grayscale keeps the supplied energy's luminance/alpha while allowing
-    # region palettes; Region 04 now shares the restrained cyan-blue family.
+    # Discard baked cyan hue, preserving only the source luminance and alpha.
+    # Branch filaments, halo, and soma can then follow any biome palette.
+    palette = network_palette(region)
     image = pygame.transform.grayscale(source)
-    color = tuple(min(255,round(c*1.22+20)) for c in region_style(region)[2])
-    image.fill((*color,255),special_flags=pygame.BLEND_RGBA_MULT)
+    image.fill((*palette.inner_line,255),special_flags=pygame.BLEND_RGBA_MULT)
     width = (100,120,140,110)[index]
     height = round(width*2/3)
     image = pygame.transform.smoothscale(image,(width,height))
@@ -373,9 +405,11 @@ def illustrated_node(region, index):
     halo=pygame.Surface(image.get_size(),pygame.SRCALPHA)
     radius=(6,8,12,5)[index]
     for r in range(radius,0,-1):
-        pygame.draw.circle(halo,(*color,round(75*(1-r/(radius+1))**1.5)),anchor,r)
+        pygame.draw.circle(halo,(*palette.node_glow,round((110 if index==2 else 65)*
+                           (1-r/(radius+1))**1.5)),anchor,r)
     image.blit(halo,(0,0))
-    pygame.draw.circle(image,(166,230,255,250),anchor,3 if index==2 else 1)
+    pygame.draw.circle(image,(*palette.node_core,255 if index==2 else 190),
+                       anchor,3 if index==2 else 1)
     # PNG channel order otherwise takes the generic per-pixel alpha path.
     # Convert once at construction, keeping exactly the same RGBA pixels.
     return (image.convert_alpha() if pygame.display.get_surface() else image),anchor
@@ -411,18 +445,19 @@ def draw_network(screen, cache, grid, cell_w, cell_h, info, region, camx, camy, 
         index=node.rank if node.rank else (3 if int(node.phase*10)%5==0 else 0)
         image,anchor=illustrated_node(region,index)
         energy=branch_alpha(node.phase-.25,ticks)-24
-        image.set_alpha(min(255,round(34+energy*(1.12 if node.rank==2 else .73))))
+        image.set_alpha(min(255,round((46 if node.rank==2 else 28)+
+                                    energy*(1.32 if node.rank==2 else .68))))
         screen.blit(image,(sx-anchor[0],sy-anchor[1]))
 
 
 @lru_cache(maxsize=4)
 def synapse_glow(region):
-    color = region_style(region)[2]
+    palette = network_palette(region)
     glow = pygame.Surface((36,36),pygame.SRCALPHA)
     for radius in range(18,0,-1):
         alpha = round(105*(1-radius/19)**2)
-        pygame.draw.circle(glow,(*color,alpha),(18,18),radius)
-    pygame.draw.circle(glow,(190,225,245,200),(18,18),1)
+        pygame.draw.circle(glow,(*palette.node_glow,alpha),(18,18),radius)
+    pygame.draw.circle(glow,(*palette.node_core,200),(18,18),1)
     return glow
 
 

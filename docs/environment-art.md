@@ -1,5 +1,7 @@
 # Neural-world reference refinement
 
+> Historical validation record. Superseded media were removed during the palette cleanup; recover those files from checkpoint `0aa3e05`. Current retained captures and measurements are indexed in `evidence/README.md` (archived).
+
 The target is the user's **Image 1 / Balanced World**: mineral cortex, branching
 signals, thick rooted ruins, open combat space, and a large lavender neural abyss.
 This revision replaces the previous environment validation sheet as the current

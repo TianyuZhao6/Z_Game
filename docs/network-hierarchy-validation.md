@@ -1,5 +1,7 @@
 # Organic network: phase batching and six-point validation
 
+> Historical validation record. Superseded media were removed during the palette cleanup; recover those files from checkpoint `0aa3e05`. Current retained captures and measurements are indexed in `evidence/README.md` (archived).
+
 Checkpoint: `neurosurvivor-organic-network-batched-breathing`.
 
 ## Acceptance status
@@ -90,11 +92,11 @@ All captures below come from the game renderer. The composition previews use a
 seeded generated map and controlled review camera/times; the combat capture uses
 the running level loop. The animation contains 32 actual frames across 6.4 seconds.
 
-- [Normal-scale center](evidence/network-hierarchy/refined-center.png)
-- [Abyss view](evidence/network-hierarchy/refined-abyss.png)
-- [Curves and junctions near walls](evidence/network-hierarchy/refined-branching.png)
-- [Asynchronous breathing recording](evidence/network-hierarchy/refined-breathing.webp)
-- [Dense combat](evidence/network-hierarchy/dense-combat.png)
+- `evidence/network-hierarchy/refined-center.png` (archived)
+- `evidence/network-hierarchy/refined-abyss.png` (archived)
+- `evidence/network-hierarchy/refined-branching.png` (archived)
+- `evidence/network-hierarchy/refined-breathing.webp` (archived)
+- `evidence/network-hierarchy/dense-combat.png` (archived)
 - [Raw measured results](evidence/network-hierarchy/performance.json)
 
 Previous checkpoints remain intact. This checkpoint is local; nothing was pushed,
