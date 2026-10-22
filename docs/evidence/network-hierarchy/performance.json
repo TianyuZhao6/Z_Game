@@ -1,0 +1,857 @@
+{
+  "branch_comparison": [
+    {
+      "runtime": "emscripten",
+      "seed": 947,
+      "viewport": [
+        1280,
+        720
+      ],
+      "samples_per_mode": 80,
+      "scope": "branch layer only; same geometry, alternating measurement order",
+      "scenes": [
+        {
+          "region": "Domain of Wind",
+          "visible_before": 190,
+          "visible_after": 123,
+          "total_before": 339,
+          "total_after": 227,
+          "before": {
+            "mean_ms": 16.82,
+            "p50_ms": 16.8,
+            "p95_ms": 17.9
+          },
+          "after": {
+            "mean_ms": 23.105,
+            "p50_ms": 23.0,
+            "p95_ms": 24.5
+          },
+          "after_sdl": {
+            "mean_ms": 9.689,
+            "p50_ms": 9.6,
+            "p95_ms": 10.9
+          },
+          "after_rle": {
+            "mean_ms": 9.709,
+            "p50_ms": 9.6,
+            "p95_ms": 10.6
+          }
+        },
+        {
+          "region": "Misty Forest",
+          "visible_before": 226,
+          "visible_after": 137,
+          "total_before": 430,
+          "total_after": 274,
+          "before": {
+            "mean_ms": 16.566,
+            "p50_ms": 18.5,
+            "p95_ms": 21.2
+          },
+          "after": {
+            "mean_ms": 22.735,
+            "p50_ms": 25.8,
+            "p95_ms": 28.4
+          },
+          "after_sdl": {
+            "mean_ms": 9.54,
+            "p50_ms": 10.7,
+            "p95_ms": 11.8
+          },
+          "after_rle": {
+            "mean_ms": 9.464,
+            "p50_ms": 10.6,
+            "p95_ms": 12.0
+          }
+        }
+      ],
+      "browser_condition": "chrome-software"
+    },
+    {
+      "runtime": "emscripten",
+      "seed": 947,
+      "viewport": [
+        1280,
+        720
+      ],
+      "samples_per_mode": 80,
+      "scope": "branch layer only; same geometry, alternating measurement order",
+      "scenes": [
+        {
+          "region": "Domain of Wind",
+          "visible_before": 190,
+          "visible_after": 123,
+          "total_before": 339,
+          "total_after": 227,
+          "before": {
+            "mean_ms": 17.006,
+            "p50_ms": 16.8,
+            "p95_ms": 18.7
+          },
+          "after": {
+            "mean_ms": 23.18,
+            "p50_ms": 23.0,
+            "p95_ms": 25.1
+          },
+          "after_sdl": {
+            "mean_ms": 9.667,
+            "p50_ms": 9.6,
+            "p95_ms": 10.5
+          },
+          "after_rle": {
+            "mean_ms": 9.694,
+            "p50_ms": 9.6,
+            "p95_ms": 10.8
+          }
+        },
+        {
+          "region": "Misty Forest",
+          "visible_before": 226,
+          "visible_after": 137,
+          "total_before": 430,
+          "total_after": 274,
+          "before": {
+            "mean_ms": 19.385,
+            "p50_ms": 19.2,
+            "p95_ms": 21.7
+          },
+          "after": {
+            "mean_ms": 26.641,
+            "p50_ms": 26.5,
+            "p95_ms": 28.8
+          },
+          "after_sdl": {
+            "mean_ms": 11.176,
+            "p50_ms": 11.1,
+            "p95_ms": 13.1
+          },
+          "after_rle": {
+            "mean_ms": 10.832,
+            "p50_ms": 11.0,
+            "p95_ms": 12.1
+          }
+        }
+      ],
+      "browser_condition": "chrome-gpu-allowed"
+    }
+  ],
+  "native_branch_comparison": {
+    "runtime": "win32",
+    "seed": 947,
+    "viewport": [
+      1280,
+      720
+    ],
+    "samples_per_mode": 80,
+    "scope": "branch layer only; same geometry, alternating measurement order",
+    "scenes": [
+      {
+        "region": "Domain of Wind",
+        "visible_before": 190,
+        "visible_after": 123,
+        "total_before": 339,
+        "total_after": 227,
+        "before": {
+          "mean_ms": 9.219,
+          "p50_ms": 7.98,
+          "p95_ms": 14.262
+        },
+        "after": {
+          "mean_ms": 1.566,
+          "p50_ms": 1.121,
+          "p95_ms": 3.32
+        },
+        "after_sdl": {
+          "mean_ms": 5.668,
+          "p50_ms": 4.913,
+          "p95_ms": 9.082
+        },
+        "after_rle": {
+          "mean_ms": 5.712,
+          "p50_ms": 4.975,
+          "p95_ms": 8.937
+        }
+      },
+      {
+        "region": "Misty Forest",
+        "visible_before": 226,
+        "visible_after": 137,
+        "total_before": 430,
+        "total_after": 274,
+        "before": {
+          "mean_ms": 16.064,
+          "p50_ms": 16.06,
+          "p95_ms": 19.059
+        },
+        "after": {
+          "mean_ms": 3.434,
+          "p50_ms": 3.329,
+          "p95_ms": 4.49
+        },
+        "after_sdl": {
+          "mean_ms": 9.444,
+          "p50_ms": 9.334,
+          "p95_ms": 12.096
+        },
+        "after_rle": {
+          "mean_ms": 9.442,
+          "p50_ms": 9.447,
+          "p95_ms": 11.202
+        }
+      }
+    ]
+  },
+  "historical_unbatched_full_frame": [
+    {
+      "runtime": "emscripten",
+      "viewport": [
+        1280,
+        720
+      ],
+      "seed": 947,
+      "quality": "full",
+      "walls": 84,
+      "enemies": 6,
+      "frames_per_scene": 60,
+      "scenes": [
+        {
+          "scene": "center",
+          "cold_ms": 2690.2,
+          "warm_mean_ms": 79.603,
+          "warm_p50_ms": 75.5,
+          "warm_p95_ms": 99.1
+        },
+        {
+          "scene": "edge",
+          "cold_ms": 153.2,
+          "warm_mean_ms": 73.635,
+          "warm_p50_ms": 69.4,
+          "warm_p95_ms": 97.9
+        },
+        {
+          "scene": "moving-edge",
+          "cold_ms": 94.3,
+          "warm_mean_ms": 94.978,
+          "warm_p50_ms": 93.9,
+          "warm_p95_ms": 101.6
+        },
+        {
+          "scene": "forest",
+          "cold_ms": 1527.5,
+          "warm_mean_ms": 103.485,
+          "warm_p50_ms": 100.7,
+          "warm_p95_ms": 121.6
+        }
+      ],
+      "recording": false,
+      "game_profiler": false,
+      "browser_condition": "chrome-software"
+    },
+    {
+      "runtime": "emscripten",
+      "viewport": [
+        1280,
+        720
+      ],
+      "seed": 947,
+      "quality": "full",
+      "walls": 84,
+      "enemies": 6,
+      "frames_per_scene": 60,
+      "scenes": [
+        {
+          "scene": "center",
+          "cold_ms": 2709.6,
+          "warm_mean_ms": 78.238,
+          "warm_p50_ms": 75.3,
+          "warm_p95_ms": 95.3
+        },
+        {
+          "scene": "edge",
+          "cold_ms": 149.0,
+          "warm_mean_ms": 73.483,
+          "warm_p50_ms": 69.3,
+          "warm_p95_ms": 97.7
+        },
+        {
+          "scene": "moving-edge",
+          "cold_ms": 95.7,
+          "warm_mean_ms": 93.797,
+          "warm_p50_ms": 93.5,
+          "warm_p95_ms": 96.6
+        },
+        {
+          "scene": "forest",
+          "cold_ms": 1519.8,
+          "warm_mean_ms": 101.363,
+          "warm_p50_ms": 98.2,
+          "warm_p95_ms": 118.9
+        }
+      ],
+      "recording": false,
+      "game_profiler": false,
+      "browser_condition": "chrome-gpu-allowed"
+    }
+  ],
+  "final_sdl_full_frame": [
+    {
+      "runtime": "emscripten",
+      "viewport": [
+        1280,
+        720
+      ],
+      "seed": 947,
+      "quality": "full",
+      "walls": 84,
+      "enemies": 6,
+      "frames_per_scene": 60,
+      "scenes": [
+        {
+          "scene": "center",
+          "cold_ms": 4906.0,
+          "warm_mean_ms": 99.352,
+          "warm_p50_ms": 94.1,
+          "warm_p95_ms": 128.4
+        },
+        {
+          "scene": "edge",
+          "cold_ms": 227.8,
+          "warm_mean_ms": 79.677,
+          "warm_p50_ms": 82.7,
+          "warm_p95_ms": 133.2
+        },
+        {
+          "scene": "moving-edge",
+          "cold_ms": 84.5,
+          "warm_mean_ms": 106.352,
+          "warm_p50_ms": 128.8,
+          "warm_p95_ms": 133.4
+        },
+        {
+          "scene": "forest",
+          "cold_ms": 3396.3,
+          "warm_mean_ms": 140.502,
+          "warm_p50_ms": 135.7,
+          "warm_p95_ms": 175.0
+        }
+      ],
+      "recording": false,
+      "game_profiler": false,
+      "browser_condition": "chrome-software"
+    },
+    {
+      "runtime": "emscripten",
+      "viewport": [
+        1280,
+        720
+      ],
+      "seed": 947,
+      "quality": "full",
+      "walls": 84,
+      "enemies": 6,
+      "frames_per_scene": 60,
+      "scenes": [
+        {
+          "scene": "center",
+          "cold_ms": 4950.9,
+          "warm_mean_ms": 98.622,
+          "warm_p50_ms": 93.2,
+          "warm_p95_ms": 126.8
+        },
+        {
+          "scene": "edge",
+          "cold_ms": 223.1,
+          "warm_mean_ms": 93.88,
+          "warm_p50_ms": 86.1,
+          "warm_p95_ms": 136.4
+        },
+        {
+          "scene": "moving-edge",
+          "cold_ms": 139.6,
+          "warm_mean_ms": 133.425,
+          "warm_p50_ms": 133.6,
+          "warm_p95_ms": 141.2
+        },
+        {
+          "scene": "forest",
+          "cold_ms": 3377.1,
+          "warm_mean_ms": 142.772,
+          "warm_p50_ms": 138.8,
+          "warm_p95_ms": 173.2
+        }
+      ],
+      "recording": false,
+      "game_profiler": false,
+      "browser_condition": "chrome-gpu-allowed"
+    }
+  ],
+  "live_browser": {
+    "generated_at": "2026-10-22 01:50:27",
+    "root": "C:\\Users\\tiany\\PycharmProjects\\Z_Game",
+    "build_dir": "C:\\Users\\tiany\\PycharmProjects\\Z_Game\\build\\web",
+    "scenarios": [
+      {
+        "scenario": {
+          "name": "wind_long",
+          "duration_s": 45,
+          "notes": "Non-boss wind biome run focused on hurricane progression and late-session pacing.",
+          "url": "http://127.0.0.1:8765/?start=1&diag=1&profile=1&diagexport=90&scenario=wind_long&biome=wind&level=2&god=1&duration=45",
+          "browser_runtime_path": true,
+          "server_posts": 4,
+          "observed_py_frames": 270,
+          "observed_js_frames": 149
+        },
+        "py_summary": {
+          "frames": 270,
+          "rendered_frames": 270,
+          "skipped_frames": 0,
+          "avg_frame_ms": 134.16,
+          "avg_render_ms": 126.496,
+          "avg_update_ms": 7.665,
+          "avg_browser_gap_ms": 22.994,
+          "worst_hitch_ms": 4275.1,
+          "longest_hitch_streak_33": 270,
+          "hitch_counts": {
+            "25": 270,
+            "33": 270,
+            "50": 269,
+            "100": 252
+          },
+          "frame_percentiles_ms": {
+            "p50": 118.65,
+            "p90": 133.25,
+            "p95": 136.4,
+            "p99": 224.314
+          },
+          "raw_dt_percentiles_ms": {
+            "p50": 123.45,
+            "p90": 138.35,
+            "p95": 141.655,
+            "p99": 164.558
+          },
+          "render_percentiles_ms": {
+            "p50": 112.6,
+            "p90": 125.1,
+            "p95": 127.7,
+            "p99": 132.592
+          },
+          "update_percentiles_ms": {
+            "p50": 6.0,
+            "p90": 9.6,
+            "p95": 10.7,
+            "p99": 13.389
+          },
+          "browser_gap_percentiles_ms": {
+            "p50": 4.8,
+            "p90": 12.64,
+            "p95": 17.275,
+            "p99": 50.492
+          },
+          "phase_avg_ms": {
+            "events": 0.08,
+            "render": 109.064,
+            "pre": 0.09,
+            "spawn": 0.021,
+            "update": 2.734,
+            "flow": 0.203,
+            "bullets": 1.29,
+            "enemy_move": 4.537,
+            "enemy_special": 0.73,
+            "enemy_shots": 0.339,
+            "levelup": 266.6
+          },
+          "phase_max_ms": {
+            "events": 1.0,
+            "render": 4275.0,
+            "pre": 1.2,
+            "spawn": 2.3,
+            "update": 5.4,
+            "flow": 0.6,
+            "bullets": 4.3,
+            "enemy_move": 7.5,
+            "enemy_special": 2.4,
+            "enemy_shots": 1.0,
+            "levelup": 266.6
+          }
+        },
+        "js_summary": {
+          "frames": 149,
+          "gap_percentiles_ms": {
+            "p50": 16.7,
+            "p90": 116.7,
+            "p95": 187.51,
+            "p99": 1604.2
+          },
+          "worst_gap_ms": 4266.500000000001,
+          "hitch_counts": {
+            "25": 55,
+            "33": 55,
+            "50": 40,
+            "100": 21
+          },
+          "longest_hitch_streak_33": 32
+        },
+        "transition_events": [],
+        "segments": {
+          "early": {
+            "frames": 90.0,
+            "avg_frame_ms": 155.174,
+            "avg_update_ms": 5.051,
+            "avg_render_ms": 150.123,
+            "avg_browser_gap_ms": 56.036,
+            "p95_frame_ms": 121.03
+          },
+          "mid": {
+            "frames": 90.0,
+            "avg_frame_ms": 119.111,
+            "avg_update_ms": 5.882,
+            "avg_render_ms": 113.229,
+            "avg_browser_gap_ms": 6.693,
+            "p95_frame_ms": 129.03
+          },
+          "late": {
+            "frames": 90.0,
+            "avg_frame_ms": 128.196,
+            "avg_update_ms": 12.061,
+            "avg_render_ms": 116.134,
+            "avg_browser_gap_ms": 6.252,
+            "p95_frame_ms": 138.795
+          }
+        },
+        "render_hotspots": [
+          {
+            "name": "r_bg_ms",
+            "avg_ms": 93.036,
+            "p95_ms": 89.665,
+            "max_ms": 3847.8
+          },
+          {
+            "name": "r_bg_floor_ms",
+            "avg_ms": 91.356,
+            "p95_ms": 88.01,
+            "max_ms": 3843.7
+          },
+          {
+            "name": "r_actor_ms",
+            "avg_ms": 10.98,
+            "p95_ms": 14.255,
+            "max_ms": 355.7
+          },
+          {
+            "name": "r_hurricane_ms",
+            "avg_ms": 8.806,
+            "p95_ms": 14.3,
+            "max_ms": 17.6
+          },
+          {
+            "name": "r_hurricane_draw_ms",
+            "avg_ms": 8.73,
+            "p95_ms": 14.2,
+            "max_ms": 17.5
+          },
+          {
+            "name": "r_wall_actor_ms",
+            "avg_ms": 6.913,
+            "p95_ms": 9.8,
+            "max_ms": 340.7
+          },
+          {
+            "name": "r_ui_ms",
+            "avg_ms": 2.787,
+            "p95_ms": 5.7,
+            "max_ms": 47.5
+          },
+          {
+            "name": "r_enemy_actor_ms",
+            "avg_ms": 2.616,
+            "p95_ms": 4.3,
+            "max_ms": 7.0
+          },
+          {
+            "name": "r_bg_fill_ms",
+            "avg_ms": 1.568,
+            "p95_ms": 1.9,
+            "max_ms": 3.8
+          },
+          {
+            "name": "r_ghost_ms",
+            "avg_ms": 0.816,
+            "p95_ms": 4.22,
+            "max_ms": 23.1
+          },
+          {
+            "name": "r_pickup_actor_ms",
+            "avg_ms": 0.684,
+            "p95_ms": 1.055,
+            "max_ms": 2.5
+          },
+          {
+            "name": "r_player_actor_ms",
+            "avg_ms": 0.529,
+            "p95_ms": 0.755,
+            "max_ms": 6.9
+          },
+          {
+            "name": "r_text_ms",
+            "avg_ms": 0.106,
+            "p95_ms": 0.255,
+            "max_ms": 1.7
+          },
+          {
+            "name": "r_fog_ms",
+            "avg_ms": 0.048,
+            "p95_ms": 0.1,
+            "max_ms": 0.5
+          },
+          {
+            "name": "r_targeting_ms",
+            "avg_ms": 0.027,
+            "p95_ms": 0.1,
+            "max_ms": 0.3
+          },
+          {
+            "name": "r_hazard_ms",
+            "avg_ms": 0.015,
+            "p95_ms": 0.1,
+            "max_ms": 0.2
+          },
+          {
+            "name": "r_ground_ms",
+            "avg_ms": 0.014,
+            "p95_ms": 0.1,
+            "max_ms": 0.2
+          },
+          {
+            "name": "r_lantern_ms",
+            "avg_ms": 0.014,
+            "p95_ms": 0.1,
+            "max_ms": 0.2
+          },
+          {
+            "name": "r_transition_ms",
+            "avg_ms": 0.014,
+            "p95_ms": 0.1,
+            "max_ms": 0.3
+          },
+          {
+            "name": "r_projectile_actor_ms",
+            "avg_ms": 0.013,
+            "p95_ms": 0.1,
+            "max_ms": 0.3
+          },
+          {
+            "name": "r_fx_ms",
+            "avg_ms": 0.009,
+            "p95_ms": 0.1,
+            "max_ms": 0.1
+          },
+          {
+            "name": "r_hurricane_hint_ms",
+            "avg_ms": 0.007,
+            "p95_ms": 0.1,
+            "max_ms": 0.1
+          },
+          {
+            "name": "r_paint_ms",
+            "avg_ms": 0.006,
+            "p95_ms": 0.0,
+            "max_ms": 0.5
+          },
+          {
+            "name": "r_turret_actor_ms",
+            "avg_ms": 0.0,
+            "p95_ms": 0.0,
+            "max_ms": 0.0
+          }
+        ],
+        "render_build_costs": [],
+        "counter_growth": [
+          {
+            "name": "ghost",
+            "early": 2.844,
+            "late": 7.778,
+            "delta": 4.933
+          },
+          {
+            "name": "en",
+            "early": 8.356,
+            "late": 13.044,
+            "delta": 4.689
+          },
+          {
+            "name": "sp",
+            "early": 0.733,
+            "late": 3.0,
+            "delta": 2.267
+          },
+          {
+            "name": "es",
+            "early": 0.0,
+            "late": 1.2,
+            "delta": 1.2
+          },
+          {
+            "name": "heal",
+            "early": 0.0,
+            "late": 1.0,
+            "delta": 1.0
+          },
+          {
+            "name": "tg",
+            "early": 0.078,
+            "late": 0.178,
+            "delta": 0.1
+          }
+        ],
+        "candidates": [
+          {
+            "candidate": "browser_event_loop_cadence",
+            "confidence": "medium",
+            "basis": "Browser rAF p95 gap 187.51ms is materially above Python frame-time average 128.20ms."
+          }
+        ],
+        "recommendations": [
+          "Compare Python frame percentiles against JS rAF gaps before changing gameplay code; reduce bursty work that starves the browser loop.",
+          "Wind scenario: inspect hurricane update cost separately from draw cost; both are already split in the profiler data."
+        ],
+        "py_dead": false,
+        "py_error": "",
+        "js_error": "",
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+        "harness": {
+          "started_at": 1792648177.552,
+          "finished_at": 1792648227.198,
+          "chrome_exit_code": 1,
+          "server_status": {
+            "scenario": "wind_long",
+            "has_latest": true,
+            "posts": 4,
+            "latest_server": {
+              "received_at_s": 1792648193.311,
+              "scenario": "wind_long",
+              "size_bytes": 42840
+            }
+          },
+          "real_browser_runtime_exercised": true,
+          "console_events": [
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=165 dt=50.0ms total=118.2ms update=5.3ms render=112.9ms gap=5.4ms hot=render:112.9ms heap=192.1MB obs=78 en=6 b=0 es=0 sp=2 txt=2 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebSpawn] begin wave=1 level=2 enemies=6 cap=30 budget=8"
+            },
+            {
+              "type": "console",
+              "text": "[WebSpawn] spots wave=1 count=8 took=0.2ms"
+            },
+            {
+              "type": "console",
+              "text": "[WebSpawn] end wave=1 spawned=8 total=14 took=2.1ms types=fast,ranged,ranged,basic,basic,basic,basic,basic"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=172 dt=50.0ms total=117.1ms update=8.2ms render=108.9ms gap=6.0ms hot=render:108.9ms heap=192.9MB obs=78 en=14 b=2 es=2 sp=2 txt=1 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=178 dt=50.0ms total=123.0ms update=10.9ms render=112.1ms gap=3.4ms hot=render:112.1ms heap=189.9MB obs=77 en=14 b=1 es=1 sp=3 txt=2 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=184 dt=50.0ms total=132.2ms update=9.3ms render=122.9ms gap=0.0ms hot=render:122.9ms heap=193.8MB obs=77 en=14 b=0 es=1 sp=3 txt=3 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=190 dt=50.0ms total=125.6ms update=8.3ms render=117.3ms gap=0.0ms hot=render:117.3ms heap=194.8MB obs=77 en=13 b=0 es=0 sp=3 txt=4 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=196 dt=50.0ms total=128.9ms update=10.9ms render=118.0ms gap=0.0ms hot=render:118.0ms heap=195.5MB obs=77 en=13 b=0 es=2 sp=3 txt=2 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=202 dt=50.0ms total=134.0ms update=9.5ms render=124.5ms gap=5.2ms hot=render:124.5ms heap=196.2MB obs=77 en=13 b=0 es=2 sp=3 txt=1 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=208 dt=50.0ms total=136.4ms update=8.7ms render=127.7ms gap=8.7ms hot=render:127.7ms heap=196.8MB obs=77 en=13 b=0 es=2 sp=3 txt=0 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=214 dt=50.0ms total=131.8ms update=7.8ms render=124.0ms gap=0.0ms hot=render:124.0ms heap=197.8MB obs=77 en=13 b=0 es=0 sp=3 txt=0 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=220 dt=50.0ms total=135.1ms update=8.4ms render=126.7ms gap=2.0ms hot=render:126.7ms heap=198.5MB obs=77 en=13 b=0 es=2 sp=3 txt=0 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=226 dt=50.0ms total=133.2ms update=8.1ms render=125.1ms gap=4.5ms hot=render:125.1ms heap=199.2MB obs=77 en=13 b=0 es=2 sp=3 txt=0 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=232 dt=50.0ms total=138.2ms update=9.6ms render=128.6ms gap=0.0ms hot=render:128.6ms heap=199.9MB obs=77 en=13 b=0 es=2 sp=3 txt=0 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=238 dt=50.0ms total=124.4ms update=7.8ms render=116.6ms gap=5.6ms hot=render:116.6ms heap=200.6MB obs=77 en=13 b=0 es=0 sp=3 txt=0 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=244 dt=50.0ms total=123.2ms update=9.8ms render=113.4ms gap=0.0ms hot=render:113.4ms heap=201.6MB obs=77 en=13 b=0 es=2 sp=3 txt=0 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=251 dt=50.0ms total=114.7ms update=8.2ms render=106.5ms gap=0.6ms hot=render:106.5ms heap=192.0MB obs=77 en=13 b=0 es=2 sp=3 txt=0 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=258 dt=50.0ms total=106.4ms update=8.1ms render=98.3ms gap=5.8ms hot=render:98.3ms heap=192.6MB obs=77 en=13 b=0 es=1 sp=3 txt=0 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=265 dt=50.0ms total=124.2ms update=11.0ms render=113.2ms gap=0.0ms hot=render:113.2ms heap=193.5MB obs=77 en=13 b=4 es=0 sp=3 txt=0 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebLevelUp] pending=1 level=2 xp=4/40"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=270 dt=50.0ms total=410.2ms update=275.4ms render=134.8ms gap=0.0ms hot=levelup:266.6ms heap=194.2MB obs=77 en=12 b=4 es=2 sp=3 txt=2 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=275 dt=50.0ms total=122.1ms update=8.4ms render=113.7ms gap=14.0ms hot=render:113.7ms heap=203.8MB obs=77 en=12 b=2 es=1 sp=3 txt=2 fx=0 rendered=1"
+            },
+            {
+              "type": "console",
+              "text": "[WebProfiler] frame=282 dt=50.0ms total=117.3ms update=8.0ms render=109.3ms gap=1.8ms hot=render:109.3ms heap=204.8MB obs=77 en=12 b=1 es=0 sp=3 txt=2 fx=0 rendered=1"
+            }
+          ],
+          "movement_phases_sent": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
+        }
+      }
+    ],
+    "overall_candidates": [
+      "browser_event_loop_cadence"
+    ],
+    "next_steps": [
+      "Compare Python frame percentiles against JS rAF gaps before changing gameplay code; reduce bursty work that starves the browser loop.",
+      "Wind scenario: inspect hurricane update cost separately from draw cost; both are already split in the profiler data."
+    ]
+  },
+  "notes": "Whole-scene runs vary substantially; use alternating within-run branch comparison for the optimization claim. Browser performance acceptance remains partial.",
+  "py_dead": false,
+  "py_error": "",
+  "js_error": ""
+}

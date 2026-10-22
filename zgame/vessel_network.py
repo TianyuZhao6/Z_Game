@@ -11,6 +11,10 @@ class Vessel(NamedTuple):
     main: bool
     parent: int = -1
     attachment: int = -1
+    strengths: tuple = ()
+    phase: float = 0.0
+    kind: str = "secondary"
+    terminal: bool = False
 
 
 def _unit(dx,dy):
@@ -24,92 +28,152 @@ def _cubic(a,b,c,d,steps):
                  for t in (i/steps for i in range(steps+1)))
 
 
-def _trunk(knots):
-    """One Catmull-Rom route, with exactly shared derivatives at every join."""
-    padded=[(2*knots[0][0]-knots[1][0],2*knots[0][1]-knots[1][1]),*knots,
-            (2*knots[-1][0]-knots[-2][0],2*knots[-1][1]-knots[-2][1])]
-    points=[]
-    for i in range(1,len(padded)-2):
-        p,a,d,q=padded[i-1:i+3]
-        b=(a[0]+(d[0]-p[0])/6,a[1]+(d[1]-p[1])/6)
-        c=(d[0]-(q[0]-a[0])/6,d[1]-(q[1]-a[1])/6)
-        steps=max(30,math.ceil((math.dist(a,b)+math.dist(b,c)+math.dist(c,d))*24))
-        segment=_cubic(a,b,c,d,steps)
-        points.extend(segment if not points else segment[1:])
-    return tuple(points)
+def layout_seed(blocked):
+    value=91417
+    for x,y in sorted(blocked):
+        value=((value ^ (int(x)*73856093 ^ int(y)*19349663))*16777619)&0xffffffff
+    return value
+
+
+def branch_alpha(phase,ticks):
+    # Nearby branches can share a rhythm without the whole map flashing.
+    period=3.5+.65*math.sin(phase*1.7)
+    return round(155+90*(.5+.5*math.sin(ticks*.001*math.tau/period+phase)))
+
+
+def point_clear(point,grid,blocked,margin=.20):
+    x,y=point
+    if not (.7<x<grid-.7 and .7<y<grid-.7):
+        return False
+    gx,gy=math.floor(x),math.floor(y)
+    return not any((i,j) in blocked and i-margin<x<i+1+margin and j-margin<y<j+1+margin
+                   for i in range(gx-1,gx+2) for j in range(gy-1,gy+2))
+
+
+class Node(NamedTuple):
+    x: float
+    y: float
+    rank: int
+    phase: float
 
 
 @lru_cache(maxsize=4)
-def network_geometry(grid,region):
-    rng=random.Random(91417)
-    count=math.ceil(grid/8)+2
+def network_geometry(grid,region,seed=91417,blocked=()):
+    """A seeded spatial graph, independent of tiles, camera and combat RNG."""
+    rng=random.Random(seed)
+    occupied=set(blocked)
+    nodes=[]
+    clusters=[(rng.uniform(3,grid-3),rng.uniform(3,grid-3)) for _ in range(4)]
+    target=round(grid*grid/15)
+    for _ in range(target*100):
+        point=(rng.uniform(1.2,grid-1.2),rng.uniform(1.2,grid-1.2))
+        local=min(math.dist(point,c) for c in clusters)
+        separation=2.0 if local<5 else 3.0
+        if point_clear(point,grid,occupied,.45) and all(math.dist(point,n)>separation for n in nodes):
+            nodes.append(point)
+        if len(nodes)>=target:
+            break
+    # Short clear connections form a spanning forest; wall-separated pockets
+    # may remain separate instead of sending an artificial line through stone.
+    candidates=[]
+    for i,a in enumerate(nodes):
+        for j in range(i):
+            b=nodes[j]
+            distance=math.dist(a,b)
+            if distance>9:
+                continue
+            steps=max(2,math.ceil(distance*8))
+            if all(point_clear((a[0]+(b[0]-a[0])*k/steps,a[1]+(b[1]-a[1])*k/steps),grid,occupied)
+                   for k in range(steps+1)):
+                candidates.append((distance*rng.uniform(.92,1.08),j,i))
+    components=list(range(len(nodes)))
+    def root(i):
+        while components[i]!=i:
+            components[i]=components[components[i]]
+            i=components[i]
+        return i
+    edges=[]
+    degrees=[0]*len(nodes)
+    for _,i,j in sorted(candidates):
+        if root(i)!=root(j) and max(degrees[i],degrees[j])<4:
+            components[root(i)]=root(j)
+            edges.append((i,j))
+            degrees[i]+=1
+            degrees[j]+=1
+    # Promote well-connected routes, rather than assigning every line trunk status.
+    ranked=sorted(range(len(edges)),key=lambda k:degrees[edges[k][0]]+degrees[edges[k][1]],reverse=True)
+    trunks=set(ranked[:max(1,round(len(edges)*.22))])
+    phases=[rng.uniform(0,math.tau) for _ in nodes]
     paths=[]
-    # Meandering arteries cross the entire world. Offset connecting vessels
-    # form open, irregular loops rather than a lattice of four-way crossings.
-    for row in range(count):
-        knots=[]
-        for col in range(count+1):
-            x=-6+col*8
-            y=-5+row*8+math.sin(col*1.9+row*2.3)*2.6+rng.uniform(-.5,.5)
-            knots.append((x,y))
-        points=_trunk(knots)
-        radii=tuple(1.1+.36*math.sin(i/(len(points)-1)*math.tau*1.4+row)
-                    for i in range(len(points)))
-        paths.append(Vessel(points,radii,True))
-    hubs=[]
-    for row in range(count-1):
-        upper,lower=paths[row],paths[row+1]
-        for column in range(1,count):
-            # Alternating positions make three-way junctions, never a
-            # straight cross-route through a regular sequence of grid nodes.
-            fraction=(column+.20*(row%2))/(count+1)
-            at=round(fraction*(len(upper.points)-1))
-            to=round((fraction+.055)*(len(lower.points)-1))
-            a,d=upper.points[at],lower.points[to]
-            ta=_unit(upper.points[at+1][0]-upper.points[at-1][0],
-                     upper.points[at+1][1]-upper.points[at-1][1])
-            td=_unit(lower.points[to+1][0]-lower.points[to-1][0],
-                     lower.points[to+1][1]-lower.points[to-1][1])
-            reach=math.dist(a,d)*.55
-            b=(a[0]+ta[0]*reach,a[1]+ta[1]*reach)
-            c=(d[0]-td[0]*reach,d[1]-td[1]*reach)
-            points=_cubic(a,b,c,d,180)
-            radii=tuple(.85+.2*math.sin(i/180*math.pi) for i in range(181))
-            paths.append(Vessel(points,radii,True,row,at))
-            hubs.extend((a,d))
-    main_count=len(paths)
-    for parent_index in range(main_count):
-        trunk=paths[parent_index]
-        branch_count=(12 if region=='Forest' else 9) if parent_index<count else 3
-        for n in range(branch_count):
-            at=round((n+1)/(branch_count+1)*(len(trunk.points)-1))
-            start=trunk.points[at]
-            tangent=_unit(trunk.points[at+1][0]-trunk.points[at-1][0],
-                          trunk.points[at+1][1]-trunk.points[at-1][1])
-            side=-1 if (n+parent_index)%2 else 1
-            extent=rng.uniform(1.0,2.3)
-            normal=(-tangent[1]*side,tangent[0]*side)
-            end=(start[0]+tangent[0]*extent+normal[0]*extent*.9,
-                 start[1]+tangent[1]*extent+normal[1]*extent*.9)
-            # First control point follows the trunk tangent: the tributary
-            # grows out of its parent rather than meeting it at a sharp angle.
-            b=(start[0]+tangent[0]*extent*.55,start[1]+tangent[1]*extent*.55)
-            c=(end[0]-tangent[0]*extent*.45,end[1]-tangent[1]*extent*.45)
-            points=_cubic(start,b,c,end,70)
-            radii=tuple(.90*(1-i/70)**1.1+.045 for i in range(71))
-            branch_index=len(paths)
-            paths.append(Vessel(points,radii,False,parent_index,at))
-            if n%2==0:
-                at=35
-                start=points[at]
-                tangent=_unit(points[at+1][0]-points[at-1][0],points[at+1][1]-points[at-1][1])
-                tip=(start[0]+tangent[0]*.8-normal[0]*.6,
-                     start[1]+tangent[1]*.8-normal[1]*.6)
-                small=_cubic(start,(start[0]+tangent[0]*.35,start[1]+tangent[1]*.35),
-                             (tip[0]-tangent[0]*.25,tip[1]-tangent[1]*.25),tip,32)
-                paths.append(Vessel(small,tuple(.28*(1-i/32)+.015 for i in range(33)),
-                                    False,branch_index,at))
-    hubs=tuple(p for p in hubs if 0<p[0]<grid and 0<p[1]<grid)
+    def make(a,d,radius,kind,phase,parent=-1,attachment=-1,tangent=None,terminal=False):
+        length=math.dist(a,d)
+        tx,ty=_unit(d[0]-a[0],d[1]-a[1])
+        nx,ny=-ty,tx
+        bend=rng.uniform(-.28,.28)*length
+        steps=max(40,math.ceil(length*17))
+        wander=rng.uniform(.025,.10)
+        wave=rng.uniform(0,math.tau)
+        for flexibility in (1,.5,.15,0):
+            start=tangent or (tx,ty)
+            b=(a[0]+start[0]*length*.30+nx*bend*flexibility*(tangent is None),
+               a[1]+start[1]*length*.30+ny*bend*flexibility*(tangent is None))
+            c=(d[0]-tx*length*.30+nx*bend*flexibility,
+               d[1]-ty*length*.30+ny*bend*flexibility)
+            raw=_cubic(a,b,c,d,steps)
+            points=tuple((x+nx*math.sin(k/steps*math.pi)**3*math.sin(k/steps*math.tau*2+wave)*wander*flexibility,
+                          y+ny*math.sin(k/steps*math.pi)**3*math.sin(k/steps*math.tau*2+wave)*wander*flexibility)
+                         for k,(x,y) in enumerate(raw))
+            if all(point_clear(p,grid,occupied) for p in points):
+                break
+        else:
+            return None
+        intensity=rng.choice((1.,.75,.55,.35)) if kind!='trunk' else rng.uniform(.65,1)
+        imperfect=terminal and rng.random()<.30
+        radii=[]
+        strengths=[]
+        for k in range(steps+1):
+            t=k/steps
+            taper=(1-t)**.85 if terminal else .76+.24*abs(2*t-1)**3
+            radii.append(max(.015,radius*taper*(1+.16*math.sin(t*math.tau*2.3+wave))))
+            fade=(1-t)**.65 if terminal else 1
+            if imperfect:
+                fade*=1-.9*math.exp(-((t-.65)/.075)**2)
+            strengths.append(intensity*fade*(.72+.28*math.sin(t*math.tau*1.7+wave)**2))
+        return Vessel(points,tuple(radii),kind=='trunk',parent,attachment,
+                      tuple(strengths),phase,kind,terminal)
+    for index,(i,j) in enumerate(edges):
+        main=index in trunks
+        path=make(nodes[i],nodes[j],rng.uniform(1.45,2.1) if main else rng.uniform(.65,1.25),
+                  'trunk' if main else 'secondary',phases[i])
+        if path is not None:
+            paths.append(path)
+    # Local trees branch from existing curves, with shared initial tangents.
+    for parent_index in range(len(paths)):
+        parent=paths[parent_index]
+        for _ in range(rng.randint(2,4) if region=='Forest' else rng.randint(1,3)):
+            at=rng.randrange(5,len(parent.points)-5)
+            a=parent.points[at]
+            tx,ty=_unit(parent.points[at+1][0]-parent.points[at-1][0],
+                        parent.points[at+1][1]-parent.points[at-1][1])
+            side=rng.choice((-1,1))
+            extent=rng.uniform(.65,2.0)
+            d=(a[0]+tx*extent-ty*side*extent*.8,a[1]+ty*extent+tx*side*extent*.8)
+            path=make(a,d,rng.uniform(.32,.72),'capillary',parent.phase+rng.uniform(.3,.8),
+                      parent_index,at,(tx,ty),True)
+            if path is None:
+                continue
+            child_index=len(paths)
+            paths.append(path)
+            if rng.random()<.65:
+                at=len(path.points)//2
+                a=path.points[at]
+                tx,ty=_unit(path.points[at+1][0]-path.points[at-1][0],path.points[at+1][1]-path.points[at-1][1])
+                d=(a[0]+tx*.7+ty*side*.5,a[1]+ty*.7-tx*side*.5)
+                twig=make(a,d,rng.uniform(.18,.35),'capillary',path.phase+.4,child_index,at,(tx,ty),True)
+                if twig is not None:
+                    paths.append(twig)
+    hubs=tuple(Node(*p,2 if degrees[i]>=3 else (1 if degrees[i]==2 else 0),phases[i])
+               for i,p in enumerate(nodes) if degrees[i])
     return tuple(paths),hubs
 
 

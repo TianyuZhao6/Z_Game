@@ -5,16 +5,17 @@ randomness and cached surfaces, never the combat RNG or collision grid.
 """
 from functools import lru_cache
 import math
+import sys
 
 import pygame
 
-from zgame.vessel_network import network_geometry, ribbon
+from zgame.vessel_network import network_geometry, ribbon, branch_alpha
 
 from zgame.paths import asset_candidates, first_existing_path
 
 
 REGIONS = {
-    "Domain of Wind": ("Wind", "风", (70, 161, 224), 6.4),
+    "Domain of Wind": ("Wind", "风", (45, 145, 235), 6.4),
     "Misty Forest": ("Forest", "林", (87, 170, 133), 7.8),
     "Scorched Hell": ("Fire", "火", (211, 120, 83), 5.6),
     "Bastion of Stone": ("Mountain", "山", (174, 151, 103), 9.2),
@@ -229,42 +230,116 @@ def paint_floor(surface, grid, cell_w, cell_h, x0, y0, info):
     surface.blit(ground, (0,0))
 
 
-@lru_cache(maxsize=1)
-def network_surface(grid, cell_w, cell_h, info, size, x0, y0, region):
-    """Rasterize continuous vessel ribbons once; animate their light separately."""
-    layer = pygame.Surface(size, pygame.SRCALPHA)
-    color = region_style(region)[2]
-    paths, _ = network_geometry(grid, region_name(region))
-    def project(p):
-        return ((p[0]-p[1])*cell_w*.5-x0,
-                (p[0]+p[1])*cell_h*.5+info-y0)
-    projected = [(tuple(project(p) for p in path.points), path) for path in paths]
-    # Rasterize each whole curve at 2x in a tight temporary rectangle. A
-    # single downsample gives smooth coverage without dotted polygon seams,
-    # and avoids allocating a supersampled surface for the entire world.
-    core = tuple(min(255,round(c*1.12+12)) for c in color)
-    for points, path in projected:
-        margin = math.ceil(max(path.radii)*8*cell_w/82)+2
-        left = math.floor(min(p[0] for p in points))-margin
-        top = math.floor(min(p[1] for p in points))-margin
-        width = math.ceil(max(p[0] for p in points))-left+margin
-        height = math.ceil(max(p[1] for p in points))-top+margin
-        if not pygame.Rect(left,top,width,height).colliderect(layer.get_rect()):
+NETWORK_PHASES = 8
+# Paired profiling favors pygame's regular blitter on desktop, but SDL2's
+# alpha-modulated path in WebAssembly. Both draw the same cached RGBA artwork.
+NETWORK_BLEND = pygame.BLEND_ALPHA_SDL2 if sys.platform == 'emscripten' else 0
+
+
+def batch_network_stamps(stamps):
+    """Merge nearby equal-phase art only when its bounds stay inexpensive.
+
+    Large fixed tiles waste alpha-blending work on transparent space. These
+    cropped, variable bounds never grow beyond 110% of their input area.
+    Geometry stays untouched; only the breathing phase is quantized once.
+    """
+    groups = [[] for _ in range(NETWORK_PHASES)]
+    for image, (x, y), phase in stamps:
+        bounds = image.get_bounding_rect()
+        if not bounds.width or not bounds.height:
             continue
-        stamp = pygame.Surface((width*2,height*2),pygame.SRCALPHA)
-        local = tuple(((x-left)*2,(y-top)*2) for x,y in points)
-        for multiplier, alpha in ((8,10),(4,26),(2,58),(1,210)):
-            if not path.main and multiplier > 2:
-                continue
-            shape = ribbon(local,path.radii,multiplier*cell_w/82*2)
-            ink = (*(core if multiplier==1 else color),
-                   alpha if path.main else round(alpha*.75))
-            pygame.draw.polygon(stamp,ink,shape)
-        layer.blit(pygame.transform.smoothscale(stamp,(width,height)),(left,top))
-    mask = pygame.Surface(size, pygame.SRCALPHA)
-    pygame.draw.polygon(mask, (255,255,255,255), floor_outline(grid,cell_w,cell_h,x0,y0,info))
-    layer.blit(mask, (0,0), special_flags=pygame.BLEND_RGBA_MULT)
-    return layer.convert_alpha() if pygame.display.get_surface() else layer
+        rect = bounds.move(x, y)
+        phase_index = round(phase / math.tau * NETWORK_PHASES) % NETWORK_PHASES
+        groups[phase_index].append((image.subsurface(bounds), rect))
+    result = []
+    for phase_index, members in enumerate(groups):
+        batches = []
+        for image, rect in sorted(members, key=lambda item: -item[1].w * item[1].h):
+            best = None
+            for index, (box, area, parts) in enumerate(batches):
+                union = box.union(rect)
+                cost = union.w * union.h
+                if (union.w <= 420 and union.h <= 280
+                        and cost <= (area + rect.w * rect.h) * 1.10
+                        and box.inflate(48, 48).colliderect(rect)):
+                    if best is None or cost < best[0]:
+                        best = cost, index, union
+            if best is None:
+                batches.append((rect, rect.w * rect.h, [(image, rect)]))
+            else:
+                _, index, union = best
+                box, area, parts = batches[index]
+                batches[index] = union, area + rect.w * rect.h, parts + [(image, rect)]
+        for box, _, parts in batches:
+            image = pygame.Surface(box.size, pygame.SRCALPHA)
+            image.blits([(part, rect.move(-box.x, -box.y)) for part, rect in parts], doreturn=False)
+            if pygame.display.get_surface():
+                image = image.convert_alpha()
+            result.append((image, box.topleft, phase_index * math.tau / NETWORK_PHASES))
+    return tuple(result)
+
+
+@lru_cache(maxsize=1)
+def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=91417, blocked=()):
+    """Cache tight branch stamps; only their opacity changes during play."""
+    underlay = pygame.Surface(size,pygame.SRCALPHA)
+    color = region_style(region)[2]
+    core = tuple(min(255,round(c*1.12+18)) for c in color)
+    paths,_ = network_geometry(grid,region_name(region),seed,blocked)
+    stamps=[]
+    # Use the actual stone material's luminance to break up emissive coverage.
+    texture=pygame.transform.grayscale(ground_material())
+    texture.fill((142,142,142),special_flags=pygame.BLEND_RGB_ADD)
+    tw,th=texture.get_size()
+    for path in paths:
+        points=tuple(((x-y)*cell_w*.5-x0,(x+y)*cell_h*.5+info-y0) for x,y in path.points)
+        margin=math.ceil(max(path.radii)*8*cell_w/82)+3
+        left=math.floor(min(p[0] for p in points))-margin
+        top=math.floor(min(p[1] for p in points))-margin
+        width=math.ceil(max(p[0] for p in points))-left+margin
+        height=math.ceil(max(p[1] for p in points))-top+margin
+        stamp=pygame.Surface((width*2,height*2),pygame.SRCALPHA)
+        local=tuple(((x-left)*2,(y-top)*2) for x,y in points)
+        # A quiet mineral groove anchors the light underneath the surface.
+        pygame.draw.polygon(underlay,(12,24,40,38),ribbon(points,path.radii,2.4))
+        pygame.draw.polygon(underlay,(*color,24),ribbon(points,path.radii,1.25))
+        for multiplier,alpha in ((7,9),(3.5,27),(1.7,62),(.65,210)):
+            outline=ribbon(local,path.radii,multiplier*cell_w/82*2)
+            n=len(local)
+            left_edge,right_edge=outline[:n],outline[n:][::-1]
+            for k in range(n-1):
+                strength=(path.strengths[k]+path.strengths[k+1])*.5
+                ink=(*(core if multiplier<1 else color),round(alpha*strength))
+                pygame.draw.polygon(stamp,ink,(left_edge[k],left_edge[k+1],right_edge[k+1],right_edge[k]))
+        stamp=pygame.transform.smoothscale(stamp,(width,height))
+        material=pygame.Surface((width,height))
+        for row in range(top//th,(top+height)//th+1):
+            for col in range(left//tw,(left+width)//tw+1):
+                material.blit(texture,(col*tw-left,row*th-top))
+        stamp.blit(material,(0,0),special_flags=pygame.BLEND_RGB_MULT)
+        # Clip light at the real platform boundary and obstacle footprints.
+        mask=pygame.Surface((width,height),pygame.SRCALPHA)
+        pygame.draw.polygon(mask,(255,255,255,255),floor_outline(grid,cell_w,cell_h,x0+left,y0+top,info))
+        for gx,gy in blocked:
+            diamond=[((x-y)*cell_w*.5-x0-left,(x+y)*cell_h*.5+info-y0-top)
+                     for x,y in ((gx,gy),(gx+1,gy),(gx+1,gy+1),(gx,gy+1))]
+            pygame.draw.polygon(mask,(0,0,0,0),diamond)
+        stamp.blit(mask,(0,0),special_flags=pygame.BLEND_RGBA_MULT)
+        if pygame.display.get_surface():
+            stamp=stamp.convert_alpha()
+        stamps.append((stamp,(left,top),path.phase))
+    mask=pygame.Surface(size,pygame.SRCALPHA)
+    pygame.draw.polygon(mask,(255,255,255,255),floor_outline(grid,cell_w,cell_h,x0,y0,info))
+    underlay.blit(mask,(0,0),special_flags=pygame.BLEND_RGBA_MULT)
+    if pygame.display.get_surface():
+        underlay=underlay.convert_alpha()
+    underlay.set_alpha(255,pygame.RLEACCEL)
+    return underlay,batch_network_stamps(stamps)
+
+
+@lru_cache(maxsize=1)
+def network_surface(grid, cell_w, cell_h, info, size, x0, y0, region, seed=91417, blocked=()):
+    return network_material(grid,cell_w,cell_h,info,size,x0,y0,region,seed,blocked)[0]
 
 
 @lru_cache(maxsize=16)
@@ -285,44 +360,41 @@ def illustrated_node(region, index):
     # soma on the spline crossing, not the center of its asymmetric tendrils.
     anchors = ((225,315),(206,295),(212,302),(223,308))
     anchor = (round(anchors[index][0]*width/384),round(anchors[index][1]*height/512))
+    pygame.draw.circle(image,(170,225,248,240),anchor,2 if index==2 else 1)
     return image,anchor
 
 
-def draw_network(screen, cache, grid, cell_w, cell_h, info, region, camx, camy, ticks):
-    layer = network_surface(grid,cell_w,cell_h,info,cache["surface"].get_size(),
-                            cache["x0"],cache["y0"],region)
-    period = region_style(region)[3]
-    phase = ticks*.001*math.tau/period
-    layer.set_alpha(round(190+60*math.sin(phase)), pygame.RLEACCEL)
-    dest = pygame.Rect(round(cache["x0"]-camx),round(cache["y0"]-camy),*layer.get_size())
-    visible = dest.clip(screen.get_rect())
-    if visible.width and visible.height:
-        screen.blit(layer, visible.topleft, visible.move(-dest.x,-dest.y),
-                    special_flags=pygame.BLEND_ALPHA_SDL2)
-    paths,hubs = network_geometry(grid,region_name(region))
-    for index,(x,y) in enumerate(hubs):
-        if not (1 < x < grid-1 and 1 < y < grid-1):
+def draw_network(screen, cache, grid, cell_w, cell_h, info, region, camx, camy, ticks, state=None):
+    seed=getattr(state,'network_seed',91417)
+    blocked=getattr(state,'network_obstacles',())
+    args=(grid,cell_w,cell_h,info,cache['surface'].get_size(),cache['x0'],cache['y0'],region,seed,blocked)
+    underlay=network_surface(*args)
+    _,stamps=network_material(*args)
+    offset=(round(cache['x0']-camx),round(cache['y0']-camy))
+    screen.blit(underlay,offset,special_flags=pygame.BLEND_ALPHA_SDL2)
+    viewport=screen.get_rect()
+    blits=[]
+    alphas={i*math.tau/NETWORK_PHASES: branch_alpha(i*math.tau/NETWORK_PHASES,ticks)
+            for i in range(NETWORK_PHASES)}
+    for image,(x,y),phase in stamps:
+        rect=image.get_rect(topleft=(x+offset[0],y+offset[1]))
+        if not rect.colliderect(viewport):
             continue
-        sx,sy = round((x-y)*cell_w*.5-camx),round((x+y)*cell_h*.5+info-camy)
-        if not screen.get_rect().inflate(160,100).collidepoint(sx,sy):
+        # Choose the measured fast path for this runtime; no per-frame RLE
+        # encoding, geometry generation, texture work, or surface allocation.
+        image.set_alpha(alphas[phase])
+        blits.append((image,rect,None,NETWORK_BLEND))
+    screen.blits(blits,doreturn=False)
+    _,hubs=network_geometry(grid,region_name(region),seed,blocked)
+    for node in hubs:
+        x,y=node.x,node.y
+        sx,sy=round((x-y)*cell_w*.5-camx),round((x+y)*cell_h*.5+info-camy)
+        if not viewport.inflate(160,100).collidepoint(sx,sy):
             continue
-        image,anchor = illustrated_node(region,index%4)
-        image.set_alpha(round(110+65*(1+math.sin(phase+x*.7+y*.4))*.5))
+        index=node.rank if node.rank else (3 if int(node.phase*10)%5==0 else 0)
+        image,anchor=illustrated_node(region,index)
+        image.set_alpha(branch_alpha(node.phase-.25,ticks))
         screen.blit(image,(sx-anchor[0],sy-anchor[1]))
-    # Sparse moving light establishes flow along the actual route. It never
-    # jumps between disconnected line pieces or modifies collision/game RNG.
-    glow = synapse_glow(region)
-    glow.set_alpha(85)
-    for index,path in enumerate(paths):
-        if not path.main or index%2:
-            continue
-        point = int(((ticks*.000018+index*.137)%1)*(len(path.points)-1))
-        x,y = path.points[point]
-        if not (1 < x < grid-1 and 1 < y < grid-1):
-            continue
-        sx,sy = round((x-y)*cell_w*.5-camx),round((x+y)*cell_h*.5+info-camy)
-        if screen.get_rect().inflate(36,36).collidepoint(sx,sy):
-            screen.blit(glow,(sx-18,sy-18))
 
 
 @lru_cache(maxsize=4)

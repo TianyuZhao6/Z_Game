@@ -1124,7 +1124,7 @@ def install(game):
         _blit_iso_floor(screen, camx, camy)
         neural_environment.draw_network(screen, _get_iso_floor_cache(), GRID_SIZE,
             ISO_CELL_W, ISO_CELL_H, INFO_BAR_HEIGHT, getattr(game_state,"biome_active",None),
-            camx, camy, pygame.time.get_ticks())
+            camx, camy, pygame.time.get_ticks(),game_state)
         neural_environment.draw_platform_rim(screen,camx,camy,GRID_SIZE,ISO_CELL_W,ISO_CELL_H,INFO_BAR_HEIGHT)
         _blit_web_wall_layer(screen, game_state, camx, camy,
             wall_h=ISO_WALL_Z if WALL_STYLE == "prism" else (12 if WALL_STYLE == "hybrid" else 0))
@@ -1507,7 +1507,7 @@ def install(game):
         _blit_iso_floor(screen, camx, camy)
         neural_environment.draw_network(screen, _get_iso_floor_cache(), GRID_SIZE,
             ISO_CELL_W, ISO_CELL_H, INFO_BAR_HEIGHT, getattr(game_state,"biome_active",None),
-            camx, camy, pygame.time.get_ticks())
+            camx, camy, pygame.time.get_ticks(),game_state)
         neural_environment.draw_platform_rim(screen,camx,camy,GRID_SIZE,ISO_CELL_W,ISO_CELL_H,INFO_BAR_HEIGHT)
         _render_counter(profiler, "r_bg_floor_ms", segment_started)
         _emit_recent_runtime_timing(profiler, "r_bg_floor_build_ms", "iso_floor_build")

@@ -356,6 +356,8 @@ def capture_snapshot(game, game_state, player, enemies, current_level: int, chos
             "biome": getattr(game_state, "biome_active", state.get("_next_biome")),
         },
         "snapshot": {
+            "network_seed": getattr(game_state,"network_seed",91417),
+            "network_obstacles": [list(p) for p in getattr(game_state,"network_obstacles",())],
             "player": {
                 "x": float(player.x),
                 "y": float(player.y),

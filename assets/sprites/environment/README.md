@@ -10,14 +10,26 @@ This directory contains the environment art and the reference-derived asset inve
 | `neural-abyss.png` | Shared distant dendritic world, rendered with slow camera parallax outside the platform |
 | `neural-cliff.png` | Alpha cliff strip with hanging fibers and peripheral growth |
 
-The animated network uses continuous world-space splines in `zgame/vessel_network.py`.
-Long meandering arteries connect through offset, tangent-matched Y junctions.
-Tributaries and fine forks taper; illustrated somas sit at actual junctions.
-The renderer caches variable-width ribbons, with per-curve supersampling only
-during construction. Breathing changes cached alpha; small pulses follow the
-actual curves. Camera motion does not rebuild network geometry or textures.
-Wind, Forest, Fire and Mountain change only network palette, branch treatment
-and breathing timing; legacy save/gameplay identifiers remain.
+The animated network uses an unevenly spaced, map-seeded spatial graph in
+`zgame/vessel_network.py`. Nearby junctions connect through wall-aware curves.
+A minority of routes become thicker trunks; secondary connections feed
+tapered, dimming capillaries and split ends. Illustrated somas emphasize the
+junction hierarchy. Gentle width/wander variation and local dim interruptions
+keep the curves from looking like uniformly painted wires.
+
+The renderer caches tightly bounded branch stamps, with supersampling only
+during construction. Nearby stamps share eight independently breathing phase
+groups, merged only when the combined bounds stay small. Stone luminance
+modulates the light above a subtle dark groove. Groups and individual nodes
+breathe on roughly 2.85–4.15 second cycles. Offscreen groups are skipped; visible
+groups use one batched blit call, with regular alpha on desktop and the measured
+faster SDL2 alpha path in WebAssembly. There are no traveling dots.
+Camera motion changes position only.
+The initial obstacle layout determines a deterministic art seed; both are saved
+with snapshots so destruction and reload cannot rearrange the network. Existing
+saves derive their initial layout from remaining walls on their first load.
+Wind, Forest, Fire and Mountain retain their palette identities and gameplay
+effects. The approved walls, floor material, and background are unchanged.
 
 Wall cutouts are anchored to the same one-cell collision footprint. Coordinate-stable low/medium/full/tall variants use 50%,
 78%, 100% and 118% of the 109-pixel base, with endpoint/corner adjustments and

@@ -1371,6 +1371,8 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
     items = [game.Item(int(it.get('x', 0)), int(it.get('y', 0)), bool(it.get('is_main', False))) for it in snap.get('items', [])]
     decorations = [tuple(d) for d in snap.get('decorations', [])]
     game_state = game.GameState(obstacles, items, [(i.x, i.y) for i in items if getattr(i, 'is_main', False)], decorations)
+    game_state.network_seed = int(snap.get('network_seed',game_state.network_seed))
+    game_state.network_obstacles = tuple(tuple(int(v) for v in p) for p in snap.get('network_obstacles',game_state.network_obstacles))
     game_state.current_level = level_idx
     p = snap.get('player', {})
     player = game.Player((0, 0), speed=int(p.get('speed', game.PLAYER_SPEED)))

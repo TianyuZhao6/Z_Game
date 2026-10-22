@@ -63,6 +63,9 @@ def install(game):
     class GameState:
 
         def __init__(self, obstacles: Dict, items: Set, main_item_pos: List[Tuple[int, int]], decorations: list):
+            from zgame.vessel_network import layout_seed
+            self.network_obstacles = tuple(sorted(obstacles))
+            self.network_seed = layout_seed(self.network_obstacles)
             self._obstacle_revision = 0
             self.obstacles = ObstacleDict(obstacles, on_change=self.mark_nav_dirty)
             self.items = items

@@ -76,7 +76,7 @@ if args.reference_review:
     # Actual-size inspection viewport, centered on an interior branch node.
     # This changes the camera only; no generated artwork replaces the scene.
     from zgame.vessel_network import network_geometry
-    hubs = network_geometry(game.GRID_SIZE,'Wind')[1]
+    hubs = [(n.x,n.y) for n in network_geometry(game.GRID_SIZE,'Wind',state.network_seed,state.network_obstacles)[1]]
     node = min((p for p in hubs if 8<p[0]<28 and 8<p[1]<28),
                key=lambda p:abs(p[0]-18)+abs(p[1]-18))
     screen = pygame.display.set_mode((960,640))

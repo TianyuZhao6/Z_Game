@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 import pygame
 from zgame import neural_environment as art
-from zgame.vessel_network import network_geometry
+from zgame.vessel_network import network_geometry, point_clear, branch_alpha, layout_seed
 
 
 def direction(a,b):
@@ -38,38 +38,41 @@ class VesselTests(unittest.TestCase):
                 self.assertEqual(path.points[0],parent.points[at])
                 tangent=direction(parent.points[at-1],parent.points[at+1])
                 outgoing=direction(path.points[0],path.points[1])
-                self.assertGreater(sum(a*b for a,b in zip(tangent,outgoing)),.998)
+                self.assertGreater(sum(a*b for a,b in zip(tangent,outgoing)),.995)
                 if not path.main:
                     self.assertLess(path.radii[-1],path.radii[0]*.1)
-                    self.assertTrue(all(a>=b for a,b in zip(path.radii,path.radii[1:])))
+                    self.assertEqual(path.strengths[-1],0)
 
-    def test_routes_curve_across_world_and_connect_to_one_network(self):
-        paths,hubs=network_geometry(36,'Wind')
-        roots=[i for i,p in enumerate(paths) if p.parent<0]
-        adjacent={i:set() for i in roots}
-        for i in roots:
-            p=paths[i]
-            self.assertLess(p.points[0][0],0)
-            self.assertGreater(p.points[-1][0],36)
-            chord=math.dist(p.points[0],p.points[-1])
-            length=sum(math.dist(a,b) for a,b in zip(p.points,p.points[1:]))
-            self.assertGreater(length/chord,1.05,'Artery is too straight')
-            # Dense samples keep the projected route smooth at normal zoom.
-            self.assertLess(max(math.dist(a,b) for a,b in zip(p.points,p.points[1:])),.09)
-        for p in paths:
-            if p.main and p.parent>=0:
-                matches=[i for i in roots if p.points[-1] in paths[i].points]
-                self.assertEqual(len(matches),1,'A connector has a detached end')
-                adjacent[p.parent].add(matches[0])
-                adjacent[matches[0]].add(p.parent)
-        reached={roots[0]}
-        pending=list(reached)
-        while pending:
-            for neighbor in adjacent[pending.pop()]-reached:
-                reached.add(neighbor)
-                pending.append(neighbor)
-        self.assertEqual(reached,set(roots))
-        self.assertGreater(len(hubs),20)
+    def test_seeded_graph_has_local_hierarchy_and_global_coverage(self):
+        signatures=set()
+        for seed in (12,41,98,337,901):
+            paths,hubs=network_geometry(36,'Wind',seed)
+            signatures.add(tuple((n.x,n.y) for n in hubs))
+            self.assertGreater(len(hubs),60)
+            self.assertEqual({p.kind for p in paths},{'trunk','secondary','capillary'})
+            roots=[p for p in paths if p.parent<0]
+            self.assertTrue(all(math.dist(p.points[0],p.points[-1])<9.1 for p in roots))
+            curved=sum(sum(math.dist(a,b) for a,b in zip(p.points,p.points[1:]))>
+                       math.dist(p.points[0],p.points[-1])*1.005 for p in roots)
+            self.assertGreater(curved/len(roots),.65)
+            self.assertGreater(max(max(p.radii) for p in paths)/min(max(p.radii) for p in paths),5)
+            self.assertGreater(max(max(p.strengths) for p in paths)/min(max(p.strengths) for p in paths),2.5)
+            for x,y in ((5,5),(5,30),(30,5),(30,30),(18,18)):
+                self.assertLess(min(math.dist((x,y),(n.x,n.y)) for n in hubs),5)
+        self.assertEqual(len(signatures),5,'Map seeds must generate genuinely different networks')
+
+    def test_wall_aware_routes_and_unmoving_asynchronous_breathing(self):
+        blocked=tuple((18,y) for y in range(3,33))
+        paths,hubs=network_geometry(36,'Forest',layout_seed(blocked),blocked)
+        for path in paths:
+            self.assertTrue(all(point_clear(p,36,set(blocked)) for p in path.points))
+        self.assertTrue(all(point_clear((n.x,n.y),36,set(blocked),.4) for n in hubs))
+        self.assertGreater(len({branch_alpha(p.phase,1000) for p in paths}),20)
+        changes=[branch_alpha(p.phase,1800)-branch_alpha(p.phase,1600) for p in paths]
+        self.assertLess(min(changes),0)
+        self.assertGreater(max(changes),0,'Some branches must brighten while others dim')
+        self.assertTrue(all(abs(branch_alpha(p.phase,1016)-branch_alpha(p.phase,1000))<4 for p in paths))
+        self.assertIs(paths,network_geometry(36,'Forest',layout_seed(blocked),blocked)[0])
 
     def test_generation_is_deterministic_without_touching_combat_rng(self):
         before=random.getstate()

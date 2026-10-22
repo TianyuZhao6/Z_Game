@@ -199,14 +199,82 @@ class EnvironmentTests(unittest.TestCase):
             art.illustrated_node(self.state.biome_active,index)
         self.render(ticks=1000,camera=camera)
         counts = (art.network_surface.cache_info().misses,
+                  art.network_material.cache_info().misses,
                   art.illustrated_node.cache_info().misses,
                   art.illustrated_wall.cache_info().misses)
         for frame in range(1,9):
             self.render(ticks=1000+frame*130,
                         camera=(camera[0]+frame*3,camera[1]-frame*2))
         self.assertEqual(counts,(art.network_surface.cache_info().misses,
+                                art.network_material.cache_info().misses,
                                 art.illustrated_node.cache_info().misses,
                                 art.illustrated_wall.cache_info().misses))
+
+    def test_phase_batches_preserve_transparency_and_local_breathing(self):
+        stamps = []
+        for phase in range(art.NETWORK_PHASES):
+            for x in (0, 8):
+                image = pygame.Surface((24, 24), pygame.SRCALPHA)
+                pygame.draw.line(image, (80, 160, 240, 200), (2, 12), (22, 12), 3)
+                stamps.append((image, (x, phase*32), phase*math.tau/art.NETWORK_PHASES))
+        batches = art.batch_network_stamps(stamps)
+        self.assertEqual(len(batches), art.NETWORK_PHASES)
+        self.assertEqual(len({phase for _, _, phase in batches}), art.NETWORK_PHASES)
+        original = pygame.Surface((48, 260), pygame.SRCALPHA)
+        merged = original.copy()
+        for image, pos, _ in stamps: original.blit(image, pos)
+        for image, pos, _ in batches: merged.blit(image, pos)
+        self.assertEqual(pygame.mask.from_surface(original, 0).count(),
+                         pygame.mask.from_surface(merged, 0).count())
+        self.assertEqual(pixels(original), pixels(merged))
+        changes = [art.branch_alpha(phase, 1400)-art.branch_alpha(phase, 1000)
+                   for _, _, phase in batches]
+        self.assertGreater(max(changes), 10)
+        self.assertLess(min(changes), -10)
+        for _, _, phase in batches:
+            self.assertLessEqual(max(abs(art.branch_alpha(phase, t+17)-art.branch_alpha(phase, t))
+                                     for t in range(0, 8000, 17)), 3)
+
+    def test_batched_network_stays_world_anchored_across_camera_motion(self):
+        self.render()
+        cache = game._iso_floor_cache
+        args = (cache, game.GRID_SIZE, game.ISO_CELL_W, game.ISO_CELL_H,
+                game.INFO_BAR_HEIGHT, self.state.biome_active)
+        a, b = pygame.Surface((700, 500)), pygame.Surface((700, 500))
+        for blend in (0, pygame.BLEND_ALPHA_SDL2):
+            with patch.object(art, 'NETWORK_BLEND', blend):
+                for ticks in (1000, 1733):
+                    a.fill((30, 40, 60)); b.fill((30, 40, 60))
+                    art.draw_network(a, *args, -350, 350, ticks, self.state)
+                    art.draw_network(b, *args, -313, 373, ticks, self.state)
+                    self.assertEqual(pixels(a.subsurface((37, 23, 663, 477))),
+                                     pixels(b.subsurface((0, 0, 663, 477))))
+
+    def test_saved_network_layout_survives_wall_destruction_and_real_resume(self):
+        import asyncio
+        import json
+        from zgame import app_flow
+        from zgame.vessel_network import network_geometry
+        wall = game.Obstacle(10,8,"Destructible",health=20)
+        state = game.GameState({(10,8):wall},[],[],[])
+        original = network_geometry(game.GRID_SIZE,'Wind',state.network_seed,state.network_obstacles)
+        del state.obstacles[10,8]
+        payload = json.loads(json.dumps(game.capture_snapshot(state,self.player,[],0)))
+        restored = []
+        factory = game.GameState
+        class StopAfterLayout(Exception): pass
+        def record(*args,**kwargs):
+            result = factory(*args,**kwargs)
+            restored.append(result)
+            return result
+        with patch.object(game,'GameState',side_effect=record), \
+             patch.object(game,'Player',side_effect=StopAfterLayout):
+            with self.assertRaises(StopAfterLayout):
+                asyncio.run(app_flow.run_from_snapshot(game,payload))
+        self.assertFalse(restored[0].obstacles)
+        self.assertEqual(restored[0].network_obstacles,((10,8),))
+        self.assertEqual(original,network_geometry(game.GRID_SIZE,'Wind',
+            restored[0].network_seed,restored[0].network_obstacles))
 
     def test_abyss_is_visible_beyond_transparent_floor_in_all_renderers(self):
         self.player = game.Player((20,4))
