@@ -269,13 +269,16 @@ class EnvironmentTests(unittest.TestCase):
                                  game.INFO_BAR_HEIGHT,'Bastion of Stone',*camera,round(period*1000*time_in_cycle))
                 sample=target.subsurface((310,230,20,20))
                 frames.append(Image.frombytes('RGB',sample.get_size(),pygame.image.tobytes(sample,'RGB')))
-        self.assertGreater(frames[0].getextrema()[2][1],65,'Vessel remains visible at minimum')
-        self.assertGreater(ImageChops.difference(frames[0],frames[2]).getextrema()[2][1],35,
-                           'Actual composited light needs a perceptible dim/peak difference')
-        self.assertLess(frames[0].getextrema()[2][1],frames[1].getextrema()[2][1])
-        self.assertLess(frames[1].getextrema()[2][1],frames[2].getextrema()[2][1])
         color=art.network_palette('Bastion of Stone').inner_line
-        self.assertGreater(color[2],color[0]*2,'Region 04 must use cyan-blue instead of gold')
+        channel=max(range(3),key=lambda c:color[c])
+        self.assertGreater(frames[0].getextrema()[channel][1],65,'Vessel remains visible at minimum')
+        self.assertGreater(ImageChops.difference(frames[0],frames[2]).getextrema()[channel][1],35,
+                           'Actual composited light needs a perceptible dim/peak difference')
+        self.assertLess(frames[0].getextrema()[channel][1],frames[1].getextrema()[channel][1])
+        self.assertLess(frames[1].getextrema()[channel][1],frames[2].getextrema()[channel][1])
+        self.assertGreaterEqual(color[0],color[1],'Stone should be pale gold/yellow')
+        self.assertGreater(color[1],200)
+        self.assertGreater(color[1],color[2])
         expected=pygame.Surface((1,1),pygame.SRCALPHA).convert_alpha().get_masks()
         for index in range(4): self.assertEqual(art.illustrated_node('Bastion of Stone',index)[0].get_masks(),expected)
         art.network_material.cache_clear(); art.network_surface.cache_clear()
@@ -303,10 +306,29 @@ class EnvironmentTests(unittest.TestCase):
                     minor,small_anchor=art.illustrated_node(region,0)
                     self.assertGreater(major.get_at(anchor).a,minor.get_at(small_anchor).a)
             self.assertEqual(len(signatures),4,'Each biome must actually recolor the cached material')
+            wind=art.network_palette('Domain of Wind').inner_line
+            forest=art.network_palette('Misty Forest').inner_line
+            fire=art.network_palette('Scorched Hell').inner_line
+            self.assertTrue(wind[2]>wind[1]>wind[0],'Wind is cyan-blue')
+            self.assertTrue(forest[2]>forest[0]>forest[1],'Forest is purple')
+            self.assertGreater(fire[0],2*max(fire[1:]),'Fire is red')
             self.assertIs(geometry,network_geometry(8,'Mountain',41))
             self.assertEqual(art.network_palette('unknown'),art.network_palette(art.DEFAULT_REGION))
         finally:
             art.network_material.cache_clear(); art.network_surface.cache_clear()
+
+    def test_shimmer_is_local_to_major_hubs_and_preserves_geometry(self):
+        from zgame.vessel_network import network_geometry
+        for seed in (12,41,98,337,901):
+            geometry=network_geometry(36,'Mountain',seed)
+            paths,hubs=geometry
+            spots=tuple((n.x,n.y) for n in hubs if n.rank==2)
+            weights=[v for path in paths for v in art.segment_highlights(path.points,spots)]
+            self.assertGreater(max(weights),.8,'Some short connections should flare')
+            self.assertGreater(sum(v<.1 for v in weights)/len(weights),.5,
+                               'Most of the network must remain subtle')
+            self.assertIs(geometry,network_geometry(36,'Mountain',seed))
+        self.assertEqual(art.segment_highlights(((0,0),(1,0)),()),(0.,))
 
     def test_saved_network_layout_survives_wall_destruction_and_real_resume(self):
         import asyncio

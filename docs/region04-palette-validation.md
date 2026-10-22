@@ -1,5 +1,7 @@
 # Region 04 palette refinement — 2026-10-22
 
+> Historical palette decision. The user's later standing direction in AGENTS.md is desktop-only: Wind cyan-blue, Forest purple, Fire red, Stone pale gold/yellow. See the [current desktop review](region04-desktop-shimmer-validation.md).
+
 The previous cyan treatment still looked mint-like in gameplay. The renderer derived most light colors from one region tint and used a separate formula for node artwork. The current implementation separates the colors of the base trace, inner energy, outer glow, node core, node glow, and ambient halo. This gives each biome an explicit palette without rebuilding source art or changing vessel geometry.
 
 ## Visual choices

@@ -36,14 +36,14 @@ class NetworkPalette:
 
 
 NETWORK_PALETTES = {
-    "Domain of Wind": NetworkPalette((48,112,185), (100,200,255), (65,145,245),
-                                     (226,247,255), (113,200,255), (101,110,190)),
-    "Misty Forest": NetworkPalette((35,112,91), (83,205,154), (41,151,118),
-                                  (215,255,233), (100,221,163), (78,111,137)),
-    "Scorched Hell": NetworkPalette((137,61,53), (255,136,100), (223,73,67),
-                                   (255,238,216), (255,157,113), (139,65,115)),
-    "Bastion of Stone": NetworkPalette((43,110,200), (62,174,255), (42,112,245),
-                                      (225,246,255), (69,155,255), (107,87,182)),
+    "Domain of Wind": NetworkPalette((36,83,149), (90,202,255), (42,125,255),
+                                     (225,246,255), (69,155,255), (107,87,182)),
+    "Misty Forest": NetworkPalette((77,44,128), (182,112,255), (122,64,225),
+                                  (244,226,255), (187,132,255), (114,74,166)),
+    "Scorched Hell": NetworkPalette((118,35,48), (255,64,75), (220,35,57),
+                                   (255,224,224), (255,102,116), (140,46,85)),
+    "Bastion of Stone": NetworkPalette((119,99,49), (255,234,154), (231,190,83),
+                                      (255,251,220), (255,236,163), (153,130,102)),
 }
 
 
@@ -312,7 +312,8 @@ def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=9141
     """Cache tight branch stamps; only their opacity changes during play."""
     underlay = pygame.Surface(size,pygame.SRCALPHA)
     palette = network_palette(region)
-    paths,_ = network_geometry(grid,region_name(region),seed,blocked)
+    paths,hubs = network_geometry(grid,region_name(region),seed,blocked)
+    hot_spots=tuple((n.x,n.y) for n in hubs if n.rank==2)
     stamps=[]
     # Use the actual stone material's luminance to break up emissive coverage.
     texture=pygame.transform.grayscale(ground_material())
@@ -329,7 +330,8 @@ def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=9141
         local=tuple(((x-left)*2,(y-top)*2) for x,y in points)
         # A quiet mineral groove anchors the light underneath the surface.
         pygame.draw.polygon(underlay,(12,24,40,38),ribbon(points,path.radii,2.4))
-        hierarchy = {'trunk':1.0,'secondary':.52,'capillary':.36}[path.kind]
+        hierarchy = {'trunk':.85,'secondary':.38,'capillary':.22}[path.kind]
+        accents=segment_highlights(path.points,hot_spots)
         # The narrow base is static; only the cached energy/glow stamp breathes.
         # Per-segment alpha retains the terminal fade even at minimum light.
         base=ribbon(points,path.radii,.85)
@@ -339,8 +341,8 @@ def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=9141
             pygame.draw.polygon(underlay,(*palette.base_line,round((52+48*hierarchy)*strength)),
                                 (base[k],base[k+1],base[2*n-2-k],base[2*n-1-k]))
         # Four colors share one cached stamp, so palette control adds no blits.
-        # Lavender is confined to the faint outermost halo, never the core.
-        for multiplier,alpha,color in ((7,16,palette.ambient_glow),
+        # The ambient tint is confined to sparse outer halos, never the core.
+        for multiplier,alpha,color in ((7,32,palette.ambient_glow),
                                        (3.5,72,palette.outer_glow),
                                        (1.7,156,palette.outer_glow),
                                        (.65,255,palette.inner_line)):
@@ -349,7 +351,11 @@ def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=9141
             left_edge,right_edge=outline[:n],outline[n:][::-1]
             for k in range(n-1):
                 strength=(path.strengths[k]+path.strengths[k+1])*.5*hierarchy
-                ink=(*color,round(alpha*strength))
+                accent=accents[k]
+                gain=accent if multiplier==7 else (.78+1.9*accent)
+                # Only short portions next to major hubs approach the hot core.
+                ink_color=tuple(round(c+(h-c)*accent*.48) for c,h in zip(color,palette.node_core)) if multiplier<1 else color
+                ink=(*ink_color,min(255,round(alpha*strength*gain)))
                 pygame.draw.polygon(stamp,ink,(left_edge[k],left_edge[k+1],right_edge[k+1],right_edge[k]))
         stamp=pygame.transform.smoothscale(stamp,(width,height))
         material=pygame.Surface((width,height))
@@ -375,6 +381,17 @@ def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=9141
         underlay=underlay.convert_alpha()
     underlay.set_alpha(255,pygame.RLEACCEL)
     return underlay,batch_network_stamps(stamps)
+
+
+def segment_highlights(points, hot_spots):
+    """Static light envelopes along existing curves; never move their points."""
+    values=[]
+    for a,b in zip(points,points[1:]):
+        mid=((a[0]+b[0])*.5,(a[1]+b[1])*.5)
+        distance=min((math.dist(mid,n) for n in hot_spots),default=math.inf)
+        t=max(0.,1-distance/1.65)
+        values.append(t*t*(3-2*t))
+    return tuple(values)
 
 
 @lru_cache(maxsize=1)
@@ -403,13 +420,26 @@ def illustrated_node(region, index):
     # A compact soma bloom makes major junctions read at gameplay scale.
     # This is baked once into the existing cutout, never rebuilt per frame.
     halo=pygame.Surface(image.get_size(),pygame.SRCALPHA)
+    if index==2:
+        # Sparse ambient fringe belongs only to the large synaptic hubs.
+        for r in range(17,0,-1):
+            pygame.draw.circle(halo,(*palette.ambient_glow,round(32*(1-r/18)**2)),anchor,r)
     radius=(6,8,12,5)[index]
     for r in range(radius,0,-1):
         pygame.draw.circle(halo,(*palette.node_glow,round((110 if index==2 else 65)*
                            (1-r/(radius+1))**1.5)),anchor,r)
     image.blit(halo,(0,0))
+    if index==2:
+        # Tiny stationary diffraction glint, baked into the existing node cutout.
+        # Its opacity follows that node's breathing; no particles or new draws.
+        x,y=anchor
+        pygame.draw.polygon(image,(*palette.node_glow,165),
+                            ((x-6,y),(x-1,y-1),(x,y-5),(x+1,y-1),
+                             (x+6,y),(x+1,y+1),(x,y+5),(x-1,y+1)))
+        pygame.draw.line(image,(*palette.node_core,225),(x-3,y),(x+3,y))
+        pygame.draw.line(image,(*palette.node_core,225),(x,y-3),(x,y+3))
     pygame.draw.circle(image,(*palette.node_core,255 if index==2 else 190),
-                       anchor,3 if index==2 else 1)
+                       anchor,1)
     # PNG channel order otherwise takes the generic per-pixel alpha path.
     # Convert once at construction, keeping exactly the same RGBA pixels.
     return (image.convert_alpha() if pygame.display.get_surface() else image),anchor

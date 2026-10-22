@@ -62,8 +62,8 @@ class NetworkScreen:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--baseline', default='0aa3e05')
-    parser.add_argument('--output', type=Path, default=ROOT/'docs/evidence/region04-palette')
+    parser.add_argument('--baseline', default='d7ecf82')
+    parser.add_argument('--output', type=Path, default=ROOT/'docs/evidence/region04-shimmer')
     parser.add_argument('--profile-only', action='store_true')
     parser.add_argument('--captures-only', action='store_true')
     args = parser.parse_args()
@@ -107,12 +107,35 @@ def main():
                 pygame.image.save(screen,str(args.output/f'{name}-{label}.png'))
         from PIL import Image
         frames=[]
+        tracks=[]
+        for node in hubs:
+            sx=round((node.x-node.y)*game.ISO_CELL_W*.5-camera[0])
+            sy=round((node.x+node.y)*game.ISO_CELL_H*.5+game.INFO_BAR_HEIGHT-camera[1])
+            if node.rank==2 and 30<sx<1250 and 70<sy<690:
+                tracks.append(dict(screen=[sx,sy],phase=node.phase,samples=[]))
         for ticks in range(times['dim'],times['dim']+8000,100):
             render(art,ticks)
             frames.append(Image.frombytes('RGB',screen.get_size(),pygame.image.tobytes(screen,'RGB')))
+            for track in tracks:
+                x,y=track['screen']
+                rgb=screen.get_at((x,y))[:3]
+                track['samples'].append(dict(ms=ticks,rgb=list(rgb)))
         # One continuous take. Do not create a misleading reset by looping
         # asynchronous groups whose periods do not share an eight-second cycle.
         frames[0].save(args.output/'breathing.webp',save_all=True,append_images=frames[1:],duration=100,loop=1,quality=90,method=3)
+        (args.output/'breathing-metrics.json').write_text(json.dumps(tracks,indent=2),encoding='utf-8')
+        # One compact overview of the established palettes, using actual renders.
+        board=pygame.Surface((1280,760)); board.fill((10,14,25))
+        font=pygame.font.Font(None,24)
+        for index,region in enumerate(art.NETWORK_PALETTES):
+            state.biome_active=region
+            render(art,times['peak'])
+            x,y=(index%2)*640,(index//2)*380
+            board.blit(pygame.transform.smoothscale(screen,(640,360)),(x,y+20))
+            label='Stone' if region=='Bastion of Stone' else art.region_name(region)
+            board.blit(font.render(label,True,(205,220,244)),(x+8,y))
+        pygame.image.save(board,str(args.output/'biome-palettes.png'))
+        state.biome_active='Bastion of Stone'
         # Inspect actual rendered light on a quiet patch of the chosen trunk.
         # No thumbnail resize or added labels alter the capture pixels.
         x,y=primary.points[len(primary.points)//2]

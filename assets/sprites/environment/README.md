@@ -22,22 +22,25 @@ during construction. Nearby stamps share eight independently breathing phase
 groups, merged only when the combined bounds stay small. Stone luminance
 modulates the light above a subtle dark groove. A static narrow base remains
 visible while the inner energy and glow breathe on varied 4.3–6.7 second cycles.
-Secondary vessels and capillaries use 52% and 36% of the primary illumination,
-respectively; larger junctions have stronger compact blooms. Region 04/Mountain
-uses cold cyan-blue vessels, electric-blue glow, and selective white-blue cores.
+Primary, secondary, and capillary illumination use baseline weights .85, .38,
+and .22. Short portions near existing major nodes receive stronger light; most
+segments remain subtle. Tiny stationary glints and sparse ambient fringes are
+baked into major nodes and follow their independent breathing phases.
 `NETWORK_PALETTES` in `zgame/neural_environment.py` defines independent
 `base_line`, `inner_line`, `outer_glow`, `node_core`, `node_glow`, and
-`ambient_glow` colors for each legacy region key. Wind stays airy blue,
-Forest jade, Fire coral, and Mountain cold blue. Ambient lavender is confined
-to Mountain's faint outer halo. Source node hue is discarded through grayscale
-before palette tinting, so warm and green regions do not inherit a cyan core.
+`ambient_glow` colors for each legacy region key. The standing October 22
+direction is Wind cyan-blue, Forest purple, Fire red, and Stone pale gold/yellow.
+Stone retains the internal Mountain/Bastion of Stone keys. Ambient colors are
+confined to selected strong nodes and short neighboring segments. Source node
+hue is discarded through grayscale before palette tinting, so regions do not
+inherit a baked cyan core.
 Palette colors are baked into existing cached stamps; breathing only changes
 their opacity, with no extra per-frame layers or geometry changes. Edit these
 source configs before starting a run (runtime hot-swapping is not provided).
 Node cutouts are converted once to the display's
 alpha format to avoid slow repeated format conversion. Offscreen groups are skipped; visible
-groups use one batched blit call, with regular alpha on desktop and the measured
-faster SDL2 alpha path in WebAssembly. There are no traveling dots.
+groups use one batched blit call. Current development and validation target the
+native desktop game only, as recorded in the root AGENTS.md. There are no traveling dots.
 Camera motion changes position only.
 The initial obstacle layout determines a deterministic art seed; both are saved
 with snapshots so destruction and reload cannot rearrange the network. Existing

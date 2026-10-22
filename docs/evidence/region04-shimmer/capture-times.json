@@ -1,0 +1,21 @@
+{
+  "baseline": "d7ecf82",
+  "seed": 41,
+  "region": "Bastion of Stone",
+  "camera": [
+    -671,
+    465
+  ],
+  "target_group_phase": 1.5707963267948966,
+  "period_seconds": 6.044788599687456,
+  "times_ms": {
+    "dim": 3022,
+    "rising": 4534,
+    "peak": 6045
+  },
+  "topology_matches_checkpoint": true,
+  "trunk_screen_point": [
+    878,
+    375
+  ]
+}

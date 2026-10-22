@@ -1,15 +1,16 @@
 # Current visual evidence
 
-The active Region 04 network review is **region04-palette**. These are real desktop renderer captures, not concept artwork.
+The active desktop review is **region04-shimmer**. These are real desktop renderer captures, not concept artwork. Current colors are Wind cyan-blue, Forest purple, Fire red, and Stone pale gold/yellow.
 
-- [Previous palette, peak](region04-illumination/after-peak.png)
-- New palette: [dim](region04-palette/after-dim.png), [intermediate](region04-palette/after-rising.png), [peak](region04-palette/after-peak.png)
-- [Eight-second asynchronous breathing](region04-palette/breathing.webp)
-- [Live combat](region04-palette/live-combat.png) and [camera movement](region04-palette/live-camera.webp)
-- [Paired desktop measurements](region04-palette/desktop-profile.json), [live gameplay results](region04-palette/live-validation.json), [capture timing](region04-palette/capture-times.json)
-- [Palette implementation and validation](../region04-palette-validation.md)
+- [Four biome palettes](region04-shimmer/biome-palettes.png)
+- Stone: [dim](region04-shimmer/after-dim.png), [intermediate](region04-shimmer/after-rising.png), [peak](region04-shimmer/after-peak.png)
+- [Full breathing cycle](region04-shimmer/breathing.webp) and [measured node pixels through time](region04-shimmer/breathing-metrics.json)
+- [Paired desktop measurements](region04-shimmer/desktop-profile.json), [capture timing](region04-shimmer/capture-times.json)
+- [Desktop shimmer validation](../region04-desktop-shimmer-validation.md)
+- [Current desktop combat](region04-shimmer/live-combat.png) and [live validation](region04-shimmer/live-validation.json)
+- Historical cyan Region 04: [peak](region04-palette/after-peak.png), [combat](region04-palette/live-combat.png), [live gameplay results](region04-palette/live-validation.json), [earlier report](../region04-palette-validation.md)
 
-Only the selected central vessel group's phase determines the dim/intermediate/peak labels. Other groups remain asynchronous. The live-camera clip is condensed gameplay; the fixed-camera breathing clip preserves the actual animation timing.
+Only the selected central vessel group's phase determines the dim/intermediate/peak labels. Other groups remain asynchronous. The fixed-camera breathing clip preserves the actual animation timing.
 
 Older performance JSON files remain for comparison. Superseded environment/network screenshots and videos were removed; historical reports are marked accordingly. Those tracked files can be recovered from checkpoint `0aa3e05`. The parallax pair and unrelated summon captures remain useful independent evidence.
 
