@@ -5,9 +5,10 @@ randomness and cached surfaces, never the combat RNG or collision grid.
 """
 from functools import lru_cache
 import math
-import random
 
 import pygame
+
+from zgame.vessel_network import network_geometry, ribbon
 
 from zgame.paths import asset_candidates, first_existing_path
 
@@ -29,7 +30,7 @@ def region_name(legacy_id):
     return region_style(legacy_id)[0]
 
 
-@lru_cache(maxsize=6)
+@lru_cache(maxsize=32)
 def source_asset(name):
     path = first_existing_path(asset_candidates("sprites", "environment", name))
     return pygame.image.load(path) if path else None
@@ -228,122 +229,100 @@ def paint_floor(surface, grid, cell_w, cell_h, x0, y0, info):
     surface.blit(ground, (0,0))
 
 
-@lru_cache(maxsize=4)
-def network_paths(grid, region):
-    """Organic axons with tapered dendrites; all randomness is art-local."""
-    rng = random.Random(91417)
-    spacing = 6.0
-    count = math.ceil(grid/spacing)+2
-    nodes = {}
-    for row in range(count):
-        for col in range(count):
-            nodes[col,row] = ((col-.6)*spacing + rng.uniform(-1.2,1.2),
-                              (row-.6)*spacing + rng.uniform(-1.2,1.2))
-    paths = []
-    name = region_name(region)
-    for (col,row), a in nodes.items():
-        # Every row connected, alternating cross links: wide open cells.
-        neighbors = [(col+1,row)]
-        if (col+row)%2 == 0:
-            neighbors.append((col,row+1))
-        for neighbor in neighbors:
-            if neighbor not in nodes:
-                continue
-            b = nodes[neighbor]
-            dx,dy = b[0]-a[0],b[1]-a[1]
-            length = max(.01, math.hypot(dx,dy))
-            bend = rng.uniform(-1.25,1.25)
-            steps = 28
-            phase = rng.uniform(0,math.tau)
-            pts = []
-            for i in range(steps+1):
-                t = i/steps
-                sway = math.sin(math.pi*t)*bend
-                sway += math.sin(math.pi*t)*math.sin(t*math.tau*2+phase)*.22
-                if name == "Fire":
-                    sway += math.sin(math.pi*t)*math.sin(t*math.tau*5+phase)*.11
-                elif name == "Mountain":
-                    sway *= .7
-                pts.append((a[0]+dx*t-dy/length*sway, a[1]+dy*t+dx/length*sway))
-            paths.append((tuple(pts), True))
-            # Dim rootlike tributaries; the same calm density in all regions.
-            n = 6 if name == "Forest" else 4
-            for k in range(n):
-                mid = pts[(k+1)*steps//(n+1)]
-                side = -1 if rng.random()<.5 else 1
-                extent = rng.uniform(.6,1.6)
-                tip = (mid[0]-dy/length*side*extent+dx*.12,
-                       mid[1]+dx/length*side*extent+dy*.12)
-                branch = tuple((mid[0]+(tip[0]-mid[0])*t+math.sin(t*math.pi*2)*.10,
-                                mid[1]+(tip[1]-mid[1])*t+math.sin(t*math.pi)*.19)
-                               for t in (i/12 for i in range(13)))
-                paths.append((branch,False))
-                # Tiny forks occur only near a branch, leaving wide quiet gaps.
-                for j in (5,9):
-                    fork = branch[j]
-                    end = (fork[0]+dx/length*.42,fork[1]+dy/length*.42)
-                    paths.append(((fork,((fork[0]+end[0])*.5+.08,
-                                         (fork[1]+end[1])*.5-.05),end),False))
-    return tuple(paths)
-
-
 @lru_cache(maxsize=1)
 def network_surface(grid, cell_w, cell_h, info, size, x0, y0, region):
+    """Rasterize continuous vessel ribbons once; animate their light separately."""
     layer = pygame.Surface(size, pygame.SRCALPHA)
     color = region_style(region)[2]
+    paths, _ = network_geometry(grid, region_name(region))
     def project(p):
-        return (round((p[0]-p[1])*cell_w*.5-x0),
-                round((p[0]+p[1])*cell_h*.5+info-y0))
-    projected = [(tuple(project(p) for p in path), main) for path,main in network_paths(grid,region)]
-    # Draw halos first so crossings never erase a previously drawn core.
-    for pts,main in projected:
-        if main:
-            for radius,alpha in ((14,12),(9,25),(5,55)):
-                pygame.draw.circle(layer, (*color,alpha), pts[0], radius)
-            pygame.draw.lines(layer, (*color,12), False, pts, 19)
-            pygame.draw.lines(layer, (*color,27), False, pts, 9)
-            pygame.draw.lines(layer, (*color,62), False, pts, 5)
-    for pts,main in projected:
-        core = tuple(min(255,int(c*1.12+20)) for c in color)
-        pygame.draw.lines(layer, (*core,215 if main else 105), False, pts, 2 if main else 1)
-        if main:
-            pygame.draw.circle(layer, (*core,240), pts[0], 2)
+        return ((p[0]-p[1])*cell_w*.5-x0,
+                (p[0]+p[1])*cell_h*.5+info-y0)
+    projected = [(tuple(project(p) for p in path.points), path) for path in paths]
+    # Rasterize each whole curve at 2x in a tight temporary rectangle. A
+    # single downsample gives smooth coverage without dotted polygon seams,
+    # and avoids allocating a supersampled surface for the entire world.
+    core = tuple(min(255,round(c*1.12+12)) for c in color)
+    for points, path in projected:
+        margin = math.ceil(max(path.radii)*8*cell_w/82)+2
+        left = math.floor(min(p[0] for p in points))-margin
+        top = math.floor(min(p[1] for p in points))-margin
+        width = math.ceil(max(p[0] for p in points))-left+margin
+        height = math.ceil(max(p[1] for p in points))-top+margin
+        if not pygame.Rect(left,top,width,height).colliderect(layer.get_rect()):
+            continue
+        stamp = pygame.Surface((width*2,height*2),pygame.SRCALPHA)
+        local = tuple(((x-left)*2,(y-top)*2) for x,y in points)
+        for multiplier, alpha in ((8,10),(4,26),(2,58),(1,210)):
+            if not path.main and multiplier > 2:
+                continue
+            shape = ribbon(local,path.radii,multiplier*cell_w/82*2)
+            ink = (*(core if multiplier==1 else color),
+                   alpha if path.main else round(alpha*.75))
+            pygame.draw.polygon(stamp,ink,shape)
+        layer.blit(pygame.transform.smoothscale(stamp,(width,height)),(left,top))
     mask = pygame.Surface(size, pygame.SRCALPHA)
     pygame.draw.polygon(mask, (255,255,255,255), floor_outline(grid,cell_w,cell_h,x0,y0,info))
     layer.blit(mask, (0,0), special_flags=pygame.BLEND_RGBA_MULT)
-    if pygame.display.get_surface() is not None:
-        layer = layer.convert_alpha()
-    return layer
+    return layer.convert_alpha() if pygame.display.get_surface() else layer
+
+
+@lru_cache(maxsize=16)
+def illustrated_node(region, index):
+    names = ('node-small','node-medium','node-large','node-damaged')
+    source = source_asset('neural-parts-v2/'+names[index]+'.png')
+    if source is None:
+        return synapse_glow(region), (18,18)
+    # Grayscale keeps the supplied energy's luminance/alpha while allowing
+    # all four region palettes, including warm fire and mountain light.
+    image = pygame.transform.grayscale(source)
+    color = tuple(min(255,round(c*1.22+20)) for c in region_style(region)[2])
+    image.fill((*color,255),special_flags=pygame.BLEND_RGBA_MULT)
+    width = (100,120,140,110)[index]
+    height = round(width*2/3)
+    image = pygame.transform.smoothscale(image,(width,height))
+    # Original soma coordinates within each uniform atlas cell. Position the
+    # soma on the spline crossing, not the center of its asymmetric tendrils.
+    anchors = ((225,315),(206,295),(212,302),(223,308))
+    anchor = (round(anchors[index][0]*width/384),round(anchors[index][1]*height/512))
+    return image,anchor
 
 
 def draw_network(screen, cache, grid, cell_w, cell_h, info, region, camx, camy, ticks):
     layer = network_surface(grid,cell_w,cell_h,info,cache["surface"].get_size(),
                             cache["x0"],cache["y0"],region)
     period = region_style(region)[3]
-    layer.set_alpha(round(190+60*math.sin(ticks*.001*math.tau/period)), pygame.RLEACCEL)
-    # Source crop keeps both desktop and browser work bounded by the viewport.
+    phase = ticks*.001*math.tau/period
+    layer.set_alpha(round(190+60*math.sin(phase)), pygame.RLEACCEL)
     dest = pygame.Rect(round(cache["x0"]-camx),round(cache["y0"]-camy),*layer.get_size())
     visible = dest.clip(screen.get_rect())
     if visible.width and visible.height:
         screen.blit(layer, visible.topleft, visible.move(-dest.x,-dest.y),
                     special_flags=pygame.BLEND_ALPHA_SDL2)
-    # Local synapses breathe out of phase. This is a real animation layer,
-    # independent of the mineral floor and not a baked luminous texture.
-    glow = synapse_glow(region)
-    seen = set()
-    for path,main in network_paths(grid,region):
-        if not main or path[0] in seen:
-            continue
-        x,y = path[0]
-        seen.add((x,y))
+    paths,hubs = network_geometry(grid,region_name(region))
+    for index,(x,y) in enumerate(hubs):
         if not (1 < x < grid-1 and 1 < y < grid-1):
             continue
         sx,sy = round((x-y)*cell_w*.5-camx),round((x+y)*cell_h*.5+info-camy)
-        if not screen.get_rect().inflate(40,40).collidepoint(sx,sy):
+        if not screen.get_rect().inflate(160,100).collidepoint(sx,sy):
             continue
-        strength = (1+math.sin(ticks*.001*math.tau/period+x*.7+y*.4))*.5
-        glow.set_alpha(round(90+150*strength))
-        screen.blit(glow,(sx-18,sy-18))
+        image,anchor = illustrated_node(region,index%4)
+        image.set_alpha(round(110+65*(1+math.sin(phase+x*.7+y*.4))*.5))
+        screen.blit(image,(sx-anchor[0],sy-anchor[1]))
+    # Sparse moving light establishes flow along the actual route. It never
+    # jumps between disconnected line pieces or modifies collision/game RNG.
+    glow = synapse_glow(region)
+    glow.set_alpha(85)
+    for index,path in enumerate(paths):
+        if not path.main or index%2:
+            continue
+        point = int(((ticks*.000018+index*.137)%1)*(len(path.points)-1))
+        x,y = path.points[point]
+        if not (1 < x < grid-1 and 1 < y < grid-1):
+            continue
+        sx,sy = round((x-y)*cell_w*.5-camx),round((x+y)*cell_h*.5+info-camy)
+        if screen.get_rect().inflate(36,36).collidepoint(sx,sy):
+            screen.blit(glow,(sx-18,sy-18))
 
 
 @lru_cache(maxsize=4)
@@ -382,8 +361,46 @@ def wall_extrusion(wall_h, seed):
     return max(32,round(wall_h*scale)+(6 if seed&32 else 0)-(8 if seed&64 else 0))
 
 
+def structure_name(fragile, seed):
+    """Solid single-tile cutouts; loose rubble is not a blocking obstacle."""
+    family = (seed>>3)&3
+    if fragile:
+        return ('masonry-stump' if family==1 else
+                ('masonry-chipped' if seed&1 else 'masonry-fragile'))
+    if seed&64 or (seed&32 and seed&1):
+        return ('basalt-low','basalt-rooted','basalt-spire','basalt-rooted')[family]
+    return 'masonry-dark'
+
+
+def structure_wall(width, height, wall_h, color, seed):
+    fragile = color[0] > color[2]
+    source = source_asset('neural-parts-v2/'+structure_name(fragile,seed)+'.png')
+    if source is None:
+        return None
+    bounds = source.get_bounding_rect(min_alpha=20)
+    art = source.subsurface(bounds)
+    extrusion = wall_extrusion(wall_h,seed)
+    # Reserve the lower half-diamond for the actual footprint. Roots may
+    # overhang it, but the raised stone remains aligned with the one-cell hitbox.
+    roots_h = max(5,round(height*.28))
+    out_w = round(width*1.25)
+    result = pygame.transform.smoothscale(art,(out_w,extrusion+height+roots_h))
+    if seed&4:
+        result = pygame.transform.flip(result,True,False)
+    if seed&128:
+        result.fill((205,205,218,255),special_flags=pygame.BLEND_RGBA_MULT)
+    if fragile:
+        tint = round(255*min(1.0,max(.4,color[0]/147)))
+        result.fill((tint,tint,tint,255),special_flags=pygame.BLEND_RGBA_MULT)
+    return (result.convert_alpha() if pygame.display.get_surface() else result,
+            out_w//2,1+extrusion)
+
+
 @lru_cache(maxsize=256)
 def illustrated_wall(width, height, wall_h, color, seed):
+    derived = structure_wall(width,height,wall_h,color,seed)
+    if derived is not None:
+        return derived
     atlas = source_asset("neural-walls.png")
     if atlas is None:
         return None

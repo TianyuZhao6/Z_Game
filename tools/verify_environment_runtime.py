@@ -192,6 +192,22 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(len(signatures),4)
         self.assertEqual(random_before,random.getstate())
 
+    def test_animation_and_camera_motion_reuse_network_and_sprite_caches(self):
+        self.state.obstacles[10,8] = game.Obstacle(10,8,"Destructible",health=20)
+        camera = game.calculate_iso_camera(*self.player.rect.center)
+        for index in range(4):
+            art.illustrated_node(self.state.biome_active,index)
+        self.render(ticks=1000,camera=camera)
+        counts = (art.network_surface.cache_info().misses,
+                  art.illustrated_node.cache_info().misses,
+                  art.illustrated_wall.cache_info().misses)
+        for frame in range(1,9):
+            self.render(ticks=1000+frame*130,
+                        camera=(camera[0]+frame*3,camera[1]-frame*2))
+        self.assertEqual(counts,(art.network_surface.cache_info().misses,
+                                art.illustrated_node.cache_info().misses,
+                                art.illustrated_wall.cache_info().misses))
+
     def test_abyss_is_visible_beyond_transparent_floor_in_all_renderers(self):
         self.player = game.Player((20,4))
         camera = game.calculate_iso_camera(*self.player.rect.center)
@@ -250,12 +266,15 @@ class EnvironmentTests(unittest.TestCase):
                              pixels(lite.subsurface((100,100,250,150))))
 
     def test_wall_families_are_varied_stable_and_do_not_change_collision(self):
+        forms = set()
         for seed in (12,41,98,337,901):
             random.seed(seed)
             obs,_,_,_,_,_ = game.generate_game_entities(game.GRID_SIZE,70,10,6,game.MAIN_BLOCK_HEALTH)
             before = [(p,o.rect.copy(),o.health) for p,o in obs.items()]
             rng = random.getstate()
             selected = {p:art.wall_variant(*p,obs) for p in obs}
+            forms.update(art.structure_name(o.type == "Destructible",selected[p])
+                         for p,o in obs.items())
             restored = dict(reversed(list(obs.items())))
             self.assertEqual(selected,{p:art.wall_variant(*p,restored) for p in restored})
             self.assertGreaterEqual(len({(v>>3)&3 for v in selected.values()}),3)
@@ -274,6 +293,7 @@ class EnvironmentTests(unittest.TestCase):
                 self.assertEqual(selected[p]&27,art.wall_variant(*p,restored)&27)
             self.assertEqual(before,[(p,o.rect,o.health) for p,o in obs.items()])
             self.assertEqual(rng,random.getstate())
+        self.assertEqual(len(forms),7,"All seven source forms must occur across generated maps")
 
     def test_background_actual_blits_follow_camera_at_distinct_depths(self):
         class RecordedScreen:

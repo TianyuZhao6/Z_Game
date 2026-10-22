@@ -1,0 +1,221 @@
+{
+  "derivation": "AI-reconstructed cutouts from supplied references; lossless grid slicing, not literal extraction from flattened concepts.",
+  "parts": [
+    {
+      "file": "basalt-low.png",
+      "atlas": "exec-d6c4abd1-eb7e-4c72-86c3-0a4106c9ea48.png",
+      "source_rect": [
+        0,
+        0,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "basalt-spire.png",
+      "atlas": "exec-d6c4abd1-eb7e-4c72-86c3-0a4106c9ea48.png",
+      "source_rect": [
+        384,
+        0,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "masonry-dark.png",
+      "atlas": "exec-d6c4abd1-eb7e-4c72-86c3-0a4106c9ea48.png",
+      "source_rect": [
+        768,
+        0,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "basalt-rooted.png",
+      "atlas": "exec-d6c4abd1-eb7e-4c72-86c3-0a4106c9ea48.png",
+      "source_rect": [
+        1152,
+        0,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "masonry-fragile.png",
+      "atlas": "exec-d6c4abd1-eb7e-4c72-86c3-0a4106c9ea48.png",
+      "source_rect": [
+        0,
+        512,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "masonry-chipped.png",
+      "atlas": "exec-d6c4abd1-eb7e-4c72-86c3-0a4106c9ea48.png",
+      "source_rect": [
+        384,
+        512,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "masonry-stump.png",
+      "atlas": "exec-d6c4abd1-eb7e-4c72-86c3-0a4106c9ea48.png",
+      "source_rect": [
+        768,
+        512,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "rubble.png",
+      "atlas": "exec-d6c4abd1-eb7e-4c72-86c3-0a4106c9ea48.png",
+      "source_rect": [
+        1152,
+        512,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "node-small.png",
+      "atlas": "exec-a1abfb35-ab7c-4607-b474-6781884fffba.png",
+      "source_rect": [
+        0,
+        0,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "node-medium.png",
+      "atlas": "exec-a1abfb35-ab7c-4607-b474-6781884fffba.png",
+      "source_rect": [
+        384,
+        0,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "node-large.png",
+      "atlas": "exec-a1abfb35-ab7c-4607-b474-6781884fffba.png",
+      "source_rect": [
+        768,
+        0,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "node-damaged.png",
+      "atlas": "exec-a1abfb35-ab7c-4607-b474-6781884fffba.png",
+      "source_rect": [
+        1152,
+        0,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "junction-y.png",
+      "atlas": "exec-a1abfb35-ab7c-4607-b474-6781884fffba.png",
+      "source_rect": [
+        0,
+        512,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "junction-four.png",
+      "atlas": "exec-a1abfb35-ab7c-4607-b474-6781884fffba.png",
+      "source_rect": [
+        384,
+        512,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "capillary.png",
+      "atlas": "exec-a1abfb35-ab7c-4607-b474-6781884fffba.png",
+      "source_rect": [
+        768,
+        512,
+        384,
+        512
+      ]
+    },
+    {
+      "file": "terminal.png",
+      "atlas": "exec-a1abfb35-ab7c-4607-b474-6781884fffba.png",
+      "source_rect": [
+        1152,
+        512,
+        384,
+        512
+      ]
+    }
+  ],
+  "references": [
+    {
+      "file": "C:\\Users\\tiany\\Desktop\\Char Design\\map\\map00.png",
+      "sha256": "9879e23f4974354665d40a6f484e50de134b5d02e788dc463925c82ec1b9ea4f"
+    },
+    {
+      "file": "C:\\Users\\tiany\\Desktop\\Char Design\\map\\map01.png",
+      "sha256": "b37916193508d42b3d5f16a0225c949b2d5dd845771755339da193806c5d3571"
+    },
+    {
+      "file": "C:\\Users\\tiany\\Desktop\\Char Design\\map\\map02.png",
+      "sha256": "8db76f87e599806e40adc5d249b27a812f7154a1be0cb4e8e1fc51fb9220188b"
+    },
+    {
+      "file": "C:\\Users\\tiany\\Desktop\\Char Design\\ground network\\network01.png",
+      "sha256": "b49ff72c470d85053f5853a91f60a3b8181886b908540994bf9822f8d245ba56"
+    },
+    {
+      "file": "C:\\Users\\tiany\\Desktop\\Char Design\\ground network\\nw02.png",
+      "sha256": "35d529a19f43e9e76e8c134f4e89fbc18c8d6268068aebefdd48476f1642d5c1"
+    },
+    {
+      "file": "C:\\Users\\tiany\\Desktop\\Char Design\\ground network\\nw03.png",
+      "sha256": "374ff6ad8ad00461ad38f432ee39d069e1ce3e002c89d4b8aafaa38737fa694f"
+    }
+  ],
+  "tool": "Built-in image_gen; transparent_background=true",
+  "prompts": {
+    "structures": "Use case: background-extraction. Production GAME SPRITE CUTOUT ATLAS derived from the existing objects in the supplied reference images, not another concept sheet. Preserve their exact illustrated pixel-cluster stone and perforated neural roots style, muted blue/lavender colors matching image 2. Extract/reconstruct 8 isolated objects arranged in a STRICT uniform 4 columns by 2 rows grid on actual TRANSPARENT background, each object centered in its equal cell with generous empty margin and NO overlap. No lettering, no labels, no frame lines, no floor patch, no baked backdrop, no cast shadow outside object. Top row: (1) one compact low permanent dark basalt neural crag, rooted/pitted organic silhouette; (2) one taller permanent dark basalt spire with 2 uneven peaks and sparse pale lilac buds; (3) one square-footprint intact dark stone wall segment with thick isometric diamond cap, two stone courses and sparse roots; (4) a second irregular permanent basalt/root formation medium height, broad jagged broken crown. Bottom row: (1) pale cracked breakable masonry wall segment with square isometric footprint, thick diamond cap two courses, a few roots; (2) different pale breakable masonry segment with chipped cap and bigger cracks; (3) low broken pale stone wall stump on same square footprint; (4) small broken stone rubble with exposed roots. ALL wall objects viewed in SAME 2:1 isometric camera, vertical upright extrusion, stone footprint of EACH object fits exactly ONE SQUARE GAME TILE in world space, not long fence panels. Do not add faces, characters, large glowing gems or excessive glow. Keep objects legible and solid. Do not draw supporting tiles or ground under them. Match reference asset designs closely. High resolution 1536x1024 landscape atlas.",
+    "vessels": "Use case: background-extraction. Extract a production game NEURAL ENERGY sprite atlas from supplied asset reference sheets. Actual transparent background, no stone floor or any material beneath the energy, no text, no labels, no separators. Preserve reference cyan-blue illustrated luminous energy and tiny organically branching dendrites, delicate blue halo and white-cyan center; no dark solid backgrounds. STRICT uniform grid 4 columns by 2 rows, each motif isolated centered in equal cell with ample transparent margin. All eight motifs are flat GROUND OVERLAY elements in the same top-down texture plane, their soft glow MUST fade entirely to transparency before the cell boundary. Top row: small dim living synapse node with 3 curling tapered roots; medium soft synapse node with 4 smooth asymmetric roots; larger synapse node with 5 gently curved tapering roots; dim irregular damaged synapse node. Bottom row: organic Y bifurcation with smooth tangent-continuous arms and no sharp corners; organic 4-way junction with soft dim center and gently curling tapered arms; very small 3-way capillary branch with feather-thin ends; tiny fading terminal sprout with branching hairs. Avoid spiky starbursts, laser beams, geometric rings, straight lines and circuitry. These are fluid vessel-like nerves. Maintain small dim cyan cores and broad transparent falloff suitable for subtle breathing animation. Long roots smoothly taper outward. No duplicate animation frames. 1536x1024 landscape atlas."
+  },
+  "runtime": {
+    "walls": [
+      "basalt-low.png",
+      "basalt-spire.png",
+      "masonry-dark.png",
+      "basalt-rooted.png",
+      "masonry-fragile.png",
+      "masonry-chipped.png",
+      "masonry-stump.png"
+    ],
+    "nodes": [
+      "node-small.png",
+      "node-medium.png",
+      "node-large.png",
+      "node-damaged.png"
+    ],
+    "optional_inventory": [
+      "rubble.png",
+      "junction-y.png",
+      "junction-four.png",
+      "capillary.png",
+      "terminal.png"
+    ],
+    "note": "Loose rubble is not used as an invisible blocking wall. Continuous long vessels and Y junctions are generated in world space, not tiled from these optional motifs."
+  }
+}

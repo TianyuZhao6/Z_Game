@@ -13,6 +13,8 @@ from unittest.mock import patch
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--visible', action='store_true')
+parser.add_argument('--seed', type=int, default=41)
+parser.add_argument('--output-dir', type=Path)
 parser.add_argument('--reference-review', action='store_true',
                     help='Capture center/edge compositions and a breathing animation from the real renderer.')
 args = parser.parse_args()
@@ -29,7 +31,7 @@ pygame.init()
 screen = pygame.display.set_mode((1536,1024) if args.reference_review else (1280,720))
 game.VIEW_W, game.VIEW_H = screen.get_size()
 game.reset_run_state()
-random.seed(41)
+random.seed(args.seed)
 obstacles,items,pos,enemy_positions,_,decor = game.generate_game_entities(
     game.GRID_SIZE, 70, 10, 6, game.MAIN_BLOCK_HEALTH)
 state = game.GameState(obstacles,items,[],decor)
@@ -43,7 +45,7 @@ skull = state.companions[0]
 skull.x = player.x + game.CELL_SIZE*2
 skull.y = player.y
 skull.rect.topleft = (round(skull.x),round(skull.y)+game.INFO_BAR_HEIGHT)
-out = ROOT/'TEMP'/'environment-preview'
+out = args.output_dir or ROOT/'TEMP'/'environment-preview'
 out.mkdir(parents=True,exist_ok=True)
 if args.reference_review:
     # Normal generated collision layout. Only review camera/actor placement and
@@ -71,6 +73,19 @@ if args.reference_review:
         frames.append(Image.frombytes('RGB',screen.get_size(),pygame.image.tobytes(screen,'RGB')))
     frames[0].save(out/'refined-breathing.webp',save_all=True,append_images=frames[1:],
                    duration=200,loop=0,quality=82,method=4)
+    # Actual-size inspection viewport, centered on an interior branch node.
+    # This changes the camera only; no generated artwork replaces the scene.
+    from zgame.vessel_network import network_geometry
+    hubs = network_geometry(game.GRID_SIZE,'Wind')[1]
+    node = min((p for p in hubs if 8<p[0]<28 and 8<p[1]<28),
+               key=lambda p:abs(p[0]-18)+abs(p[1]-18))
+    screen = pygame.display.set_mode((960,640))
+    game.VIEW_W,game.VIEW_H = screen.get_size()
+    cam = ((node[0]-node[1])*game.ISO_CELL_W*.5-480,
+           (node[0]+node[1])*game.ISO_CELL_H*.5+game.INFO_BAR_HEIGHT-320)
+    with patch.object(pygame.time,'get_ticks',return_value=1600):
+        game.render_game_iso(screen,state,player,[],[],[],override_cam=cam,copy_frame=False)
+    pygame.image.save(screen,str(out/'refined-branching.png'))
     print('Reference review captures:',out)
     pygame.quit()
     sys.exit(0)
