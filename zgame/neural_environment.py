@@ -18,7 +18,7 @@ REGIONS = {
     "Domain of Wind": ("Wind", "风", (45, 145, 235), 6.4),
     "Misty Forest": ("Forest", "林", (87, 170, 133), 7.8),
     "Scorched Hell": ("Fire", "火", (211, 120, 83), 5.6),
-    "Bastion of Stone": ("Mountain", "山", (174, 151, 103), 9.2),
+    "Bastion of Stone": ("Mountain", "山", (48, 155, 225), 9.2),
 }
 DEFAULT_REGION = "Domain of Wind"
 
@@ -284,7 +284,7 @@ def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=9141
     """Cache tight branch stamps; only their opacity changes during play."""
     underlay = pygame.Surface(size,pygame.SRCALPHA)
     color = region_style(region)[2]
-    core = tuple(min(255,round(c*1.12+18)) for c in color)
+    core = tuple(min(255,round(c*.80+76)) for c in color)
     paths,_ = network_geometry(grid,region_name(region),seed,blocked)
     stamps=[]
     # Use the actual stone material's luminance to break up emissive coverage.
@@ -302,13 +302,21 @@ def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=9141
         local=tuple(((x-left)*2,(y-top)*2) for x,y in points)
         # A quiet mineral groove anchors the light underneath the surface.
         pygame.draw.polygon(underlay,(12,24,40,38),ribbon(points,path.radii,2.4))
-        pygame.draw.polygon(underlay,(*color,24),ribbon(points,path.radii,1.25))
-        for multiplier,alpha in ((7,9),(3.5,27),(1.7,62),(.65,210)):
+        hierarchy = {'trunk':1.0,'secondary':.52,'capillary':.36}[path.kind]
+        # The narrow base is static; only the cached energy/glow stamp breathes.
+        # Per-segment alpha retains the terminal fade even at minimum light.
+        base=ribbon(points,path.radii,.85)
+        n=len(points)
+        for k in range(n-1):
+            strength=(path.strengths[k]+path.strengths[k+1])*.5
+            pygame.draw.polygon(underlay,(*color,round((38+26*hierarchy)*strength)),
+                                (base[k],base[k+1],base[2*n-2-k],base[2*n-1-k]))
+        for multiplier,alpha in ((7,20),(3.5,64),(1.7,142),(.65,255)):
             outline=ribbon(local,path.radii,multiplier*cell_w/82*2)
             n=len(local)
             left_edge,right_edge=outline[:n],outline[n:][::-1]
             for k in range(n-1):
-                strength=(path.strengths[k]+path.strengths[k+1])*.5
+                strength=(path.strengths[k]+path.strengths[k+1])*.5*hierarchy
                 ink=(*(core if multiplier<1 else color),round(alpha*strength))
                 pygame.draw.polygon(stamp,ink,(left_edge[k],left_edge[k+1],right_edge[k+1],right_edge[k]))
         stamp=pygame.transform.smoothscale(stamp,(width,height))
@@ -349,7 +357,7 @@ def illustrated_node(region, index):
     if source is None:
         return synapse_glow(region), (18,18)
     # Grayscale keeps the supplied energy's luminance/alpha while allowing
-    # all four region palettes, including warm fire and mountain light.
+    # region palettes; Region 04 now shares the restrained cyan-blue family.
     image = pygame.transform.grayscale(source)
     color = tuple(min(255,round(c*1.22+20)) for c in region_style(region)[2])
     image.fill((*color,255),special_flags=pygame.BLEND_RGBA_MULT)
@@ -360,8 +368,17 @@ def illustrated_node(region, index):
     # soma on the spline crossing, not the center of its asymmetric tendrils.
     anchors = ((225,315),(206,295),(212,302),(223,308))
     anchor = (round(anchors[index][0]*width/384),round(anchors[index][1]*height/512))
-    pygame.draw.circle(image,(170,225,248,240),anchor,2 if index==2 else 1)
-    return image,anchor
+    # A compact soma bloom makes major junctions read at gameplay scale.
+    # This is baked once into the existing cutout, never rebuilt per frame.
+    halo=pygame.Surface(image.get_size(),pygame.SRCALPHA)
+    radius=(6,8,12,5)[index]
+    for r in range(radius,0,-1):
+        pygame.draw.circle(halo,(*color,round(75*(1-r/(radius+1))**1.5)),anchor,r)
+    image.blit(halo,(0,0))
+    pygame.draw.circle(image,(166,230,255,250),anchor,3 if index==2 else 1)
+    # PNG channel order otherwise takes the generic per-pixel alpha path.
+    # Convert once at construction, keeping exactly the same RGBA pixels.
+    return (image.convert_alpha() if pygame.display.get_surface() else image),anchor
 
 
 def draw_network(screen, cache, grid, cell_w, cell_h, info, region, camx, camy, ticks, state=None):
@@ -393,7 +410,8 @@ def draw_network(screen, cache, grid, cell_w, cell_h, info, region, camx, camy, 
             continue
         index=node.rank if node.rank else (3 if int(node.phase*10)%5==0 else 0)
         image,anchor=illustrated_node(region,index)
-        image.set_alpha(branch_alpha(node.phase-.25,ticks))
+        energy=branch_alpha(node.phase-.25,ticks)-24
+        image.set_alpha(min(255,round(34+energy*(1.12 if node.rank==2 else .73))))
         screen.blit(image,(sx-anchor[0],sy-anchor[1]))
 
 

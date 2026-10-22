@@ -35,10 +35,15 @@ def layout_seed(blocked):
     return value
 
 
+def breathing_profile(phase):
+    """Fixed illumination parameters; independent of geometry and frame rate."""
+    return (5.5+1.2*math.sin(phase*1.7),
+            172+44*(.5+.5*math.sin(phase*2.31+.6)))
+
+
 def branch_alpha(phase,ticks):
-    # Nearby branches can share a rhythm without the whole map flashing.
-    period=3.5+.65*math.sin(phase*1.7)
-    return round(155+90*(.5+.5*math.sin(ticks*.001*math.tau/period+phase)))
+    period,amplitude=breathing_profile(phase)
+    return round(24+amplitude*(.5+.5*math.sin(ticks*.001*math.tau/period+phase)))
 
 
 def point_clear(point,grid,blocked,margin=.20):

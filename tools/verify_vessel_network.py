@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 import pygame
 from zgame import neural_environment as art
-from zgame.vessel_network import network_geometry, point_clear, branch_alpha, layout_seed
+from zgame.vessel_network import network_geometry, point_clear, branch_alpha, layout_seed, breathing_profile
 
 
 def direction(a,b):
@@ -42,6 +42,18 @@ class VesselTests(unittest.TestCase):
                 if not path.main:
                     self.assertLess(path.radii[-1],path.radii[0]*.1)
                     self.assertEqual(path.strengths[-1],0)
+
+    def test_breathing_has_long_varied_cycles_and_a_visible_energy_range(self):
+        profiles=[breathing_profile(i*math.tau/8) for i in range(8)]
+        self.assertGreater(max(p[0] for p in profiles)-min(p[0] for p in profiles),1)
+        self.assertGreater(max(p[1] for p in profiles)-min(p[1] for p in profiles),20)
+        for i,(period,amplitude) in enumerate(profiles):
+            self.assertTrue(4<=period<=7)
+            phase=i*math.tau/8
+            samples=[branch_alpha(phase,t) for t in range(0,14000,17)]
+            self.assertLessEqual(min(samples),25)
+            self.assertGreaterEqual(max(samples),190)
+            self.assertLessEqual(max(abs(a-b) for a,b in zip(samples,samples[1:])),3)
 
     def test_seeded_graph_has_local_hierarchy_and_global_coverage(self):
         signatures=set()
