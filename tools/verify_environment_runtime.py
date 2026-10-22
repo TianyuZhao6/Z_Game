@@ -250,6 +250,36 @@ class EnvironmentTests(unittest.TestCase):
                     self.assertEqual(pixels(a.subsurface((37, 23, 663, 477))),
                                      pixels(b.subsurface((0, 0, 663, 477))))
 
+    def test_region04_energy_visibly_changes_without_losing_the_base(self):
+        from zgame.vessel_network import breathing_profile, network_geometry
+        from PIL import Image, ImageChops
+        path=next(p for p in network_geometry(36,'Mountain')[0] if p.main)._replace(phase=0)
+        mid=path.points[len(path.points)//2]
+        camera=((mid[0]-mid[1])*game.ISO_CELL_W*.5-320,
+                (mid[0]+mid[1])*game.ISO_CELL_H*.5+game.INFO_BAR_HEIGHT-240)
+        cache={'surface':pygame.Surface((36*game.ISO_CELL_W+1,36*game.ISO_CELL_H+81)),
+               'x0':-18*game.ISO_CELL_W,'y0':0}
+        period,_=breathing_profile(0)
+        frames=[]
+        art.network_material.cache_clear(); art.network_surface.cache_clear()
+        with patch.object(art,'network_geometry',return_value=((path,),())):
+            for time_in_cycle in (.75,1,1.25):
+                target=pygame.Surface((640,480)); target.fill((30,40,60))
+                art.draw_network(target,cache,36,game.ISO_CELL_W,game.ISO_CELL_H,
+                                 game.INFO_BAR_HEIGHT,'Bastion of Stone',*camera,round(period*1000*time_in_cycle))
+                sample=target.subsurface((310,230,20,20))
+                frames.append(Image.frombytes('RGB',sample.get_size(),pygame.image.tobytes(sample,'RGB')))
+        self.assertGreater(frames[0].getextrema()[2][1],65,'Vessel remains visible at minimum')
+        self.assertGreater(ImageChops.difference(frames[0],frames[2]).getextrema()[2][1],35,
+                           'Actual composited light needs a perceptible dim/peak difference')
+        self.assertLess(frames[0].getextrema()[2][1],frames[1].getextrema()[2][1])
+        self.assertLess(frames[1].getextrema()[2][1],frames[2].getextrema()[2][1])
+        color=art.region_style('Bastion of Stone')[2]
+        self.assertGreater(color[2],color[0]*2,'Region 04 must use cyan-blue instead of gold')
+        expected=pygame.Surface((1,1),pygame.SRCALPHA).convert_alpha().get_masks()
+        for index in range(4): self.assertEqual(art.illustrated_node('Bastion of Stone',index)[0].get_masks(),expected)
+        art.network_material.cache_clear(); art.network_surface.cache_clear()
+
     def test_saved_network_layout_survives_wall_destruction_and_real_resume(self):
         import asyncio
         import json

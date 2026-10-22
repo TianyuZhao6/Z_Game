@@ -110,7 +110,9 @@ def main():
         for ticks in range(times['dim'],times['dim']+8000,100):
             render(art,ticks)
             frames.append(Image.frombytes('RGB',screen.get_size(),pygame.image.tobytes(screen,'RGB')))
-        frames[0].save(args.output/'breathing.webp',save_all=True,append_images=frames[1:],duration=100,loop=0,quality=90,method=3)
+        # One continuous take. Do not create a misleading reset by looping
+        # asynchronous groups whose periods do not share an eight-second cycle.
+        frames[0].save(args.output/'breathing.webp',save_all=True,append_images=frames[1:],duration=100,loop=1,quality=90,method=3)
         # Inspect actual rendered light on a quiet patch of the chosen trunk.
         # No thumbnail resize or added labels alter the capture pixels.
         x,y=primary.points[len(primary.points)//2]
@@ -123,6 +125,7 @@ def main():
     cells=dict(zip(game.render_game_iso.__code__.co_freevars,game.render_game_iso.__closure__))
     profiler_cell=cells['_web_profiler']; original_profiler=profiler_cell.cell_contents
     presentation_cell=cells['_present_gameplay_render']; original_present=presentation_cell.cell_contents
+    floor_cell=cells['_blit_iso_floor']; original_floor=floor_cell.cell_contents
     current=Counters()
     profiler_cell.cell_contents=lambda:current
     def present(*a,**kw):
@@ -130,6 +133,20 @@ def main():
         current.counter('presentation_ms',(time.perf_counter()-start)*1000)
         return result
     presentation_cell.cell_contents=present
+    def floor(*a,**kw):
+        start=time.perf_counter(); result=original_floor(*a,**kw)
+        current.counter('world_floor_including_abyss_ms',(time.perf_counter()-start)*1000)
+        return result
+    floor_cell.cell_contents=floor
+    world_functions=[]
+    for module in modules.values():
+        for fn,label in (('draw_platform_rim','world_rim_ms'),('draw_abyss','world_abyss_ms')):
+            original=getattr(module,fn); world_functions.append((module,fn,original))
+            def measured(*a,_original=original,_label=label,**kw):
+                start=time.perf_counter(); result=_original(*a,**kw)
+                current.counter(_label,(time.perf_counter()-start)*1000)
+                return result
+            setattr(module,fn,measured)
     originals={name:module.draw_network for name,module in modules.items()}
     for name,module in modules.items():
         def instrumented(target,*a,_original=originals[name],**kw):
@@ -164,6 +181,8 @@ def main():
                 results.append(dict(scene=scene,version=name,enemies=len(enemies),cold_frame_ms=cold[name],metrics=metrics))
     finally:
         profiler_cell.cell_contents=original_profiler; presentation_cell.cell_contents=original_present
+        floor_cell.cell_contents=original_floor
+        for module,fn,original in world_functions: setattr(module,fn,original)
         for name,module in modules.items(): module.draw_network=originals[name]
     metadata.update(runtime=sys.platform,viewport=[1280,720],driver=pygame.display.get_driver(),samples_per_scene=80,
                     note='Paired alternating desktop render timings; dense fixture is 72 static actors. Live combat is tested separately.',results=results)

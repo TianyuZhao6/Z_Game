@@ -20,8 +20,13 @@ keep the curves from looking like uniformly painted wires.
 The renderer caches tightly bounded branch stamps, with supersampling only
 during construction. Nearby stamps share eight independently breathing phase
 groups, merged only when the combined bounds stay small. Stone luminance
-modulates the light above a subtle dark groove. Groups and individual nodes
-breathe on roughly 2.85–4.15 second cycles. Offscreen groups are skipped; visible
+modulates the light above a subtle dark groove. A static narrow base remains
+visible while the inner energy and glow breathe on varied 4.3–6.7 second cycles.
+Secondary vessels and capillaries use 52% and 36% of the primary illumination,
+respectively; larger junctions have stronger compact blooms. Region 04/Mountain
+uses restrained cyan-blue rather than the previous gold palette. The other
+region colors are unchanged. Node cutouts are converted once to the display's
+alpha format to avoid slow repeated format conversion. Offscreen groups are skipped; visible
 groups use one batched blit call, with regular alpha on desktop and the measured
 faster SDL2 alpha path in WebAssembly. There are no traveling dots.
 Camera motion changes position only.

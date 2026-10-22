@@ -26,59 +26,59 @@
       "scene": "still",
       "version": "before",
       "enemies": 6,
-      "cold_frame_ms": 1133.091,
+      "cold_frame_ms": 1123.374,
       "metrics": {
         "network_base_ms": {
-          "mean": 0.36,
-          "p95": 0.467
+          "mean": 0.352,
+          "p95": 0.418
         },
         "network_glow_ms": {
-          "mean": 0.914,
-          "p95": 1.155
+          "mean": 0.909,
+          "p95": 1.15
         },
         "network_nodes_ms": {
-          "mean": 6.693,
-          "p95": 7.097
+          "mean": 6.783,
+          "p95": 7.209
         },
         "network_total_ms": {
-          "mean": 8.376,
-          "p95": 9.129
+          "mean": 8.475,
+          "p95": 9.071
         },
         "presentation_ms": {
           "mean": 0.012,
           "p95": 0.014
         },
         "r_actor_ms": {
-          "mean": 2.19,
-          "p95": 2.62
+          "mean": 2.221,
+          "p95": 2.528
         },
         "r_bg_fill_ms": {
-          "mean": 0.194,
-          "p95": 0.284
+          "mean": 0.187,
+          "p95": 0.211
         },
         "r_bg_floor_ms": {
-          "mean": 19.456,
-          "p95": 25.016
+          "mean": 19.647,
+          "p95": 24.973
         },
         "r_bg_ms": {
-          "mean": 19.71,
-          "p95": 25.368
+          "mean": 19.894,
+          "p95": 25.211
         },
         "r_enemy_actor_ms": {
-          "mean": 0.12,
-          "p95": 0.159
+          "mean": 0.125,
+          "p95": 0.164
         },
         "r_fog_ms": {
           "mean": 0.002,
           "p95": 0.002
         },
         "r_fx_ms": {
-          "mean": 0.001,
+          "mean": 0.002,
           "p95": 0.002
         },
         "r_ghost_ms": {
           "mean": 0.001,
-          "p95": 0.002
+          "p95": 0.001
         },
         "r_ground_ms": {
           "mean": 0.003,
@@ -86,59 +86,71 @@
         },
         "r_hazard_ms": {
           "mean": 0.004,
-          "p95": 0.005
+          "p95": 0.004
         },
         "r_hurricane_ms": {
           "mean": 0.002,
           "p95": 0.002
         },
         "r_lantern_ms": {
-          "mean": 0.004,
+          "mean": 0.003,
           "p95": 0.004
         },
         "r_paint_ms": {
           "mean": 0.048,
-          "p95": 0.163
+          "p95": 0.157
         },
         "r_pickup_actor_ms": {
           "mean": 0.0,
           "p95": 0.0
         },
         "r_player_actor_ms": {
-          "mean": 0.034,
-          "p95": 0.049
+          "mean": 0.036,
+          "p95": 0.059
         },
         "r_projectile_actor_ms": {
           "mean": 0.0,
           "p95": 0.0
         },
         "r_targeting_ms": {
-          "mean": 0.002,
+          "mean": 0.004,
           "p95": 0.003
         },
         "r_text_ms": {
-          "mean": 0.003,
+          "mean": 0.004,
           "p95": 0.004
         },
         "r_transition_ms": {
           "mean": 0.004,
-          "p95": 0.005
+          "p95": 0.006
         },
         "r_turret_actor_ms": {
           "mean": 0.0,
           "p95": 0.0
         },
         "r_ui_ms": {
-          "mean": 0.347,
-          "p95": 0.428
+          "mean": 0.356,
+          "p95": 0.479
         },
         "r_wall_actor_ms": {
-          "mean": 1.85,
-          "p95": 2.214
+          "mean": 1.87,
+          "p95": 2.18
         },
         "whole_frame_ms": {
-          "mean": 23.321,
-          "p95": 29.089
+          "mean": 23.569,
+          "p95": 29.211
+        },
+        "world_abyss_ms": {
+          "mean": 9.25,
+          "p95": 14.069
+        },
+        "world_floor_including_abyss_ms": {
+          "mean": 9.97,
+          "p95": 14.906
+        },
+        "world_rim_ms": {
+          "mean": 1.648,
+          "p95": 2.054
         }
       }
     },
@@ -146,178 +158,58 @@
       "scene": "still",
       "version": "after",
       "enemies": 6,
-      "cold_frame_ms": 890.501,
+      "cold_frame_ms": 884.703,
       "metrics": {
         "network_base_ms": {
-          "mean": 0.358,
-          "p95": 0.471
+          "mean": 0.362,
+          "p95": 0.453
         },
         "network_glow_ms": {
-          "mean": 0.906,
-          "p95": 1.159
+          "mean": 0.938,
+          "p95": 1.263
         },
         "network_nodes_ms": {
-          "mean": 0.64,
-          "p95": 0.827
+          "mean": 0.654,
+          "p95": 0.844
         },
         "network_total_ms": {
-          "mean": 2.334,
-          "p95": 2.813
+          "mean": 2.392,
+          "p95": 2.954
         },
         "presentation_ms": {
-          "mean": 0.013,
+          "mean": 0.012,
           "p95": 0.014
         },
         "r_actor_ms": {
-          "mean": 2.142,
-          "p95": 2.426
+          "mean": 2.153,
+          "p95": 2.498
         },
         "r_bg_fill_ms": {
-          "mean": 0.187,
-          "p95": 0.209
+          "mean": 0.196,
+          "p95": 0.253
         },
         "r_bg_floor_ms": {
-          "mean": 13.424,
-          "p95": 18.829
+          "mean": 13.616,
+          "p95": 19.176
         },
         "r_bg_ms": {
-          "mean": 13.666,
-          "p95": 19.083
+          "mean": 13.868,
+          "p95": 19.446
         },
         "r_enemy_actor_ms": {
-          "mean": 0.117,
-          "p95": 0.162
-        },
-        "r_fog_ms": {
-          "mean": 0.002,
-          "p95": 0.002
-        },
-        "r_fx_ms": {
-          "mean": 0.002,
-          "p95": 0.002
-        },
-        "r_ghost_ms": {
-          "mean": 0.001,
-          "p95": 0.001
-        },
-        "r_ground_ms": {
-          "mean": 0.003,
-          "p95": 0.003
-        },
-        "r_hazard_ms": {
-          "mean": 0.004,
-          "p95": 0.005
-        },
-        "r_hurricane_ms": {
-          "mean": 0.002,
-          "p95": 0.002
-        },
-        "r_lantern_ms": {
-          "mean": 0.004,
-          "p95": 0.004
-        },
-        "r_paint_ms": {
-          "mean": 0.051,
+          "mean": 0.122,
           "p95": 0.164
         },
-        "r_pickup_actor_ms": {
-          "mean": 0.0,
-          "p95": 0.0
-        },
-        "r_player_actor_ms": {
-          "mean": 0.033,
-          "p95": 0.046
-        },
-        "r_projectile_actor_ms": {
-          "mean": 0.0,
-          "p95": 0.0
-        },
-        "r_targeting_ms": {
-          "mean": 0.002,
-          "p95": 0.003
-        },
-        "r_text_ms": {
-          "mean": 0.003,
-          "p95": 0.004
-        },
-        "r_transition_ms": {
-          "mean": 0.004,
-          "p95": 0.004
-        },
-        "r_turret_actor_ms": {
-          "mean": 0.0,
-          "p95": 0.0
-        },
-        "r_ui_ms": {
-          "mean": 0.347,
-          "p95": 0.477
-        },
-        "r_wall_actor_ms": {
-          "mean": 1.804,
-          "p95": 2.017
-        },
-        "whole_frame_ms": {
-          "mean": 17.233,
-          "p95": 22.854
-        }
-      }
-    },
-    {
-      "scene": "moving",
-      "version": "before",
-      "enemies": 6,
-      "cold_frame_ms": 27.815,
-      "metrics": {
-        "network_base_ms": {
-          "mean": 0.312,
-          "p95": 0.388
-        },
-        "network_glow_ms": {
-          "mean": 0.872,
-          "p95": 1.2
-        },
-        "network_nodes_ms": {
-          "mean": 6.622,
-          "p95": 7.032
-        },
-        "network_total_ms": {
-          "mean": 8.232,
-          "p95": 8.934
-        },
-        "presentation_ms": {
-          "mean": 0.014,
-          "p95": 0.014
-        },
-        "r_actor_ms": {
-          "mean": 2.198,
-          "p95": 2.71
-        },
-        "r_bg_fill_ms": {
-          "mean": 0.191,
-          "p95": 0.225
-        },
-        "r_bg_floor_ms": {
-          "mean": 20.858,
-          "p95": 21.848
-        },
-        "r_bg_ms": {
-          "mean": 21.112,
-          "p95": 22.088
-        },
-        "r_enemy_actor_ms": {
-          "mean": 0.125,
-          "p95": 0.176
-        },
         "r_fog_ms": {
           "mean": 0.002,
           "p95": 0.002
         },
         "r_fx_ms": {
-          "mean": 0.001,
+          "mean": 0.002,
           "p95": 0.002
         },
         "r_ghost_ms": {
-          "mean": 0.001,
+          "mean": 0.002,
           "p95": 0.001
         },
         "r_ground_ms": {
@@ -326,18 +218,18 @@
         },
         "r_hazard_ms": {
           "mean": 0.004,
-          "p95": 0.005
+          "p95": 0.004
         },
         "r_hurricane_ms": {
           "mean": 0.002,
           "p95": 0.002
         },
         "r_lantern_ms": {
-          "mean": 0.004,
+          "mean": 0.003,
           "p95": 0.004
         },
         "r_paint_ms": {
-          "mean": 0.037,
+          "mean": 0.045,
           "p95": 0.161
         },
         "r_pickup_actor_ms": {
@@ -346,14 +238,14 @@
         },
         "r_player_actor_ms": {
           "mean": 0.033,
-          "p95": 0.046
+          "p95": 0.043
         },
         "r_projectile_actor_ms": {
           "mean": 0.0,
           "p95": 0.0
         },
         "r_targeting_ms": {
-          "mean": 0.002,
+          "mean": 0.003,
           "p95": 0.003
         },
         "r_text_ms": {
@@ -361,7 +253,7 @@
           "p95": 0.004
         },
         "r_transition_ms": {
-          "mean": 0.007,
+          "mean": 0.004,
           "p95": 0.006
         },
         "r_turret_actor_ms": {
@@ -369,16 +261,160 @@
           "p95": 0.0
         },
         "r_ui_ms": {
-          "mean": 0.35,
-          "p95": 0.412
+          "mean": 0.357,
+          "p95": 0.527
         },
         "r_wall_actor_ms": {
-          "mean": 1.847,
-          "p95": 2.214
+          "mean": 1.805,
+          "p95": 2.033
         },
         "whole_frame_ms": {
-          "mean": 24.772,
-          "p95": 26.229
+          "mean": 17.472,
+          "p95": 23.017
+        },
+        "world_abyss_ms": {
+          "mean": 9.294,
+          "p95": 14.238
+        },
+        "world_floor_including_abyss_ms": {
+          "mean": 10.014,
+          "p95": 15.07
+        },
+        "world_rim_ms": {
+          "mean": 1.666,
+          "p95": 2.131
+        }
+      }
+    },
+    {
+      "scene": "moving",
+      "version": "before",
+      "enemies": 6,
+      "cold_frame_ms": 28.066,
+      "metrics": {
+        "network_base_ms": {
+          "mean": 0.317,
+          "p95": 0.383
+        },
+        "network_glow_ms": {
+          "mean": 0.887,
+          "p95": 1.19
+        },
+        "network_nodes_ms": {
+          "mean": 6.648,
+          "p95": 7.02
+        },
+        "network_total_ms": {
+          "mean": 8.273,
+          "p95": 8.755
+        },
+        "presentation_ms": {
+          "mean": 0.013,
+          "p95": 0.015
+        },
+        "r_actor_ms": {
+          "mean": 2.229,
+          "p95": 2.632
+        },
+        "r_bg_fill_ms": {
+          "mean": 0.189,
+          "p95": 0.245
+        },
+        "r_bg_floor_ms": {
+          "mean": 21.055,
+          "p95": 22.295
+        },
+        "r_bg_ms": {
+          "mean": 21.307,
+          "p95": 22.533
+        },
+        "r_enemy_actor_ms": {
+          "mean": 0.121,
+          "p95": 0.158
+        },
+        "r_fog_ms": {
+          "mean": 0.002,
+          "p95": 0.002
+        },
+        "r_fx_ms": {
+          "mean": 0.002,
+          "p95": 0.002
+        },
+        "r_ghost_ms": {
+          "mean": 0.001,
+          "p95": 0.001
+        },
+        "r_ground_ms": {
+          "mean": 0.003,
+          "p95": 0.003
+        },
+        "r_hazard_ms": {
+          "mean": 0.004,
+          "p95": 0.004
+        },
+        "r_hurricane_ms": {
+          "mean": 0.002,
+          "p95": 0.002
+        },
+        "r_lantern_ms": {
+          "mean": 0.003,
+          "p95": 0.004
+        },
+        "r_paint_ms": {
+          "mean": 0.034,
+          "p95": 0.162
+        },
+        "r_pickup_actor_ms": {
+          "mean": 0.0,
+          "p95": 0.0
+        },
+        "r_player_actor_ms": {
+          "mean": 0.038,
+          "p95": 0.057
+        },
+        "r_projectile_actor_ms": {
+          "mean": 0.0,
+          "p95": 0.0
+        },
+        "r_targeting_ms": {
+          "mean": 0.003,
+          "p95": 0.003
+        },
+        "r_text_ms": {
+          "mean": 0.004,
+          "p95": 0.005
+        },
+        "r_transition_ms": {
+          "mean": 0.004,
+          "p95": 0.006
+        },
+        "r_turret_actor_ms": {
+          "mean": 0.0,
+          "p95": 0.0
+        },
+        "r_ui_ms": {
+          "mean": 0.362,
+          "p95": 0.496
+        },
+        "r_wall_actor_ms": {
+          "mean": 1.874,
+          "p95": 2.17
+        },
+        "whole_frame_ms": {
+          "mean": 24.996,
+          "p95": 26.423
+        },
+        "world_abyss_ms": {
+          "mean": 10.339,
+          "p95": 10.847
+        },
+        "world_floor_including_abyss_ms": {
+          "mean": 11.008,
+          "p95": 11.632
+        },
+        "world_rim_ms": {
+          "mean": 2.221,
+          "p95": 2.721
         }
       }
     },
@@ -386,47 +422,179 @@
       "scene": "moving",
       "version": "after",
       "enemies": 6,
-      "cold_frame_ms": 22.302,
+      "cold_frame_ms": 21.892,
       "metrics": {
         "network_base_ms": {
-          "mean": 0.312,
-          "p95": 0.396
+          "mean": 0.316,
+          "p95": 0.372
         },
         "network_glow_ms": {
-          "mean": 0.844,
-          "p95": 1.142
+          "mean": 0.879,
+          "p95": 1.116
         },
         "network_nodes_ms": {
-          "mean": 0.587,
-          "p95": 0.711
+          "mean": 0.594,
+          "p95": 0.716
         },
         "network_total_ms": {
-          "mean": 2.17,
-          "p95": 2.607
+          "mean": 2.223,
+          "p95": 2.752
         },
         "presentation_ms": {
           "mean": 0.013,
-          "p95": 0.014
+          "p95": 0.015
         },
         "r_actor_ms": {
-          "mean": 2.182,
-          "p95": 2.77
+          "mean": 2.208,
+          "p95": 2.623
         },
         "r_bg_fill_ms": {
-          "mean": 0.187,
-          "p95": 0.227
+          "mean": 0.186,
+          "p95": 0.207
         },
         "r_bg_floor_ms": {
-          "mean": 14.818,
-          "p95": 15.934
+          "mean": 14.947,
+          "p95": 15.874
         },
         "r_bg_ms": {
-          "mean": 15.062,
-          "p95": 16.17
+          "mean": 15.188,
+          "p95": 16.107
         },
         "r_enemy_actor_ms": {
-          "mean": 0.121,
-          "p95": 0.191
+          "mean": 0.123,
+          "p95": 0.203
+        },
+        "r_fog_ms": {
+          "mean": 0.002,
+          "p95": 0.002
+        },
+        "r_fx_ms": {
+          "mean": 0.002,
+          "p95": 0.002
+        },
+        "r_ghost_ms": {
+          "mean": 0.001,
+          "p95": 0.001
+        },
+        "r_ground_ms": {
+          "mean": 0.003,
+          "p95": 0.003
+        },
+        "r_hazard_ms": {
+          "mean": 0.004,
+          "p95": 0.004
+        },
+        "r_hurricane_ms": {
+          "mean": 0.002,
+          "p95": 0.002
+        },
+        "r_lantern_ms": {
+          "mean": 0.003,
+          "p95": 0.004
+        },
+        "r_paint_ms": {
+          "mean": 0.036,
+          "p95": 0.166
+        },
+        "r_pickup_actor_ms": {
+          "mean": 0.0,
+          "p95": 0.0
+        },
+        "r_player_actor_ms": {
+          "mean": 0.035,
+          "p95": 0.05
+        },
+        "r_projectile_actor_ms": {
+          "mean": 0.0,
+          "p95": 0.0
+        },
+        "r_targeting_ms": {
+          "mean": 0.003,
+          "p95": 0.003
+        },
+        "r_text_ms": {
+          "mean": 0.003,
+          "p95": 0.004
+        },
+        "r_transition_ms": {
+          "mean": 0.004,
+          "p95": 0.006
+        },
+        "r_turret_actor_ms": {
+          "mean": 0.0,
+          "p95": 0.0
+        },
+        "r_ui_ms": {
+          "mean": 0.362,
+          "p95": 0.473
+        },
+        "r_wall_actor_ms": {
+          "mean": 1.857,
+          "p95": 2.185
+        },
+        "whole_frame_ms": {
+          "mean": 18.865,
+          "p95": 20.042
+        },
+        "world_abyss_ms": {
+          "mean": 10.284,
+          "p95": 10.848
+        },
+        "world_floor_including_abyss_ms": {
+          "mean": 10.938,
+          "p95": 11.577
+        },
+        "world_rim_ms": {
+          "mean": 2.246,
+          "p95": 2.78
+        }
+      }
+    },
+    {
+      "scene": "dense",
+      "version": "before",
+      "enemies": 72,
+      "cold_frame_ms": 26.237,
+      "metrics": {
+        "network_base_ms": {
+          "mean": 0.325,
+          "p95": 0.438
+        },
+        "network_glow_ms": {
+          "mean": 0.909,
+          "p95": 1.138
+        },
+        "network_nodes_ms": {
+          "mean": 6.66,
+          "p95": 6.985
+        },
+        "network_total_ms": {
+          "mean": 8.333,
+          "p95": 8.949
+        },
+        "presentation_ms": {
+          "mean": 0.013,
+          "p95": 0.017
+        },
+        "r_actor_ms": {
+          "mean": 3.169,
+          "p95": 3.674
+        },
+        "r_bg_fill_ms": {
+          "mean": 0.19,
+          "p95": 0.246
+        },
+        "r_bg_floor_ms": {
+          "mean": 21.131,
+          "p95": 22.347
+        },
+        "r_bg_ms": {
+          "mean": 21.384,
+          "p95": 22.608
+        },
+        "r_enemy_actor_ms": {
+          "mean": 1.023,
+          "p95": 1.257
         },
         "r_fog_ms": {
           "mean": 0.002,
@@ -445,147 +613,27 @@
           "p95": 0.003
         },
         "r_hazard_ms": {
-          "mean": 0.005,
-          "p95": 0.005
+          "mean": 0.004,
+          "p95": 0.004
         },
         "r_hurricane_ms": {
           "mean": 0.002,
           "p95": 0.002
         },
         "r_lantern_ms": {
-          "mean": 0.004,
+          "mean": 0.003,
           "p95": 0.004
         },
         "r_paint_ms": {
-          "mean": 0.034,
-          "p95": 0.158
+          "mean": 0.026,
+          "p95": 0.026
         },
         "r_pickup_actor_ms": {
           "mean": 0.0,
           "p95": 0.0
         },
         "r_player_actor_ms": {
-          "mean": 0.04,
-          "p95": 0.053
-        },
-        "r_projectile_actor_ms": {
-          "mean": 0.0,
-          "p95": 0.0
-        },
-        "r_targeting_ms": {
-          "mean": 0.002,
-          "p95": 0.003
-        },
-        "r_text_ms": {
-          "mean": 0.003,
-          "p95": 0.005
-        },
-        "r_transition_ms": {
-          "mean": 0.004,
-          "p95": 0.005
-        },
-        "r_turret_actor_ms": {
-          "mean": 0.0,
-          "p95": 0.0
-        },
-        "r_ui_ms": {
-          "mean": 0.359,
-          "p95": 0.543
-        },
-        "r_wall_actor_ms": {
-          "mean": 1.834,
-          "p95": 2.395
-        },
-        "whole_frame_ms": {
-          "mean": 18.688,
-          "p95": 19.966
-        }
-      }
-    },
-    {
-      "scene": "dense",
-      "version": "before",
-      "enemies": 72,
-      "cold_frame_ms": 25.009,
-      "metrics": {
-        "network_base_ms": {
-          "mean": 0.319,
-          "p95": 0.394
-        },
-        "network_glow_ms": {
-          "mean": 0.906,
-          "p95": 1.191
-        },
-        "network_nodes_ms": {
-          "mean": 6.72,
-          "p95": 7.07
-        },
-        "network_total_ms": {
-          "mean": 8.378,
-          "p95": 8.88
-        },
-        "presentation_ms": {
-          "mean": 0.014,
-          "p95": 0.014
-        },
-        "r_actor_ms": {
-          "mean": 3.202,
-          "p95": 3.673
-        },
-        "r_bg_fill_ms": {
-          "mean": 0.193,
-          "p95": 0.244
-        },
-        "r_bg_floor_ms": {
-          "mean": 21.177,
-          "p95": 22.068
-        },
-        "r_bg_ms": {
-          "mean": 21.434,
-          "p95": 22.309
-        },
-        "r_enemy_actor_ms": {
-          "mean": 1.024,
-          "p95": 1.235
-        },
-        "r_fog_ms": {
-          "mean": 0.002,
-          "p95": 0.002
-        },
-        "r_fx_ms": {
-          "mean": 0.002,
-          "p95": 0.002
-        },
-        "r_ghost_ms": {
-          "mean": 0.001,
-          "p95": 0.002
-        },
-        "r_ground_ms": {
-          "mean": 0.003,
-          "p95": 0.003
-        },
-        "r_hazard_ms": {
-          "mean": 0.004,
-          "p95": 0.005
-        },
-        "r_hurricane_ms": {
-          "mean": 0.002,
-          "p95": 0.002
-        },
-        "r_lantern_ms": {
-          "mean": 0.004,
-          "p95": 0.004
-        },
-        "r_paint_ms": {
-          "mean": 0.026,
-          "p95": 0.03
-        },
-        "r_pickup_actor_ms": {
-          "mean": 0.0,
-          "p95": 0.0
-        },
-        "r_player_actor_ms": {
-          "mean": 0.026,
+          "mean": 0.028,
           "p95": 0.031
         },
         "r_projectile_actor_ms": {
@@ -593,12 +641,12 @@
           "p95": 0.0
         },
         "r_targeting_ms": {
-          "mean": 0.002,
+          "mean": 0.003,
           "p95": 0.003
         },
         "r_text_ms": {
-          "mean": 0.003,
-          "p95": 0.004
+          "mean": 0.004,
+          "p95": 0.005
         },
         "r_transition_ms": {
           "mean": 0.004,
@@ -609,16 +657,28 @@
           "p95": 0.0
         },
         "r_ui_ms": {
-          "mean": 0.371,
-          "p95": 0.471
+          "mean": 0.393,
+          "p95": 0.568
         },
         "r_wall_actor_ms": {
-          "mean": 1.939,
-          "p95": 2.264
+          "mean": 1.899,
+          "p95": 2.26
         },
         "whole_frame_ms": {
-          "mean": 26.275,
-          "p95": 27.452
+          "mean": 26.21,
+          "p95": 27.487
+        },
+        "world_abyss_ms": {
+          "mean": 10.333,
+          "p95": 10.922
+        },
+        "world_floor_including_abyss_ms": {
+          "mean": 10.993,
+          "p95": 11.687
+        },
+        "world_rim_ms": {
+          "mean": 2.247,
+          "p95": 2.758
         }
       }
     },
@@ -626,47 +686,47 @@
       "scene": "dense",
       "version": "after",
       "enemies": 72,
-      "cold_frame_ms": 19.598,
+      "cold_frame_ms": 19.224,
       "metrics": {
         "network_base_ms": {
-          "mean": 0.311,
-          "p95": 0.397
+          "mean": 0.319,
+          "p95": 0.391
         },
         "network_glow_ms": {
-          "mean": 0.886,
-          "p95": 1.186
+          "mean": 0.873,
+          "p95": 1.098
         },
         "network_nodes_ms": {
-          "mean": 0.603,
-          "p95": 0.737
+          "mean": 0.607,
+          "p95": 0.853
         },
         "network_total_ms": {
-          "mean": 2.234,
-          "p95": 2.657
+          "mean": 2.236,
+          "p95": 2.623
         },
         "presentation_ms": {
-          "mean": 0.012,
-          "p95": 0.013
+          "mean": 0.013,
+          "p95": 0.014
         },
         "r_actor_ms": {
-          "mean": 3.122,
-          "p95": 3.74
+          "mean": 3.146,
+          "p95": 3.723
         },
         "r_bg_fill_ms": {
-          "mean": 0.193,
-          "p95": 0.243
+          "mean": 0.187,
+          "p95": 0.222
         },
         "r_bg_floor_ms": {
-          "mean": 14.973,
-          "p95": 15.961
+          "mean": 15.046,
+          "p95": 16.132
         },
         "r_bg_ms": {
-          "mean": 15.225,
-          "p95": 16.193
+          "mean": 15.29,
+          "p95": 16.357
         },
         "r_enemy_actor_ms": {
-          "mean": 1.013,
-          "p95": 1.245
+          "mean": 1.007,
+          "p95": 1.361
         },
         "r_fog_ms": {
           "mean": 0.002,
@@ -686,42 +746,42 @@
         },
         "r_hazard_ms": {
           "mean": 0.004,
-          "p95": 0.005
+          "p95": 0.004
         },
         "r_hurricane_ms": {
           "mean": 0.002,
           "p95": 0.002
         },
         "r_lantern_ms": {
-          "mean": 0.004,
+          "mean": 0.003,
           "p95": 0.004
         },
         "r_paint_ms": {
           "mean": 0.025,
-          "p95": 0.028
+          "p95": 0.032
         },
         "r_pickup_actor_ms": {
           "mean": 0.0,
           "p95": 0.0
         },
         "r_player_actor_ms": {
-          "mean": 0.026,
-          "p95": 0.028
+          "mean": 0.028,
+          "p95": 0.03
         },
         "r_projectile_actor_ms": {
           "mean": 0.0,
           "p95": 0.0
         },
         "r_targeting_ms": {
-          "mean": 0.002,
+          "mean": 0.003,
           "p95": 0.003
         },
         "r_text_ms": {
           "mean": 0.003,
-          "p95": 0.004
+          "p95": 0.005
         },
         "r_transition_ms": {
-          "mean": 0.004,
+          "mean": 0.005,
           "p95": 0.006
         },
         "r_turret_actor_ms": {
@@ -729,16 +789,28 @@
           "p95": 0.0
         },
         "r_ui_ms": {
-          "mean": 0.368,
-          "p95": 0.46
+          "mean": 0.387,
+          "p95": 0.546
         },
         "r_wall_actor_ms": {
-          "mean": 1.876,
-          "p95": 2.333
+          "mean": 1.898,
+          "p95": 2.454
         },
         "whole_frame_ms": {
-          "mean": 19.956,
-          "p95": 21.162
+          "mean": 20.061,
+          "p95": 21.623
+        },
+        "world_abyss_ms": {
+          "mean": 10.352,
+          "p95": 11.125
+        },
+        "world_floor_including_abyss_ms": {
+          "mean": 11.018,
+          "p95": 11.789
+        },
+        "world_rim_ms": {
+          "mean": 2.253,
+          "p95": 2.841
         }
       }
     }
