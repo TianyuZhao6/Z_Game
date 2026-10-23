@@ -1191,9 +1191,9 @@ SPOILS_PER_TYPE = {  # average coins per enemy type (rounded when spawning)
     "splinterling": (0, 1),
     "ravager": (2, 5),
 }
-# --- Twin Boss (Level 5 only) ---
+# --- Twin Boss (Level 15 only; Level 5 uses the single boss) ---
 ENABLE_TWIN_BOSS = True
-TWIN_BOSS_LEVELS = {4}  # 关卡索引从0开始，4==第5关
+TWIN_BOSS_LEVELS = {14}  # Zero-based: 14 is level 15.
 TWIN_ENRAGE_ATK_MULT = 1.35
 TWIN_ENRAGE_SPD_ADD = 1
 # --- boss footprint (2x2 tiles) ---
@@ -1201,7 +1201,7 @@ BOSS_FOOTPRINT_TILES = 2  # 占格：2x2
 BOSS_VISUAL_MARGIN = 6  # 视觉矩形边缘略收一点，避免贴边穿帮
 BOSS_RADIUS_SHRINK = 0.98  # 圆半径微缩，减少“卡像素”感
 # === Boss Skill Tunables ===
-BOSS_SKILLS_ENABLED_LEVELS = {4}  # Lv-5 twin (0-indexed)
+BOSS_SKILLS_ENABLED_LEVELS = {14}  # Lv-15 twin (0-indexed)
 BOSS_TOXIC_DASH_CD = 6.0
 BOSS_TOXIC_DASH_WINDUP = 0.65
 BOSS_TOXIC_DASH_TIME = 0.55
