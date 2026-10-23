@@ -11,19 +11,21 @@ This directory contains the environment art and the reference-derived asset inve
 | `neural-cliff.png` | Alpha cliff strip with hanging fibers and peripheral growth |
 
 The animated network uses an unevenly spaced, map-seeded spatial graph in
-`zgame/vessel_network.py`. Nearby junctions connect through wall-aware curves.
-A minority of routes become thicker trunks; secondary connections feed
-tapered, dimming capillaries and split ends. Illustrated somas emphasize the
-junction hierarchy. Gentle width/wander variation and local dim interruptions
-keep the curves from looking like uniformly painted wires.
+`zgame/vessel_network.py`. A wall-aware sparse graph is assembled into long
+continuous cubic routes, with shared tangents and continuous width envelopes.
+Four spatially separated routes receive primary emphasis on a 36-cell map;
+secondary routes and irregular offshoots supply the finer structure. Sparse
+reconnections avoid isolated decorative trees without forming a regular mesh.
+Branches stop at three levels and leaf ends fade. Node art is masked down to
+its local soma: its old decorative tendrils no longer compete with the curves.
 
 The renderer caches tightly bounded branch stamps, with supersampling only
 during construction. Nearby stamps share eight independently breathing phase
 groups, merged only when the combined bounds stay small. Stone luminance
 modulates the light above a subtle dark groove. A static narrow base remains
 visible while the inner energy and glow breathe on varied 4.3–6.7 second cycles.
-Primary, secondary, and capillary illumination use baseline weights .85, .38,
-and .22. Short portions near existing major nodes receive stronger light; most
+Primary, secondary, and capillary illumination use baseline weights .85, .50,
+and .27. Short portions near existing major nodes receive stronger light; most
 segments remain subtle. Tiny stationary glints and sparse ambient fringes are
 baked into major nodes and follow their independent breathing phases.
 `NETWORK_PALETTES` in `zgame/neural_environment.py` defines independent
@@ -41,6 +43,8 @@ Node cutouts are converted once to the display's
 alpha format to avoid slow repeated format conversion. Offscreen groups are skipped; visible
 groups use one batched blit call. Current development and validation target the
 native desktop game only, as recorded in the root AGENTS.md. There are no traveling dots.
+Long cached images are partitioned into nonoverlapping cropped patches before
+batching, reducing transparent pixel work without changing the rendered pixels.
 Camera motion changes position only.
 The initial obstacle layout determines a deterministic art seed; both are saved
 with snapshots so destruction and reload cannot rearrange the network. Existing

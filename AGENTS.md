@@ -8,8 +8,10 @@
   Stone = pale gold to yellow. Stone uses the existing `Bastion of Stone` /
   `Mountain` identifiers internally. This decision supersedes older documents
   specifying cyan Region 04, jade Forest, or coral Fire.
-- Freeze the established network geometry, deterministic seeds, obstacle
-  handling, and world alignment. Refine illumination and palette configuration.
+- Refine network geometry toward long sweeping primary routes, natural tangent
+  branching, and sparse fading terminals. Preserve deterministic seeds,
+  obstacle handling, world alignment, and cached illumination. The latest
+  geometry-refinement request supersedes the earlier geometry freeze.
 - Keep most branches subdued. Use brighter short connections near selected
   major junctions, tiny hot glint centers, and sparse soft halos. Illumination
   breathes asynchronously; geometry stays still. Avoid uniform neon or particles.
