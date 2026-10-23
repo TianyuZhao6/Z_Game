@@ -6,7 +6,6 @@ injected; no player saves, combat rules or production artwork are modified.
 import asyncio
 import json
 import math
-import os
 from pathlib import Path
 import time
 
@@ -17,7 +16,6 @@ from zgame.vessel_network import network_geometry
 
 
 def main():
-    region=os.environ.get('NEURAL_REVIEW_REGION','Bastion of Stone')
     out=Path('TEMP/region04-light'); out.mkdir(parents=True,exist_ok=True)
     elapsed=0; layout=None; records={}; timings=[]; current=Counters()
     original_update=test.summons.update
@@ -41,7 +39,7 @@ def main():
     def update(g,state,dt,enemies):
         nonlocal elapsed,layout
         elapsed+=dt
-        geometry=network_geometry(g.GRID_SIZE,art.region_name(region),state.network_seed,state.network_obstacles)
+        geometry=network_geometry(g.GRID_SIZE,'Mountain',state.network_seed,state.network_obstacles)
         if layout is None: layout=geometry
         assert layout is geometry,'Layout rebuilt during gameplay'
         if elapsed>=3 and 'wall_destroyed' not in records:
@@ -65,14 +63,14 @@ def main():
     test.game.VIEW_W,test.game.VIEW_H=1280,720
     test.random.seed(947)
     try:
-        asyncio.run(test.scenario('region04-illumination-live',6,3,region))
+        asyncio.run(test.scenario('region04-illumination-live',6,3,'Bastion of Stone'))
         assert records['initial_blockers_preserved']
         warm=timings[20:]
         metrics={}
         for key in sorted(set().union(*(row.keys() for row in warm))):
             values=sorted(row.get(key,0) for row in warm)
             metrics[key]={'mean':round(sum(values)/len(values),3),'p95':round(values[int(len(values)*.95)],3)}
-        records.update(region=region,topology_unchanged_every_update=True,render_samples=len(warm),metrics=metrics,
+        records.update(topology_unchanged_every_update=True,render_samples=len(warm),metrics=metrics,
                        note='Actual dense level-loop render timings, excluding screenshot encoding. Simulation uses fixed 1/60 dt; this is not a display-refresh or whole-loop FPS measurement.')
         (out/'live.json').write_text(json.dumps(records,indent=2),encoding='utf-8')
     finally:

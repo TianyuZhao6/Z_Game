@@ -235,19 +235,6 @@ class EnvironmentTests(unittest.TestCase):
             self.assertLessEqual(max(abs(art.branch_alpha(phase, t+17)-art.branch_alpha(phase, t))
                                      for t in range(0, 8000, 17)), 3)
 
-    def test_long_route_cache_patches_preserve_every_pixel(self):
-        source=pygame.Surface((900,500),pygame.SRCALPHA)
-        pygame.draw.arc(source,(50,170,230,137),(10,10,880,480),0,math.pi,7)
-        pygame.draw.line(source,(120,220,250,217),(120,170),(810,330),2)
-        patches=art.batch_network_stamps(((source,(0,0),0.),))
-        self.assertLess(sum(s.get_width()*s.get_height() for s,_,_ in patches),900*500*.6)
-        for alpha in (24,130,230):
-            direct=pygame.Surface((900,500)); direct.fill((20,35,55))
-            assembled=direct.copy(); source.set_alpha(alpha); direct.blit(source,(0,0))
-            for surface,pos,_ in patches:
-                surface.set_alpha(alpha); assembled.blit(surface,pos)
-            self.assertEqual(pixels(direct),pixels(assembled),'Cropping must not add seams or change breathing')
-
     def test_batched_network_stays_world_anchored_across_camera_motion(self):
         self.render()
         cache = game._iso_floor_cache

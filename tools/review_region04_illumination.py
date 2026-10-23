@@ -34,7 +34,6 @@ def baseline_module(revision):
         exec(compile(code, f'{revision}/{filename}.py', 'exec'), module.__dict__)
         modules.append(module)
     modules[1].branch_alpha = modules[0].branch_alpha
-    modules[1].network_geometry = modules[0].network_geometry
     return modules[1], modules[0]
 
 
@@ -63,10 +62,8 @@ class NetworkScreen:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--baseline', default='5184282')
-    parser.add_argument('--output', type=Path, default=ROOT/'docs/evidence/network-routes')
-    parser.add_argument('--region', default='Domain of Wind', choices=tuple(art.NETWORK_PALETTES))
-    parser.add_argument('--seed-gallery', action='store_true')
+    parser.add_argument('--baseline', default='d7ecf82')
+    parser.add_argument('--output', type=Path, default=ROOT/'docs/evidence/region04-shimmer')
     parser.add_argument('--profile-only', action='store_true')
     parser.add_argument('--captures-only', action='store_true')
     args = parser.parse_args()
@@ -80,7 +77,7 @@ def main():
     obs, items, pos, positions, _, decor = game.generate_game_entities(game.GRID_SIZE,70,10,6,game.MAIN_BLOCK_HEALTH)
     state = game.GameState(obs, [], [], decor)
     state.current_level = 0
-    state.biome_active = args.region
+    state.biome_active = 'Bastion of Stone'
     player = game.Player(min(((x,y) for x in range(15,22) for y in range(15,22) if (x,y) not in obs),
                              key=lambda p:abs(p[0]-18)+abs(p[1]-18)))
     for _ in range(3): summons.purchase(game.META)
@@ -91,8 +88,8 @@ def main():
     camera = game.calculate_iso_camera(*player.rect.center)
     before, old_geometry = baseline_module(args.baseline)
     modules = {'before':before,'after':art}
-    paths,hubs = network_geometry(game.GRID_SIZE,art.region_name(args.region),state.network_seed,state.network_obstacles)
-    unchanged=(paths,hubs) == old_geometry.network_geometry(game.GRID_SIZE,art.region_name(args.region),state.network_seed,state.network_obstacles)
+    paths,hubs = network_geometry(game.GRID_SIZE,'Mountain',state.network_seed,state.network_obstacles)
+    assert (paths,hubs) == old_geometry.network_geometry(game.GRID_SIZE,'Mountain',state.network_seed,state.network_obstacles)
     primary = min((p for p in paths if p.main),key=lambda p:math.dist(p.points[len(p.points)//2],(18,18)))
     phase = round(primary.phase/math.tau*art.NETWORK_PHASES)%art.NETWORK_PHASES*math.tau/art.NETWORK_PHASES
     period,_ = breathing_profile(phase)
@@ -102,7 +99,7 @@ def main():
         with patch.object(render_runtime,'neural_environment',module), patch.object(pygame.time,'get_ticks',return_value=ticks):
             game.render_game_iso(screen,state,player,list(enemies),[],[],override_cam=cam,copy_frame=False)
     metadata = dict(baseline=args.baseline,seed=41,region=state.biome_active,camera=camera,target_group_phase=phase,
-                    period_seconds=period,times_ms=times,topology_matches_checkpoint=unchanged,network_seed=state.network_seed)
+                    period_seconds=period,times_ms=times,topology_matches_checkpoint=True)
     if not args.profile_only:
         for name,module in modules.items():
             for label,ticks in times.items():
@@ -138,28 +135,7 @@ def main():
             label='Stone' if region=='Bastion of Stone' else art.region_name(region)
             board.blit(font.render(label,True,(205,220,244)),(x+8,y))
         pygame.image.save(board,str(args.output/'biome-palettes.png'))
-        state.biome_active=args.region
-        if args.seed_gallery:
-            saved_seed=state.network_seed
-            seed_metrics=[]
-            for seed in (12,41,98,337,901):
-                state.network_seed=seed
-                start=time.perf_counter()
-                routes,nodes=network_geometry(game.GRID_SIZE,art.region_name(args.region),seed,state.network_obstacles)
-                generation_ms=(time.perf_counter()-start)*1000
-                visible=[]
-                for route in routes:
-                    if not route.main: continue
-                    projected=[((x-y)*game.ISO_CELL_W*.5-camera[0],
-                                (x+y)*game.ISO_CELL_H*.5+game.INFO_BAR_HEIGHT-camera[1]) for x,y in route.points]
-                    if any(0<x<1280 and 40<y<720 for x,y in projected):
-                        visible.append(round(max(x for x,y in projected)-min(x for x,y in projected),1))
-                seed_metrics.append(dict(seed=seed,generation_ms=round(generation_ms,3),paths=len(routes),
-                    nodes=len(nodes),visible_major_widths_px=visible))
-                render(art,times['peak'])
-                pygame.image.save(screen,str(args.output/f'seed-{seed}.png'))
-            (args.output/'seed-metrics.json').write_text(json.dumps(seed_metrics,indent=2),encoding='utf-8')
-            state.network_seed=saved_seed
+        state.biome_active='Bastion of Stone'
         # Inspect actual rendered light on a quiet patch of the chosen trunk.
         # No thumbnail resize or added labels alter the capture pixels.
         x,y=primary.points[len(primary.points)//2]

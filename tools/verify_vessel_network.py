@@ -60,29 +60,17 @@ class VesselTests(unittest.TestCase):
         for seed in (12,41,98,337,901):
             paths,hubs=network_geometry(36,'Wind',seed)
             signatures.add(tuple((n.x,n.y) for n in hubs))
-            self.assertGreater(len(hubs),8)
+            self.assertGreater(len(hubs),60)
             self.assertEqual({p.kind for p in paths},{'trunk','secondary','capillary'})
             roots=[p for p in paths if p.parent<0]
-            majors=[p for p in roots if p.main]
-            lengths=[sum(math.dist(a,b) for a,b in zip(p.points,p.points[1:])) for p in majors]
-            self.assertGreater(len(majors),3)
-            self.assertGreater(sum(lengths)/len(lengths),14,'Main routes must span multiple old graph edges')
-            spans=[(max(x-y for x,y in p.points)-min(x-y for x,y in p.points))*41 for p in majors]
-            self.assertGreater(sum(384<=span<=1000 for span in spans),len(majors)*.35)
+            self.assertTrue(all(math.dist(p.points[0],p.points[-1])<9.1 for p in roots))
             curved=sum(sum(math.dist(a,b) for a,b in zip(p.points,p.points[1:]))>
                        math.dist(p.points[0],p.points[-1])*1.005 for p in roots)
             self.assertGreater(curved/len(roots),.65)
             self.assertGreater(max(max(p.radii) for p in paths)/min(max(p.radii) for p in paths),5)
             self.assertGreater(max(max(p.strengths) for p in paths)/min(max(p.strengths) for p in paths),2.5)
             for x,y in ((5,5),(5,30),(30,5),(30,30),(18,18)):
-                self.assertLess(min(math.dist((x,y),p) for path in paths for p in path.points[::5]),5)
-            for path in paths:
-                depth=1; parent=path.parent
-                while parent>=0:
-                    depth+=1; parent=paths[parent].parent
-                self.assertLessEqual(depth,3)
-                # Interior joins must not reset width, creating repeated beads.
-                self.assertLess(max(abs(a-b) for a,b in zip(path.radii,path.radii[1:])),.3)
+                self.assertLess(min(math.dist((x,y),(n.x,n.y)) for n in hubs),5)
         self.assertEqual(len(signatures),5,'Map seeds must generate genuinely different networks')
 
     def test_wall_aware_routes_and_unmoving_asynchronous_breathing(self):

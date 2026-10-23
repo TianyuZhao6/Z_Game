@@ -36,8 +36,8 @@ class NetworkPalette:
 
 
 NETWORK_PALETTES = {
-    "Domain of Wind": NetworkPalette((29,84,155), (49,167,226), (37,103,178),
-                                     (221,247,255), (137,223,253), (107,87,182)),
+    "Domain of Wind": NetworkPalette((36,83,149), (90,202,255), (42,125,255),
+                                     (225,246,255), (69,155,255), (107,87,182)),
     "Misty Forest": NetworkPalette((77,44,128), (182,112,255), (122,64,225),
                                   (244,226,255), (187,132,255), (114,74,166)),
     "Scorched Hell": NetworkPalette((118,35,48), (255,64,75), (220,35,57),
@@ -276,17 +276,9 @@ def batch_network_stamps(stamps):
         bounds = image.get_bounding_rect()
         if not bounds.width or not bounds.height:
             continue
+        rect = bounds.move(x, y)
         phase_index = round(phase / math.tau * NETWORK_PHASES) % NETWORK_PHASES
-        # Sweeping routes have large mostly empty bounds. Partition the baked
-        # pixels without overlap, then crop each patch; this cannot create a
-        # spline seam or change opacity, and all patches retain one phase.
-        step=144 if bounds.w>280 or bounds.h>280 else max(bounds.w,bounds.h)
-        for top in range(bounds.top,bounds.bottom,step):
-            for left in range(bounds.left,bounds.right,step):
-                tile=pygame.Rect(left,top,step,step).clip(bounds)
-                tight=image.subsurface(tile).get_bounding_rect().move(tile.topleft)
-                if tight.w and tight.h:
-                    groups[phase_index].append((image.subsurface(tight),tight.move(x,y)))
+        groups[phase_index].append((image.subsurface(bounds), rect))
     result = []
     for phase_index, members in enumerate(groups):
         batches = []
@@ -338,7 +330,7 @@ def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=9141
         local=tuple(((x-left)*2,(y-top)*2) for x,y in points)
         # A quiet mineral groove anchors the light underneath the surface.
         pygame.draw.polygon(underlay,(12,24,40,38),ribbon(points,path.radii,2.4))
-        hierarchy = {'trunk':.85,'secondary':.50,'capillary':.27}[path.kind]
+        hierarchy = {'trunk':.85,'secondary':.38,'capillary':.22}[path.kind]
         accents=segment_highlights(path.points,hot_spots)
         # The narrow base is static; only the cached energy/glow stamp breathes.
         # Per-segment alpha retains the terminal fade even at minimum light.
@@ -346,7 +338,7 @@ def network_material(grid, cell_w, cell_h, info, size, x0, y0, region, seed=9141
         n=len(points)
         for k in range(n-1):
             strength=(path.strengths[k]+path.strengths[k+1])*.5
-            pygame.draw.polygon(underlay,(*palette.base_line,round((60+48*hierarchy)*strength)),
+            pygame.draw.polygon(underlay,(*palette.base_line,round((52+48*hierarchy)*strength)),
                                 (base[k],base[k+1],base[2*n-2-k],base[2*n-1-k]))
         # Four colors share one cached stamp, so palette control adds no blits.
         # The ambient tint is confined to sparse outer halos, never the core.
@@ -425,13 +417,6 @@ def illustrated_node(region, index):
     # soma on the spline crossing, not the center of its asymmetric tendrils.
     anchors = ((225,315),(206,295),(212,302),(223,308))
     anchor = (round(anchors[index][0]*width/384),round(anchors[index][1]*height/512))
-    # The spline generator now owns all branches. Keep only the local soma
-    # texture, removing the atlas's unrelated curly decorative filaments.
-    mask=pygame.Surface(image.get_size(),pygame.SRCALPHA)
-    for r in range(18,0,-1):
-        alpha=round(255*min(1.,(1-r/19)*2)**2)
-        pygame.draw.circle(mask,(255,255,255,alpha),anchor,r)
-    image.blit(mask,(0,0),special_flags=pygame.BLEND_RGBA_MULT)
     # A compact soma bloom makes major junctions read at gameplay scale.
     # This is baked once into the existing cutout, never rebuilt per frame.
     halo=pygame.Surface(image.get_size(),pygame.SRCALPHA)

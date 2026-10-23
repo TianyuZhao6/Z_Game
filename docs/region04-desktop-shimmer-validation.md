@@ -1,5 +1,11 @@
 # Desktop neural palette and shimmer validation — 2026-10-22
 
+## Restored as the selected baseline — 2026-10-23
+
+The user selected this version over the later route and fine-branch revisions. Restored `zgame/neural_environment.py`, `zgame/vessel_network.py`, the review/playtest tools, both network verification tools, and the environment asset README from `5184282`. Source comparison confirmed an exact checkpoint match (normalizing Windows line endings). No unrelated game systems, artwork, saves, or prior evidence deletions were reverted.
+
+Fresh desktop captures in `TEMP/shimmer-restored/` match this folder's original `after-dim.png`, `after-rising.png`, and `after-peak.png` pixel-for-pixel. Six geometry tests and seven desktop network integration tests passed, covering asynchronous illumination, cache reuse, camera anchoring, palette coverage, and layout preservation after wall destruction/save resume. Project instructions now designate this version as the baseline for the next refinement. Restoration is left uncommitted.
+
 The current direction is native desktop only. The user's latest palette decision supersedes the older cyan Region 04 requirement: Wind is cyan-blue, Forest purple, Fire red, and Stone pale gold/yellow. These preferences are saved in the root `AGENTS.md` for future work.
 
 ## Checkpoint and scope
