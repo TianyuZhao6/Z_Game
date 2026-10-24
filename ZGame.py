@@ -3323,21 +3323,17 @@ def binding_name(action: str) -> str:
 
 
 def binding_pressed(keys, action: str) -> bool:
-    """Check if a binding is pressed given pygame.key.get_pressed().
-    Uses scancode mapping so large keycodes (e.g., arrow keys) still work."""
+    """Read a binding from this frame's keycode-indexed keyboard snapshot."""
     key = action_key(action)
     if key is None:
         return False
     if IS_WEB:
         return WEB_INPUT.binding_pressed(action, key)
-    pressed = pygame.key.get_pressed()  # ensures we use pygame's full key mapping
-    sc = BINDING_SCANCODES.get(action)
-    if sc is not None and 0 <= sc < len(pressed) and pressed[sc]:
-        return True
-    # Fallback to pygame's keycode indexing (handles arrow key keycodes internally)
+    # ScancodeWrapper accepts K_* keycodes, including arrows. Indexing it with
+    # a raw scancode instead can read an unrelated key and cancel movement.
     try:
-        return bool(pressed[key])
-    except Exception:
+        return bool(keys[key])
+    except (IndexError, KeyError, TypeError):
         return False
 
 

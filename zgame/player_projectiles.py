@@ -249,7 +249,11 @@ def install(game):
                                 game_state.fx.spawn_explosion(cx, cy, z.color, count=_soft_explosion_count(game_state, 25))
                         game._bandit_death_notice(z, game_state)
                         shrap_lvl = int(meta.get('shrapnel_level', 0))
-                        if shrap_lvl > 0 and hp_lost > 0 and (getattr(self, 'source', 'player') == 'player'):
+                        # Fragments may deal damage, but must not recursively
+                        # multiply into another generation of fragments.
+                        if (shrap_lvl > 0 and hp_lost > 0
+                                and getattr(self, 'source', 'player') == 'player'
+                                and not self.is_shrapnel):
                             base_chance = 0.25
                             per_level = 0.1
                             chance = min(0.8, base_chance + per_level * (shrap_lvl - 1))

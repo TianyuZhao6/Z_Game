@@ -24,6 +24,16 @@ from zgame import runtime_state as rs
 from zgame import summons
 
 
+def _gameplay_keys(game):
+    """Poll held controls after modal returns without activating desktop IME."""
+    if not game.IS_WEB:
+        # Text composition is enabled by default in SDL. Gameplay has no text
+        # field; keep letter controls out of the IME, including after refocus.
+        pygame.key.stop_text_input()
+        pygame.event.pump()
+    return pygame.key.get_pressed()
+
+
 def _append_verified_bullet(game, bullets, bullet, player=None) -> None:
     if bullet is None:
         return
@@ -1076,7 +1086,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
         if not bool(getattr(game, "WEB_SKIP_UPDATE", False)):
             if getattr(player, 'targeting_skill', None):
                 game._update_skill_target(player, game_state)
-            keys = pygame.key.get_pressed()
+            keys = _gameplay_keys(game)
             player.slow_t = max(0.0, getattr(player, 'slow_t', 0.0) - dt)
             if do_telegraphs:
                 game_state.update_telegraphs(telegraph_dt)
@@ -1160,7 +1170,8 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 obstacles,
                 copy_frame=False,
             )
-        player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
+        # Idle time cannot accumulate a debt of shots for the next target.
+        player.fire_cd = max(0.0, getattr(player, 'fire_cd', 0.0) - dt)
         _profile_mark(profiler, "bullets")
         _web_diag_trace(game, profiler, "bullets")
         if not bool(getattr(game, "WEB_SKIP_BULLETS", False)):
@@ -1175,7 +1186,7 @@ async def main_run_level(game, config, chosen_enemy_type: str) -> Tuple[str, Opt
                 b.pierce_left = int(getattr(player, 'bullet_pierce', 0))
                 b.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
                 _append_verified_bullet(game, bullets, b, player)
-                player.fire_cd += player.fire_cooldown()
+                player.fire_cd = player.fire_cooldown()
             for t in getattr(game_state, 'turrets', []):
                 t.update(dt, game_state, enemies, bullets)
             if getattr(game_state, 'spatial', None):
@@ -1664,7 +1675,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         _profile_mark(profiler, "update")
         if getattr(player, 'targeting_skill', None):
             game._update_skill_target(player, game_state)
-        keys = pygame.key.get_pressed()
+        keys = _gameplay_keys(game)
         player.slow_t = max(0.0, getattr(player, 'slow_t', 0.0) - dt)
         if do_telegraphs:
             game_state.update_telegraphs(telegraph_dt)
@@ -1693,7 +1704,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
         player.teleport_cd = max(0.0, getattr(player, 'teleport_cd', 0.0) - dt)
         player.skill_flash['blast'] = max(0.0, float(player.skill_flash.get('blast', 0.0)) - dt)
         player.skill_flash['teleport'] = max(0.0, float(player.skill_flash.get('teleport', 0.0)) - dt)
-        player.fire_cd = getattr(player, 'fire_cd', 0.0) - dt
+        player.fire_cd = max(0.0, getattr(player, 'fire_cd', 0.0) - dt)
         _profile_mark(profiler, "bullets")
         target, dist = find_target()
         if target and player.fire_cd <= 0 and (dist is None or dist <= player.range):
@@ -1707,7 +1718,7 @@ async def run_from_snapshot(game, save_data: dict) -> Tuple[str, Optional[str], 
             b.pierce_left = int(getattr(player, 'bullet_pierce', 0))
             b.ricochet_left = int(getattr(player, 'bullet_ricochet', 0))
             _append_verified_bullet(game, bullets, b, player)
-            player.fire_cd += player.fire_cooldown()
+            player.fire_cd = player.fire_cooldown()
         for t in getattr(game_state, 'turrets', []):
             t.update(dt, game_state, enemies, bullets)
         for b in list(bullets):
