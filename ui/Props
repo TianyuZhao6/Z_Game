@@ -1,4 +1,4 @@
-﻿#TODO
+#TODO
 Make the possessions in pause/trading menu have different color for different path items.
 the biome chosen interfacewill only shown the quart dice to random choose the next biome then after the 
 dice is rolled, the interface will show the biome name and the biome description 
@@ -11,50 +11,37 @@ Summon Path: Summons are autonomous co-pilot companions that move around the pla
 Then for the props in the shopping or pause menu, they should be colored differently for different path items.
 And when player get all the path item, they can unlock the hidden path compensation.(huge reward)
 
-Map and Region Descriptions
+Map Description — Region 04: Fractured Depths
 
-Scope: native/local desktop game. This section records the current four gameplay biomes and the five visual region concepts in the supplied "five regions.png" atlas. The atlas names describe concept environments; they are not yet assigned to the four runtime biomes. A fifth playable biome, its mechanics, and any renaming remain undecided.
+Scope: native/local desktop game. Region 04 is the only environment described for active art and asset work. Other region descriptions are removed; add them back individually when their art and assets are finalized. Reference: the supplied "all elements.png" Region 04 asset sheet.
 
-Current shared map
-The combat map is a continuous isometric platform of irregular blue-gray mineral stone, suspended above a deep lavender neural abyss. Root-bound wall formations break up the open fighting space. Pale cracked walls are destructible; darker intact walls are permanent. Their varied heights, stone caps, hanging roots, and occasional luminous buds give the ruins an organic character while retaining the existing collision footprints.
+Environment
+A continuous isometric platform of cracked blue-gray slate hangs above a deep violet neural abyss. Dark broken slabs and fine fractures give the ground a mineral texture while leaving the combat surface mostly flat and readable. Root-bound walls interrupt the open floor: pale damaged masonry identifies breakable obstacles, while charcoal stone and dense knotted roots identify permanent barriers.
 
-A branching neural network follows the ground between obstacles. Thicker routes connect major junctions, with quieter secondary branches and fine tapered ends spreading into the floor. Most branches stay subdued; selected junctions have brighter short connections, tiny hot centers, and sparse soft halos. Light breathes asynchronously while geometry remains still. The network stays anchored to the world during camera movement, wall destruction, and save/resume.
+An irregular neural network branches across the ground between obstacles. Major junctions connect through thicker routes, quieter secondary branches, and fine tapered ends. Most branches stay subdued, with brighter short connections near selected major junctions, tiny hot glint centers, and sparse soft halos. Illumination breathes asynchronously; the network geometry stays still and anchored to the world.
 
-At the platform edge, hanging cliff fibers frame the abyss. Distant neural formations, nearer silhouettes, and haze move at different rates with the camera to create depth. The central combat area remains continuous floor. All four biomes currently share this platform, wall artwork, and background; their ground-network colors and existing gameplay effects provide their regional identity.
+The platform rim falls into a cavernous void, with hanging roots and organic buttresses emphasizing its depth. Layered distant pillars, floating formations, and violet haze surround the playable surface. In the reference composition, a luminous neural lotus blooms high in the far background, with broad dendritic branches radiating into the abyss. Sparse lilac lights and rooted rubble soften selected wall bases and edges without crowding the fighting space.
 
-Four current biomes
-| Biome | Existing runtime identifier | Ground-network palette | Map description and existing gameplay identity |
-| --- | --- | --- | --- |
-| Wind | Domain of Wind | Cyan-blue | Cool cyan-blue signals trace the stone and flare softly at major junctions, giving the shared ruins an airy appearance. A hurricane hazard and the level's +12% player movement-speed bonus define its movement-focused gameplay. |
-| Forest | Misty Forest | Purple | Violet branches and pale lilac junctions spread through the mineral floor beneath the existing fog. Restricted visibility creates a concealed, living-ruin atmosphere; the level grants +30% player XP. The current scene does not yet have its own mushroom forest or tree-canopy asset set. |
-| Fire | Scorched Hell | Red | Red vessels and small hot highlights suggest energy beneath the cool stone surface. Existing fire effects reinforce the hostile atmosphere. Player bullet damage doubles, with increased enemy and boss contact damage. The platform itself remains the approved stone artwork. |
-| Stone | Bastion of Stone; visual alias Mountain | Pale gold to yellow | Muted gold traces connect warm, near-white junction centers across the same rooted ruins. The restrained light gives the region a heavier, mineral character. The player receives a level-entry shield equal to 50% of maximum HP, and Stone enemy shielding rules remain active. |
+Region 04 asset reference
+The A1-A8 labels below follow the supplied sheet. They describe visual roles and reference details, not a claim that every pictured element is already a separate production asset.
 
-These are the approved ground-network palettes. Older jade Forest, coral Fire, and cyan Stone/Region 04 descriptions are historical. Atlas numbering does not establish a runtime biome mapping: in particular, concept 04 does not change Stone's approved gold palette.
+| Label | Element | Role and description |
+| --- | --- | --- |
+| A1 | Cracked slate ground | Continuous combat floor: dark broken slabs, fine fractures, and a mostly flat surface that keeps actors and attacks readable. |
+| A2 | Neural synapses | Ground overlay: irregular branching conduits, selected bright junctions, and subtle halos. The sheet depicts cyan light; retain the approved runtime palettes and stationary geometry with asynchronous breathing. |
+| A3 | Pale breakable wall | Destructible obstacle: light masonry with a clear pale silhouette, cracks, and damage/destruction variants. Decorative roots retain the existing collision footprint. |
+| A4 | Permanent root-wall | Solid obstacle: charcoal stone intertwined with dark knotted roots, visibly distinct from the pale breakable walls. |
+| A5 | Cavern cliff and root rim | Platform boundary: a deep vertical cliff face, hanging fibers, and organic buttresses above the out-of-bounds void. Decorative cliff art does not change pathfinding. |
+| A6 | Distant abyss pillars | Parallax background: layered suspended monoliths and neural formations, with violet light and fog establishing distance. |
+| A7 | Neural lotus landmark | Far-background reference landmark: one memorable violet bloom with radiating neural branches. Preserve the current approved background; the sheet does not establish a separately implemented lotus asset. |
+| A8 | Lilac biolights | Sparse edge decoration: tiny glowing stalks and rooted rubble, visually peripheral and without additional collision. Keep clear space for movement and combat cues. |
 
-Five-region concept atlas
-The supplied image expands the visual vocabulary of the same neural world. The descriptions below record its compositions and distinctive landmarks as reference material, not completed region-specific maps or new gameplay rules.
+Current implementation and preservation
+The existing floor, rooted wall variants, cliff rim, layered abyss, and breathing ground network are the working foundation for this region. Use the reference to describe their intended visual relationship while retaining the approved production artwork. The sheet's "growing" overlay label is reference wording; the current network animates illumination only, with no geometry growth or traveling particles.
 
-01. Membrane Sanctum — serene, organic, memory
-A pale, open sanctuary of weathered stone, ivory neural trees, and exposed roots above a soft lavender chasm. Coral-pink blossoms and luminous pods gather around broken pillars and ring-shaped relics, leaving a broad central route clear. A distant radiant neural form gives the space a quiet focal point. Its identity comes from gentle light, pale surfaces, and root-bound ruins.
+The selected desktop baseline remains region04-shimmer from checkpoint 5184282. Preserve deterministic seeds, obstacle handling, world alignment, cached illumination, approved walls/platform/background, actors, gameplay, and saved progress. This is a description-only revision: existing biome identifiers, gameplay effects, and approved ground-network palette settings remain unchanged. Region 04 names the environment under development, not a newly assigned biome key.
 
-02. Neural Tides — fluid, coral, submerged
-A cool turquoise environment where porous white coral-like structures rise beside shallow circular basins and luminous blue channels. Submerged arches and descending formations deepen the surrounding cavern. Small warm anemone-like lights punctuate the blue scene. Its defining contrast is flowing water and pale branching growth around an open stone combat surface.
-
-03. Vital Mycelium — growth, fungal, living
-A dense fungal world built around broad shelf-mushroom canopies, root-fused amber chambers, spore pods, and organic wall stumps. Golden neural branches run through the ground and connect warm glowing growths. Dark green-brown surroundings and hanging roots frame a brighter central path, creating the impression of ruins absorbed into a living colony.
-
-04. Fractured Depths — abyss, crystal, resonance
-A fractured dark-stone platform surrounded by violet crystalline clusters, broken arches, and suspended debris. Jagged formations point toward a distant luminous resonance relic held within a skeletal arch. Blue-violet light rises from the abyss and catches the crystal edges. This concept emphasizes sharp silhouettes and suspended fragments; its depicted fissures and floating islands are not changes to the current playable floor.
-
-05. Sinking Archive — submerged, ruins, reflective
-A drowned ruin of stone columns, arches, reflective pools, and pale crystalline formations. Cool cyan light and small gold-lit channels lead toward a remote submerged spire. Compared with Neural Tides' coral growth and circular pools, the Archive emphasizes architectural remains, reflections, and the depth of a sunken monumental space. It remains a fifth concept without an assigned runtime slot or gameplay effect.
-
-Shared direction and current boundary
-Keep a readable continuous combat floor, organic neural pathways, recognizable obstacle silhouettes, and layered abyss depth across the region family. The five concepts can inform future scenery and landmarks, but their water, crystals, mushrooms, relics, and separate compositions are not all present in the current game. No one-to-one concept/biome assignment is established by this description.
-
-The selected desktop baseline remains region04-shimmer from checkpoint 5184282. Preserve its geometry, deterministic seeds, obstacle handling, world alignment, cached illumination, approved walls/platform/background, actors, gameplay, and saved progress. This addition documents the current state and the supplied visual reference only.
-Current references: zgame/neural_environment.py (REGIONS and NETWORK_PALETTES), ZGame.py (SCENE_BIOMES and per-level biome effects), assets/sprites/environment/README.md, and docs/region04-desktop-shimmer-validation.md. Existing rendered palette reference: docs/evidence/region04-shimmer/biome-palettes.png.
+Current references: zgame/neural_environment.py, assets/sprites/environment/README.md, and docs/region04-desktop-shimmer-validation.md.
 
 Browser Version Section
 Browser prop behavior should match the original version unless a cap, fallback, or reduced value is documented in the relevant prop entry. The browser version uses separate runtime limits so prop-heavy builds remain responsive inside Chrome even when the original version can handle more entities and effects.
