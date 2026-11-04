@@ -1,6 +1,6 @@
 # Current Game — Product Requirements Document
 
-Version: 1.0 draft | Updated: 2026-10-31 | Project: Z_Game
+Version: 1.1 draft | Updated: 2026-11-03 | Project: Z_Game
 
 This document defines the current native desktop game, the requirements needed to finish it, and the deferred feature backlog. It is documentation only. It does not authorize implementation, asset replacement, balance changes, or removal of existing gameplay.
 
@@ -113,7 +113,11 @@ Acceptance: choosing an upgrade updates live stats and pause information consist
 
 ## 6. Shop, economy, and props
 
-### Shop requirements
+### 6.1. Purpose and shop requirements
+
+Props turn currency earned during combat into a distinct build: stronger projectiles, persistent ground damage, shield sustain, allied attackers, or economic risk and reward. Purchases must offer a readable benefit and tradeoff before the player spends currency. In this section, "props" means purchasable gameplay items; Region 04 scenery and environment assets are specified in section 9.
+
+The catalog and values below are a source-reviewed snapshot as of 2026-11-03, not final balance or evidence of completed gameplay acceptance. Preserve current behavior until a change is explicitly approved. Where older descriptions in `Props` disagree with the current catalog or effect code, record the discrepancy instead of silently changing the game.
 
 - **SHOP-01 — P0, Present:** Offer a randomized catalog with rarity, current cost, description, ownership/level, and purchase eligibility. Keep four normal offers and the separate reroll mechanism readable.
 - **SHOP-02 — P0, Present:** Preserve offer locks, rerolls, level/ownership price scaling, coupon discounts, caps, and shop save state. A completed transaction changes money and ownership exactly once.
@@ -123,38 +127,203 @@ Acceptance: choosing an upgrade updates live stats and pause information consist
 - **SHOP-06 — P1, Required:** Show current/next values, meaningful tradeoffs, debt remaining, relevant payout limits, path identity, and consumable duration in concise player-facing language.
 - **SHOP-07 — P1, Decision:** Reconcile the proposed four-sided die domain-selection flow in `Props` with the current hidden-card picker. Define what the player chooses, when the domain is revealed, and what confirmation means.
 
-### Current purchasable catalog
+### 6.2. Catalog, acquisition, and ownership
 
-These entries are present in `zgame/shop_support.py`; their exact live balance takes precedence over stale roster rows. Reroll is a shop action, not an equipped combat prop.
+All 21 props below are present in `zgame/shop_support.py`. Base costs use earned in-game currency; the final card price includes scaling and discounts. Rarity is the catalog's numeric tier, not a guaranteed drop probability. Reroll is a separate shop action and does not occupy a build slot.
 
-| Family | Present item | Core role |
+| Family | Item / stable ID | Base cost | Rarity | Current limit and purchase result |
+| --- | --- | ---: | ---: | --- |
+| Ballistic | Piercing Rounds / `piercing_rounds` | 12 | 1 | Level 5; add one piercing charge per purchase. |
+| Ballistic | Ricochet Scope / `ricochet_scope` | 14 | 2 | Level 3; add one ricochet charge per purchase. |
+| Ballistic | Shrapnel Shells / `shrapnel_shells` | 16 | 3 | Level 3; improve fragment trigger chance. |
+| Ballistic | Explosive Rounds / `explosive_rounds` | 18 | 2 | Level 3; improve kill-explosion damage and radius. |
+| Status | D.O.T. Rounds / `dot_rounds` | 20 | 2 | Level 3; improve tick damage, duration, and stack capacity. |
+| Status / ballistic | Mark of Vulnerability / `mark_vulnerability` | 22 | 3 | Level 3; improve mark frequency, damage amplification, and duration. |
+| Ground effects | Curing Paint / `curing_paint` | 12 | 2 | Level 3; improve footprint damage, lifetime, and radius. |
+| Ground effects | Ground Spikes / `ground_spikes` | 18 | 2 | Level 3; improve hazard damage, lifetime, and active limit; reduce movement speed. |
+| Defense | Carapace / `carapace` | 6 | 1 | No catalog purchase cap; add 20 reserve shield HP. |
+| Defense | Bone Plating / `bone_plating` | 12 | 2 | Level 5; improve plating regeneration; reduce movement speed. |
+| Defense | Aegis Pulse / `aegis_pulse` | 28 | 3 | Level 5; improve shield-enabled pulses. |
+| Economy | Coin Magnet / `coin_magnet` | 10 | 1 | Level 5; add 60 px to pickup reach per level. |
+| Economy | Coupon / `coupon` | 10 | 1 | Level 4; increase the run's shop discount. |
+| Economy | Golden Interest / `golden_interest` | 12 | 2 | Level 4; increase interest rate and payout cap. |
+| Economy / lucky | Shady Loan / `shady_loan` | 0* | 3 | Three active debt tiers; add money, debt, and one repayment step. |
+| Economy | Lockbox / `lockbox` | 14 | 2 | Level 4; increase the protected share of current currency. |
+| Economy / status | Bandit Radar / `bandit_radar` | 18 | 2 | Level 4; strengthen and extend the Bandit spawn slow. |
+| Economy / lucky | Wanted Poster / `wanted_poster` | 15 | 2 | No catalog purchase cap; add two upcoming level activations to the bounty window. |
+| Allied damage | Auto-Turret / `auto_turret` | 14 | 2 | Level 5; add one orbiting turret per level. |
+| Allied damage | Stationary Turret / `stationary_turret` | 14 | 1 | Owned-count cap 99; add one placement attempt per upcoming level. |
+| Companion | Eidolon / `evolving_skull` | 18 | 2 | Level 6; first purchase equips one companion; later purchases evolve that actor. |
+| Shop action | Reroll / `reroll` | 3 | — | Repeatable while affordable; refresh unlocked offers. |
+
+*Shady Loan's catalog base cost is zero, but the current shared price function floors the payable cost at one coin. This discrepancy must be resolved before describing the offer as free; this PRD does not change that behavior.*
+
+**PROP-01 — P0, Required:** Distinguish permanent-for-the-run levels, remaining consumable resources, owned actor counts, and active debt state. Do not present all of them as identical upgrade tracks. Carapace's displayed canonical level is derived from remaining reserve in 20-HP units, Wanted Poster tracks its remaining window, and Shady Loan tracks an active cycle. Those values can decrease without selling an item.
+
+**PROP-02 — P0, Required:** Apply a purchase once, update its live benefit, remove the purchased offer and its lock, refresh the displayed currency and ownership, and preserve the result when leaving or saving the shop. If all normal slots are exhausted, the current shop generates another set. Purchases should never be mistaken for persistent account unlocks; ordinary prop ownership belongs to the current run.
+
+**PROP-03 — P1, Decision:** Selling, refunds, inventory capacity, and manual placement are not established features of the current prop shop. Do not design dependent mechanics around them until their rules are approved. Companion equip/store behavior is separate and is covered in section 7.
+
+### 6.3. Build paths and identity
+
+Path tags help players recognize a build and compare offers. The current path score sums each tagged item's canonical level/count; dual-tagged items contribute to both paths. Scores are not counts of distinct pieces. The UI thresholds are 2 for **online** and 4 for **full**, so one level-4 item can reach full. Consumable depletion or debt resolution can reduce a score.
+
+| Path | Current contributors | Presentation and intended role |
 | --- | --- | --- |
-| Ballistic | Piercing Rounds | Continue a shot through additional enemies. |
-| Ballistic | Ricochet Scope | Redirect shots after eligible collisions. |
-| Ballistic | Shrapnel Shells | Spawn fragments on eligible kills. |
-| Ballistic | Explosive Rounds | Add an explosion on eligible bullet kills. |
-| Status | D.O.T. Rounds | Apply stacking damage over time. |
-| Status | Mark of Vulnerability | Mark a priority enemy for increased damage taken. |
-| Ground effects | Curing Paint | Leave damaging curing footprints while moving. |
-| Ground effects | Ground Spikes | Leave one-hit slowing hazards with a movement tradeoff. |
-| Defense | Carapace | Purchase reserve shielding. |
-| Defense | Bone Plating | Regenerate plating with a maximum-level benefit and movement tradeoff. |
-| Defense | Aegis Pulse | Emit damaging pulses while shielded. |
-| Economy | Coin Magnet | Increase pickup reach. |
-| Economy | Coupon | Reduce prices within the current run. |
-| Economy | Golden Interest | Reward unspent currency with capped interest. |
-| Economy | Shady Loan | Exchange future repayment risk for immediate money. |
-| Economy | Lockbox | Protect part of the currency pool from applicable losses. |
-| Bandit interaction | Bandit Radar | Highlight and slow newly spawned Bandits. |
-| Bandit interaction | Wanted Poster | Activate the existing limited bounty opportunity. |
-| Allied damage | Auto-Turret | Orbit the player and attack nearby targets. |
-| Allied damage | Stationary Turret | Add persistent-in-level allied firing positions on clear tiles. |
-| Companion | Eidolon | Evolve a unique autonomous companion through six purchased levels. |
-| Shop action | Reroll | Refresh eligible unlocked offers at the current cost. |
+| Ballistic | Piercing, Ricochet, Shrapnel, Explosive, Mark | Orange; projectile reach and kill conversion. |
+| Turret | Auto-Turret, Stationary Turret | Cyan; supporting firing positions. |
+| Shield | Carapace, Bone Plating, Aegis | Blue; damage absorption and shield-enabled offense. |
+| Status | D.O.T., Curing Paint, Ground Spikes, Mark, Radar | Green; lingering damage, vulnerability, and control. |
+| Economy | Magnet, Coupon, Interest, Lockbox, Radar, Wanted, Loan | Gold; collection, spending, protection, and risk. |
+| Summoner | Eidolon | Violet; an evolving mobile ally. |
+| Lucky | Wanted, Loan | Pink; risk/reward identity shared with economy. |
 
-Before adding any prop, specify its unique role, acquisition, price/rarity, maximum level, scaling, trigger, target filters, cooldown, effect lifetime, stacking, boss behavior, source ownership, anti-loop limits, persistence, visuals, audio, and short/long tooltip. `Props` remains the detailed catalog; this PRD is the product-level checklist.
+**PROP-04 — P1, Required:** Show path name as well as color, owned state, and the effect of the proposed purchase. Path colors identify item families and do not replace the approved ground-network palettes. Current path thresholds provide build labels; they must not promise damage bonuses, unlocks, or set effects that are not implemented. Proposed distinct-piece sets are separate in section 6.10.
 
-Acceptance: test each present item's acquisition, upgrade, cap, live effect, pause display, and save/resume; cover insufficient funds, all offers locked, capped catalog entries, repeated shop entry, debt default, bounty redemption, and combined economy effects.
+### 6.4. Projectile, status, and ground-effect requirements
+
+Values separated by slashes correspond to successive item levels. Damage percentages below use the current player bullet-base damage unless stated otherwise; they are effect coefficients, not guaranteed final damage after all modifiers. Tile-relative measurements use the existing world cell size. Final balance remains subject to playtesting.
+
+| Prop | Current effect and scaling | Required behavior and presentation |
+| --- | --- | --- |
+| Piercing Rounds | One additional piercing charge per level, up to five. | Make remaining projectile continuation distinct from ricochet. Verify combined charges and collision order; one overlap must not damage the same target repeatedly without a valid new hit. |
+| Ricochet Scope | One additional ricochet charge per level, up to three. | Redirect only toward eligible targets using current targeting rules. Handle no available target and an exhausted charge pool without a stuck projectile. |
+| Shrapnel Shells | Eligible lethal player hits have a 25% / 35% / 45% chance to emit 3–4 fragments. Each fragment uses 40% of HP actually removed by the lethal hit, rounded with a minimum of one damage; range is half the player's range and speed is 85% of bullet speed. | Explain that this is an on-kill chance, not extra bullets on every shot. Fragments start without pierce/ricochet charges and cannot generate further shrapnel. Overkill and absorbed damage must not inflate the HP-loss basis. |
+| Explosive Rounds | Eligible player-source kills explode for 25% / 35% / 45% damage in a 0.65 / 0.80 / 0.95-tile radius. Boss coefficient is 50% of that damage. | One death may produce only one explosion from this effect. Preserve the existing queued chain handling; do not describe it as an unconditional ban on all chains. Radius, damage feedback, and boss reduction must agree. |
+| D.O.T. Rounds | Tick every 0.5 s for 10% / 16% / 22% damage per stack, lasting 2.5 / 3 / 3.5 s. Stack caps are 1 / 1 / 2. Boss coefficient is 70%. | At the cap, a new application replaces the oldest stack. Show a recognizable status indicator and preserve fractional damage accumulation rather than rounding weak ticks away. |
+| Mark of Vulnerability | Apply a mark every 5 / 4 / 3 s; marked enemies take 15% / 22% / 30% extra damage for 5 / 6 / 7 s. Choose an unmarked living boss first, otherwise an elite, otherwise another enemy; selection within a priority group is random. | The mark must be visible without obscuring enemy telegraphs. Multiple enemies can be marked as timers overlap; this is not permission to stack the same vulnerability bonus repeatedly on one target. |
+| Curing Paint | Footprints use a 0.25-s spawn interval and 0.50-tile movement-distance setting. Radius is 0.60 tile × 1.15 / 1.30 / 1.50; lifetime is 2 / 3 / 4 s. Base ticks are 4% / 6% / 8% every 0.5 s, with a 70% boss coefficient. | This is damaging ground coverage, not healing. Preserve the existing kill-based growth factor, `1 + 0.002 × floor(kills / 10)`, and current footprint intensity/overlap rules. State sustained coverage separately from raw tick coefficients. |
+| Ground Spikes | Spawn settings are 0.35 s and 0.75 tile of travel. Damage is 30% / 40% / 50%; lifetime 3 / 4 / 5 s; active limit 6 / 10 / 14; trigger radius 0.28 tile. A hit slows movement by 5% for 1 s. Each purchase multiplies the player's speed multiplier by 0.96, subject to its 0.30 floor. | Spikes are one-hit hazards. Show the movement penalty before purchase and the active hazard footprint in combat. Expiry, consumption, and replacement at the active limit must release their gameplay state. |
+
+**PROP-05 — P0, Required:** Define eligible damage sources for every hit, kill, status, and proc. Current player-source fragments may still interact with D.O.T. and explosions even though recursive shrapnel is blocked. Do not assume all secondary attacks inherit every player prop, or that every secondary effect is prohibited from triggering another effect.
+
+**PROP-06 — P0, Required:** Audit source attribution across player bullets, fragments, explosions, ground effects, turrets, and Eidolon. Auto-Turret explicitly emits turret-source bullets, while Stationary Turret's current creation call relies on the default bullet source. Their inheritance must be reconciled before the UI promises uniform turret behavior. Record this as a current consistency gap, not an approved balance change.
+
+**PROP-07 — P0, Required:** Process each death, coin reward, bounty, and eligible kill effect once, including simultaneous damage and chained kills. Cleanup must remove dead targets and expired hazards from effect processing. Visual culling must not remove damage that the simulation still owes.
+
+### 6.5. Defense and allied damage
+
+| Prop | Current effect and scaling | Required behavior and presentation |
+| --- | --- | --- |
+| Carapace | Each purchase adds 20 reserve shield HP. The reserve is spent when absorbing damage. There is no catalog purchase cap. | Display remaining HP rather than implying permanent maximum-shield growth or free replenishment every level. Purchase history and remaining protection are different values. |
+| Bone Plating | Regenerate 2 / 4 / 6 / 8 / 10 plating HP every 6 s; level entry resets the accumulated plating and regeneration timer. Each purchase multiplies the movement-speed multiplier by 0.98, subject to its 0.30 floor. At level 5, positive plating can negate the remaining hit while consuming up to two plating HP. | Show regeneration, speed cost, and the level-5 rule independently. Define and verify any reserve cap across gameplay and saves before promising one; the regeneration loop alone does not establish a storage cap. |
+| Aegis Pulse | Requires positive base shield, Carapace reserve, or plating. Radius is 100 / 120 / 140 / 160 / 180 px; nominal damage per wave is 30% / 45% / 60% / 80% / 100% of player maximum HP. Cooldown is 4 / 3.375 / 2.75 / 2.125 / 1.5 s. Wave count is 1 / 2 / 3 / 3 / 3, spaced 0.35 s apart. | Show when the effect is inactive for lack of shielding. Distinguish damaging waves from decorative rings, and apply existing domain modifiers consistently rather than displaying nominal coefficients as final damage. |
+| Auto-Turret | Owned level determines orbiting turret count, one through five. Turrets follow the player and select nearby living enemies within their effective range. | Recreate the correct count on level entry without duplicating actors. Expose count, attack interval, range, and actual damage; do not imply purchases raise per-turret damage unless the source does so. |
+| Stationary Turret | Owned count supplies placements each level. Current placement searches up to 40 candidate tiles per turret, skips occupied obstacle tiles, and registers a successfully placed turret as an obstacle. | Keep navigation and shots consistent with the placed footprint. A failed placement must not silently erase ownership. Define player feedback for crowded maps; 99 is a catalog cap, not proof that every layout can host 99 turrets. |
+| Eidolon | One unique actor evolves from Bloombone to Soulflame to Rift Skull through six purchases. It has its own health, harvesting, skills, and equip/store state. | Use section 7 for level stats and ability requirements. Preserve the `evolving_skull` save ID; upgrading must not create an extra Eidolon or consume turret capacity. |
+
+**PROP-08 — P0, Required:** Preserve and explain the current player damage-absorption order: base shield, Bone Plating, Carapace reserve, then HP. Test the level-5 plating exception with partial shielding and large hits. Do not substitute a proposed temporary-shield system for the existing reserves.
+
+**PROP-09 — P1, Required:** Show actual compounded movement penalties when Bone Plating and Ground Spikes coexist. Maintain readable ally silhouettes and projectile ownership against Region 04's subdued ground network, obstacles, and enemy attacks. Ally effects must not require changes to the approved environment geometry or lighting baseline.
+
+### 6.6. Economy, debt, and Bandit interactions
+
+| Prop | Current effect and scaling | Required explanation |
+| --- | --- | --- |
+| Coin Magnet | +60 px pickup reach per level; +300 px at level 5. | Show added reach or the resulting total with a clear label. The bonus is not the player's entire pickup radius. |
+| Coupon | 5% / 10% / 15% / 20% discount within the run. | Show the actual rounded payable price, including the minimum price. Recalculate affected offers and reroll cost immediately after purchase. |
+| Golden Interest | On shop exit, pay `floor(current coins × 5% × level)`, capped at 30 / 50 / 70 / 90 coins. | Show expected payout and cap; spending before exit reduces the interest basis. Interest is settled before loan repayment in the current exit flow. |
+| Lockbox | Protect 25% / 40% / 55% / 70% of the currency held immediately before an applicable loss, rounded down. | Protection is recomputed for each event; it is not a separate permanent bank balance. Ordinary voluntary purchases still spend coins. Protection can leave loan debt unpaid and therefore does not prevent default. |
+| Bandit Radar | On Bandit spawn, apply an 8% / 12% / 16% / 20% slow for 2 / 3 / 4 / 5 s, with tracking feedback. | Distinguish a temporary spawn slow from permanent enemy slowdown. Keep the Bandit readable among normal enemies. |
+| Wanted Poster | Each purchase adds two upcoming level activations. Level entry consumes one remaining activation and arms the bounty for that level. A qualifying Bandit kill pays `30 + stolen_total` bounty and clears the remaining window. | Show remaining activations and whether the current level is armed. The bounty is separate from ordinary stolen-coin return. Do not call this three independent bounty charges or a permanent leveled stat. |
+| Shady Loan | Active tiers grant 80 / 120 / 160 coins while adding 96 / 144 / 192 debt. Each purchase adds one repayment step and grants purchase-level grace. | Present the loan grant, payable purchase cost, total debt, active tier, remaining steps, and default consequence together. This is a debt cycle, not a permanent three-level passive. |
+
+**Loan settlement contract — P0, Present behavior with acceptance still required:**
+
+1. Purchasing during an active debt cycle increases its tier up to three and adds the corresponding grant, debt, and one step. At active tier three with debt outstanding, further purchases are capped. Resolving the cycle permits a later loan; the cap is not a lifetime purchase limit.
+2. The purchase level is a grace period. Closing its shop must not immediately collect a repayment or consume a repayment step.
+3. At a later regular repayment step, request 25% / 30% / 35% of available coins, rounded down and capped at 50 / 80 / 110. Limit the request to available coins and remaining debt, then apply Lockbox protection.
+4. At the final step, attempt to collect all remaining debt rather than using the regular percentage/cap. Available funds and Lockbox protection still limit the actual payment.
+5. Any debt remaining after that final collection causes default: reduce maximum HP by 30% / 35% / 40% for the active tier, with maximum HP never below one, and clear the debt cycle. Record the default outcome and update carried player health consistently.
+6. Successful repayment clears the active cycle. Historical last-tier/status data is distinct from currently owned prop level.
+
+The current code uses fields named "waves" for repayment and bounty windows, but the relevant transitions are level entry/shop exit. Player-facing copy must identify the actual transition rather than confusing it with a timed enemy spawn wave. A single-tier loan with only one remaining step goes directly from its grace period to final collection at the next eligible settlement.
+
+**PROP-10 — P0, Required:** Make settlement order explicit: resolve the shop-exit interest payout before calculating the loan payment. Protect against duplicate payouts or collections if the following domain picker is canceled, the shop reopens, or the session resumes. These are acceptance requirements, not a claim that every re-entry path has already passed.
+
+**PROP-11 — P1, Required:** Explain outcomes with a short receipt: balance before settlement, interest earned, requested debt payment, amount actually paid, protection applied, debt remaining, and any default penalty. For example, Lockbox level 4 protects 70 of 100 coins from one applicable loss; it does not guarantee those same 70 coins remain protected through every later event. With 100 coins and Interest level 2, interest adds 10 before a subsequent loan calculation uses the resulting balance.
+
+### 6.7. Pricing, offers, locks, and rerolls
+
+For ordinary items, the present pricing calculation is:
+
+`scaled = round(base cost × 1.12^stage index × (1 + 0.02 × stage index) × 1.15^owned level)`
+
+`payable = max(1, round(scaled × (1 − 0.05 × Coupon level)))`
+
+Stage index is zero-based and Coupon level is capped at four. Use the game's existing rounding behavior at both stages. "Owned level" is the canonical value for that prop, including reserve/window/count-based values; it is not always the number of previous purchases. Reroll uses its base cost and Coupon discount with the same one-coin minimum, without ordinary stage/ownership scaling in the current price function. Do not infer an escalating reroll schedule from unused tuning constants.
+
+- **PROP-12 — P0, Required:** The displayed price, affordability state, amount deducted, and saved balance must agree. Buying Coupon must refresh prices; a zero-base item must not display a free purchase if the shared function charges one coin.
+- **PROP-13 — P0, Required:** Keep four normal offers, a separate reroll action, and up to four preserved locks. Rerolls retain valid locks and exclude capped candidates. Rarity weights vary with stage; do not publish invented fixed odds. The selection fallback for a small eligible pool may repeat candidates, so uniqueness must not be promised without revising that behavior.
+- **PROP-14 — P0, Required:** Preserve the existing Eidolon guarantee on every third distinct level's shop visit, including rerolls while eligible. If all four offers are locked, use the temporary fifth offer without replacing a lock. Do not let repeatedly opening one level's shop count as additional levels.
+- **PROP-15 — P1, Required:** Explain lock state, cap state, unaffordable state, and empty purchased slots independently. Provide clear feedback for a rejected purchase without taking money or advancing item state.
+
+### 6.8. Item cards, feedback, and content requirements
+
+The compact shop card must communicate name, icon, rarity, path labels, actual price, current ownership/resource state, next purchase result, and any immediate drawback. The expanded detail view must provide trigger, target, damage basis, cooldown, duration, stacking/cap, boss differences, and relevant interactions. Put health penalties, movement penalties, debt, and consumable expiry ahead of flavor copy. Keep essential rules available even if the compact tooltip must truncate text.
+
+**PROP-16 — P1, Required:** Use different state labels where appropriate: "Level 2 → 3," "Shield reserve 15 → 35 HP," "Turrets 2 → 3," "Bounty window +2 levels," and "Borrow 80; add 96 debt." The Loan card must separately show its actual purchase price and repayment deadline. At a cap, show "Max" rather than a misleading next value.
+
+**PROP-17 — P1, Required:** The pause/build summary must use the same values as the shop and combat state. Show passive levels, actor counts, remaining shield resources, bounty activation, loan debt/steps, and path scores. A depleted consumable must not remain displayed as a fully active permanent bonus.
+
+**PROP-18 — P1, Required:** Maintain an asset entry for each prop: stable ID, player-facing name, family icon, rarity treatment, shop/pause icon, combat indicator where applicable, activation/impact/expiry feedback, sound cue, and fallback status. Distinguish purchase success, insufficient funds, upgrade, cap, loan payment/default, and bounty redemption. Missing bespoke art must not make the item unidentifiable or hide its state.
+
+**PROP-19 — P1, Required:** Convey statuses through text/shape as well as color. Dense shrapnel, paint, spikes, pulses, and allied shots must preserve player visibility, enemy attack warnings, and obstacle boundaries. Specify effect limits and audio concurrency without changing damage or rewards to match the number of rendered effects. Review these on native desktop scenes when implementation is tested.
+
+### 6.9. Data, save, and lifecycle contract
+
+Each prop specification must contain the following before it is implemented or substantially revised:
+
+| Area | Required definition |
+| --- | --- |
+| Identity and acquisition | Stable save/catalog ID; name; role; path tags; rarity; base price; offer eligibility; cap; first purchase versus repeat purchase. |
+| Effect | Eligible trigger and damage source; target filters; range/shape; value per level; rounding; cooldown; duration; stacking/replacement; boss behavior; movement or health tradeoff. |
+| Interactions | Which effects can trigger other effects; attribution of kills/rewards; order of damage modifiers and shields; chain termination; interaction with domain modifiers. |
+| Lifecycle | When the effect starts; what persists between levels; what expires; equip/store behavior where relevant; failure retry, restart, new-run, and load behavior. |
+| Persistence | Owned level/count; remaining consumable resources; active economy state; any combat snapshot state; defaults for older saves; valid ranges and migration behavior. |
+| Presentation | Short and expanded descriptions; current/next values; icons; VFX and sound; disabled/max/depleted states; pause summary and settlement feedback. |
+| Acceptance | Acquisition, upgrade, cap, effect, interaction, transition, save/load, and worst-case load scenarios with expected results. |
+
+**PROP-20 — P0, Required:** Save ownership separately from transient effect instances. Persistent level/count must not cause a second purchase effect when reconstructing a player or spawning allies. Persist the shop's offers/locks and economy cycle consistently with its balance. Preserve stable IDs, including legacy Eidolon naming.
+
+**PROP-21 — P0, Required:** Restore the intended retry baseline for consumable shielding and bounty state, alongside ordinary prop levels and player multipliers. A fresh run must reset run-only benefits and debt according to the game-wide reset rules. Loading older saves must neither award free items nor preserve an impossible active debt state.
+
+**PROP-22 — P0, Required:** Audit combat snapshot coverage for active statuses, footprints, spikes, pulses, turrets, and companion state before promising exact mid-combat continuation. Define whether each timer/effect resumes or is deliberately reconstructed. Section 12's persistence requirements apply; presence of a save field alone does not establish full effect fidelity.
+
+### 6.10. Proposed props and set bonuses
+
+The following are design backlog from `Props`, not additions to the current purchasable roster. Section 13 remains the broader deferred-feature list. A proposal needs a completed item contract, approved balance, assets, and acceptance evidence before it becomes a release requirement.
+
+| Deferred group | Named proposals | Required design resolution |
+| --- | --- | --- |
+| Projectile and elemental builds | Bleeding Edge, Explosive Crits, Razor Focus, Frost Brand, Shock Relay | Define critical-hit interactions, bleed/chill/chain rules, boss resistance, and how each differs from existing D.O.T. or Explosive Rounds. |
+| Defense and retaliation | Guardian Charm, Blood Pact, Retaliation Thorns, Shield Capacitor, Mirror Shell, Shardstorm, Retaliation Core | Define damage/health costs, shield ownership, reflection eligibility, trigger cooldowns, and protection against retaliation loops. |
+| Economy | Black Market Pass, VIP Punchcard, Spoil Splitter | Specify offer access, discount stacking, payout timing, and interaction with Coupon, Interest, Lockbox, and loans. |
+| Movement and ground control | Time Dilation Boots, Sticky Tar Flask, Cleanse Step, Paint Converter, Phantom Dash | Specify movement/status behavior and ground-effect conversion. Phantom Dash depends on an approved dash mechanic and input flow. |
+| Companions and summon support | Threadweaver, Bulwark Golem, Mender Sprite, Ember Hound, Frost Raven, Pack Tactics | Define roles, capacity/equip rules, targeting, survival/revival, scaling, and save data alongside Eidolon. |
+
+`Props` also proposes **Ballistic Engine** (Piercing + Ricochet, with Shrapnel as a third piece), **Fortress Loop** (Carapace + Bone Plating, with Aegis), **Predator Economy** (Wanted + Radar, with Lockbox), and **Cold Circuit** (Frost Brand + Shock Relay, with D.O.T.). These named bonuses must not be inferred from the current online/full path labels.
+
+**PROP-23 — P2, Deferred:** Before implementing sets, approve exact two-/three-piece bonuses, distinct-item counting, consumable depletion behavior, activation/deactivation timing, and a visible set summary. Resolve whether percentage changes add percentage points or multiply a rate, and cap any proc chance appropriately. Cold Circuit also depends on props absent from the current catalog. Selling-related set recomputation is out of scope until selling exists.
+
+### 6.11. Prop acceptance matrix
+
+These are required future checks for the desktop build, not tests executed as part of this documentation update. Every catalog item needs an acquisition-to-effect check; the combined scenarios below cover failures that individual item checks miss.
+
+| ID / priority | Scenario | Pass condition |
+| --- | --- | --- |
+| PROP-A01 / P0 | Buy each item at first level, intermediate levels, and its limit; attempt purchase without funds. | One debit and one benefit per successful transaction; correct cap/resource state; rejected purchases leave state unchanged. |
+| PROP-A02 / P0 | Buy Coupon with other offers locked; reroll; exhaust normal offers; reload the shop. | Prices, locks, offers, eligibility, currency, and ownership remain consistent without granting free rerolls or purchases. |
+| PROP-A03 / P0 | Reach a guaranteed Eidolon shop with zero through four locks and with Eidolon capped. | Eligible guarantee survives rerolls; four locks remain intact; capped Eidolon is excluded; same-level re-entry does not advance the guarantee counter. |
+| PROP-A04 / P0 | Combine Piercing, Ricochet, Shrapnel, Explosive, D.O.T., and Mark against clustered enemies and a boss. | Correct charge consumption, source eligibility, stack replacement, boss coefficients, and one death/reward per enemy; chains terminate. |
+| PROP-A05 / P0 | Keep paint/spikes active while moving, pausing, reaching effect limits, and transitioning levels. | Correct damage/slow/lifetime, no repeated one-hit spike triggers, no unintended stationary spawning, and no stale collision/damage state. |
+| PROP-A06 / P0 | Take small and large hits with mixed shield reserves, including level-5 Bone Plating; let all reserves expire. | Correct absorption order and plating exception; Carapace falls by actual consumption; Aegis eligibility and wave damage match the remaining protection. |
+| PROP-A07 / P0 | Run Interest, Coupon, Lockbox, and all Loan tiers through grace, regular repayment, final repayment, and default. | Correct calculation order, actual price, debt/step updates, protected losses, and maximum-HP penalty; receipts match saved state. |
+| PROP-A08 / P0 | Cancel the post-shop picker, reopen, save/load, or retry near a settlement. | No duplicate interest, loan collections, bounty activations, or purchase effects; intended retry baseline is restored. |
+| PROP-A09 / P0 | Kill a wanted Bandit through player, turret, ground-effect, and companion damage; allow another window to expire. | Each supported kill path gives the intended bounty and stolen-coin return exactly once, clears the window correctly, and does not grant expired rewards. |
+| PROP-A10 / P0 | Enter successive levels with both turret types and Eidolon; use a crowded layout. | Counts/evolution persist, actors are not duplicated, stationary placement respects navigation, and placement failures preserve ownership. |
+| PROP-A11 / P1 | Compare shop, expanded details, pause summary, combat feedback, and saved state at representative resolutions. | Matching current/next values and resource labels; readable costs/penalties; path labels do not imply unimplemented bonuses. |
+| PROP-A12 / P1 | Stress a high-level mixed build in the approved Region 04 desktop scene. | Readable actors and enemy telegraphs, bounded effect processing, correct damage/rewards under visual limits, and compliance with the game's performance targets. |
 
 ## 7. Allied actors and Eidolon
 
@@ -383,6 +552,7 @@ No delivery dates, staffing assumptions, paid services, or implementation commit
 | [World generation/pathing](../zgame/worldgen_pathing.py), [spawn logic](../zgame/spawn_logic.py) | Layout, routing, stage configuration, threat budgets, and boss scheduling. |
 | [Enemy core](../zgame/enemy_core.py), [bosses](../zgame/enemy_subclasses.py), [hazards](../zgame/hazards.py) | Enemy roles, boss mechanics, and hazard foundations. |
 | [Player projectiles](../zgame/player_projectiles.py), [game state](../zgame/game_state.py), [paint](../zgame/paint.py) | Combat effects, status/ground systems, and state integration. |
+| [Player/entity core](../zgame/entity_core.py) | Bone Plating regeneration and level-entry reset behavior. |
 | [Shop catalog](../zgame/shop_support.py), [shop UI](../zgame/shop_ui.py) | Present purchasable roster, caps, offers, locks, rerolls, and domain picker. |
 | [Summons](../zgame/summons.py), [summon VFX](../zgame/summon_vfx.py), [turrets](../zgame/turrets.py) | Allied actors, current Eidolon balance, abilities, persistence, and presentation. |
 | [Menu flow](../zgame/menu_flow.py), [screens](../zgame/screens.py), [persistence](../zgame/persistence.py) | User journey, settings, results, saves, and export. |
