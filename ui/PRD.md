@@ -1,6 +1,6 @@
 # Current Game — Product Requirements Document
 
-Version: 1.1 draft | Updated: 2026-11-03 | Project: Z_Game
+Version: 1.2 draft | Updated: 2026-11-05 | Project: Z_Game
 
 This document defines the current native desktop game, the requirements needed to finish it, and the deferred feature backlog. It is documentation only. It does not authorize implementation, asset replacement, balance changes, or removal of existing gameplay.
 
@@ -358,9 +358,19 @@ Acceptance: exercise each evolution, full harvest caps, downing, storage, recons
 
 ## 8. Enemies, encounters, and hazards
 
+### 8.1. Encounter scope and shared requirements
+
 The runtime supports basic pursuers, fast/strong/tank variants, ranged/spitter attackers, explosive enemies, buffers, shielders, splitting enemies, charging Ravagers, special mist/corruption enemies, and Coin Bandits. Exact spawn eligibility and weights belong to the active threat tables, not to the existence of an enemy class alone.
 
-Boss code includes Memory Devourer, Mistweaver with clones/fog behavior, and a level-15 twin Memory Devourer encounter with survivor enrage. Boss stages are scheduled every five levels in the current configuration. The final narrative boss, The Empty Crown, is a proposal from README rather than an established shipped encounter.
+The two current boss types are **Memory Devourer** (`boss_mem`) and **Mistweaver** (`boss_mist`). The level-15 twin fight is a Memory Devourer encounter variant, not a third boss type. The final narrative boss, The Empty Crown, remains a proposal from README. The following details are a source-reviewed snapshot dated 2026-11-05; **Present** means there is an implementation path, while **Partial** identifies configured or incomplete behavior that must not be presented as a finished ability. No boss behavior or balance is changed by this document.
+
+| Encounter | Current schedule and identity | Player challenge |
+| --- | --- | --- |
+| Memory Devourer | First scheduled boss at level 5; also the default boss on later five-level milestones without a special override. | Manage corrosive ground, close-range pressure, charges, and summoned enemies that can sustain the boss. |
+| Mistweaver | Level 10, using the zero-based schedule entry `9`. | Navigate reduced visibility, distinguish the boss from illusions, dodge radial shots, and manage mist hazards and repositioning. |
+| Twin Memory Devourers | Level 15, using schedule entry `14`, while the twin encounter is enabled. | Track two independent health pools and prepare for the surviving boss's full heal and enrage. |
+
+Boss spawning is requested in the first wave of a boss stage. Ordinary threat-budget spawning still surrounds the encounter; the boss is not proof of an otherwise empty arena. Spawn placement, population limits, and valid space must allow the scheduled boss to appear. Boss stages currently use the 60-second survival timer described in section 3. Neither mandatory boss defeat nor an immediate boss-kill exit is an approved campaign rule.
 
 | ID | Requirement | Status / priority | Acceptance condition |
 | --- | --- | --- | --- |
@@ -369,18 +379,119 @@ Boss code includes Memory Devourer, Mistweaver with clones/fog behavior, and a l
 | EN-03 | Navigation respects collision, destruction, and appropriate actor size; permitted boss wall-crushing remains explicit. | Present / P0 | Actors do not become permanently trapped or clip through walls without an intentional ability. |
 | EN-04 | Preserve enemy coin absorption/growth, relevant XP transfer, split-child behavior, and ordinary drops. | Present / P0 | Source ownership and death guards prevent duplicated growth, rewards, or split events. |
 | EN-05 | Bandits communicate arrival, stealing/escape pressure, and bounty/recovery opportunities. | Present / P0 | Lockbox, Radar, Wanted Poster, death, and escape resolve consistently and display the outcome. |
-| EN-06 | Bosses provide readable health, phase changes, telegraphs, attacks, and twin enrage feedback. | Present / P0 | Boss attacks remain avoidable/readable; both fresh-entry and resumed fights preserve intended encounter rules. |
+| EN-06 | Bosses provide readable health, phase changes, telegraphs, attacks, and twin enrage feedback. | Present/Partial / P0 | Boss attacks remain avoidable/readable; resolve the ability and UI gaps below, and preserve intended encounter rules on fresh entry and resume. |
 | EN-07 | Acid pools, hostile paint, fire effects, fog, wind hazards, slows, and damage-over-time distinguish hazards from cosmetic effects. | Present / P0 | Telegraph, collision, lifetime, and actual damage area agree; visual culling does not cancel gameplay. |
 | EN-08 | Define the final boss roster, unlock schedule, stage-clear rules, and rewards as a complete campaign. | Decision / P1 | Every planned stage has an approved objective, encounter definition, and reward/exit state. |
 
 Each future enemy needs a role, unlock point, spawn cost, base/scaled stats, AI states, attacks, telegraphs, damage windows, collision size, rewards, animation set, sound cues, and save-state policy before implementation.
+
+### 8.2. Boss I — Memory Devourer
+
+**Role:** A large pursuing boss whose acid and summons constrain the player's movement. The intended combat rhythm alternates repositioning, avoiding a committed rush, and choosing between boss damage and clearing its support enemies. Its current identity uses purple body colors, green corrosive hazards, and a darker purple enrage treatment. These are existing presentation cues, not approval for replacement art.
+
+| Attribute | Current source baseline |
+| --- | --- |
+| Class / save type | `MemoryDevourerBoss` / `boss_mem`. |
+| Maximum HP | `int(2000 × (1 + 0.15 × max(0, stage index − 1)))`, where stage index is zero-based. This yields 2,900 at level 5 and 5,900 per twin at level 15, before subsequent modifiers. The constant 2,000 is not the final level-5 HP. |
+| Contact attack | 60 before domain, buff, or enrage adjustments. Actual damage follows the shared player defense rules. |
+| Movement and body | Configured base speed 1.5 is cast to integer 1 by the constructor; later phases modify speed. Initial body size is 1.6 world cells, with a half-size radius. Speed values are internal movement parameters, not a promise of pixels per second. |
+| Entry and navigation | Initial spawn delay 0.6 s. The boss can crush blocking objects; spawn placement clears overlapping obstacles. Dash temporarily enables no-clip movement. These exceptions must remain distinct from ordinary navigation. |
+
+**Phase selection — Present:** Recomputed from current HP each update, rather than permanently latched on first crossing. Healing can therefore move a non-enraged boss back into an earlier phase. Enrage overrides the HP test and selects phase 3.
+
+| Phase | HP range | Current behavior and important limits |
+| --- | --- | --- |
+| 1 | Above 70% | Base acid spit and two-Corruptling summon cycle; periodic dash is also available when not in the charging state. |
+| 2 | Above 40%, up to and including 70% | Earlier-phase logic remains active. The phase branch sets speed to 2.0 and enables fusion with aged Corruptlings. Stronger spit/summon branches exist, but share cooldowns with phase 1; see the sequencing gap below. |
+| 3 | 40% or lower | Adds threshold-driven acid rain. At 10% or lower, sets the charging flag and a speed value of 3.0; new periodic dash windups are blocked while charging. Earlier-phase branches continue to run. |
+
+| Ability | Current timing and effect | Required player response / feedback |
+| --- | --- | --- |
+| Acid spit | Base cycle 5 s. Builds 18 pool positions in a 60-degree cone toward the player's sampled position, extending up to six cells. A 0.6-s telegraph precedes pools with radius 24 px, lifetime 6 s, 15 DPS, and 45% slow. | Move out of the threatened cone and preserve an escape route. The warning must identify the future danger area; the current cast marker is centered on the boss rather than outlining every pool. |
+| Corruptling summon | Base cycle 12 s; creates two nearby Corruptlings. Each starts with 50 HP, 10 contact attack, constructor speed 2, and a 0.25-s entry delay. Its death-effect path creates a 20-px acid pool lasting 4 s at 12 DPS. | Make support enemies and their death zones recognizable. Verify death effects across all damage sources rather than assuming the special-update hook always executes before removal. |
+| Fusion | From phase 2 onward, Corruptlings at least 15 s old within eight cells are consumed; each eligible consumed entity adds 100 HP, capped at boss maximum HP. | Show absorption and healing separately from incoming damage. Verify that one consumed entity cannot heal repeatedly while awaiting removal. Clearing adds is the intended way to deny this sustain. |
+| Acid rain | Phase 3 processes HP thresholds starting at 40% in 10-percentage-point steps. Each crossed threshold schedules 18 random map pool positions after 0.5 s; radius 22 px, lifetime 6 s, 15 DPS, and 45% slow. Multiple thresholds can be processed in one update. | Distinguish rain warnings from ordinary spit and preserve visible safe movement. Large bursts of player damage must not silently produce an unreadable stack of simultaneous attacks. |
+| Periodic dash | Initial/repeat cooldown sampled from 4.5–6 s. Windup lasts 0.40 s at reduced movement speed, followed by a 0.60-s rush using a 4.2× speed boost; the enraged boost setting is 4.8×. Direction is sampled at windup. The rush emits afterimages and temporarily enables no-clip. | Telegraph the committed direction and start of movement. The visible rush, collision, and contact-damage window must agree even around walls and map boundaries. |
+| Low-HP charge | At 10% HP or lower, the phase logic sets a persistent charging flag and writes speed 3.0 once. | Communicate the late-fight pressure change. Do not describe a stable sustained speed increase as verified: later updates also write phase-2 speed. |
+
+**Memory Devourer sequencing gaps — Partial / P0:** Phase-1 spit/summon logic runs before the later-phase branches and resets their shared cooldowns. Consequently, the configured phase-2 double spit on a 4-s cycle and three-add summon on a 7-s cycle are not reliable descriptions of the active attack cadence. The low-HP and enrage speed changes also compete with the phase-2 speed assignment. Before balance acceptance, establish which phase owns each cooldown and speed value, then verify the resulting attacks over a complete phase cycle. This PRD records the conflict without authorizing a change to the patterns.
+
+### 8.3. Memory Devourer twin encounter
+
+Both twins use the same boss class and level scaling, receive their own domain modifiers, and are linked by a shared twin ID and partner reference. Their health pools remain independent. Current presentation queues a camera focus for each and draws two boss bars while both are present.
+
+**Survivor enrage — Present:** When one linked boss dies and its partner is still alive, trigger the partner's enrage once. Restore that survivor to its current maximum HP, multiply contact attack by 1.35, add 1 to its speed at the transition, set its cooldown multiplier to 0.65, change its color, append `[ENRAGED]` to its name, and show `ENRAGE!`. The shared phase logic then forces phase 3 and uses an effective HP fraction of zero for rain/charge checks. Outstanding rain thresholds may therefore fire together even though the survivor has just healed to full. A dead partner must not be revived when both bosses die together.
+
+**BOSS-01 — P0, Required:** Treat enrage as one atomic encounter transition: one heal, one attack multiplier, one identity change, and one partner-death response. Preserve its guard across load/retry according to the chosen snapshot policy. Explain the full heal through visible feedback so it does not resemble lost player damage. Verify the actual post-transition speed and attack cadence against the sequencing gaps in section 8.2.
+
+**BOSS-02 — P1, Required:** Maintain stable left/right or top/bottom bar identity while both twins live, then transition clearly to the surviving boss's bar. The display must distinguish separate health pools from one shared pool and retain enrage information. Review simultaneous attack coverage, spawn separation, and traversable space on the approved Region 04 geometry.
+
+### 8.4. Boss II — Mistweaver
+
+**Role:** A visibility and positioning boss supported by illusions, radial projectiles, and mist-covered ground. Its current palette is cool purple, with paler illusions and light mist/door effects. The player should be able to identify the real boss, use available visibility around lanterns, and react to repositioning without losing all readable safe space.
+
+| Attribute | Current source baseline |
+| --- | --- |
+| Class / save type | `MistweaverBoss` / `boss_mist`; illusions use `MistClone` / `mist_clone`. |
+| Maximum HP | `int(8000 × (1 + 0.12 × max(0, stage index − 9)))`; 8,000 at its scheduled level 10 before later modifiers. |
+| Contact and movement | Contact attack 28; configured speed 2.2 is cast to integer 2 in the constructor. Initial boss size is 1.6 cells with a half-size radius. |
+| Navigation | Can crush blocking objects; spawning clears the body footprint. Its regular blink and hit-response teleport have separate triggers and destination logic. |
+| Phase boundaries | Phase 1 above 70%; phase 2 above 35% through 70%; phase 3 at 35% or lower. Phase is recomputed from current HP, so healing can reverse a transition. |
+
+| Ability / phase | Current behavior | Completion requirement or limitation |
+| --- | --- | --- |
+| Illusions / all phases | Maintain a target of two living illusions. Each clone has 1 HP, contact attack 8, and a 0.6-cell body. Its death-effect path creates a 0.6-cell pool for 1.2 s, at 8 DPS and 25% slow. | Identify clones without hiding the real boss. Clone placement currently retries until enough valid cells are found; require a bounded fallback for crowded or blocked layouts. Verify that death pools are produced once through every supported kill path. |
+| Blink doors / all phases | Every 10 s, relocate toward a randomly chosen left/right-side map position. Create pools at departure and destination: 0.9-cell radius, 2-s lifetime, 5 DPS, and 20% slow. | Show departure and arrival distinctly. Validate destination bounds, body clearance, and player separation; random selection alone does not establish a safe landing. |
+| Radial mist volleys / all phases | Initial cooldown 2–3.5 s, then a 5.5-s cycle. Fire three rings spaced 0.2 s apart, each containing 28 projectiles: 84 shots per full volley. Each shot uses speed 420, radius 10 px, and damage 18. | Keep gaps between shots readable. The current short circle effect accompanies firing; a meaningful advance warning remains an acceptance requirement. Preserve projectile collision and damage under dense effects. |
+| Mist blades / phase 1 | First blade timer 1.5 s, then 3.5 s. Place three radial strips aimed at the player at −40°, 0°, and +40°, with four pools along each strip at one- through four-cell distances. Each pool uses radius 0.45 cell, lifetime 1.2 s, 10 DPS, and 35% slow. | Describe this as ground hazards rather than three traveling blade projectiles. Current pools appear directly; establish readable startup and safe lanes before calling the attack fully telegraphed. |
+| Mistling summon / phase 1 | Initial storm/summon timer 2 s, then 6.5 s; summon three Mistlings near the boss. Each starts at 24 HP, attack 10, and speed 3. Their death-blast path deals 18 damage within 70 px. | Distinguish Mistlings from one-HP illusions. Their lifetime counter does not by itself enforce the configured 10-s lifetime; do not promise timed expiry without a working expiry rule. |
+| Mistling absorption / all phases | Mistlings within 7.5 cells are set to zero HP; if any are found during an update, the boss receives one 120-HP heal capped at maximum HP. Unlike Memory Devourer's fusion, this scan has no age threshold. | Close-spawned adds can be absorbed immediately. Check living-state filtering and removal order to prevent a removed/dead add from sustaining repeated heals. Show one aggregate heal per update, not 120 per add. |
+| Mist storm / phase 2 | On its shared storm timer, request eight random locations, a 0.8-s warning, then 0.5-cell pools lasting 4 s at 14 DPS and 40% slow; reset timer to 8 s. | **Partial:** the request uses `dash_mist` telegraphs, but the current telegraph resolver creates pools only for `acid`. Do not claim these requested storm pools currently activate. The phase-1 timer is carried into phase 2 rather than freshly reset. |
+| Large slowing field / phase 2 | A 0.007 probability per special-update call creates a random radius-three-cell field for 3 s, at zero DPS and 50% slow. | Its name/constants refer to silence, but the current action applies slow rather than skill lockout. Treat the trigger as update-rate dependent until a time-based rate is approved; it is not 0.7% per second. |
+| Sonar and pursuit / phase 3 | Requests 0.6-s sonar telegraphs as HP crosses 10-percentage-point steps; the threshold tracker initially starts at 100%, so entering phase 3 can enqueue several past thresholds together. A chase branch requests +1 speed while the player has a mist mark. | **Partial:** the `mist_sonar` payload has no active resolver in the inspected telegraph path, and the mist-mark timer has no application path there. The configured 3-s mark and pursuit response must not be presented as a completed attack. |
+| Hit-response teleport | Eligible hit paths check a 15% chance to reject the hit and shift the boss roughly two cells away from the player. Player-projectile handling consumes that projectile and displays `TELEPORT`. | Verify valid landing coordinates and consistent treatment across bullets, skills, and allied damage. A configured 0.7-s phase time is not evidence of an active invulnerability duration. |
+| Long-range resistance | Damage paths contain an 80% damage multiplier for a distance test of at least five cells. | **Partial:** the distance reference differs by damage path; the projectile path measures projectile-to-boss distance at collision. Do not promise a consistent player-distance resistance until its origin and applicable sources are reconciled. |
+
+**Fog and lanterns — Present/Partial:** Fog uses a configured six-cell player reveal radius and three lanterns with 60 HP and a 3.2-cell reveal radius. The renderer applies its own mask treatment, so configured opacity is not sufficient evidence of the final visibility. Current code has separate fog flags and lantern initialization paths; encounter acceptance must verify one intended lantern population, consistent navigation occupancy, and complete cleanup when the boss disappears. Destroyed lanterns must update their reveal and collision state together. Preserve the approved environment beneath the fog.
+
+**BOSS-03 — P0, Required:** Complete or explicitly defer Mistweaver's storm resolution, sonar/mark behavior, and intended silence behavior before player-facing descriptions claim them. Document the approved result for each ability rather than treating the existence of constants or telegraph requests as proof of gameplay. Phase changes must define how shared cooldowns and already queued attacks carry over.
+
+### 8.5. Shared boss presentation, rewards, and persistence
+
+- **BOSS-04 — P0, Required:** Give each active attack a clear warning, dangerous interval, and recovery/expiry state. Render warnings in the same world position and footprint as their damage. Differentiate acid, mist, door hazards, and player paint; ground-network illumination must not look like an attack indicator. Preserve the established arena art and deterministic layout.
+- **BOSS-05 — P1, Required:** Show name, HP/max HP, shields, phase, and exceptional states such as enrage or teleport. Current single-boss bars hardcode threshold ticks at 70%/40%; Mistweaver requires its own 70%/35% thresholds. Damage feedback must distinguish shield absorption, evaded hits, boss healing, and true HP loss.
+- **BOSS-06 — P0, Required:** Preserve shared hazard semantics. Overlapping pool processing currently uses the strongest overlapping DPS and slow rather than summing every pool. Pool contact refreshes a 2-s lingering damage timer at 60% of the selected pool DPS and a short slow tail. Verify the subsequent damage path, fractional accumulation, and expiry when leaving a pool, pausing, or transitioning stages.
+- **BOSS-07 — P0, Required:** Apply vulnerability, player prop boss coefficients, allied targeting, shield overflow, and kill ownership consistently. Boss identity must survive reconstruction so boss-only rules continue to apply. Illusions and summoned adds must not accidentally receive boss rewards solely because they belong to a boss encounter.
+- **BOSS-08 — P0, Required:** Resolve boss death once across player shots, ground effects, skills, and companions. Current death paths include two healing pickups for a boss and ordinary coin/XP handling with boss-specific branches. The configured 24–36 boss-loot constants are not used by the inspected common coin-roll helper; do not promise guaranteed loot in that range. Approve exact reward amounts and verify every death route before claiming parity. No exclusive prop drop, path unlock, or narrative ending is established by these boss classes alone.
+- **BOSS-09 — P0, Required:** Define cleanup for body, health bars, summoned actors, active attacks, pending telegraphs, fog/lanterns, and twin references on death, timeout, retry, new run, and load. Decide explicitly whether existing hazards/adds survive a boss death; do not let different kill paths decide implicitly. Timer success and boss defeat must remain distinguishable in results until the stage-clear design is approved.
+- **BOSS-10 — P0, Required:** Audit boss save/retry fidelity. The current general enemy snapshot records basic enemy fields but does not explicitly capture the full boss state below. Required state includes boss class/type/name, health/shields, phase, cooldowns, active dash direction/timer, rain/sonar threshold cursor, charge/enrage guards, twin identity/link, clone/add ages, active projectiles and hazard payloads, fog/lantern state, and reward/death guards. Restore a consistent encounter or document a deliberate reset policy; neither ordinary enemy reconstruction nor value sanitization alone proves boss continuation.
+- **BOSS-11 — P1, Required:** Maintain an asset/feedback inventory for each boss: body and movement, spawn, attack startup, active attack, recovery, hit/shield response, healing, death, phase change, and unique state cues. Include Corruptlings, Mistlings, illusions, acid/mist pools, doors, rings, sonar, lanterns, and enrage. Mark existing fallback visuals and missing animation/audio explicitly; do not label every configured ability as having finished art.
+
+### 8.6. Boss acceptance matrix
+
+These are future native-desktop acceptance checks, not tests performed for this documentation update. Current behavior gaps above must be resolved or deliberately deferred before their associated feature is accepted.
+
+| ID / priority | Scenario | Pass condition |
+| --- | --- | --- |
+| BOSS-A01 / P0 | Enter levels 5, 10, and 15, plus a later ordinary boss milestone; repeat with a crowded spawn area. | Correct boss type/count and pre-modifier stats; no missing scheduled boss, duplicate encounter, overlapping blocked spawn, or invalid player placement. |
+| BOSS-A02 / P0 | Cross Memory Devourer's 70%, 40%, and 10% boundaries, then heal across a boundary. | Phase and actual attack cadence follow the approved rules; shared cooldown/speed writes do not contradict the specification; threshold attacks execute the intended number of times. |
+| BOSS-A03 / P0 | Observe spit, dash, rain, summons, Corruptling deaths, and fusion around obstacles. | Warnings match damage geometry; dash respects intended movement exceptions and bounds; expired/dead adds cannot heal or trigger damage repeatedly. |
+| BOSS-A04 / P0 | Kill either twin first; deal simultaneous lethal damage; save/reload after enrage. | One survivor transition where applicable, no resurrection of a dead partner, no repeated heal/multiplier, correct two-bar to one-bar transition, and no duplicate rewards. |
+| BOSS-A05 / P0 | Cross Mistweaver's 70% and 35% boundaries, including a large burst that skips thresholds and subsequent healing. | Correct phase selection and UI ticks; cooldown carryover is defined; storm/sonar requests resolve only according to the approved completed behavior. |
+| BOSS-A06 / P0 | Run full radial volleys, blade strips, blinks, and hit-response teleports in open and blocked terrain. | Intended shot count/timing/damage, readable dodge space, valid teleport destinations, consistent hit rejection, and no unexplained invulnerability. |
+| BOSS-A07 / P0 | Spawn/kill illusions and Mistlings with each supported damage source; fill nearby clone spawn cells. | Clone generation terminates safely, add death effects occur once, healing follows living/consumed state, and adds do not generate boss rewards. |
+| BOSS-A08 / P0 | Start, end, retry, and resume Mistweaver's fog encounter; destroy lanterns. | Intended lantern count, matching reveal/collision state, readable hazards, and complete fog cleanup without altering the approved environment baseline. |
+| BOSS-A09 / P0 | Compare near/far damage, shields, vulnerability, D.O.T., explosions, turrets, and Eidolon against both bosses. | Correct source-specific rules and feedback; no accidental bypass of boss modifiers or inconsistent distance origins after those rules are approved. |
+| BOSS-A10 / P0 | Kill a boss or let the survival timer expire while hazards, summons, and rewards are pending. | Correct result under current survival rules, one reward settlement for each actual death, defined cleanup, and no implicit campaign unlock or ending. |
+| BOSS-A11 / P0 | Save/resume during dash windup, a volley, a phase threshold, enrage, or fog; compare with retry/new run. | Encounter identity and required state follow the documented persistence policy without free heals, skipped attacks, duplicate drops, or lost twin links. |
+| BOSS-A12 / P1 | Observe each full attack cycle and phase in the native Region 04 scene with a dense player build. | Readable boss/clone identity, safe areas, health bars, and sound cues; acceptable performance under the agreed desktop target; actual rendered review rather than source checks alone. |
 
 ## 9. Region 04 environment and asset requirements
 
 Fractured Depths is a continuous cracked-stone combat platform suspended above a violet neural abyss. Root-bound walls, hanging cliff fibers, branching ground illumination, distant formations, and sparse lilac growth form the current visual foundation. See [Props](Props) for the full map description.
 
 | Asset group | Required role | Current boundary |
-| --- | --- | --- | --- | --- |
+| --- | --- | --- |
 | A1 — Cracked slate ground | Readable, mostly flat stone floor with irregular slabs and fine fractures. | Preserve the approved production floor and world alignment. |
 | A2 — Neural synapses | Branching ground conduits, selected major junctions, subdued secondary branches, and sparse glints/halos. | Preserve `5184282` geometry; asynchronous light breathing only. The reference's cyan/growth wording does not override current palette/motion decisions. |
 | A3 — Pale breakable wall | Pale masonry, clear damage states, destruction feedback. | Keep current wall assets and collision footprints. |
