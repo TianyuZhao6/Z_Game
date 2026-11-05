@@ -380,7 +380,7 @@ Each future enemy needs a role, unlock point, spawn cost, base/scaled stats, AI 
 Fractured Depths is a continuous cracked-stone combat platform suspended above a violet neural abyss. Root-bound walls, hanging cliff fibers, branching ground illumination, distant formations, and sparse lilac growth form the current visual foundation. See [Props](Props) for the full map description.
 
 | Asset group | Required role | Current boundary |
-| --- | --- | --- |
+| --- | --- | --- | --- | --- |
 | A1 — Cracked slate ground | Readable, mostly flat stone floor with irregular slabs and fine fractures. | Preserve the approved production floor and world alignment. |
 | A2 — Neural synapses | Branching ground conduits, selected major junctions, subdued secondary branches, and sparse glints/halos. | Preserve `5184282` geometry; asynchronous light breathing only. The reference's cyan/growth wording does not override current palette/motion decisions. |
 | A3 — Pale breakable wall | Pale masonry, clear damage states, destruction feedback. | Keep current wall assets and collision footprints. |
