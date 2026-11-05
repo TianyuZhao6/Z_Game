@@ -2634,13 +2634,13 @@ class GameSound:
         here = os.path.dirname(__file__) if "__file__" in globals() else os.getcwd()
         candidates = [
             # project-typical
-            os.path.join(here, "Z_Game", "assets", "ZGAME.wav"),
+            os.path.join(here, "NeuroSurivor", "assets", "ZGAME.wav"),
             os.path.join(here, "assets", "ZGAME.wav"),
             # run-from-working-dir
-            os.path.join(os.getcwd(), "Z_Game", "assets", "ZGAME.wav"),
+            os.path.join(os.getcwd(), "NeuroSurivor", "assets", "ZGAME.wav"),
             os.path.join(os.getcwd(), "assets", "ZGAME.wav"),
             # user-provided absolute-like hint (DON'T rely on drive root)
-            r"C:\Users\%USERNAME%\Z_Game\assets\ZGAME.wav".replace("%USERNAME%", os.environ.get("USERNAME", "")),
+            r"C:\Users\%USERNAME%\NeuroSurivor\assets\ZGAME.wav".replace("%USERNAME%", os.environ.get("USERNAME", "")),
         ]
         if music_path:
             candidates.insert(0, music_path)

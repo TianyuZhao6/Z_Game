@@ -21,7 +21,7 @@ def project_roots() -> list[str]:
         norm = os.path.normpath(raw)
         if norm not in roots:
             roots.append(norm)
-        nested = os.path.normpath(os.path.join(norm, "Z_Game"))
+        nested = os.path.normpath(os.path.join(norm, "NeuroSurivor"))
         if nested not in roots:
             roots.append(nested)
     return roots

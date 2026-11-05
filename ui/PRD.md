@@ -1,6 +1,6 @@
 # Current Game — Product Requirements Document
 
-Version: 1.2 draft | Updated: 2026-11-05 | Project: Z_Game
+Version: 1.2 draft | Updated: 2026-11-05 | Project: NeuroSurivor
 
 This document defines the current native desktop game, the requirements needed to finish it, and the deferred feature backlog. It is documentation only. It does not authorize implementation, asset replacement, balance changes, or removal of existing gameplay.
 
@@ -10,7 +10,7 @@ A single-player, isometric survival action game set within a surreal neural worl
 
 The repository's narrative frames each run as a fictional treatment cycle within a deteriorating brain. Memory, neural connections, and corruption inform the world and enemy themes. This is a fictional game premise, not a claim about medical treatment. The exact narrative and ending scripts remain a design task.
 
-Branding is unresolved: README uses **NEURONVIVOR**, reference artwork uses **NEUROSURVIVOR**, and the current window-title constant is **NEUROSURIVER**. Use Z_Game as the project identifier until one player-facing name is approved.
+Branding is unresolved: README uses **NEURONVIVOR**, reference artwork uses **NEUROSURVIVOR**, and the current window-title constant is **NEUROSURIVER**. Use NeuroSurivor as the project identifier until one player-facing name is approved.
 
 Intended audience: players who enjoy short survival encounters, automatic-attack combat, tactical movement, and synergistic builds. Audience assumptions and target session length require playtesting; no audience research is claimed here.
 
@@ -639,7 +639,7 @@ No delivery dates, staffing assumptions, paid services, or implementation commit
 
 | Decision/gap | Why it matters | Current handling |
 | --- | --- | --- |
-| Final game name and narrative terminology | Title, logo, menus, credits, and distribution must agree. | Keep project name Z_Game; record the three existing name variants. |
+| Final game name and narrative terminology | Title, logo, menus, credits, and distribution must agree. | Keep project name NeuroSurivor; record the three existing name variants. |
 | Campaign endpoint and boss-clear conditions | Current timer survival differs from README's boss-defeat narrative. | Preserve runtime behavior; treat campaign/endings as unfinished design. |
 | Failure retry versus fresh-run rules | Retry currently exists alongside a roguelike premise. | Document/test baseline restoration; decide intended release behavior. |
 | Domain-selection UI | `Props` proposes a die; current shop picker uses hidden cards. | No redesign implied by this PRD. |

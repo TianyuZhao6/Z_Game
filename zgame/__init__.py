@@ -1,2 +1,2 @@
-"""Support modules for the browser-friendly Z_Game runtime."""
+"""Support modules for the browser-friendly NeuroSurivor runtime."""
 

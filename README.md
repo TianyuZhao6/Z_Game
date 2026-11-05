@@ -1,4 +1,4 @@
-# Z_Game
+# NeuroSurivor
 
 ## 目录结构
 
