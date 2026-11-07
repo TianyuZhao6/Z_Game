@@ -1,26 +1,84 @@
 # Current Game — Product Requirements Document
 
-Version: 1.2 draft | Updated: 2026-11-05 | Project: NeuroSurivor
+Version: 1.3 draft | Updated: 2026-11-06 | Project: NeuroSurivor
 
 This document defines the current native desktop game, the requirements needed to finish it, and the deferred feature backlog. It is documentation only. It does not authorize implementation, asset replacement, balance changes, or removal of existing gameplay.
 
 ## 1. Product definition
 
-A single-player, isometric survival action game set within a surreal neural world. The player controls a healing-agent character, survives escalating enemy waves, collects resources, and assembles a run-specific build through level-up choices, purchased props, turrets, and an evolving autonomous companion. Positioning and build choices drive play; basic shooting is automatic, with manually targeted skills for intervention and escape.
+### 1.1. Game overview
 
-The repository's narrative frames each run as a fictional treatment cycle within a deteriorating brain. Memory, neural connections, and corruption inform the world and enemy themes. This is a fictional game premise, not a claim about medical treatment. The exact narrative and ending scripts remain a design task.
+**NeuroSurivor is a single-player, isometric survival action game in which a healing agent fights through a deteriorating neural world.** The player moves through an arena under pressure from enemy waves, collects resources, and develops a build that changes how they survive. Basic shooting is automatic; the player's attention goes toward positioning, choosing routes, timing targeted abilities, and deciding which upgrades are worth buying.
 
-Branding is unresolved: README uses **NEURONVIVOR**, reference artwork uses **NEUROSURVIVOR**, and the current window-title constant is **NEUROSURIVER**. Use NeuroSurivor as the project identifier until one player-facing name is approved.
+The central experience is a repeating exchange between action and planning. Combat tests the current build; level-up choices strengthen it during a stage; the shop lets the player spend what they earned, address a weakness, or pursue a different combination before the next encounter. A run gradually changes from a lone agent relying on movement and basic fire into a more elaborate combination of projectile effects, ground hazards, defenses, turrets, and an evolving companion.
 
-Intended audience: players who enjoy short survival encounters, automatic-attack combat, tactical movement, and synergistic builds. Audience assumptions and target session length require playtesting; no audience research is claimed here.
+| Product aspect | Current definition |
+| --- | --- |
+| Genre | Survivor-style action with wave-based encounters and roguelike build choices. Current retry behavior is described separately; the genre label does not establish permanent death or a complete roguelike progression system. |
+| Player count | One player controlling one healing-agent character. Turrets and companions are autonomous allies. |
+| Platform | Native/local desktop, with Windows as the current development environment. |
+| View and movement | Isometric presentation with movement across a continuous combat floor, blocking terrain, and breakable obstacles. |
+| Main interactions | Move and dodge, let automatic attacks engage eligible targets, aim Blast or Teleport, collect resources, choose upgrades, and buy props. |
+| Immediate objective | Keep the agent alive until the current stage's survival timer expires. |
+| Run progression | Carry the intended player upgrades, purchased props, and companion progression through successive stages and shops. |
+| Current environment | Region 04 — Fractured Depths; other region art remains outside active production scope. |
+| Long-term endpoint | Campaign length, final boss, endings, and any endless-mode structure remain product decisions. |
 
-### Product pillars
+### 1.2. Premise, world, and player role
 
-1. Readable survival combat: players can recognize threats, escape routes, damage, and recovery opportunities.
-2. Meaningful builds: offense, defense, economy, ground effects, and summons produce distinct decisions and interactions.
-3. A coherent neural world: organic stone, rooted ruins, branching illumination, and a layered abyss share a consistent visual language.
-4. Reliable run continuity: purchases, upgrades, resources, and saved progress behave predictably across menus, levels, restart, and resume.
-5. Responsive desktop play: input, combat, audio, and transitions remain usable during dense encounters.
+The narrative places the game inside a brain affected by Alzheimer's disease. Memories are fragmenting, connections are weakening, and hostile forces spread through the remaining network. The environments translate that premise into a surreal landscape of fractured stone, organic roots, luminous pathways, and deep suspended spaces. Enemies and bosses express themes of corruption, confusion, and memory loss through their appearance and behavior.
+
+The player embodies a composite healing agent. The README's fictional concept combines experimental treatment, nanobot swarms, neurotransmitter support, and cognitive-training protocols into one controllable character. These ideas provide a narrative identity for the agent and its upgrades; they do not establish separate playable classes or medically accurate abilities. Each run represents a treatment cycle attempting to preserve the network for longer. This is a fictional game premise, not a claim about medical treatment.
+
+The player's practical role is to keep that agent alive and make an effective build from available choices. Automatic fire handles routine attacking, while movement and targeted skills provide direct control over danger. The player must recognize approaching threats, avoid being trapped by obstacles or enemies, and decide when a resource pickup is worth leaving a safer route.
+
+The broader story aims toward preservation, stabilization, and possible recovery. Named endings and the final confrontation remain deferred concepts in section 13. Current stage success is timed survival; it does not yet certify that a brain region has been restored, that a treatment has succeeded, or that a narrative ending has been reached.
+
+### 1.3. Core gameplay loop and decisions
+
+The basic loop is **enter a stage → survive and collect → choose upgrades → complete the stage → shop and prepare → enter the next stage**. Three connected time scales give the player different kinds of decisions:
+
+| Time scale | What the player does | Why the choice matters |
+| --- | --- | --- |
+| Moment to moment | Move around walls and enemies, maintain useful firing distance, avoid hostile ground effects, and use Blast or Teleport when needed. | Good positioning creates room to attack and collect; poor positioning can make even a strong build vulnerable. |
+| Within a stage | Gather currency and healing, gain XP, select level-up improvements, and respond to changing enemy composition or a boss. | The player balances immediate safety against resources and power that will help later in the run. |
+| Between stages | Review the build, buy or upgrade props, preserve useful shop offers, reroll when worthwhile, and proceed through the current domain-selection flow. | Spending decisions determine whether the next stage emphasizes damage, defense, allied support, ground control, or economy. |
+
+Current ordinary stages last 45 seconds and boss stages 60 seconds. Those values describe combat timers, not total run length: menus, pauses, level-up choices, and shopping add time, and a final campaign endpoint is not established. Health depletion produces failure with the current retry/home options; starting a fresh run resets run-owned power according to section 3.
+
+Build decisions should remain understandable through their effects. A projectile-focused build changes how shots reach groups of enemies. Ground-effect props reward useful movement routes. Shield props can turn protection into offensive pulses. Turrets add supporting fire, while Eidolon supplies an autonomous ally that evolves through purchases. Economy props affect when money is collected, saved, spent, protected, or borrowed. These are overlapping approaches rather than fixed character classes, and current path labels do not imply implemented set bonuses or locked specialization trees.
+
+### 1.4. Intended play experience
+
+The game should feel approachable at the level of basic controls and demanding at the level of decisions. A new player should quickly understand that moving keeps them safe, automatic fire handles routine attacks, and pickups and purchases improve their chances. With experience, the player should learn to read enemy roles, plan routes, time skills, and judge how an offer contributes to the current build.
+
+Combat should alternate between manageable pressure and moments that require a deliberate response: a dangerous enemy closes in, a Bandit threatens resources, a boss changes phase, or several hazards limit the available route. Growth should be visible through changed attack behavior, stronger defenses, added allies, and clearer build identity. More effects should not make it harder to recognize the agent, a threat, or an escape route.
+
+For example, a player might enter a stage with projectile upgrades, collect coins while circling an obstacle, use Teleport to leave a closing gap, and finish with enough currency to choose between another offensive purchase and protective shielding. This illustrates the intended decision rhythm, not a scripted encounter or a guarantee of specific shop offers.
+
+Replay value currently comes from changing upgrade and shop choices, enemy pressure, resource decisions, and combinations of the present systems. Permanent account unlocks, a completed branching campaign, and ending-dependent progression must not be used as current product promises. Pause, continue, and clear results support returning to a run; their exact state guarantees are specified in section 12.
+
+### 1.5. Current content and visual identity
+
+The current world presentation centers on **Fractured Depths**, a cracked-stone platform suspended over a violet neural abyss. Pale breakable walls, darker permanent root-walls, cliff edges, distant formations, and sparse lilac growth give the player recognizable landmarks and obstacle silhouettes. Branching ground illumination suggests neural connections while leaving the combat floor readable. Its geometry remains still as selected lights breathe asynchronously.
+
+The approved ground-network colors are Wind cyan-blue, Forest purple, Fire red, and Stone pale gold to yellow. These identify existing gameplay modifiers within the current environment; they do not mean four additional region art sets are finished. The environment requirements and preserved `region04-shimmer` baseline are detailed in section 9.
+
+Present combat content includes ordinary pursuers and specialized enemies, Coin Bandits, two boss types—Memory Devourer and Mistweaver—and a twin Memory Devourer encounter. The current shop contains 21 props, covering offensive effects, defenses, economy, turrets, and Eidolon. Eidolon evolves through six purchases from Bloombone to Soulflame to Rift Skull. Sections 6–8 distinguish functioning paths, incomplete abilities, and future requirements; this overview does not imply that every interaction, asset, or encounter has passed acceptance.
+
+### 1.6. Audience, naming, and product pillars
+
+The intended audience is players who enjoy survival encounters, automatic-attack combat, tactical movement, and experimenting with item combinations. The design should support both a first-time player learning the basic loop and a returning player comparing builds. Target total session length, difficulty expectations, accessibility needs, and audience fit require playtesting; no audience research or final numerical targets are claimed here.
+
+Use **NeuroSurivor**, with this spelling, as the project name following the naming update. Historical references still contain **NEURONVIVOR**, **NEUROSURVIVOR**, and **NEUROSURIVER**. Title-screen copy, window titles, logos, and distribution naming need a consistency pass; their existence does not establish separate games or editions.
+
+1. **Readable survival combat.** The player can identify threats, damage areas, obstacles, and recovery opportunities even when several systems are active.
+2. **Meaningful build choices.** Upgrades change recognizable behavior or tradeoffs, and the player can explain why a purchase helps the current run.
+3. **A coherent neural world.** The character, enemies, organic ruins, branching illumination, and abyss share a visual and narrative identity.
+4. **Reliable run continuity.** Purchases, upgrades, resources, and progress behave predictably across combat, shops, pause, retry, and resume.
+5. **Responsive desktop play.** Movement, skill targeting, feedback, and menus remain usable during dense encounters.
+
+These pillars guide the detailed requirements that follow. A successful playable build lets the player understand the objective, recognize why they took damage, see how a choice changed their build, and move through the combat/shop loop without losing progress unexpectedly.
 
 ## 2. Scope and authority
 
