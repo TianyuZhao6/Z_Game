@@ -47,9 +47,13 @@ three seconds total, 1.5x cast-time damage per contact, shared 0.3s hit spacing.
 These are named tuning constants, not final balance. Dedicated investment is
 strong; player movement/fighting is still needed. No unrelated prop rebalancing.
 
-## Verification
+## Historical verification
 
-- `python tools/verify_summon_runtime.py`: 32 checks, including both actual shop
+The following results describe the original validation session. The dedicated
+summon verification/playtest scripts were removed during the 2026-11-19 cleanup;
+their names below identify historical tools, not current runnable commands.
+
+- Retired `tools/verify_summon_runtime.py`: 32 checks, including both actual shop
   screens, purchases, equip toggle, damage isolation, shield absorption, enemy
   variants, boss targeting, save-file round trips, downed reload, transitions,
   harvest, trigger rules, retargeting, compact navigation, offscreen damage,
@@ -57,7 +61,7 @@ strong; player movement/fighting is still needed. No unrelated prop rebalancing.
 - `python tools/verify_bullet_runtime.py`: existing nine scenarios pass.
 - `python tools/verify_game_state_runtime.py`: existing thirteen scenarios pass,
   including shields/Aegis, damage, pickups, paint, DoT, navigation and fog.
-- `python tools/playtest_summon.py`: scripted input through the actual level loop,
+- Retired `tools/playtest_summon.py`: scripted input through the actual level loop,
   not a separate simulation. Five scenarios, 565 rendered frames each: Bloombone;
   Soulflame/Mist; Rift/Hell with downing and actual snapshot resume; lightweight
   renderer/Wind with a tornado; Rift/twin-boss stage. Normal AI, movement,
@@ -68,8 +72,8 @@ strong; player movement/fighting is still needed. No unrelated prop rebalancing.
 - 200-enemy summon-only benchmark: three simulated seconds took 0.532s locally,
   approximately 2.96ms per update. This does not measure total game FPS or browser speed.
 - Actual rendered captures: `docs/evidence/summon-standard.png` and
-  `docs/evidence/summon-lite.png`; additional frames regenerate under
-  `TEMP/summon-playtest`. Run with `--visible` to watch the scripted scenarios.
+  `docs/evidence/summon-lite.png`; additional frames were generated under
+  `TEMP/summon-playtest`. The removed harness no longer regenerates those frames.
 
 ## Corrections made during validation
 

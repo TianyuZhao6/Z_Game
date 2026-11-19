@@ -675,7 +675,7 @@ This PRD was prepared by reading source and existing documentation. No game, bui
 | Stability/performance | Representative dense combat and at least a 30-minute desktop session; no crashes, accumulating state, or uncontrolled memory growth. Record frame-time distributions and hardware. |
 | Distribution | Clean-machine launch, bundled assets/audio, writable saves, version identification, credits/licenses, export, and safe update behavior. |
 
-Existing verification tools include `tools/verify_bullet_runtime.py`, `tools/verify_game_state_runtime.py`, `tools/verify_summon_runtime.py`, `tools/verify_environment_runtime.py`, and `tools/verify_vessel_network.py`. Desktop preview/playtest tools and the retained captures support visual review. Their existence is not an acceptance result; use only the relevant native desktop paths when future verification is authorized.
+Existing verification tools include `tools/verify_bullet_runtime.py`, `tools/verify_game_state_runtime.py`, `tools/verify_environment_runtime.py`, and `tools/verify_vessel_network.py`. Desktop preview/review tools and the retained captures support visual review. The dedicated Eidolon verification/playtest scripts and their dependent illumination playtest were removed during the 2026-11-19 cleanup; the summon acceptance requirements remain applicable. Tool availability is not an acceptance result; use only the relevant native desktop paths when future verification is authorized.
 
 Automated correctness checks alone cannot close visual acceptance. Review actual rendered scenes through a full breathing cycle. The user retains final artistic acceptance of Region 04.
 

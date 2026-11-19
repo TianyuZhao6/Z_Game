@@ -92,12 +92,14 @@ to inspect the artwork. They use normal generated collision geometry and the
 actual renderer, not a painted replacement screenshot. The separate combat
 capture comes from the running level loop. Use
 `python tools/preview_environment.py --reference-review` to reproduce the art
-views, or `python tools/playtest_summon.py --environment-stress` for combat.
-Use `python tools/playtest_summon.py --edge-motion` for the moving edge captures.
-The movement fixture starts near an edge; all subsequent movement, wall collision,
-enemies, projectiles, companion AI and rendering run through the normal level loop.
+views. The former summon-based combat and edge-motion fixtures were removed
+during the 2026-11-19 cleanup. Their retained captures are historical evidence;
+new combat and moving-camera review should use the current native desktop game.
 
 ## Verification
+
+These results describe the original validation session. The dedicated summon
+test scripts are no longer maintained or available after the 2026-11-19 cleanup.
 
 - All **67 summon/render tests** and **13 environment tests** pass.
 - Bullet (9) and game-state (13) scenario suites pass.

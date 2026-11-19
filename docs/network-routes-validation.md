@@ -63,7 +63,7 @@ These captures and timings use native Pygame with SDL's dummy display. They exer
 - `tools/verify_vessel_network.py` — new route-scale/coverage/depth/width expectations.
 - `tools/verify_environment_runtime.py` — exact-pixel long-cache regression check.
 - `tools/review_region04_illumination.py` — genuine baseline geometry binding, Wind/region selection, five seeded captures and metrics.
-- `tools/playtest_region04_illumination.py` — configurable desktop review region.
+- `tools/playtest_region04_illumination.py` — historical desktop review fixture, removed with its summon-playtest dependency during the 2026-11-19 cleanup.
 - `AGENTS.md` and `assets/sprites/environment/README.md` — updated geometry direction and implementation notes.
 - `docs/evidence/README.md`, this report, and `docs/evidence/network-routes/` — current evidence and measured limitations.
 

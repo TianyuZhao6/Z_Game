@@ -91,6 +91,8 @@ Runtime: `zgame/neural_environment.py`, `zgame/vessel_network.py`.
 
 Tools/tests: `tools/review_region04_illumination.py`, `tools/playtest_region04_illumination.py`, `tools/verify_environment_runtime.py`, `tools/verify_vessel_network.py`.
 
+Cleanup note (2026-11-19): `tools/playtest_region04_illumination.py` and its summon-playtest dependency have since been removed. This file list records the historical validation; the independent review and verification tools remain.
+
 Documentation: `assets/sprites/environment/README.md`, this report.
 
 Evidence in `docs/evidence/region04-illumination/`: `before-dim.png`, `before-rising.png`, `before-peak.png`, `after-dim.png`, `after-rising.png`, `after-peak.png`, `breathing.webp`, `capture-times.json`, `desktop-profile.json`, `live-combat.png`, `live-camera.webp`, `live-validation.json`.
