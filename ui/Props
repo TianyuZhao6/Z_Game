@@ -403,7 +403,7 @@ Original/browser economy rule:
 Shop constants, price order, discount caps, interest caps, loan values, bounty values, and lockbox rates are original-version economy values. Browser card layout, localStorage writes, pickup bundling, or visible spoil caps must not change final price, debt, bounty, interest, cashback, or protected coin value unless a browser-specific reduced value is explicitly documented.
 
 | knob | current value | note |
-| --- | --- | --- | --- |
+| --- | --- | --- | --- | --- |
 | SHOP_PRICE_EXP | 1.12 | exponential price growth by level |
 | SHOP_PRICE_LINEAR | 0.02 | linear level modifier |
 | SHOP_PRICE_STACK | 1.15 | repeat-buy stack price growth |
